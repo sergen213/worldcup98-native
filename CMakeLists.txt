@@ -1,0 +1,25 @@
+cmake_minimum_required(VERSION 3.28)
+
+project(worldcup98_native
+    VERSION 0.1.0
+    DESCRIPTION "Native Linux reimplementation of EA Sports World Cup 98 (1998) — preservation project"
+    LANGUAGES CXX)
+
+# C++ standard: C++26 (finalized; supported by the GCC 16 / Clang 23 toolchains used
+# on the primary CachyOS dev environment). CI pins a standard explicitly.
+if(NOT DEFINED WC98_CXX_STANDARD)
+    set(WC98_CXX_STANDARD 26)
+endif()
+set(CMAKE_CXX_STANDARD ${WC98_CXX_STANDARD})
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+option(WC98_BUILD_TESTS "Build automated tests" ${PROJECT_IS_TOP_LEVEL})
+
+add_subdirectory(core)
+
+if(WC98_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()

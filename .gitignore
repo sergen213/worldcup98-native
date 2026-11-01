@@ -1,0 +1,15 @@
+build/
+.cache/
+compile_commands.json
+.clangd
+*.o
+*.obj
+
+# Research notes may contain copyrighted excerpts (hex dumps of original game
+# files, extracted game strings). Keep them out of the repository.
+research-inbox/
+../research-inbox/
+*.iso
+*.zip
+WorldCup98_Extracted/
+ghidra/

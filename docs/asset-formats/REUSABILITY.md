@@ -219,6 +219,11 @@ tools/audio-extract/f99-audio-extract WorldCup98_Extracted /tmp/wc98probe-out/au
   the 1998 15-bit stream-header/gain layout needs calibration**.
   Chant `.PBK` members (PT tag `0x83`=**7=EA-XA**) decode cleanly through the existing EA-XA
   decoder (`CHNT/C0001800.PBK#0`: 37497 samples, peak 23755, mean 4315).
+  Full-bank measurement (test gate, all 1,232 `.PBK`): 4,901 play-track/speech members,
+  **249/4,901 (5.1%) decode through the FIFA 99 framing**; layout is fully measured (160-bit
+  blocks = 15-bit header + 144 payload bits, 72 codes/block, final block terminates,
+  160-bit aligned), the 1998 block decoder **algorithm** is an open RE item
+  (ghidra FUN_00432950 pass, docs/reverse-engineering/GHIDRA_PASS1.md).
   `Bnk::decode` on `.SMP` → `MicroTalk in BNK not used by FIFA 99` (PT-v2/`.SMP` path not
   implemented in the BNK reader).
 - Speech indexing: FIFA 99 = `.STR` + `.OFF` + `SPEECH.INF/.SID`. WC98 has **none**:
@@ -391,3 +396,24 @@ tools/gamedata/f99-gamedata validate WorldCup98_Extracted  → 13212 files / 232
 
 Probe of fifa99-native code against WC98 data. Probe logs (/tmp/wc98probe-out) are
 ephemeral; counts in this document are the durable record.
+
+## 12. Measured WC98 deltas from the port run (2026-11)
+
+The ported modules and their test gates lock in these measured facts (they supersede
+section 3-8 probe estimates where they differ):
+
+| Area | Matrix probe claim | Measured by port |
+|---|---|---|
+| .BIG archives | 36, "some 48 B prefixed" | 32 plain + 4 RefPack-wrapped (FEFONTS, IGFONTS, IGLAY, LAYOUTS); 48 B prefix confirmed on ANIM.BIG (members aaaaaa / fronte / ulsjga5) |
+| .PAK | 793 = 786 SHPI + 7 .LIT | 793 = **791 SHPI**, 2 non-SHPI payloads |
+| FCDB teams | 68 B / 17 words; 24/56/1782 | confirmed; roster = 20 **little-endian** u16 player-id slots (bytes 24..64, 0 = empty; 984/984 slots resolve — FIFA 99's big-endian resolves 31/984); squad size = filled slots, byte-22 nibble = floor(squad/2) (odd squads 11/13 measured; 40/56 teams slot-capped at 20); nationality = (b23&0xF)<<4 \| (b22&0xF0)>>4; shirtStyle is 6-bit (measured max 32) |
+| FCDB players | 20 B bit-packed | confirmed byte-packed: id=((b1&0x3F)<<8)\|b0, nation=(b2<<2)\|(b1>>6), price LE@4..5, 17 skill nibbles @8..16 (value = n*4+39), shirt=((b17&0xF)<<4)\|(b16>>4), role=b17>>4; shirt numbers 1..255 (720 players carry the 255 "no number" sentinel); skills are raw 4-bit nibbles 0..15 |
+| GEN4TBLS.VIV | G98* members | header "400\r\n" (5 B); KO = 68 B i8, PK = 136 B **i16 LE**, PL = FK = 20 332 B i8; no AT/DF members |
+| PT v2 .SMP | tag 7 EA-XA, tag 9 MicroTalk | **756/756 codec 9 (MicroTalk)**; tag 0x88 is header-relative (value = headerSize) |
+| .PBK banks | PT play-track members | **BIGF archives** (PHRS.PBK: 1290 members); members are raw 1998 UTK 10:1 payloads with no PT wrapper — decode via `decodeSpeechPayload` on the member bytes; the final 20 B block is a terminator: request `(blocks-1)*256` samples, because the 1999 decoder seeks one block past its final decode |
+| PT v0 audio (.ASF / .DCT) | FIFA 99 tag stream | 1998 nests the standard meta tags (0x85 sample count, 0x82 channels, 0x83 codec = 7 EA-XA) inside a **0x65 block**; `PtHeader::parse` merges the nested tags |
+| .BNK SFX banks | 47/47 decode to WAV | 47/47 structural parse; members are "PT\\0\\0" with a 1998 tag dialect (0x06, 0x5a loop meta, 0x91, 0x88 = absolute data offset) and a 0xa2 meta block nesting the standard tags (0x83 codec 7, 0x85 sample count); payload decoding is an open research item |
+| .LAY screens | 29 parse, invariants | 29/29 parse; 383 "unknown objecttype" warnings for unmodelled UI types (measured) + exactly 1 numobjects=4-vs-6 section-count quirk (FEFLOW00.LAY) |
+| ANIM | 404/413 clips | confirmed: 413 members → 404 clips + 9 1998 key-block variants; sspecz6 = player-rig clip (5 triplets / 14 quats), aaaaaa = show clip (16/16, 160 B header) |
+| Global palette | PAL.PAK | FE/PACK/PAL.PAK = RefPack → SHPI carrying a type-0x01 256-colour record; the resolver unwraps RefPack first |
+| FSH palette chain | 0x2D/0x29 + global fallback | the palette-record chain walker needs a bounds guard at record end (span underflow fixed) |

@@ -30,9 +30,9 @@ counts in `docs/asset-formats/INVENTORY.md`, `docs/reverse-engineering/EXECUTABL
 ## Confirmed — data (counts verified by scanning the user's files)
 
 - `BIGF` archives 1,273 (incl. 1,232 `.PBK`), RefPack 797 payloads (all
-  793 loose `.PAK` = FSH textures), FSH 411 files / 6,356 bitmaps,
-  FFN 10, PCMD 14, GEOM/SKEL `.MDL` 12, MO rig 413 anim clips
-  (`COMMON/ANIM.MO`), FCDB 2 + 22 STR0/STR1 `.DBI/.DBM` (24 leagues,
+  793 loose `.PAK` = FSH textures, 791 unpack to SHPI), FSH 411 files /
+  6,356 bitmaps, FFN 10, PCMD 14, GEOM/SKEL `.MDL` 12, MO rig 413 anim
+  clips (`COMMON/ANIM.MO`), FCDB 2 + 22 STR0/STR1 `.DBI/.DBM` (24 leagues,
   56 teams, 1,782 players, 20-byte player records), LAY 29, FCLG 9,
   BNK 47, CRD 2, SCHl 37 (8 `.ASF` music incl. Tubthumping, 29 `.DCT`
   video), EULZ/Squish `.SQF` 49, TRE 9, `USER/OPTIONS.SAV` = `AFIFAFIF`.
@@ -40,9 +40,25 @@ counts in `docs/asset-formats/INVENTORY.md`, `docs/reverse-engineering/EXECUTABL
   core, BIG/RefPack, FSH (98.5%), FFN, PCMD, MO/ANIM (404/413),
   GEN4TBLS, FCDB names/players, FCLG, LAY grammar, all audio codecs
   (BNK 47/47, SCHl 37/37, CRD, MIDx), OpenAL mixer — COMPATIBLE.
-- WC98 deltas requiring adaptation: FCDB team record 68 B/17 words
-  (FIFA 99: 80 B/20), FSH 0x2D/0x29 palette records + global fallback,
-  PT v2 stream header, UTK 10:1 speech flag byte, G98*.FMT names.
+- WC98 deltas requiring adaptation (final, locked by port test gates —
+  see REUSABILITY.md section 12): FCDB team record 68 B/17 words
+  (FIFA 99: 80 B/20); roster = 20 little-endian u16 player-id slots
+  (bytes 24..64; 984/984 slots resolve — FIFA 99's big-endian resolves
+  31/984), squad size = filled slots, byte-22 nibble = floor(squad/2)
+  (odd squads 11/13 measured; 40/56 teams slot-capped at 20); shirtStyle is 6-bit
+  (measured max 32); FSH 0x2D/0x29 palette records + global fallback
+  (PAL.PAK = RefPack→SHPI→type-0x01 palette, resolver yields 256
+  colours); PT v2 .SMP streams are 756/756 MicroTalk (tag 9) with
+  header-relative 0x88; .PBK = BIGF archives whose members are raw
+  1998 UTK 10:1 payloads (no PT wrapper); 1998 PT v0 nests the
+  standard meta tags (0x85 samples / 0x82 channels / 0x83 codec)
+  inside 0x65 blocks (.ASF/.DCT audio) and 0xa2 meta blocks (.BNK
+  SFX members, which also use a 1998 tag dialect 0x06/0x5a/0x91 —
+  payload decoding open); 4 of 36 .BIG archives are RefPack-wrapped;
+  ANIM.BIG carries the 48-byte prefix; INSTALL ships header-only
+  11,628-byte PBK stubs (count field 1290) — archive parsing must be
+  tolerant; G98*.FMT names (KO 68 B i8, PK 136 B i16-LE, PL/FK
+  20,332 B i8, no AT/DF).
 
 ## Confirmed — product (external, cited)
 

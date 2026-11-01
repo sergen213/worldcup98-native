@@ -17,7 +17,13 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(WC98_BUILD_TESTS "Build automated tests" ${PROJECT_IS_TOP_LEVEL})
 
+# Format parsers and research tools compile warnings-as-errors (GCC 16 / C++26
+# and the C++23 CI fallback).
+add_compile_options(-Wall -Wextra -Werror)
+
 add_subdirectory(core)
+add_subdirectory(formats)
+add_subdirectory(tools)
 
 if(WC98_BUILD_TESTS)
     enable_testing()

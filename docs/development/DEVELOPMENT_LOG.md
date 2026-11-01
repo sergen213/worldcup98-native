@@ -117,3 +117,53 @@ be merged into `docs/research/`, `docs/reverse-engineering/`,
 **Next:** merge research results into docs, set up GitHub repo + CI,
 then milestone 2 — format parsers (BIGF/RefPack, FSH, FCDB) with
 WC98-verified tests, and the asset-inspector tool suite.
+
+## Milestone 2 — fifa99-native format stack ported and WC98-locked (2026-11-01)
+
+Ported the proven FIFA 99 toolchain (`/mnt/2nd4TB/FIFA99/fifa99-native`)
+into this repo under the `wc98` namespace: core reader, BIG/RefPack,
+FSH, FCDB, GEN4TBLS, FCLG, MO/ANIM, LAY, FFN, PCMD, PT/SCHl/BNK/UTK/EAXA/
+MicroTalk audio, CRD, MIDx, plus the `wc98-extract`, `wc98-dbexplorer`,
+`wc98-tbls`, `wc98-anim-inspect`, `wc98-lay-dump`, `wc98-art-inspect`
+tools. Every WC98 deviation is now locked by CTest gates measured
+against the original tree; the deltas table lives in
+`docs/asset-formats/REUSABILITY.md` section 12. Headlines:
+
+- 32 plain + 4 RefPack-wrapped `.BIG` archives; `ANIM.BIG` 48-byte
+  prefix confirmed; 793 `.PAK` → 791 SHPI; header-only 11,628-byte PBK
+  stubs in INSTALL need tolerant archive parsing.
+- FCDB: 68 B team records; roster = 20 **little-endian** player-id
+  slots (984/984 resolve; FIFA 99 big-endian resolves 31/984); squad =
+  filled slots; byte-22 nibble = floor(squad/2); shirtStyle 6-bit;
+  shirt numbers 1..255 with 255 = "no number" (720 players).
+- FSH: 0x2D/0x29 palettes + global fallback (PAL.PAK resolver yields
+  256 colours); full-tree scan gate.
+- GEN4 G98: header `400\r\n`, KO int8, PK int16-LE, PL/FK int8, no
+  AT/DF members.
+- Audio: PT v2 `.SMP` 756/756 MicroTalk; `.PBK` = raw 1998 UTK 10:1
+  payload members (final block = terminator — request (blocks-1)*256
+  samples); 1998 PT v0 nests meta tags in 0x65 blocks (`.ASF`/`.DCT`)
+  and 0xa2 blocks (`.BNK`); `ANTHEM.EAM` is a 76-byte 1998 MIDx
+  dialect; layout 29/29 with 383 tolerated unknown-objecttype
+  warnings + one measured numobjects quirk.
+- `wc98-dbexplorer --json` fixed to escape Latin-1 EA name bytes as
+  `\uXXXX` (JSON was invalid before).
+
+Open research items for milestone 3 (recorded, gates structural):
+1998 SFX `.BNK` member payload dialect (0x06/0x5a/0x91 tags + 0xa2
+meta block), 1998 MIDx event dialect, `.SQF` EULZ, `.MDL` GEOM/SKEL,
+`.DCT` EA-TREM video frames, typed UI layer, speech phrase indices,
+TRE, ISO/VFS; plus the moddb Ultimate Patch download (Cloudflare —
+see analysis/patches/PENDING.md).
+
+## 2026-11-01 (late) — milestone 2 layer committed; audio gates pinned to measured reality
+- Post-compaction reality audit: the working tree was ahead of git (formats/, tools/,
+  tests/, core helpers untracked). This commit records the whole layer: 16 format
+  decoders, 8 CLI tools, 10 CTest suites.
+- AudioTest data gates re-pinned to full-tree measurements: BNK 246/246, PT v2 .SMP
+  756/756 (MicroTalk tag 9, 66.0 M frames), SCHl 37/37 (8 .ASF + 29 .DCT audio),
+  full-bank .PBK: 1,232 banks / 4,901 members, 249 (5.1%) decode through the FIFA 99
+  framing. Layout is measured (160-bit blocks: 15-bit header + 144 payload bits,
+  72 codes/block, final block terminates); the 1998 block decoder ALGORITHM is the
+  open RE item (ghidra FUN_00432950). Test counter bug (.ASF/.DCT scan) fixed.
+- ctest with WC98_TREE: 10/10 passed in 35 s (debug preset, -Wall -Wextra -Werror).

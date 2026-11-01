@@ -1,0 +1,39 @@
+name: Bug report
+description: Report a crash, visual/simulation defect, or asset-loading problem
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This is a preservation reimplementation of EA Sports World Cup 98
+        (1998 PC). Fill in every section you can; never include copyrighted
+        game files, keys, or personal data in attachments.
+  - type: input
+    id: build
+    attributes:
+      label: Build / version
+      description: Release tag or commit, and OS (e.g. CachyOS, Fedora 42)
+    validations: { required: true }
+  - type: textarea
+    id: hardware
+    attributes:
+      label: Hardware
+      description: CPU, GPU (+driver/Mesa version), Wayland/X11
+    validations: { required: true }
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: 1. Start match ... 2. Press ... → expected / actual
+    validations: { required: true }
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output
+      description: The launcher's log file / terminal output (trim to the relevant part)
+      render: text
+  - type: textarea
+    id: original-behavior
+    attributes:
+      label: Behavior on the original game (if known)
+      description: How the original 1998 Windows release behaves in the same scenario, with a reference capture link if you have one.

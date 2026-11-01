@@ -71,8 +71,11 @@ counts in `docs/asset-formats/INVENTORY.md`, `docs/reverse-engineering/EXECUTABL
 3. `.MDL` GEOM/SKEL (FE 3D titles), `.SQF` EULZ sprites, `.DCT` EA-TREM
    video frames.
 4. `.SCI/.TBI` AI scripts (unparsed in FIFA 99 too), GEN4TBLS AT/DF.
-5. Save format (`AFIFAFIF` header known, 57 B options in FIFA 99),
-   tournament data tables, commentary trigger event tables.
+5. Save/replay/presentation files: see
+   `docs/reverse-engineering/SAVES.md` (options.sav layout hypothesis,
+   `rply%04d.dat`/`FEREPLAYBUFF` replay system, `.his`/`.tri` Classics
+   data, network.dat/dial.dat) — Ghidra xref pass + Wine-generated
+   reference saves pending.
 6. Official patch lineage: `fifawc98_patch.zip` + moddb Ultimate Patch
    contents (download & diff pending).
 

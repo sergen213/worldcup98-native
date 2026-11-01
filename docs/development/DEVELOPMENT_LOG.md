@@ -2,6 +2,48 @@
 
 Newest entries first. One entry per meaningful milestone (project rule).
 
+## 2026-11-01 — Milestone 1 complete: research merged; port dispatched
+
+Four parallel probes completed; results merged into docs (hexdump
+appendices excluded from repo — copyrighted game excerpts):
+
+- **Asset inventory** (`docs/asset-formats/INVENTORY.md`): ISO = tree
+  (0 missing/0 size mismatches, 6,868 files); format map: BIGF x1273,
+  FSH/SHPI x411 (6,356 bitmaps) + GIMX art blocks x1203, RefPack x797,
+  PCMD x14, GEOM/SKEL MDL x12, FNTF x10, FCDB x2 + STR0/STR1 x22 (24
+  leagues / 56 teams / 1,782 players), LAY x29, BNKl x47, CRDl x2,
+  PT streams x2,065 (.SMP/.PBK), SCHl x37, EULZ/Squish x49, MIDx x1,
+  TRE x9, FCLG x9; loader filename patterns + VER.DAT stamps; SHA-256
+  of game binaries. MOAI/MADk/CMAP absent (MO rig + TREM .DCT video
+  replace them).
+- **Executable RE** (`docs/reverse-engineering/EXECUTABLE.md`): Watcom
+  2.18, unpacked, stripped; 173 imports; no CD check beyond volume info;
+  THRASH 34-name ABI; D3D2 / glide2x / PowerVR PCX2 back-ends;
+  EACSND via DirectSoundCreate; WSOCK32 datagram-only (IPX/UDP LAN) +
+  TAPI modem play; registry layout confirmed; shipped DLLs contain
+  Watcom debug blobs with C source paths (driver-internals roadmap);
+  analysis tools in `tools/exe-analysis/` (rawpe2.py — Watcom PE import
+  walker for VirtualSize=0 fields).
+- **FIFA 99 reusability matrix** (`docs/asset-formats/REUSABILITY.md`):
+  clean build + probes: BIG/RefPack 34/38+797/797, FSH 1184/1204, FFN
+  10/10, PCMD 14/14, MO 404/413, FCDB names+players OK, LAY 29/29,
+  audio codecs 47/47 BNK + 37/37 SCHl + CRD + MIDx. WC98 deltas: FCDB
+  team record 68 B/17 words, FSH 0x2D/0x29 palettes, PT v2, UTK 10:1,
+  G98*.FMT. Incompatibles: FE typed UI layer, speech index, SQF, MDL,
+  TREM video, gamedata manifest (WC98 layout).
+- **External dossier** (`docs/research/EXTERNAL.md`): 40 teams, WC +
+  Classics rules, 640x480 locked, 85/63 fps caps, nGlide fix details
+  (voodooa.dll — PCGW typo noted), disc check, no prior WC98
+  reimplementation exists; WC98 vs RTWC98 facts separated.
+
+Status list consolidated in `docs/STATUS.md` (confirmed / hypotheses /
+unknowns / limitations). GitHub repo `sergen213/worldcup98-native`
+public, CI green. Port of the fifa99-native formats+tools layer
+(BigF/RefPack/FSH/FFN/PCMD/MO/audio/LAY/FCDB + wc98-* tools) with the
+measured WC98 schema adaptations dispatched as a long-running task;
+success gate = tools run against the WC98 tree with the exact probe
+counts above.
+
 ## 2026-11-01 — Milestone 1 kickoff: environment, discovery, project skeleton
 
 **Environment audit (confirmed):**

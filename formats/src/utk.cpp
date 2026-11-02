@@ -219,10 +219,9 @@ std::size_t Decoder::decodeSpeechPayload(std::span<const std::uint8_t> payload, 
     // the 1998 payload, then decode it as a single block. See the header note for the
     // amplitude caveat (measured int16 saturation on every WC98 clip probed).
     if (payload.empty() || samples == 0) throw FormatError("MicroTalk: empty WC98 speech payload");
-    std::vector<std::uint8_t> framed;
-    framed.reserve(payload.size() + 1);
-    framed.push_back(1);
-    framed.insert(framed.end(), payload.begin(), payload.end());
+    std::vector<std::uint8_t> framed(payload.size() + 1);
+    framed[0] = 1;
+    std::copy_n(payload.data(), payload.size(), framed.begin() + 1);
     return decodeBlock(framed, samples, out);
 }
 

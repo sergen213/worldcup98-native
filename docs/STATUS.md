@@ -45,6 +45,10 @@ counts in `docs/asset-formats/INVENTORY.md`, `docs/reverse-engineering/EXECUTABL
   CONTROL1 via `.FSH`/RefPack `.PAK` art resolution (LAYOUTS.BIG/IGLAY.BIG members); original
   trophy (`WCUPF.MDL`: 2 groups, 416 faces, 9 FSH textures) and stadium bowl (`BRDXF`) through
   the GEOM/SKEL parser — see reverse-engineering/{LAY_COMPOSITOR,MDL_GEOMETRY}_NOTES.md.
+- Player art end-to-end via `wc98-model-export` (2026-11-02): skinned `PCMD` players
+  (`HIG_30`: 28 nodes, 320 tris) posed by real `ANIM.MO` clips; kit atlases `PK###A/H.FSH`
+  bind 10/13 materials (harvest mode); stands 15/21, trophy PCMD 1/1 textured.
+  Kit/tag map + quirks (`hjbx`↔`hjbk`, palette-only face `hifa`) in MILESTONE4.md.
 - WC98 deltas requiring adaptation (final, locked by port test gates —
   see REUSABILITY.md section 12): FCDB team record 68 B/17 words
   (FIFA 99: 80 B/20); roster = 20 little-endian u16 player-id slots

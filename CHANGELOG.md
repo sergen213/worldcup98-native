@@ -33,3 +33,7 @@ project goals.
 - Ghidra pass 4: module version manifest map (IG/AI/CAMERA/MOTION/TOURNAMENT getters),
   `win\key.c` input pump + shared key-poll primitive, in-exe EA sound-service cluster
   (streamservice/MIDI/speech) identified; DGROUP zero-fill scan pitfall documented.
+- `wc98-model-export` renders real CD player art end-to-end: skinned `PCMD` models
+  (`HIG/MED/LOW_*.PC`) posed by `COMMON/ANIM.MO` clips, kit textures bound from
+  `PK###A/H.FSH` atlases (10/13 materials; `hjbx`↔`hjbk` tag quirk documented), plus
+  stadium stands and the fully textured trophy. Evidence in MILESTONE4.md "Models & kits".

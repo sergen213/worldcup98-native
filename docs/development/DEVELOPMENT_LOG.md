@@ -225,3 +225,8 @@ see analysis/patches/PENDING.md).
 ## 2026-11-02 — Ghidra pass 4: version manifest, input pump, in-exe audio services
 - New report docs/reverse-engineering/GHIDRA_PASS4_SIMULATION.md; decompiles analysis/pass4/FIFAWC.EXE_sim{,2,3,4}.txt.
 - Key negative result: $FIFAVER$ getters = diagnostics manifest only; string pools consumed via computed LEA (no static xrefs). Pointer-slot discovery must be host-side raw-file scan (Ghidra DGROUP zero-filled).
+
+## 2026-11-02 — player models, rigs and kit-texture binding
+- `wc98-model-export` on real CD data: HIG_30 skinned PCMD (28 nodes/320 tris) posed by ANIM.MO clip cqckea4; harvest-mode `--fsh DIR` binds 10/13 materials from PK###A/H kit atlases; PARI stands 15/21, trophy 1/1.
+- Kit map measured over all TEXTURES FSH: COM=skin/hair parts (m*=MED, g*=GK), PK/RK/GK=full kits, HHIG=hair styles fa/hr/fh, PALJER=numeric jersey palettes. Quirks: materials say `hjbx`, kits store `hjbk`; face tag `hifa` has no bitmap on the CD (runtime palette recolor).
+- CI: GCC-13 `-Wstringop-overflow` false positive in utk.cpp copy_n fixed via `.data()` pointers; GLM target shim (`glm::glm` → `glm::glm-header-only`) for Ubuntu packaging.

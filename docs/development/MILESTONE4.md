@@ -38,3 +38,28 @@ MIDx event music; SQF decompress (EULZ); MDL/DCT decode gates. (The "PBK expande
 FUN_00432950 decompile" item was dropped 2026-11-01: `.PBK` speech decodes 6,964/6,964 via
 PT-tag routing at member offset 20 — no 1998 expander exists or is needed; see
 asset-formats/AUDIO.md and reverse-engineering/GHIDRA_PASS2_AUDIO.md correction banner.)
+
+## Models & kits (2026-11-02, `wc98-model-export` on real CD data)
+
+Player art renders end-to-end: `INGAME/PLAYER/MODELS/*.PC` (`PCMD`/STADEX, skinned,
+28 nodes / 320 tris for `HIG_30`) posed by a real match clip from `COMMON/ANIM.MO`
+(413 clips; `cqckea4` kick) through the ported `PlayerRig`, textured from harvested
+FSH, exported to glTF + orthographic preview PNG.
+
+Kit texture binding (measured over all 206 files in `INGAME/PLAYER/TEXTURES`):
+
+| archive | tags | role |
+|---------|------|------|
+| `COM_{10,30,70,90}.FSH` | `harm hhdc hhdo` + `m*`(MED) `g*`(GK) skin/hair parts | base body set per detail group |
+| `PK###A/H.FSH` (team 026…876, `PK999?`) | full kit: `hifa hrsv hlsv hslv hclt hulg hllg hjbk hjfr hair` … | per-team home (`A`) / away (`H`) jersey atlas |
+| `RK##_##.FSH`, `GK##_##.FSH` | same tag set, keeper variants | keeper kits (`.2d_%c` loader pattern) |
+| `HHIG_/HMED_*.FSH` | `fa00-08 hr00-12 fh00-05` | hair style catalogue |
+| `PALJER(.10).FSH` | numeric `0800 0801 1600 1601` | jersey palette swap entries (pk/rk recolor path) |
+
+Quirks: model materials reference **`hjbx`** while every kit archive stores **`hjbk`**
+(boxer-shorts tag off-by-k); material `hifa` (face) has no bitmap anywhere on the CD —
+the 1998 build recolors it via PALJER at runtime, our exporter leaves it flat. With
+TEXTURES harvested as a directory (`--fsh DIR`, `--pal FE/PACK/PAL.PAK`): `HIG_30`
+binds **10/13**, shirt variant `SHI_30` (524 tris) 10/13, `LOW_90` (64 tris, no face
+part) **7/7**. Stadium stands: `PARI___D.BIG/stad_n.pc` 144 tris 15/21 textured;
+`TROPHY.BIG/trophy.pc` 110 tris **1/1** textured from its own `trophy.fsh`.

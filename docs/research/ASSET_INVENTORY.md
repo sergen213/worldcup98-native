@@ -86,4 +86,4 @@ All four hashes verbatim from master §13 — the only game-payload binaries; an
 - Setup/DirectX categorization lines (§14): the master's full classification rows for SETUP installer binaries (3DFX/InstallShield set) and DIRECTX5 redist trees incl per-extension census totals used by our port tooling to exclude non-game payload; cite before quoting counts.
 
 ## 8. Cross-reference to our repo docs
-WC98 decode work lives at [AUDIO.md](../asset-formats/AUDIO.md) (PT / BNKl / EA-XA / speech incl codec tags) + [FCDB_WC98.md](../asset-formats/FCDB_WC98.md); RE pass notes under `docs/reverse-engineering/`. Sibling FIFA 99 port specs live in the local `fifa99-native` checkout under `docs/formats/` (REFPACK, OPTIONS_SAV …19 files — see EXTERNAL_PROJECTS.md §FIFA99 detail).
+WC98 decode work lives at [AUDIO.md](../asset-formats/AUDIO.md) (PT / BNKl / EA-XA / speech incl codec tags) + [FCDB_WC98.md](../asset-formats/FCDB_WC98.md); RE pass notes under `docs/reverse-engineering/`.

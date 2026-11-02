@@ -240,8 +240,7 @@ tools/audio-extract/f99-audio-extract WorldCup98_Extracted /tmp/wc98probe-out/au
 - Speech indexing: FIFA 99 = `.STR` + `.OFF` + `SPEECH.INF/.SID`. WC98 has **none**:
   `AUDIO/PHRS/{PHRS.PBK, PHRS.HDR, PHRS.INF}` (`INF` = 28 B: `V8-7-4` + 5 u32 counts; outer
   BIGF 1290 members → each phrase = nested BIGF of PT samples), per-voice
-  `AUDIO/{PLRS,TEAM,CHNT,PBP}/*.PBK` + per-file `.INF/.HDR/.TYPE` sidecars
-  (586 `.INF`, 240 `.HDR`, 159 `.TYPE`) → **`audio/speech` (`.STR/.OFF/SPEECH.INF`) =
+  `AUDIO/{PLRS,TEAM,CHNT,PBP}/*.PBK` flat banks (`PHRS.INF/HDR` are the only sidecars; `PHRS/TYPE.PBK` is a header-only phrase mirror) → **`audio/speech` (`.STR/.OFF/SPEECH.INF`) =
   INCOMPATIBLE; new WC98 index + container reader required** (payload codecs already work).
 - `f99_audio` mixer (OpenAL) is data-agnostic → reusable (the 257 WAVs above are its contract).
 

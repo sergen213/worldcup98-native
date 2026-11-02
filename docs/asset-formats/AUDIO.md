@@ -60,7 +60,7 @@ RefPack-compressed members expand transparently (`refpack::decompressIfNeeded`).
 2,044 nested-member entries counted by audit tooling).
 
 Audit with `decodePlayTrack(m, 20)` + nested recursion: **6,964 PT members, 6,964 decoded,
-0 failures**; 1,044 members not decodable as play tracks (1,022 tiny BIGF stub headers whose entry offsets point past the member — cross-member references the engine resolves at load — plus 22 empty/odd payloads); total 508,302,490 samples.
+0 failures**; 1,044 members not decodable as play tracks: `PHRS/TYPE.PBK` is a header-only mirror of PHRS.PBK (1,022 stub members that are byte-identical prefixes of the same-indexed full phrase + 268 empty count=0 nested archives) plus 22 non-audio payloads (16 raw in CROWD.PBK, 6 `MIDx` event files in COMOS.PBK); total 508,302,490 samples. Phrase-record layout and the mirror proof: docs/reverse-engineering/SPEECH_INDEXING_NOTES.md.
 Codec census by PT tag `0x83`: codec **9 (MicroTalk) = 6,851** members, codec **7 (EA-XA) = 113**.
 Sample-rate tag `0x84` is ABSENT on 6,957/6,964 members (only 5× 16000 and 2× 14000 present).
 
@@ -80,12 +80,11 @@ codec-9 members SFB ≈ 0.32 vs EA-XA chant member `CHNT/C0001800.PBK#0` SFB ≈
 
 Open items: (1) gain calibration — decoded amplitudes run hot (RMS ≈ 9,000–11,500 int16,
 occasional saturation); (2) the absent `0x84` rate tag defaults to 22050 Hz while speech is
-likely 8 kHz (UNVERIFIED); (3) the 1,044 stub/other members (cross-member BIGF references not yet modelled).
+likely 8 kHz (UNVERIFIED); (3) the 1,044 stub/other members — TYPE.PBK mirror headers and non-PT payloads, semantics documented in SPEECH_INDEXING_NOTES.md.
 
 `.SPEECH`-style `.STR/.OFF/SPEECH.INF` indexes do not exist in WC98: phrase lookup
 uses `AUDIO/PHRS/{PHRS.PBK (BIGF, 1290 members), PHRS.HDR, PHRS.INF}` where INF is
-28 B `V8-7-4` + five u32 counts; per-voice `.INF/.HDR/.TYPE` (586/240/159) map
-player phrases.
+28 B `V8-7-4` + u32 {0, 1290 = phrase count, 83,696 unknown}; `.HDR` is a byte-exact snapshot of PHRS.PBK's first 11,628 bytes (TOC mirror). AUDIO holds **no other** sidecars — the earlier “586 INF / 240 HDR / 159 TYPE” counts were wrong; `PHRS/TYPE.PBK` (an archive, not a sidecar) is the header-only phrase mirror.
 
 ## Music / streams
 

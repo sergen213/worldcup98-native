@@ -335,7 +335,7 @@ static void original() {
     std::printf("PBK banks: %d banks, %d play-track members, %d decoded (%d MicroTalk, %d EA-XA), %zu samples, %d other\n",
                 pbk, pbkMembers, pbkOk, pbkMt, pbkXa, pbkSamples, pbkOther);
     CHECK(pbk == 1232 && pbkMembers == 6964 && pbkOk == 6964);
-    CHECK(pbkMt == 6851 && pbkXa == 113 && pbkOther == 1044);  // other: 1,022 BIGF stub headers (data offsets point past the member) + empties/odd payloads
+    CHECK(pbkMt == 6851 && pbkXa == 113 && pbkOther == 1044);  // other: TYPE.PBK = header-only mirror of PHRS.PBK (1,022 stubs + 268 empty) + CROWD raw + COMOS MIDx — docs/reverse-engineering/SPEECH_INDEXING_NOTES.md
     CHECK(pbkSamples == 508302490);
 
     // SCHl streams: 8 .ASF music + 29 .DCT video (audio head sub-stream decodes; the

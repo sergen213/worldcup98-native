@@ -30,3 +30,6 @@ project goals.
   visually, gate `render_demo_lay`); FE `GEOM/SKEL` `.MDL` parser (offset-validated draw-lists,
   per-corner UV faces) renders the original trophy and stadium bowl textured via
   `wc98-model-view` (gate `model_view_wcupf`). Notes: LAY_COMPOSITOR_NOTES.md, MDL_GEOMETRY_NOTES.md.
+- Ghidra pass 4: module version manifest map (IG/AI/CAMERA/MOTION/TOURNAMENT getters),
+  `win\key.c` input pump + shared key-poll primitive, in-exe EA sound-service cluster
+  (streamservice/MIDI/speech) identified; DGROUP zero-fill scan pitfall documented.

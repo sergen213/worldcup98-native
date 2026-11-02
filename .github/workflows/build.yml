@@ -25,7 +25,8 @@ jobs:
       - name: Install tooling
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build cmake libpng-dev
+          sudo apt-get install -y ninja-build cmake libpng-dev libvulkan-dev libopenal-dev \
+            libglm-dev libsdl3-dev glslang-tools
       - name: Configure
         run: cmake --preset ${{ matrix.preset }}
       - name: Build

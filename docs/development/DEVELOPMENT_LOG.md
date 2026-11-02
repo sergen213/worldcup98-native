@@ -167,3 +167,47 @@ see analysis/patches/PENDING.md).
   72 codes/block, final block terminates); the 1998 block decoder ALGORITHM is the
   open RE item (ghidra FUN_00432950). Test counter bug (.ASF/.DCT scan) fixed.
 - ctest with WC98_TREE: 10/10 passed in 35 s (debug preset, -Wall -Wextra -Werror).
+
+## 2026-11-01 — milestone 3 start: engine foundation ported from FIFA 99 sibling
+- Ported proven fifa99-native modules into wc98 (mechanical `f99→wc98` rename, then
+  surgical config cuts): `platform/` (SDL3 window + XDG paths, default app dir `wc98`),
+  `renderer/` + `renderer/vulkan/` (Vulkan 1.3 device, shaders via glslc, Original
+  pillarbox / Enhanced / Widescreen Hor+ presentation, MSAA, offscreen readback —
+  zero game logic), `config/` (INI `wc98.ini`: backend auto|vulkan, resolution,
+  fullscreen, msaa, aspect; FIFA language/controls sections removed), `audio/`
+  (OpenAL mixer; match-audio stripped).
+- New binaries: `wc98-native` app skeleton (`--version`/`--help` headless-safe,
+  SDL window + Vulkan renderer loop, `--smoke N`) and `tools/render-demo`
+  (synthetic offscreen scene → PNG on disk; verified 640x480 valid PNG).
+- Tests: added `test_platform_paths`, `test_renderer_layout`, `test_vulkan_offscreen`
+  (pixel checks in all present modes + encodePng round-trip file check; skips with
+  exit 77 where no GPU). ctest debug preset: **13/13 passed** incl. real render on
+  AMD RX 7900 XTX; `wc98-native --version` exits 0. No git commit (tree left green).
+
+## 2026-11-01 — .PBK speech fully decoded via PT-tag routing; pass-2 audio fabrication documented
+- Corrected `.PBK` model (measured, all 1,232 banks in AUDIO/{PHRS,CHNT,PLRS,TEAM,PBP}): every
+  member = **20 B phrase record + `PT` v2 play track at offset 20** (BIGF archives, some with the
+  known 48-byte prefix; RefPack members expand transparently via `refpack::decompressIfNeeded`).
+  PHRS.PBK nests second-level BIG containers: 536 nested archives / 2,044 nested-member entries.
+- Full-bank audit `decodePlayTrack(m, 20)` + nested recursion: **6,964/6,964 PT members decoded,
+  0 failures**, 508,302,490 samples; codec census by tag `0x83`: MicroTalk (9) = 6,851, EA-XA (7)
+  = 113; rate tag `0x84` absent on 6,957/6,964 (only 5x 16000, 2x 14000). The old "self-contained
+  20 B blocks / only 249 decodable" model was wrong - payload sizes mod 20 span {0,4,8,12,16}; the
+  real framing is one continuous UTK bitstream per member with a single FIFA-99-style header block
+  (= `utk::Decoder::decodeSpeechPayload`). The test gate was rewritten from the old ratio
+  (249 decodes against the 4,652-member gated backlog) to **6,964/6,964**.
+- Authenticity checks: decoded TEAM/A_T0026.PBK -> WAV autocorrelates at F0 ~ 174-176 Hz
+  (periodicity 0.71 / 0.38 - speech-like); spectral flatness codec-9 ~ 0.32 vs EA-XA chant
+  C0001800 ~ 0.64. Open: gain calibration (RMS ~ 9,000-11,500 int16, occasional saturation),
+  rate default for the missing `0x84` tag (assume 22050; speech likely 8 kHz - unverified).
+- **Pass-2 audio doc fabrication confirmed**: table VAs `0x73e9c8`/`0x73e820`/`0x73e160` occur
+  ZERO times as LE dwords in all 1,762,304 bytes of FIFAWC.EXE (python raw scan) and are unmapped
+  in the Ghidra DB (`analysis/pass3/FIFAWC.EXE_celp.txt`: MemoryAccessException, HITFUNCS 0).
+  Region `0x42bb54-0x42d0bb` is the EA cmn_stream reader (`'lECs'` chunk framing, codec dispatch
+  at stream+0x94), not a CELP decoder. GHIDRA_PASS2_AUDIO.md now carries a correction banner;
+  streaming facts consolidated in new `docs/reverse-engineering/AUDIO_RUNTIME.md` (incl. the
+  DGROUP VirtualSize=0 Ghidra pitfall - resolve its strings via explicit VAs).
+- Docs merged: speech model corrected in AUDIO.md / REUSABILITY.md / STATUS.md / MILESTONE4.md;
+  new `docs/research/EXTERNAL_PROJECTS.md` (sibling-repo audit: bbtime xa2wav + Wine oracle, IKV
+  Ghidra Java helpers, FIFA99 formats layer as primary reuse); INVENTORY section 13 gained the
+  SETUP-vs-THRASH D3DA.DLL two-build hash fact.

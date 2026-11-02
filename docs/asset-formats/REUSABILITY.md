@@ -29,9 +29,12 @@ Four things break, each with a precise, measured delta:
    FIFA 99 id-based (`normalshapeid`/`curFname`). `f99-ui-render --game WC98` → 0 screens.
 3. **Speech** — WC98 has no `.STR`/`.OFF`/`SPEECH.INF`. Commentary/player/team/chant banks are
    `.SMP`/`.PBK` (`PHRS.INF` "V8-7-4" index + nested BIGF phrase banks) with a PT header
-   version 2 (`PT\0\2`, extra u32 header size, `0x88` = header-relative data offset) and
-   MicroTalk 10:1 payloads. FIFA 99's **UTK (MicroTalk 10:1) decoder itself decodes the WC98
-   payloads** once block framing is adapted (125/125 sampled clips decoded); chant `.PBK`
+   version 2 (`PT\0\2`, extra u32 header size, `0x88` = header-relative data offset).
+   `.PBK` members carry a **20 B phrase record + a `PT` v2 play track at offset 20**; routing by
+   codec tag decodes **6,964/6,964** bank members (MicroTalk tag 9: 6,851; EA-XA tag 7: 113 —
+   measured 2026-11-01). FIFA 99's **UTK (MicroTalk 10:1) decoder decodes the WC98 payloads**
+   (`utk::Decoder::decodeSpeechPayload`, continuous bitstream + one FIFA-99-style header block);
+   gain calibration remains open. Chant `.PBK`
    members (PT tag `0x83`=7 = EA-XA) decode cleanly through the existing EA-XA path.
 4. **Path layout** — WC98 has no `FIFA_99/DATA/` tree; `f99-gamedata detect/validate` reject it.
    Every module that resolves data through the FIFA 99 manifest/VFS needs a WC98 layout
@@ -219,11 +222,19 @@ tools/audio-extract/f99-audio-extract WorldCup98_Extracted /tmp/wc98probe-out/au
   the 1998 15-bit stream-header/gain layout needs calibration**.
   Chant `.PBK` members (PT tag `0x83`=**7=EA-XA**) decode cleanly through the existing EA-XA
   decoder (`CHNT/C0001800.PBK#0`: 37497 samples, peak 23755, mean 4315).
-  Full-bank measurement (test gate, all 1,232 `.PBK`): 4,901 play-track/speech members,
-  **249/4,901 (5.1%) decode through the FIFA 99 framing**; layout is fully measured (160-bit
-  blocks = 15-bit header + 144 payload bits, 72 codes/block, final block terminates,
-  160-bit aligned), the 1998 block decoder **algorithm** is an open RE item
-  (ghidra FUN_00432950 pass, docs/reverse-engineering/GHIDRA_PASS1.md).
+  Full-bank measurement (rewritten test gate, all 1,232 `.PBK`, measured 2026-11-01): every
+  member = a **20 B phrase record + `PT` v2 play track at offset 20**;
+  `decodePlayTrack(m, 20)` + nested-BIG recursion decodes **6,964/6,964 members (100%),
+  0 failures** — codec census by tag `0x83`: codec 9 (MicroTalk) = 6,851, codec 7 (EA-XA) = 113;
+  total 508,302,490 samples; 1,044 stub/other members (BIGF headers referencing data past the member). The earlier
+  "249/4,901 gated on a 1998 block decoder at `FUN_00432950`" was an artifact of the test loop
+  feeding raw member bytes into UTK framing while ignoring the PT header at offset 20: payload
+  sizes mod 20 span {0,4,8,12,16} uniformly — NOT block-aligned. Correct model: ONE continuous
+  UTK bitstream per member with a single FIFA-99-style header block prepended (=
+  `utk::Decoder::decodeSpeechPayload`); decoded output verified speech-like (F0 ≈ 174–176 Hz,
+  periodicity 0.71/0.38; codec-9 spectral flatness ≈ 0.32 vs EA-XA chant ≈ 0.64). Open: gain
+  calibration (RMS ≈ 9,000–11,500 int16, occasional saturation), rate-tag default
+  (`0x84` absent on 6,957/6,964; speech likely 8 kHz — unverified).
   `Bnk::decode` on `.SMP` → `MicroTalk in BNK not used by FIFA 99` (PT-v2/`.SMP` path not
   implemented in the BNK reader).
 - Speech indexing: FIFA 99 = `.STR` + `.OFF` + `SPEECH.INF/.SID`. WC98 has **none**:
@@ -239,7 +250,7 @@ tools/audio-extract/f99-audio-extract WorldCup98_Extracted /tmp/wc98probe-out/au
 | `audio/bnk` (BNKl + PT v0 + EA-XA v1) | **COMPATIBLE** codecs / **PARTIAL** parser (needs PT v2 branch: `0x0200`, hdrSize, `0x83` 7=EA-XA/9=MicroTalk, header-relative `0x88`) |
 | `audio/schl` (v1 demux + EA-XA) | **COMPATIBLE** (8/8 ASF, 29/29 `.DCT` audio) |
 | `audio/crd`, `audio/midx` | **COMPATIBLE** (2/2, 1/1) |
-| `audio/utk` (MicroTalk 10:1) | **PARTIAL** — decodes WC98 payloads (125/125) with flag-byte framing; 1998 header/gain calibration (saturation) |
+| `audio/utk` (MicroTalk 10:1) | **COMPATIBLE pending gain calibration** — full-bank `.PBK` speech decodes 6,964/6,964 via PT-tag routing + `decodeSpeechPayload` (measured 2026-11-01); open: output levels hot (saturation) |
 | `audio/speech` index | **INCOMPATIBLE** — WC98 = `PHRS.INF` V8-7-4 + `.PBK` + `.INF/.HDR/.TYPE` |
 | `audio/mixer` | **COMPATIBLE** |
 | `tools/audio-extract` | **PARTIAL** — 257 WAV/0 fail; 0 speech entries |
@@ -331,7 +342,7 @@ tools/gamedata/f99-gamedata validate WorldCup98_Extracted  → 13212 files / 232
 | `formats/moai` + rig | **COMPATIBLE** | 404/413 clips (97.8 %); rig 14q/5t identical; cross-game poses work; 9 clips hdr-2817 variant |
 | `formats/pcmd` + `models/model_export` | **COMPATIBLE** | 14/14; glTF+textures+preview from WC98; player texture-name binding partial (5/14) |
 | `formats/gen4tbls` | **PARTIAL** | KO 68 / PL 20332 / PK 136 / FK 20332 byte-layouts **identical**; `G98*` vs `G99*` member names; AT/DF absent; parser keys on `G99HD` |
-| `formats/utk` | **PARTIAL** | 125/125 WC98 payloads decode with flag-byte framing; 1998 15-bit-header calibration (int16 saturation) |
+| `formats/utk` | **COMPATIBLE** | full-bank WC98 speech: 6,964/6,964 `.PBK` PT members via `decodeSpeechPayload` + PT-tag routing (measured 2026-11-01); open: gain calibration (levels hot) |
 | `audio/bnk` (+PT v0) | **COMPATIBLE** codecs / **PARTIAL** parser | 47/47 BNK decode; PT v2 branch needed (`0x0200`, hdrSize, tag `0x83` 7=EA-XA/9=UTK, relative `0x88`) |
 | `audio/schl` | **COMPATIBLE** | 8/8 ASF + 29/29 `.DCT` audio, EA-XA v1 |
 | `audio/crd` / `audio/midx` | **COMPATIBLE** | 2/2, 1/1 |
@@ -365,8 +376,9 @@ tools/gamedata/f99-gamedata validate WorldCup98_Extracted  → 13212 files / 232
    (`.SQF` EULZ sprites, `GEOM/SKEL .MDL` menu models, `FEFLOW*.PAK` FSH needing 0x2D/0x29 +
    global palette). `ui/` = port; `LayoutDocument`/`FemsgTable` = keep.
 3. **Speech subsystem**: new container/index family (`.PBK`@0x30+BIGF, `PHRS.*` V8-7-4,
-   `.INF/.HDR/.TYPE`, PT v2) + MicroTalk 10:1 framing/header calibration (saturation).
-   UTK + EA-XA codecs reusable.
+   `.INF/.HDR/.TYPE`, PT v2). Container + codec decode is DONE (6,964/6,964 members,
+   measured 2026-11-01); open: phrase→event index semantics and output gain calibration
+   (decoded levels hot, occasional saturation). UTK + EA-XA codecs reusable.
 4. **Path layout/manifest**: no `DATA/`, 0 CRC trailers, `.PAK` = RefPack(FSH), 4 RefPack-wrapped
    LAY/FONT archives, `VIDEO=.DCT` → VFS plumbing works, descriptor is FIFA 99-only.
 5. **Video frames**: EA-TREM (`mTCD/DCTm`) decoder for 29 `.DCT` (container+audio reusable).
@@ -410,7 +422,7 @@ section 3-8 probe estimates where they differ):
 | FCDB players | 20 B bit-packed | confirmed byte-packed: id=((b1&0x3F)<<8)\|b0, nation=(b2<<2)\|(b1>>6), price LE@4..5, 17 skill nibbles @8..16 (value = n*4+39), shirt=((b17&0xF)<<4)\|(b16>>4), role=b17>>4; shirt numbers 1..255 (720 players carry the 255 "no number" sentinel); skills are raw 4-bit nibbles 0..15 |
 | GEN4TBLS.VIV | G98* members | header "400\r\n" (5 B); KO = 68 B i8, PK = 136 B **i16 LE**, PL = FK = 20 332 B i8; no AT/DF members |
 | PT v2 .SMP | tag 7 EA-XA, tag 9 MicroTalk | **756/756 codec 9 (MicroTalk)**; tag 0x88 is header-relative (value = headerSize) |
-| .PBK banks | PT play-track members | **BIGF archives** (PHRS.PBK: 1290 members); members are raw 1998 UTK 10:1 payloads with no PT wrapper — decode via `decodeSpeechPayload` on the member bytes; the final 20 B block is a terminator: request `(blocks-1)*256` samples, because the 1999 decoder seeks one block past its final decode |
+| .PBK banks | PT play-track members | **BIGF archives** (PHRS.PBK: 1290 members; nests second-level BIG containers — 536 nested archives / 2,044 nested-member entries measured 2026-11-01); every member = 20 B phrase record + `PT` v2 play track at offset **20** — decode via `decodePlayTrack(m, 20)`, which routes codec by tag `0x83` (9 = UTK MicroTalk via `decodeSpeechPayload`: one continuous bitstream with a single FIFA-99-style header block prepended; 7 = EA-XA). RefPack-wrapped members expand transparently. Full-bank result: **6,964/6,964 decode, 0 failures** (measured 2026-11-01); supersedes the earlier "raw UTK payloads with no PT wrapper" probe claim |
 | PT v0 audio (.ASF / .DCT) | FIFA 99 tag stream | 1998 nests the standard meta tags (0x85 sample count, 0x82 channels, 0x83 codec = 7 EA-XA) inside a **0x65 block**; `PtHeader::parse` merges the nested tags |
 | .BNK SFX banks | 47/47 decode to WAV | 47/47 structural parse; members are "PT\\0\\0" with a 1998 tag dialect (0x06, 0x5a loop meta, 0x91, 0x88 = absolute data offset) and a 0xa2 meta block nesting the standard tags (0x83 codec 7, 0x85 sample count); payload decoding is an open research item |
 | .LAY screens | 29 parse, invariants | 29/29 parse; 383 "unknown objecttype" warnings for unmodelled UI types (measured) + exactly 1 numobjects=4-vs-6 section-count quirk (FEFLOW00.LAY) |

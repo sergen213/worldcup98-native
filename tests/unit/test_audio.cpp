@@ -18,6 +18,7 @@
 #include <cmath>
 #include <cstring>
 #include <filesystem>
+#include <functional>
 #include <numbers>
 #include <string>
 #include <vector>
@@ -292,44 +293,50 @@ static void original() {
                 smpMt, smpPcm);
     CHECK(smp == 756 && smpOk == smp && smpFailures.empty());
 
-    // .PBK banks: BIGF archives of PT play-track members (48-byte prefix variant).
-    // WC98 (1998) speech = MicroTalk 10:1: 20 B blocks = 15-bit header (polarity +
-    // prediction seed) + 72 2-bit LPC codes, block aligned, final block terminates
-    // (matrix section 7): layout, member counts and bit positions are measured. The 1998
-    // block decoder algorithm itself is NOT yet recovered — the FIFA 99 framing decoder
-    // (decodeSpeechPayload, flag-prepended) decodes 249/4,901 members through it; the
-    // remaining 4,652 need the 1998 framing (ghidra FUN_00432950 pass pending,
-    // docs/reverse-engineering/GHIDRA_PASS1.md). Gate pinned to measured reality.
-    int pbk = 0, pbkMembers = 0, pbkOk = 0, pbkNotDecoded = 0;
+    // .PBK banks: BIGF archives; each member is a 20-byte phrase record followed by a "PT" v2
+    // play track (measured on all 6,964 decodable members), RefPack-compressed members are
+    // transparently expanded, and PHRS.PBK nests second-level BIG containers. decodePlayTrack
+    // routes each payload by PT tag 0x83: codec 7 = EA-XA, codec 9 = MicroTalk as ONE continuous
+    // UTK bitstream with a single FIFA-99 header block prepended (decodeSpeechPayload) — the old
+    // "20 B self-contained blocks" model was wrong (payload sizes are not 20-aligned). Verified
+    // authentic speech by autocorrelation: voiced F0 ≈ 175 Hz, periodicity 0.38–0.71 on TEAM/*.PBK.
+    int pbk = 0, pbkMembers = 0, pbkOk = 0, pbkOther = 0, pbkMt = 0, pbkXa = 0;
     std::size_t pbkSamples = 0;
+    std::function<void(std::span<const std::uint8_t>)> walkBig = [&](std::span<const std::uint8_t> rs) {
+        BigArchive big;
+        try { big = BigArchive::parse(rs); } catch (const std::exception&) { ++pbkOther; return; }
+        for (const auto& en : big.entries) {
+            auto m = refpack::decompressIfNeeded(BigArchive::payload(rs, en));
+            if (m.size() > 24 && m[20] == 'P' && m[21] == 'T') {
+                ++pbkMembers;
+                try {
+                    const auto h = PtHeader::parse(m, 20);
+                    const auto pcm = decodePlayTrack(m, 20);
+                    if (pcm.frames() != h.numSamples) throw wc98::FormatError("PBK member frame count mismatch");
+                    ++pbkOk;
+                    pbkSamples += pcm.frames();
+                    pbkMt += h.codec() == EaCodec::MicroTalk;
+                    pbkXa += h.codec() == EaCodec::EaXa;
+                } catch (const std::exception&) {}
+            } else if (m.size() > 4 && m[0] == 'B' && m[1] == 'I' && m[2] == 'G') {
+                walkBig(m);
+            } else {
+                ++pbkOther;
+            }
+        }
+    };
     for (const auto& e : fs::recursive_directory_iterator(root)) {
         if (!e.is_regular_file() || e.path().extension() != ".PBK") continue;
         auto raw = wc98::readFile(e.path());
         const std::span<const std::uint8_t> rs{raw};
-        std::size_t base = BigArchive::isBig(rs) ? 0 : 0x30;
-        auto big = BigArchive::parse(rs.subspan(base));
         ++pbk;
-        for (const auto& en : big.entries) {
-            auto p = refpack::decompressIfNeeded(BigArchive::payload(rs.subspan(base), en));
-            if (p.size() < 0x10) continue;
-            ++pbkMembers;
-            const std::size_t blocks = p.size() / 20;
-            if (blocks < 2) { ++pbkNotDecoded; continue; }
-            try {
-                utk::Decoder dec;
-                std::vector<std::int16_t> out;
-                // (blocks-1)*72: the 15-bit-header 20 B block layout makes the payload
-                // self-terminate exactly at this count; the final block is a terminator.
-                if (dec.decodeSpeechPayload(p, (blocks - 1) * 72, out) > 0) ++pbkOk;
-                pbkSamples += out.size();
-            } catch (const std::exception&) { ++pbkNotDecoded; }
-        }
+        walkBig(rs.subspan(BigArchive::isBig(rs) ? 0 : 0x30));
     }
-    std::printf("PBK banks: %d banks, %d play-track/speech members, %d decoded (measured FIFA99-framing ratio %d/%d, %zu samples, %d not decoded)\n",
-                pbk, pbkMembers, pbkOk, pbkOk, pbkMembers, pbkSamples, pbkNotDecoded);
-    CHECK(pbk == 1232 && pbkMembers == 4901);
-    CHECK(pbkOk == 249 && pbkNotDecoded == 4652);  // 1998 block decoder pending (FUN_00432950)
-    CHECK(pbkSamples == 14013648);
+    std::printf("PBK banks: %d banks, %d play-track members, %d decoded (%d MicroTalk, %d EA-XA), %zu samples, %d other\n",
+                pbk, pbkMembers, pbkOk, pbkMt, pbkXa, pbkSamples, pbkOther);
+    CHECK(pbk == 1232 && pbkMembers == 6964 && pbkOk == 6964);
+    CHECK(pbkMt == 6851 && pbkXa == 113 && pbkOther == 1044);  // other: 1,022 BIGF stub headers (data offsets point past the member) + empties/odd payloads
+    CHECK(pbkSamples == 508302490);
 
     // SCHl streams: 8 .ASF music + 29 .DCT video (audio head sub-stream decodes; the
     // EA-TREM video payload of .DCT is a documented gap, matrix section 9).

@@ -49,8 +49,10 @@ counts in `docs/asset-formats/INVENTORY.md`, `docs/reverse-engineering/EXECUTABL
   (measured max 32); FSH 0x2D/0x29 palette records + global fallback
   (PAL.PAK = RefPack→SHPI→type-0x01 palette, resolver yields 256
   colours); PT v2 .SMP streams are 756/756 MicroTalk (tag 9) with
-  header-relative 0x88; .PBK = BIGF archives whose members are raw
-  1998 UTK 10:1 payloads (no PT wrapper); 1998 PT v0 nests the
+  header-relative 0x88; .PBK = BIGF archives whose members each carry a
+  20 B phrase record + `PT` v2 play track at offset 20 — all speech decodes
+  via codec-tag routing, 6,964/6,964 members measured 2026-11-01 (gain
+  calibration open; see asset-formats/AUDIO.md); 1998 PT v0 nests the
   standard meta tags (0x85 samples / 0x82 channels / 0x83 codec)
   inside 0x65 blocks (.ASF/.DCT audio) and 0xa2 meta blocks (.BNK
   SFX members, which also use a 1998 tag dialect 0x06/0x5a/0x91 —
@@ -82,8 +84,11 @@ counts in `docs/asset-formats/INVENTORY.md`, `docs/reverse-engineering/EXECUTABL
 
 1. FE typed UI layer: LAY object-type vocabulary (15/80 keys shared,
    7 unknown types) + FE art pipeline (SQF/MDL/palettes).
-2. Speech/commentary: PHRS.INF index + nested-BIGF phrase banks +
-   event→phrase tables; UTK 15-bit gain calibration.
+2. Speech/commentary indexing (decoder itself is COMPLETE: 6,964/6,964 `.PBK`
+   members decode via PT-tag routing, measured 2026-11-01): PHRS.INF index
+   semantics + event→phrase tables; decoded-speech gain calibration (levels
+   hot, occasional saturation); rate default when tag `0x84` is absent
+   (currently 22050 Hz — speech likely 8 kHz, unverified).
 3. `.MDL` GEOM/SKEL (FE 3D titles), `.SQF` EULZ sprites, `.DCT` EA-TREM
    video frames.
 4. `.SCI/.TBI` AI scripts (unparsed in FIFA 99 too), GEN4TBLS AT/DF.

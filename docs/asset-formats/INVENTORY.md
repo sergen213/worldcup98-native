@@ -432,6 +432,18 @@ COM_x0.FSH   HHIG_x0.FSH   HMED_x0.FSH   COM_10.FSH   HHIG_10.FSH   {pari,stet,s
 
 Also present in `FIFAWC.EXE` strings: format magics `FCDB`, `EULZ`, `CRDl`, `BNKl` (the loader knows these containers by name).
 
+**Renderer/installer binary hashes (measured 2026-11-01).** The installer tree ships a **different D3DA.DLL build** than the game: `SETUP/D3DA.DLL` (92,514 B) ≠ `THRASH/D3DA.DLL` (90,942 B) — two builds; identity checks MUST be path-scoped.
+
+| File | Bytes | SHA-256 |
+|---|---|---|
+| `THRASH/D3DA.DLL` | 90,942 | 7a60a1d4b4f20b3834da9f7fe398042f75b9921733c49d2d043d54429ae08974 |
+| `SETUP/D3DA.DLL` | 92,514 | 988cae4d164aa7872f433a1afca10791a76162d2a2272feda623fc92ddb02bb3 |
+| `THRASH/POWERVRA.DLL` | 76,518 | 636636fed2ad284f6bd2f57fcf2b31858525b386ec3185df68b2ea9d49b8962e |
+| `THRASH/POWERVRD.DLL` | 201,091 | 5f9ba64b40d426e81f88915af7095219369cb79c23f8309b14073367c4e80d09 |
+| `SETUP/3DSETUP.EXE` | 271,360 | 0740d9adb7a67d806ed53ddd25ce961ba6ddf6a1a6ed3c55d272e7a097a27889 |
+
+Patch-research artifact note: `analysis/patches/zeus_compat.html` (4,432 B) is a **failed download** — an anti-bot interstitial page captured instead of the nGlide/zeus compatibility content; treat it as non-evidence (`fifawc98_patch.zip` contents remain unverified).
+
 ## 14. Installer payload (non-game, categorized separately)
 
 | Tree | Role | Files | Bytes | Notes |

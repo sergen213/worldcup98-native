@@ -26,7 +26,16 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y ninja-build cmake libpng-dev libvulkan-dev libopenal-dev \
-            libglm-dev libsdl3-dev glslang-tools
+            libglm-dev glslang-tools
+      - name: Build and install SDL3 (no Ubuntu archive package for noble)
+        run: |
+          sudo apt-get install -y libx11-dev libxcursor-dev libxrandr-dev libxi-dev \
+            libxext-dev libxss-dev libxkbcommon-dev libwayland-dev wayland-protocols libasound2-dev
+          wget -q https://github.com/libsdl-org/SDL/releases/download/release-3.2.10/SDL3-3.2.10.tar.gz
+          tar xf SDL3-3.2.10.tar.gz
+          cmake -G Ninja -S SDL3-3.2.10 -B sdl3-build -DCMAKE_BUILD_TYPE=Release -DSDL_TESTS=OFF
+          cmake --build sdl3-build
+          sudo cmake --install sdl3-build
       - name: Configure
         run: cmake --preset ${{ matrix.preset }}
       - name: Build

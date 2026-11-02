@@ -174,7 +174,7 @@ void Decoder::decodeFrame() {
         for (int j = 0; j < 108; ++j)
             m_[kFrame + 108 * sf + j] = fixedGain * exc[5 + j] + pitchGain * m_[kAdapt + 108 * sf + 216 - lag + j];
     }
-    std::copy_n(&m_[kFrame + 108], 324, &m_[kAdapt]);
+    std::copy_n(m_.data() + kFrame + 108, 324, m_.data() + kAdapt);
     for (int sf = 0; sf < 4; ++sf) {
         for (int j = 0; j < 12; ++j) m_[kRc + j] += rcDelta[j];
         synthesis(12 * sf, sf < 3 ? 1 : 33);

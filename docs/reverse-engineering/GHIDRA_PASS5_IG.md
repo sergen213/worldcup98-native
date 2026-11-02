@@ -237,5 +237,5 @@ Hypothesis) and the tick-end slot. Keeper-cam countdown: `(DAT_00641011 & 0x20) 
    code scan for `mov [abs],imm` with targets in band) to recover per-player task pointers → AI core.
 3. Map the object-type record (`[obj+0x20]`) fields +0xe0/+0xec/+0x108/+0x114 via FUN_004f63b0 /
    FUN_00501910 bodies (ball/keeper team slots).
-4. Diff against FIFA99 (`/mnt/2nd4TB/FIFA99`) — same lineage likely yields named symbols for the
+4. Diff against FIFA 99 (local `fifa99-native` work) — same lineage likely yields named symbols for the
    GOALIETASK/movdfl family that WC98 stripped.

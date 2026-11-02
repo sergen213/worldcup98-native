@@ -5,9 +5,9 @@ run, or by a probe program compiled against the *actual* fifa99-native static li
 (`build-wc98probe/formats/libf99_formats.a` + `core/libf99_core.a`). No fifa99-native source file was
 modified; all probes live in `/tmp/wc98probe-src`, all outputs in `/tmp/wc98probe-out`.
 
-- Repo: `/mnt/2nd4TB/FIFA99/fifa99-native` (build dir `build-wc98probe`, Release, Ninja)
-- WC98 data: `/mnt/1st4TB/WorldCup98/WorldCup98_Extracted` (+ ISO `EA-WorldCup98-Win95.iso`)
-- FIFA 99 reference: `/mnt/2nd4TB/FIFA99/original/rip/FIFA_99/data`, `/mnt/2nd4TB/FIFA99/original/iso/extracted`
+- Repo: a local `fifa99-native` checkout (build dir `build-wc98probe`, Release, Ninja)
+- WC98 data: the extracted World Cup 98 install (+ ISO `EA-WorldCup98-Win95.iso`)
+- FIFA 99 reference: the FIFA 99 game data (installed `data` folder and extracted ISO)
 
 ## 0. Executive summary
 
@@ -49,7 +49,7 @@ install/layout manifest.
 ## 1. Build (clean, tools only)
 
 ```
-cd /mnt/2nd4TB/FIFA99/fifa99-native
+cd fifa99-native
 cmake -G Ninja -B build-wc98probe -DCMAKE_BUILD_TYPE=Release          # exit 0
 ninja -C build-wc98probe f99-inventory f99-extract f99-dbexplorer \
     f99-anim-inspect f99-model-export f99-audio-extract f99-gamedata \
@@ -179,7 +179,7 @@ tools/models/f99-model-export INGAME/STADIUM/ADBOARD.BIG:adboard.pc \
 tools/models/f99-model-export INGAME/PLAYER/MODELS/MED_70.PC --fsh INGAME/PLAYER/TEXTURES/COM_70.FSH \
       --pose COMMON/ANIM.MO:sspecz6 --out /tmp/wc98probe-out/gltf2
 tools/models/f99-model-export INGAME/PLAYER/MODELS/MED_70.PC --fsh INGAME/PLAYER/TEXTURES/COM_70.FSH \
-      --pose /mnt/2nd4TB/FIFA99/original/iso/extracted/DATA/BE/ANIM.BIG:fronte --out /tmp/wc98probe-out/gltf2
+      --pose <FIFA 99 ISO>/DATA/BE/ANIM.BIG:fronte --out /tmp/wc98probe-out/gltf2
 ```
 - **14/14 WC98 `.PC` parse** (PCMD version `0x100`, exporter tag `STADEX` = FIFA 99); 131
   `.PC` members recognized inside archives (123 in inventory).
@@ -393,7 +393,7 @@ tools/gamedata/f99-gamedata validate WorldCup98_Extracted  → 13212 files / 232
 
 ## 13. Artifacts
 
-- Build: `/mnt/2nd4TB/FIFA99/fifa99-native/build-wc98probe` (tools built; repo untouched)
+- Build: `fifa99-native/build-wc98probe` (tools built; repo untouched)
 - Inventory: `/tmp/wc98probe-out/wc98_inventory.json`
 - Archive sweep: `/tmp/wc98probe-out/bigall.log` + extracted tree `/tmp/wc98probe-out/bigall`
 - Audio: `/tmp/wc98probe-out/audio/manifest.json` + 257 WAV

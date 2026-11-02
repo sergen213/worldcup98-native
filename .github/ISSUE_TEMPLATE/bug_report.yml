@@ -30,7 +30,7 @@ body:
     id: logs
     attributes:
       label: Relevant log output
-      description: The launcher's log file / terminal output (trim to the relevant part)
+      description: Terminal output (trim to the relevant part)
       render: text
   - type: textarea
     id: original-behavior

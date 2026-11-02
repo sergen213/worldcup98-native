@@ -1,9 +1,9 @@
 # World Cup 98 — FIFAWC.EXE First-Pass Static RE Analysis
 
 Date: 2026-11-01 · Analyst: Hermes static pass (objdump/readelf-style custom parser, pefile, string mining)
-Scope: `/mnt/1st4TB/WorldCup98/WorldCup98_Extracted/` — game tree extracted from `EA-WorldCup98-Win95.iso` (EN/FR/DE/ES/IT ISO).
+Scope: `WorldCup98_Extracted/` — game tree extracted from `EA-WorldCup98-Win95.iso` (EN/FR/DE/ES/IT ISO).
 Tagging: **CONFIRMED** = quoted offset/string from the binary; **HYPOTHESIS** = inference.
-No game file was modified. Analysis artifacts: `/mnt/1st4TB/WorldCup98/analysis/` (rawpe2.py, strings_off.py, pe/raw dumps, per-file offset-tagged string lists).
+No game file was modified. Analysis artifacts: a local `analysis/` directory outside the repository (rawpe2.py, strings_off.py, pe/raw dumps, per-file offset-tagged string lists).
 
 Integrity (MD5):
 ```
@@ -39,7 +39,7 @@ Data directories: only `IMPORT` (RVA 0x158000, 4573 B) and `BASERELOC` (RVA 0x27
 **Overlay: 0 bytes** — file size 1,762,304 = last section end (0x195c00+0x18800). CONFIRMED.
 Timestamps: PE timestamp `892469305` = **1998-04-13 12:08:25 UTC** (matches file mtime Apr 13 1998 on CD). Symtable ptr 0.
 
-**Linker signature — CONFIRMED Watcom:** AUTO/DGROUP segment names + linker 2.18 (same marker family as FIFA 99's "Watcom linker, segments AUTO/DGROUP, linker 2.x" — see `/mnt/2nd4TB/FIFA99/fifa99-native/docs/RESEARCH.md`), and RTCS banner at **0x000cd731**: `WATCOM C/C++32 Run-Time system. (c) Copyright by WATCOM International Corp. 1988-1995. All rights reserved.` The exact Watcom product release (11.x/12.x) is a **HYPOTHESIS** (linker 2.18 + 1995 RTCS banner ≈ Watcom C/C++ 32A 11.x/12.0 generation).
+**Linker signature — CONFIRMED Watcom:** AUTO/DGROUP segment names + linker 2.18 (same marker family as FIFA 99's "Watcom linker, segments AUTO/DGROUP, linker 2.x" — see `fifa99-native/docs/RESEARCH.md`), and RTCS banner at **0x000cd731**: `WATCOM C/C++32 Run-Time system. (c) Copyright by WATCOM International Corp. 1988-1995. All rights reserved.` The exact Watcom product release (11.x/12.x) is a **HYPOTHESIS** (linker 2.18 + 1995 RTCS banner ≈ Watcom C/C++ 32A 11.x/12.0 generation).
 
 **Not packed — CONFIRMED:** overlay 0, AUTO entropy 6.61 (normal x86 code), no Petite/UPX/`.cms_t` section, no `WATCOM` banner compression artifacts. The CD `FIFAWC.EXE` is the plain final retail build.
 
@@ -149,7 +149,7 @@ Companion tooling (context): `SETUP/3DSETUP.EXE` = MSVC 5.10 MFC app ("3DSetup M
 | Debug goldmine for port | CONFIRMED | THRASH DLLs (A and D) + EACSNDD carry appended **ELF-magic** (i386 ET_EXEC stub, 9 stubbed shdrs) Watcom debug blobs (20KB–328KB) with C source paths (`C:\3rash\d3d\*.c`, `D:\audio\lib\win\sdirect.c`), RTCS type tables (`signed char…wchar_t, THRASHTEXTURE`), func/type names; `SETUP/3DDATA.EXE` overlay uses **NB09** magic (Watcom symbol format, leaks `E:\proj\projects\3ddata\3ddata.c`). FIFAWC.EXE itself has NO overlay (0 bytes) and no FUNC: leaks. |
 
 ### Next-pass recommendations
-1. Ghidra headless (`/usr/bin/ghidra analyzeHeadless` → new project `/mnt/1st4TB/WorldCup98/ghidra`) of FIFAWC.EXE; import D3DD ELF debug blob as auxiliary symbol source if loadable.
+1. Ghidra headless (`/usr/bin/ghidra analyzeHeadless` → new local project `ghidra/`) of FIFAWC.EXE; import D3DD ELF debug blob as auxiliary symbol source if loadable.
 2. Trace `_THRASH_*` call sites in exe (name table 0x165e1c) and `iSND*` (0x16c450) for driver/audio contracts; parse `options.sav`/`SLOT*.SAV` layout.
 3. Format RE priority: `.FSH` (textures/palettes), `.BIG` (archive), `.PBK/.BNK/.CRD` (EA audio), `.LST/.MAK` tooling on CD (FE.MAK documents art build).
 

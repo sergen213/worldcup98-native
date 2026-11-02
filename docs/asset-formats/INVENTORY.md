@@ -1,8 +1,8 @@
 # World Cup 98 — Verified Asset Inventory
 
 - **Generated:** 2026-11-01 (UTC) by automated filesystem + ISO scan (no game file modified)
-- **ISO image:** `/mnt/1st4TB/WorldCup98/EA-WorldCup98-Win95.iso` — 568,535,040 bytes; ISO9660, volume label `WCUPPCCD`, preparer `OPTICAL MEDIA QUICKTOPIX 2.20`, created/modified **1998-04-13 23:20:47**
-- **Extracted installed layout:** `/mnt/1st4TB/WorldCup98/WorldCup98_Extracted`
+- **ISO image:** `EA-WorldCup98-Win95.iso` — 568,535,040 bytes; ISO9660, volume label `WCUPPCCD`, preparer `OPTICAL MEDIA QUICKTOPIX 2.20`, created/modified **1998-04-13 23:20:47**
+- **Extracted installed layout:** `WorldCup98_Extracted/`
 - **Extracted tree:** 6,869 files / 534.8 MiB in 185 directories (176 of them contain files)
 - **ISO payload:** 6,868 files / 534.8 MiB in 184 directories; **100% size match** against the extracted tree on all 6,868 common paths (see §3)
 - **Game-data share:** 3,624 files / 378.1 MiB · **installer/redistributable share:** 3,245 files / 156.7 MiB (`SETUP/`, `DIRECTX5/`)

@@ -51,8 +51,7 @@ counts above.
   (Navi 31), 32 cores, 30 GB RAM.
 - Toolchain: GCC 16.2.1, Clang 23.1.4, CMake 4.4.5, Ninja 1.13.2, git
   2.56.0; Ghidra, objdump/readelf/nm/strings/xxd, glslangValidator,
-  spirv-val, vulkaninfo present. `gh` CLI authenticated as `sergen213`.
-- Disk: `/mnt/1st4TB` (1.1 TB free), `/mnt/2nd4TB` (2.8 TB free).
+  spirv-val, vulkaninfo present. `gh` CLI authenticated.
 
 **Original game files located (user-supplied, this directory):**
 - `EA-WorldCup98-Win95.iso` — 568,535,040 bytes, ISO 9660 CD001.
@@ -72,7 +71,7 @@ family: same import set, same THRASH system, same format magics as the
 previously reverse-engineered FIFA 99 tree.
 
 **Existing work audit (confirmed):**
-- `/mnt/2nd4TB/FIFA99/fifa99-native` — mature native FIFA 99
+- `fifa99-native` (local, not public) — mature native FIFA 99
   reimplementation (C++26): BIGF/RefPack, FSH/FFN/FCDB, PCMD/MOAI,
   BNK/SCH/MicroTalk audio, LAY/VIS/INC UI, Vulkan renderer, SDL3
   platform, Qt6 launcher; 15 commits, extensive docs + Ghidra project.
@@ -120,7 +119,7 @@ WC98-verified tests, and the asset-inspector tool suite.
 
 ## Milestone 2 — fifa99-native format stack ported and WC98-locked (2026-11-01)
 
-Ported the proven FIFA 99 toolchain (`/mnt/2nd4TB/FIFA99/fifa99-native`)
+Ported the proven FIFA 99 toolchain (local `fifa99-native` checkout)
 into this repo under the `wc98` namespace: core reader, BIG/RefPack,
 FSH, FCDB, GEN4TBLS, FCLG, MO/ANIM, LAY, FFN, PCMD, PT/SCHl/BNK/UTK/EAXA/
 MicroTalk audio, CRD, MIDx, plus the `wc98-extract`, `wc98-dbexplorer`,

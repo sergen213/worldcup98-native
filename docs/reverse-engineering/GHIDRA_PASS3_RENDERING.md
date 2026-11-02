@@ -2,12 +2,12 @@
 
 Scope: `FIFAWC.EXE` (WC98) plus the three THRASH renderer DLLs (`D3DA.DLL`,
 `VOODOOA.DLL`, `POWERVRA.DLL`), analyzed with Ghidra 12.1.2 in the `wc98`
-Ghidra project at `/mnt/1st4TB/WorldCup98/ghidra`. Companion docs:
+Ghidra project kept locally (`ghidra/`, git-ignored). Companion docs:
 [GHIDRA_PASS1.md](GHIDRA_PASS1.md) (PE layout, registry, THRASH overview),
 [GHIDRA_PASS2_AUDIO.md](GHIDRA_PASS2_AUDIO.md), [EXECUTABLE.md](EXECUTABLE.md).
 
 Raw decompile listings live outside the repo in
-`/mnt/1st4TB/WorldCup98/analysis/pass3/{FIFAWC.EXE,D3DA,VOODOOA,POWERVRA}*_pass3.txt`.
+`analysis/pass3/{FIFAWC.EXE,D3DA,VOODOOA,POWERVRA}*_pass3.txt` (local analysis output, not in the repository).
 This doc records addresses and structure only.
 
 All `FUN_…` names are Ghidra defaults; `DAT_…` symbols use Ghidra's
@@ -156,8 +156,8 @@ strings (`0xb9bc` file offset), reinforcing the SGL identification.
 |---|---|---|
 | `0x404ee4` | 606 B | **BIG loader**: appends `".big"` to the base name, `CreateFileA`, reads the EA BIGF index; logs `"Big: %s\n"` (string `0x55d27c`) / `"… not found"`. Returns an in-memory archive handle used by all `.big` consumers |
 
-Format cross-reference: [BIG.md](../formats/BIG.md) and
-`formats/include/wc98/formats/big.hpp`. WC98 sample (`INGAME/MISC/ANIM.BIG`)
+Format cross-reference:
+[`formats/include/wc98/formats/big.hpp`](../../formats/include/wc98/formats/big.hpp). WC98 sample (`INGAME/MISC/ANIM.BIG`)
 confirms the FIFA 99 layout: magic `BIGF`, big-endian declared size =
 filesize − 2, BE entry records `{u32 offset, u32 size, NUL-terminated name}`.
 

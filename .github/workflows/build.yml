@@ -26,7 +26,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y ninja-build cmake libpng-dev libvulkan-dev libopenal-dev \
-            libglm-dev glslang-tools glslc
+            libglm-dev glslang-tools glslc vulkan-validationlayers
       - name: Build and install SDL3 (no Ubuntu archive package for noble)
         run: |
           sudo apt-get install -y libx11-dev libxcursor-dev libxrandr-dev libxi-dev \

@@ -27,3 +27,17 @@ wc98_test(test_pcmd unit/test_pcmd.cpp)
 wc98_test(test_anim unit/test_anim.cpp)
 wc98_test(test_gen4tbls unit/test_gen4tbls.cpp)
 wc98_test(test_audio unit/test_audio.cpp)
+
+
+# Platform/renderer stack: these link the engine modules instead of only formats.
+function(wc98_vulkan_test name source)
+  add_executable(${name} ${source})
+  target_link_libraries(${name} PRIVATE wc98_renderer_vk wc98_platform wc98_formats wc98::core)
+  target_include_directories(${name} PRIVATE ${CMAKE_SOURCE_DIR}/tests ${CMAKE_CURRENT_SOURCE_DIR}/vulkan)
+  target_compile_options(${name} PRIVATE -Wall -Wextra -Werror $<$<CONFIG:Release>:-UNDEBUG>)
+  add_test(NAME ${name} COMMAND ${name})
+  set_tests_properties(${name} PROPERTIES ENVIRONMENT "WC98_TEST_OUT=/tmp/wc98port-out/png" SKIP_REGULAR_EXPRESSION "skipping")
+endfunction()
+wc98_vulkan_test(test_platform_paths vulkan/test_platform_paths.cpp)
+wc98_vulkan_test(test_renderer_layout vulkan/test_renderer_layout.cpp)
+wc98_vulkan_test(test_vulkan_offscreen vulkan/test_vulkan_offscreen.cpp)

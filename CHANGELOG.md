@@ -25,3 +25,8 @@ project goals.
   (FE/FEFLOW02/FEFLOW02.FSH, 640x480) through the Vulkan renderer; ctest gate
   `render_demo_fsh` when WC98_TREE is set. New docs: AUDIO_RUNTIME.md (streaming model),
   research/EXTERNAL_PROJECTS.md (sibling-project tooling audit).
+- M4 slices 2+3: `.LAY` front-end screens composite through the renderer
+  (`wc98-render-demo --lay ARCHIVE.BIG@SCREEN.LAY`; FEFLOW05 main menu + CONTROL1 verified
+  visually, gate `render_demo_lay`); FE `GEOM/SKEL` `.MDL` parser (offset-validated draw-lists,
+  per-corner UV faces) renders the original trophy and stadium bowl textured via
+  `wc98-model-view` (gate `model_view_wcupf`). Notes: LAY_COMPOSITOR_NOTES.md, MDL_GEOMETRY_NOTES.md.

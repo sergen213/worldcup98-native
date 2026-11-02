@@ -47,4 +47,10 @@ wc98_vulkan_test(test_vulkan_offscreen vulkan/test_vulkan_offscreen.cpp)
 if(DEFINED WC98_TREE)
     add_test(NAME render_demo_fsh COMMAND wc98-render-demo /tmp/wc98port-out/fsh_render.png ${WC98_TREE})
     set_tests_properties(render_demo_fsh PROPERTIES SKIP_RETURN_CODE 2)
+    # M4 slice 2: FE main-menu layout composited from original .LAY + FSH art (>=8 shapes).
+    add_test(NAME render_demo_lay COMMAND wc98-render-demo /tmp/wc98port-out/lay_gate.png --lay ${WC98_TREE}/FE/PACK/LAYOUTS/LAYOUTS.BIG@FEFLOW05.LAY --tree ${WC98_TREE} --min-shapes 8)
+    set_tests_properties(render_demo_lay PROPERTIES SKIP_RETURN_CODE 2)
+    # M4 slice 3: original trophy model (GEOM draw-lists) rendered textured through Vulkan.
+    add_test(NAME model_view_wcupf COMMAND wc98-model-view /tmp/wc98port-out/mdl_gate.png ${WC98_TREE}/FE/WCUPF.MDL)
+    set_tests_properties(model_view_wcupf PROPERTIES SKIP_RETURN_CODE 2)
 endif()

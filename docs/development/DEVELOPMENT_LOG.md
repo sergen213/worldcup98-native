@@ -211,3 +211,13 @@ see analysis/patches/PENDING.md).
   new `docs/research/EXTERNAL_PROJECTS.md` (sibling-repo audit: bbtime xa2wav + Wine oracle, IKV
   Ghidra Java helpers, FIFA99 formats layer as primary reuse); INVENTORY section 13 gained the
   SETUP-vs-THRASH D3DA.DLL two-build hash fact.
+
+## 2026-11-02 — M4 slices 2+3: LAY compositor, MDL geometry; CI dep fix
+- `wc98-render-demo --lay` composites real FE screens from `.LAY` + FSH art (loose + RefPack .PAK,
+  pack-redirector idiom): FEFLOW05 main menu and IGLAY CONTROL1 pads/keyboard verified as authentic
+  PNGs; text objects deferred to a font slice. Notes: docs/reverse-engineering/LAY_COMPOSITOR_NOTES.md.
+- `wc98::formats::MdlFile` parses FE GEOM/SKEL draw-lists (group-header offset identities + full
+  face/UV/index validation); `wc98-model-view` renders WCUPF trophy (416 faces, 9 FSH textures) and
+  BRDXF stadium bowl on real GPU. Notes: docs/reverse-engineering/MDL_GEOMETRY_NOTES.md.
+- Gates `render_demo_lay` (--min-shapes 8), `model_view_wcupf` added; all three asset gates green,
+  PNGs rewritten in-run (mtime-checked). CI: libpng-dev added to apt deps (PNG find failure root cause).

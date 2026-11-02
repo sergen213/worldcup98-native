@@ -40,6 +40,11 @@ counts in `docs/asset-formats/INVENTORY.md`, `docs/reverse-engineering/EXECUTABL
   core, BIG/RefPack, FSH (98.5%), FFN, PCMD, MO/ANIM (404/413),
   GEN4TBLS, FCDB names/players, FCLG, LAY grammar, all audio codecs
   (BNK 47/47, SCHl 37/37, CRD, MIDx), OpenAL mixer — COMPATIBLE.
+- M4 rendering proven on real GPU offscreen (ctest gates green, PNGs visually verified
+  2026-11-02): FEFLOW02 full-frame bitmap; `.LAY` composites of FE main menu (FEFLOW05) and
+  CONTROL1 via `.FSH`/RefPack `.PAK` art resolution (LAYOUTS.BIG/IGLAY.BIG members); original
+  trophy (`WCUPF.MDL`: 2 groups, 416 faces, 9 FSH textures) and stadium bowl (`BRDXF`) through
+  the GEOM/SKEL parser — see reverse-engineering/{LAY_COMPOSITOR,MDL_GEOMETRY}_NOTES.md.
 - WC98 deltas requiring adaptation (final, locked by port test gates —
   see REUSABILITY.md section 12): FCDB team record 68 B/17 words
   (FIFA 99: 80 B/20); roster = 20 little-endian u16 player-id slots

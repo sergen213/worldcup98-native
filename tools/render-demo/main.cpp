@@ -1,10 +1,17 @@
-// Synthetic offscreen Vulkan scene rendered through the ported renderer, saved as a PNG.
+// Offscreen Vulkan scene rendered through the ported renderer, saved as a PNG.
+//   wc98-render-demo out.png            — synthetic checkerboard scene
+//   wc98-render-demo out.png <tree-dir> — first FEFLOW02.FSH bitmap decoded from the user's
+//                                         original game tree and presented full-frame (M4 slice 1).
 #include "wc98/renderer/vulkan.hpp"
+#include "wc98/formats/fsh.hpp"
 #include "wc98/formats/png.hpp"
+#include "wc98/file.hpp"
 
 #include <glm/gtc/matrix_transform.hpp>
 
 #include <atomic>
+#include <filesystem>
+#include <optional>
 #include <cstdint>
 #include <cstdlib>
 #include <fstream>
@@ -49,15 +56,40 @@ int main(int argc, char** argv) {
         cfg.validationCounter = messages;
 
         auto r = createVulkanRenderer(cfg, {}); // no surface: offscreen only
-        TextureId checker = r->createTexture(checkerboard(), Wrap::Clamp, "checker");
+
+        // Optional real-asset mode: decode the largest FE flow bitmap from the user's tree.
+        std::optional<Image> fshImg;
+        if (argc > 2) {
+            namespace fs = std::filesystem;
+            const fs::path root{argv[2]};
+            auto palPath = wc98::findCaseInsensitive(root, "FE/PACK/PAL.PAK");
+            if (palPath.empty()) palPath = wc98::findCaseInsensitive(root, "PAL.PAK");
+            if (!palPath.empty()) formats::setGlobalPalette(formats::wc98GlobalPaletteFromPalArchive(wc98::readFile(palPath)));
+            const auto fshPath = wc98::findCaseInsensitive(root, "FE/FEFLOW02/FEFLOW02.FSH");
+            if (fshPath.empty()) { std::cerr << "FEFLOW02.FSH not found under " << root << '\n'; return 2; }
+            const formats::FshFile fsh = formats::FshFile::parse(wc98::readFile(fshPath));
+            const formats::FshBitmap* best = nullptr;
+            for (const auto& e : fsh.entries)
+                if (e.bitmap && (!best || std::size_t(e.bitmap->width) * e.bitmap->height > std::size_t(best->width) * best->height)) best = &*e.bitmap;
+            if (!best || best->rgba.empty()) { std::cerr << "no bitmap in FEFLOW02.FSH\n"; return 2; }
+            fshImg = Image{best->width, best->height, best->rgba};
+            std::cout << "FSH bitmap " << best->width << 'x' << best->height << " (palette type 0x" << std::hex << int(best->paletteType) << ")\n";
+        }
+        TextureId checker = fshImg ? r->createTexture(*fshImg, Wrap::Clamp, "fsh") : r->createTexture(checkerboard(), Wrap::Clamp, "checker");
 
         std::vector<DrawItem> draws;
-        draws.push_back({r->createMesh(quad(-4.5f, -3.5f, 4.5f, 3.5f, 0, packRgba(255, 255, 255))),
-                         Material{.texture = checker},
-                         glm::mat4(1)});
-
         SpriteBatch ui;
-        ui.draw(0, {600, 440, 40, 40}, {0, 0, 1, 1}, packRgba(0, 255, 255)); // cyan corner marker
+        if (fshImg) { // present the decoded bitmap aspect-fit over the whole frame, no synthetic geometry
+            const float ar = float(fshImg->width) / float(fshImg->height);
+            float w = 640.f, h = w / ar;
+            if (h > 480.f) h = 480.f, w = h * ar;
+            ui.draw(checker, {(640.f - w) * .5f, (480.f - h) * .5f, w, h});
+        } else {
+            draws.push_back({r->createMesh(quad(-4.5f, -3.5f, 4.5f, 3.5f, 0, packRgba(255, 255, 255))),
+                             Material{.texture = checker},
+                             glm::mat4(1)});
+            ui.draw(0, {600, 440, 40, 40}, {0, 0, 1, 1}, packRgba(0, 255, 255)); // cyan corner marker
+        }
 
         Frame frame{
             .camera = {.eye = {0, 0, 10}},
@@ -76,6 +108,7 @@ int main(int argc, char** argv) {
         }
 
         std::vector<std::uint8_t> png = formats::encodePng(img.width, img.height, img.rgba);
+        std::filesystem::create_directories(std::filesystem::path(outPath).parent_path());
         std::ofstream out(outPath, std::ios::binary);
         out.write(reinterpret_cast<const char*>(png.data()), std::streamsize(png.size()));
         out.close();

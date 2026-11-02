@@ -41,3 +41,10 @@ endfunction()
 wc98_vulkan_test(test_platform_paths vulkan/test_platform_paths.cpp)
 wc98_vulkan_test(test_renderer_layout vulkan/test_renderer_layout.cpp)
 wc98_vulkan_test(test_vulkan_offscreen vulkan/test_vulkan_offscreen.cpp)
+
+# M4 slice 1: a real FE bitmap (FE/FEFLOW02/FEFLOW02.FSH, 640x480) decoded from the user's
+# tree and presented through the Vulkan renderer; fails if textures/validation break.
+if(DEFINED WC98_TREE)
+    add_test(NAME render_demo_fsh COMMAND wc98-render-demo /tmp/wc98port-out/fsh_render.png ${WC98_TREE})
+    set_tests_properties(render_demo_fsh PROPERTIES SKIP_RETURN_CODE 2)
+endif()

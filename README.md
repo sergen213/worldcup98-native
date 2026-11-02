@@ -64,5 +64,6 @@ src/        game modules (added when implemented — no empty stubs)
 
 ## License
 
-MIT (code only — see `LICENSE`). Original game data remains under its
-own copyright and is never redistributed here.
+Source-available, all rights reserved (code only — see `LICENSE`). Contributions
+via pull request only — see `CONTRIBUTING.md`. Original game data remains under
+its own copyright and is never redistributed here.

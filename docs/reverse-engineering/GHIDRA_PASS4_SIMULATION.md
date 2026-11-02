@@ -5,6 +5,25 @@ Headless PyGhidra runs: scripts `ghidra-scripts/GhidraWc98Sim{,2,3,4}.py` +
 `analysis/pass4/FIFAWC.EXE_sim{,2,3,4}.txt`. Every claim cites an address;
 confidence per item as Confirmed (decompile + xref evidence) / Hypothesis / Unknown.
 
+## Boot / front-end main loop (Confirmed, sim6.txt)
+- C-runtime entry `FUN_00544ae8` → banner+argv handler `FUN_0043cfa4`
+  ("FIFA : World Cup '98, PC CD Version…" @0x56202c; optional version report via FUN_00490c48) →
+  engine boot `FUN_0043cb24` (≈30 subsystem inits: audio `FUN_004cd540`, input pump starter
+  `FUN_00439028`, options load `FUN_0046b350`) → **FE main loop** `FUN_0047aa48`:
+  `do { tick(FUN_0047a8f4); if (DAT_0061688c==2) break; if (==1) return; mode=FUN_0043bf94(); … }`
+  with exit flag DAT_0061688c and a mode/state word DAT_00640fb4 (0xb = special path,
+  unverified); teardown `FUN_0043cc60`; process exit `FUN_004c8016`. The in-game match runs
+  inside the tick/state machine — next frontier: callees of FUN_0047a8f4 (339 instrs).
+
+## FE tick internals (Confirmed, sim7.txt)
+- `FUN_0047a8f4` (tick) calls 19 functions; the heavyweights are `FUN_00444b28` (1,924 instrs —
+  dominant UI/screen interpreter), `FUN_00445d98` (774), `FUN_0044818c` (598), plus audio service
+  (`FUN_004365a0`) and video/mouse helpers. Mode word DAT_00640fb4 has 40+ reader/writer functions
+  across the UI region (per-screen state handlers: FUN_00438xxx/0x439xxx/0x43axxx/0x445xxx clusters),
+  values seen in tick callees: 10, 0xb, 0xc. Exit flag DAT_0061688c is only written by `FUN_004455dc`.
+- Frontier for M5: decompile FUN_00444b28 (UI interpreter → LAY screen driver) and the mode==3 path
+  (`FUN_0043bf94`/`FUN_0046b8f0`) which is the match-entry transition; then IG-side entry from there.
+
 ## Methodology facts learned (Confirmed)
 - The Ghidra DGROUP block is **zero-filled** (`VirtualSize=0` PE header quirk, see
   AUDIO_RUNTIME.md): in-Ghidra memory scans for strings/pointers silently miss everything.

@@ -141,9 +141,10 @@ usage, the within-phrase id permutation source, PHRS.INF u32@8 = 83,696.
 3. Cross-map the per-phrase id blocks against `COMMON/FC<LANG>.BIN` (`FCLG.V1.7`
    commentary tables, 42,840 B each) to pin what the u16@0x12 ids index — that unlocks
    sentence assembly (SNDsentencestart = an ordered run of segment ids).
-4. Hand this record table to the Ghidra flow owning the `FUN_004df8xx-FUN_004e6xxx`
-   speech cluster + `cmn\sspeech.c` xrefs; ask for the authoritative consumers of
-   record offsets 0x04 / 0x08 / 0x12 to upgrade the three hypotheses.
+4. **PARTIALLY DONE (pass 7, `docs/reverse-engineering/COMMENTARY_WC98.md`)**: the u16@0x12 id is
+   consumed by the per-frame pump `FUN_0048f920` (`_DAT_006326bc = *(u16*)(record + 0x12)`, then the
+   item start thunk at `**(item + 0x1c)`); full SNDphrase* API ABI + the 46-caller match-event trigger
+   seam (`FUN_004893ec`) documented there. Record offsets 0x04/0x08 consumers still open.
 5. Correct asset-formats/AUDIO.md + STATUS.md: sidecar counts (1 INF / 1 HDR / 0 TYPE,
    plus TYPE.PBK), drop "cross-member references" wording (stripped mirror file, not
    intra-archive cross-refs), PBP membership, and the declaredSize quirk; extend

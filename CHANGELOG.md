@@ -54,3 +54,12 @@ project goals.
   `.sha256` sidecar verification, `--smoke 3` pre-commit test, atomic swap with `.prev`
   rollback; never touches user game files), and a CI `package` job uploading the AppImage
   artifact on main pushes.
+- **M6 exhibition-match vertical slice**: `presentation::MatchScene` renders a live match from original
+  art — skinned player LOD chain (`SHI_10/HIG_30/MED_70/LOW_90.PC`) posed by sim anim instances, kit
+  atlases per FCDB appearance (face composites + GK/referee sets), tiled `TURFS0P<col>.PAK` grass with
+  law-scaled line markings, ball billboard from `MISC16.FSH` bl00-bl11 roll frames, planar player shadows
+  (`SHADOW.PC`, FIFA 99 shear matrix), goal nets/posts + corner flags from `MODELS2.PAK`, and the
+  four-sided stadium bowl (`STDE___D.BIG`). New headless driver `wc98-match-demo <prefix> [--tree DIR]`:
+  real seeded simulation, keyboard controller through `wc98_input` (W = sprint, pad bit 0x100), three
+  640x480 PNG captures (kickoff / mid-play / sprint). Gate `match_demo_frames` (skips without a tree).
+  Contract: docs/development/MILESTONE6.md.

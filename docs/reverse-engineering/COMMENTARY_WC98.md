@@ -42,8 +42,24 @@ Event → gate(≤1 sentence in flight) → phraseadd(id ring ≤20) → sentenc
 record status, resolves u16@0x12 bank ids into segment runs (docs/asset-formats/AUDIO.md PHRS index),
 starts playback via the voice records (8-voice pool). autovol = per-word volume ramp.
 
+## Sentence assembly + queue flush (run `analysis/pass7/sspeech2.txt`, GhidraWc98Ssp2.py)
+- **Event-flag builder `FUN_00489460`** (callers = 7 match-event handlers at 0x453a6c/0x454338/
+  0x454d60/0x45548c/0x455a3c/0x455f30/0x458cf0): scans the event-record array at DAT_0057e388 (stride
+  0x20) for slots whose pending flag == 1; per hit calls `FUN_0048d0dc` (pick phrase from bank) then
+  `FUN_0048d1f8` (enqueue). The DAT_0057e378 gate + DAT_0057e3e8 links seen in the trigger wrapper are
+  the same record structure's fields.
+- **Queue flush `FUN_004901e0`** (FE exit, options screen, trigger wrapper): under critical section
+  DAT_00632728 walks all queue items; items with a live cancel thunk at `**(item + 0x10)` get cancelled,
+  then released via FUN_004d8aa0.
+- **Stream kill `FUN_004e2c60`** (SNDsentencestop internals): walks the 16 playback slots
+  (stride 0x18 at DAT_006597e8) comparing each slot's channel byte (+0x3b) against the current stream's
+  channel (`&DAT_00659823 + idx*0x60`), stopping matches via FUN_0052ddbc. `FUN_004dfe18` resets the
+  four sentence-state globals; `FUN_004d9250` = play-status passthrough (SNDphrasestatus backend).
+
 ## Open items
 1. Map the 46 call sites to concrete sim events (needs M6 match event enum alignment; site addresses
    above are the anchors — decompile each caller once the simulation-side event ids exist).
-2. `FUN_00489460` + `FUN_004901e0`: sentence assembly from bank ids (FCLG cross-map, NOTES §5.3).
+2. **RESOLVED** (see Sentence assembly section): builder = event-flag scan + `FUN_0048d0dc` phrase pick
+   + `FUN_0048d1f8` enqueue; flush = cancel-thunk walk at item+0x10. Remaining sub-item: FCLG id cross-map
+   (NOTES §5.3) for what the picked bank ids index in the per-language commentary tables.
 3. Item vtable at +0x1c: per-item start thunk target set (voice record vs queue item) — enumerate xrefs.

@@ -63,3 +63,8 @@ project goals.
   real seeded simulation, keyboard controller through `wc98_input` (W = sprint, pad bit 0x100), three
   640x480 PNG captures (kickoff / mid-play / sprint). Gate `match_demo_frames` (skips without a tree).
   Contract: docs/development/MILESTONE6.md.
+- M8 launcher stack from the FIFA 99 sibling: `wc98_assets` (game-tree discovery, layered VFS with
+  BIG/RefPack member reads, SHA-256 validation manifest of 3,596 Win95 CD data files) and
+  `wc98-launcher` (Qt6 GUI: game-files validation report, Match options page with USER/OPTIONS.SAV
+  import/export bound to `[gameplay]` settings keys, SDL3 controls/keymap editor, graphics/audio/
+  logs/troubleshooting pages, Play launching `wc98-native`; CI modes --self-test / --screenshot-pages).

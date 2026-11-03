@@ -78,3 +78,9 @@ endif()
 # M6 presentation core: snapshot interpolation, camera names, kit-file selection, face composite.
 wc98_test(test_presentation unit/test_presentation.cpp)
 target_link_libraries(test_presentation PRIVATE wc98_presentation)
+
+# M8 launcher stack: settings round trip, OPTIONS.SAV codec sync, tree detect + manifest validate.
+if(TARGET wc98-launcher)
+    add_test(NAME launcher_selftest COMMAND wc98-launcher --self-test)
+    set_tests_properties(launcher_selftest PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+endif()

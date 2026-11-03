@@ -5,6 +5,7 @@
 // typed below; unknown sections/keys are kept verbatim and written back (comments are not).
 // Invalid values are reported as warnings and replaced by the default. Keys that may repeat
 // (game.data) form a list. `[meta] version` drives migration of older files (see kVersion).
+#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <string>
@@ -50,6 +51,29 @@ struct AudioSettings {
     std::string device;                                                     // OpenAL device name; empty = default
 };
 
+// The original action set (manual control table + in-game tactics). Ported from fifa99-native.
+enum class Action {
+    MoveUp, MoveDown, MoveLeft, MoveRight, Pass, Shoot, Sprint, Lob, Evade, ThroughPass,
+    Skill1, Skill2, Igm, TacticOffside, TacticPress, TacticThroughRun, TacticWingBack, Pause, Count
+};
+inline constexpr std::size_t kActionCount = std::size_t(Action::Count);
+std::string_view actionKey(Action a);   // "move_up" (INI key)
+std::string_view actionLabel(Action a); // "Move up"
+
+enum class DeviceKind { Keyboard, Gamepad };
+// One input per entry: an SDL scancode name ("Left Ctrl") for keyboards; an SDL gamepad button
+// ("a", "leftshoulder", "dpup"), trigger ("lefttrigger") or axis direction ("leftx-") for gamepads.
+using Binding = std::vector<std::string>;
+struct DeviceBindings {
+    std::string id; // "keyboard", "gamepad" (any pad) or "gamepad.<SDL GUID>"
+    std::array<Binding, kActionCount> actions;
+    [[nodiscard]] DeviceKind kind() const;
+};
+DeviceBindings defaultKeyboard();
+DeviceBindings defaultGamepad();
+// Validates one input name for the device kind (keyboard: SDL scancode name; gamepad: see Binding).
+bool validInput(DeviceKind kind, std::string_view input);
+
 
 struct Entry {
     std::string key, value;
@@ -63,9 +87,13 @@ struct Settings {
     GameSettings game;
     GraphicsSettings graphics;
     AudioSettings audio;
+    std::vector<DeviceBindings> controls{defaultKeyboard(), defaultGamepad()};
     std::vector<Entry> gameplay;  // passed through to the game options untouched
     std::vector<Section> unknown; // unknown sections + unknown keys of known sections
 
+    // Bindings for a device id; falls back to "gamepad" for "gamepad.<guid>" without its own set.
+    [[nodiscard]] const DeviceBindings* bindings(std::string_view id) const;
+    DeviceBindings& bindingsFor(std::string_view id); // creates from the defaults when absent
 };
 
 struct LoadResult {

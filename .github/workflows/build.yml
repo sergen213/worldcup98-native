@@ -42,3 +42,41 @@ jobs:
         run: cmake --build --preset ${{ matrix.preset }}
       - name: Test
         run: ctest --test-dir build/${{ matrix.preset }} --output-on-failure
+
+  package:
+    name: AppImage (Linux x86_64)
+    runs-on: ubuntu-24.04
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build cmake libpng-dev libvulkan-dev libopenal-dev \
+            libglm-dev glslang-tools glslc squashfs-tools imagemagick
+      - name: Build and install SDL3 (no Ubuntu archive package for noble)
+        run: |
+          sudo apt-get install -y libx11-dev libxcursor-dev libxrandr-dev libxi-dev \
+            libxext-dev libxss-dev libxkbcommon-dev libwayland-dev wayland-protocols libasound2-dev
+          wget -q https://github.com/libsdl-org/SDL/releases/download/release-3.2.10/SDL3-3.2.10.tar.gz
+          tar xf SDL3-3.2.10.tar.gz
+          cmake -G Ninja -S SDL3-3.2.10 -B sdl3-build -DCMAKE_BUILD_TYPE=Release -DSDL_TESTS=OFF
+          cmake --build sdl3-build
+          sudo cmake --install sdl3-build && sudo ldconfig
+      - name: Configure (release build, C++23 toolchain floor)
+        run: cmake --preset ci-cxx23
+      - name: Build app binary
+        run: cmake --build build/ci-cxx23 --target wc98-native
+      - name: Package AppImage
+        run: packaging/linux/build-appimage.sh -b build/ci-cxx23 -o dist
+      - name: Smoke (extract-and-run under Xvfb + lavapipe)
+        run: |
+          sudo apt-get install -y xvfb mesa-vulkan-drivers
+          APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run -a dist/wc98-native-linux-x86_64-*.AppImage --smoke 3
+      - name: Upload artifact (releases are cut by hand from this)
+        uses: actions/upload-artifact@v4
+        with:
+          name: wc98-native-appimage-${{ github.sha }}
+          path: dist/
+          if-no-files-found: error

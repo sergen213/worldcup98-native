@@ -41,6 +41,17 @@ team ids. No standalone "schedule" file found on disk (inventory §2 census has 
 fixture generation is code+data-table driven inside those loaders; exact bracket slot assignment =
 open item.
 
+## Measured — `.TRI` string pool (DU.TRI probe, 2026-11-03)
+- `u32@0 = count(43)`; u16 offset table at +0x04 (NOT monotonic: last entry 0x108 sorts mid-range);
+  gap block 0x5a..0xb0 = 22 × {u32 pair} incl. `{0x32, 0x30}`; **secondary sequential u32 offset table**
+  (LE u16 low half) at **0xb0..0x2c0** (132 slots) indexes a NUL-separated **string pool starting
+  0x2da**; entries `tab[k]` are pool offsets relative to **base 0x2c0**. Record at tab[0]:
+  `"Waar werden de eerste Wereldkampioenschappen gehouden?" / "Uruguay" / "Mexico"` — Q + two answer
+  candidates, i.e. **trivia quiz data with shared strings** (tab values step by 1-3 bytes over suffix
+  windows of one stem ⇒ per-question stems share tails; record assembly = loader `FUN_0048c0bc` via
+  `FUN_004cf7b0`). Country names (`Engeland`, `Uruguay`, …) are pool strings — the participant list is
+  recoverable verbatim from the pool scan `[B..end)` NUL tokens.
+
 ## Next RE targets (ordered)
 1. Decode all 7 language HIS/TRI pairs with the confirmed geometry → authoritative team list + ids
    + historic result matrix (pure host script, no Ghidra).

@@ -30,6 +30,17 @@ project goals.
   visually, gate `render_demo_lay`); FE `GEOM/SKEL` `.MDL` parser (offset-validated draw-lists,
   per-corner UV faces) renders the original trophy and stadium bowl textured via
   `wc98-model-view` (gate `model_view_wcupf`). Notes: LAY_COMPOSITOR_NOTES.md, MDL_GEOMETRY_NOTES.md.
+- **M5 match simulation port complete**: `wc98_simulation` (47 files, ~27.6k lines) — ball
+  flight/possession, player state machine incl. keeper saves, motion planner, formations from
+  G98PL, FCDB-driven squads (WC98 68 B team records, 17 skill nibbles), rig FK skeleton posing
+  implemented for the upstream linking gap (docs/reverse-engineering/SIM_PORT_NOTES.md maps every
+  constant to its FIFAWC.EXE address). Gates `test_sim_core/players/team`.
+- Input layer `wc98_input`: SDL3 keyboard/mouse/gamepad -> exe pad words (bit layout from the
+  sibling FIFA 99 device readers), per-tick transition queues (short taps survive a tick), virtual
+  gamepad hot-plug with stable ids, controller select. Gate `test_input`.
+- M4 slice 1b: `wc98-render-demo --fsh <path>[@tag]` decodes any SHPI member (kit atlases PK/GK,
+  FE sponsor art) with attached/global palettes; gates `render_demo_fsh_kit`,
+  `render_demo_fsh_fe`; PNG proofs show original France kit cloth and Danish sponsor typography.
 - Ghidra pass 4: module version manifest map (IG/AI/CAMERA/MOTION/TOURNAMENT getters),
   `win\key.c` input pump + shared key-poll primitive, in-exe EA sound-service cluster
   (streamservice/MIDI/speech) identified; DGROUP zero-fill scan pitfall documented.

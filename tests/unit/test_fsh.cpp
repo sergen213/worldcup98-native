@@ -5,6 +5,7 @@
 #include "wc98/formats/fsh.hpp"
 #include "wc98/formats/png.hpp"
 #include "wc98/formats/refpack.hpp"
+#include <cctype>
 #include <cstdlib>
 #include <cstring>
 #include <format>
@@ -162,6 +163,42 @@ static void original() {
     }
     std::fprintf(stderr, "PNG sample: %d bitmaps written to %s\n", pngs, out.c_str());
     CHECK(pngs >= 3);
+
+    // M4 slice 1 loose-file census (2026-11-02): every *.FSH on disk parses standalone.
+    // Header facts measured over all 411 files: magic "SHPI", dirId "GIMX" and
+    // declaredSize == fileSize in 411/411; first-record pixel types {0x7B,0x78,0x6D,0x7D},
+    // 306 of them RefPack-compressed (type | 0x80); attached palettes dominated by 0x2A.
+    int loose = 0, imgs = 0, cmps = 0, pal2A = 0;
+    for (const auto& e : fs::recursive_directory_iterator(root)) {
+        std::string ext = e.path().extension().string();
+        for (char& c : ext) c = char(std::tolower(static_cast<unsigned char>(c)));
+        if (!e.is_regular_file() || ext != ".fsh") continue;
+        ++loose;
+        const auto d = wc98::readFile(e.path());
+        const FshFile f = FshFile::parse(d); // a throw here is a decode regression: fail the gate
+        CHECK(f.dirId == "GIMX");
+        CHECK(f.declaredSize == d.size());
+        for (const auto& en : f.entries)
+            if (en.bitmap) { ++imgs; cmps += en.bitmap->compressed; pal2A += en.bitmap->paletteType == 0x2A; }
+    }
+    std::fprintf(stderr, "loose .FSH census: %d files, %d bitmaps (%d RefPack-compressed, %d on attached 0x2A palettes)\n",
+                 loose, imgs, cmps, pal2A);
+    CHECK(loose >= 307 && imgs >= 4100 && cmps >= 300 && pal2A >= 3000);
+
+    // Kit-texture targets (docs/development/MILESTONE4.md loader map): a per-team jersey atlas,
+    // a keeper kit and the PALJER swap set must decode with their documented SHPI tags.
+    auto hasTag = [](const fs::path& rel, const char* tag) {
+        const auto p = wc98::findCaseInsensitive(treeDirOrSkip(), rel);
+        if (p.empty()) return false; // WC98_TREE gate already ran; missing file fails the CHECK
+        for (const auto& e : FshFile::parse(wc98::readFile(p)).entries) {
+            std::string t = e.tag.substr(0, e.tag.find_last_not_of(" \t\0") + 1);
+            if (e.bitmap && t == tag) return true;
+        }
+        return false;
+    };
+    CHECK(hasTag("INGAME/PLAYER/TEXTURES/PK026A.FSH", "hlsv")); // per-team home kit shirt panel
+    CHECK(hasTag("INGAME/PLAYER/TEXTURES/GK00_30.FSH", "hrsv")); // keeper kit (GK%.2d_%c loader pattern)
+    CHECK(hasTag("INGAME/PLAYER/TEXTURES/PALJER.FSH", "1600"));  // jersey palette-swap entry
 }
 
 int main() {

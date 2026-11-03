@@ -24,7 +24,7 @@ project goals.
 - M4 slice 1: `wc98-render-demo <png> [tree]` presents a real FE bitmap
   (FE/FEFLOW02/FEFLOW02.FSH, 640x480) through the Vulkan renderer; ctest gate
   `render_demo_fsh` when WC98_TREE is set. New docs: AUDIO_RUNTIME.md (streaming model),
-  research/EXTERNAL_PROJECTS.md (sibling-project tooling audit).
+  docs/research/EXTERNAL.md (sibling-project tooling notes).
 - M4 slices 2+3: `.LAY` front-end screens composite through the renderer
   (`wc98-render-demo --lay ARCHIVE.BIG@SCREEN.LAY`; FEFLOW05 main menu + CONTROL1 verified
   visually, gate `render_demo_lay`); FE `GEOM/SKEL` `.MDL` parser (offset-validated draw-lists,
@@ -37,3 +37,9 @@ project goals.
   (`HIG/MED/LOW_*.PC`) posed by `COMMON/ANIM.MO` clips, kit textures bound from
   `PK###A/H.FSH` atlases (10/13 materials; `hjbx`↔`hjbk` tag quirk documented), plus
   stadium stands and the fully textured trophy. Evidence in MILESTONE4.md "Models & kits".
+- Linux distribution packaging: `packaging/linux/build-appimage.sh` (pinned appimagetool 1.9.1,
+  SHA-256 verified; bundles non-system libs only — host Vulkan/GL stack stays untouched),
+  desktop entry + generic icon, `packaging/update.sh` self-updater (GitHub releases check,
+  `.sha256` sidecar verification, `--smoke 3` pre-commit test, atomic swap with `.prev`
+  rollback; never touches user game files), and a CI `package` job uploading the AppImage
+  artifact on main pushes.

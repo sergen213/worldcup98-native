@@ -37,7 +37,27 @@ is cited.
 
 ## Download
 
-There are no releases yet. Build from source.
+Releases ship a self-contained x86_64 AppImage, `wc98-native-linux-x86_64-<version>.AppImage`
+with a `.sha256` sidecar. It needs only a Vulkan-capable driver on the host — the loader and
+GPU drivers are deliberately never bundled.
+
+```sh
+chmod +x wc98-native-linux-x86_64-*.AppImage
+./wc98-native-linux-x86_64-*.AppImage --smoke 3   # windowed self-check
+```
+
+Self-update checks this repository's GitHub releases, verifies SHA-256 against the sidecar,
+smoke-tests the new build, swaps it in atomically and keeps the previous file as `.prev` for
+rollback; it never touches game files, saves or `~/.config/wc98-native`:
+
+```sh
+packaging/update.sh --check ~/apps/wc98-native-linux-x86_64-0.1.0.AppImage
+packaging/update.sh         ~/apps/wc98-native-linux-x86_64-0.1.0.AppImage
+```
+
+Repackage locally after a build with `packaging/linux/build-appimage.sh` (downloads pinned
+appimagetool 1.9.1 and verifies its SHA-256; release AppImages are built on Ubuntu 24.04 for
+distribution reach). Until the first release exists, build from source below.
 
 ## Requirements
 

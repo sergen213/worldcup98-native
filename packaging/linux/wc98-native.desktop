@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=World Cup 98 (Native)
+GenericName=Football simulation
+Comment=Native Linux reimplementation of EA Sports World Cup 98 — supply your own legally obtained game files
+Exec=wc98-native
+Icon=wc98-native
+Terminal=false
+Categories=Game;SportsGame;
+Keywords=football;soccer;world cup;retro;

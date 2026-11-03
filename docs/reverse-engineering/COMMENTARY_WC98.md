@@ -62,4 +62,13 @@ starts playback via the voice records (8-voice pool). autovol = per-word volume 
 2. **RESOLVED** (see Sentence assembly section): builder = event-flag scan + `FUN_0048d0dc` phrase pick
    + `FUN_0048d1f8` enqueue; flush = cancel-thunk walk at item+0x10. Remaining sub-item: FCLG id cross-map
    (NOTES §5.3) for what the picked bank ids index in the per-language commentary tables.
+
 3. Item vtable at +0x1c: per-item start thunk target set (voice record vs queue item) — enumerate xrefs.
+
+## FCLG cross-map probe (2026-11-03, negative result)
+- `COMMON/FC<LANG>.BIN` = **UI/commentary string table**: header `FCLG\0V1.7\0=TXT NOT AVAIL=\0`, then
+  6,389 NUL-separated strings (42,840 B; all 9 languages present). Not a binary event→phrase map.
+- The PHRS record u16@0x12 takes only **32 distinct values** over the 1,290 members (bit-packed:
+  high-byte classes + index fields), consistent with a bank/voice-slot selector key (runtime use = pump
+  `_DAT_006326bc`), NOT an FCLG string index. NOTES §5.3 cross-map stays open; commentary text selection
+  must live in the `FUN_0048d0dc` pick logic (phrase id source) — decompile it next.

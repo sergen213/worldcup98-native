@@ -2,6 +2,12 @@
 //   wc98-render-demo out.png            — synthetic checkerboard scene
 //   wc98-render-demo out.png <tree-dir> — first FEFLOW02.FSH bitmap decoded from the user's
 //                                         original game tree and presented full-frame (M4 slice 1).
+//   wc98-render-demo out.png --fsh <path>[@member] [--tree <dir>]
+//                                   — decode one SHPI archive (.FSH/.PAK, RefPack-aware) from the user's
+//                                         CD tree and present ONE bitmap full-frame. @member is a 4-char
+//                                         SHPI entry tag (e.g. @hlsv) or a decimal directory index; without
+//                                         it the largest bitmap wins. The shared FE palette is loaded from
+//                                         --tree (default $WC98_TREE) so global-palette FE art colours right.
 //   wc98-render-demo out.png --lay <spec> [--tree <dir>]
 //                                   — front-end screen composite: parse a WC98 .LAY layout, resolve
 //                                         each element's FSH shape in the user's tree and draw the
@@ -277,11 +283,12 @@ std::string readLayout(const std::string& spec, fs::path& dir) {
 
 int main(int argc, char** argv) {
     const std::string outPath = argc > 1 ? argv[1] : "wc98-render-demo.png";
-    std::string laySpec, treeArg;
+    std::string laySpec, treeArg, fshSpec;
     int minShapes = 0;
     for (int i = 2; i < argc; ++i) {
         const std::string a = argv[i];
         if (a == "--lay" && i + 1 < argc) laySpec = argv[++i];
+        else if (a == "--fsh" && i + 1 < argc) fshSpec = argv[++i];
         else if (a == "--tree" && i + 1 < argc) treeArg = argv[++i];
         else if (a == "--min-shapes" && i + 1 < argc) minShapes = std::atoi(argv[++i]);
         else if (!a.empty() && a[0] == '-') { std::cerr << "unknown option: " << a << '\n'; return 2; }
@@ -295,7 +302,10 @@ int main(int argc, char** argv) {
 
         auto r = createVulkanRenderer(cfg, {}); // no surface: offscreen only
 
-        const fs::path root{treeArg};
+        fs::path root{treeArg};
+        if (root.empty() && !fshSpec.empty()) { // --fsh without --tree: $WC98_TREE locates the shared palette
+            if (const char* t = std::getenv("WC98_TREE"); t && *t) root = t;
+        }
         if (!root.empty()) { // the shared FE palette every paletted FE bitmap indexes into
             auto palPath = wc98::findCaseInsensitive(root, "FE/PACK/PAL.PAK");
             if (palPath.empty()) palPath = wc98::findCaseInsensitive(root, "PAL.PAK");
@@ -306,6 +316,56 @@ int main(int argc, char** argv) {
         SpriteBatch ui;
         glm::vec4 clearColor{0, 0, 0.2f, 1};
 
+        // Aspect-fit blit of one decoded FSH bitmap over the frame (--fsh and legacy tree modes).
+        auto blit = [&](const formats::FshBitmap& b, std::string_view label) {
+            const TextureId tex = r->createTexture(Image{b.width, b.height, b.rgba}, Wrap::Clamp, "fsh");
+            std::cout << label << ": " << b.width << 'x' << b.height << " " << formats::fshTypeName(b.type)
+                      << (b.compressed ? " (RefPack)" : "") << ", palette 0x" << std::hex << int(b.paletteType)
+                      << (b.usedGlobalPalette ? " global-FE" : " attached") << std::dec << '\n';
+            const float ar = float(b.width) / float(b.height); // aspect-fit over the whole frame
+            float w = 640.f, h = w / ar;
+            if (h > 480.f) h = 480.f, w = h * ar;
+            ui.draw(tex, {(640.f - w) * .5f, (480.f - h) * .5f, w, h});
+        };
+
+        if (!fshSpec.empty()) { // one SHPI member full-frame: --fsh <path>[@tag|@index]
+            std::string path = fshSpec, member;
+            if (const std::size_t at = fshSpec.find('@'); at != std::string::npos) {
+                path = fshSpec.substr(0, at);
+                member = fshSpec.substr(at + 1);
+            }
+            const fs::path want{path};
+            fs::path file = want;
+            if (!fs::exists(file)) file = wc98::findCaseInsensitive(want.parent_path(), want.filename().string());
+            if (file.empty()) { std::cerr << "--fsh: no such file: " << path << '\n'; return 2; } // gate skip when tree absent
+            const auto bytes = formats::refpack::decompressIfNeeded(wc98::readFile(file));
+            const formats::FshFile fsh = formats::FshFile::parse(bytes);
+            const bool byIndex = !member.empty() && std::all_of(member.begin(), member.end(), ::isdigit);
+            const int index = byIndex ? std::atoi(member.c_str()) : -1;
+            auto trimTag = [](const formats::FshEntry& e) { return e.tag.substr(0, e.tag.find_last_not_of(" \t\0") + 1); };
+            const formats::FshBitmap* best = nullptr;
+            std::string label = file.filename().string();
+            for (std::size_t i = 0; i < fsh.entries.size(); ++i) {
+                const auto& e = fsh.entries[i];
+                if (!e.bitmap) continue;
+                const bool hit = member.empty() // no selector: largest bitmap wins
+                    ? (!best || std::size_t(e.bitmap->width) * e.bitmap->height > std::size_t(best->width) * best->height)
+                    : (byIndex ? std::int32_t(i) == index : iequals(trimTag(e), member));
+                if (hit) {
+                    best = &*e.bitmap;
+                    label += '@' + trimTag(e);
+                    if (!member.empty()) break;
+                }
+            }
+            if (!best || best->rgba.empty()) {
+                std::cerr << "--fsh: " << file << ": no bitmap for member '" << member << "'; tags:";
+                for (const auto& e : fsh.entries)
+                    if (e.bitmap) std::cerr << ' ' << trimTag(e);
+                std::cerr << '\n';
+                return 1;
+            }
+            blit(*best, label);
+        } else
         if (!laySpec.empty()) { // front-end screen composite
             fs::path layDir;
             std::string text;
@@ -338,12 +398,7 @@ int main(int argc, char** argv) {
             for (const auto& e : fsh.entries)
                 if (e.bitmap && (!best || std::size_t(e.bitmap->width) * e.bitmap->height > std::size_t(best->width) * best->height)) best = &*e.bitmap;
             if (!best || best->rgba.empty()) { std::cerr << "no bitmap in FEFLOW02.FSH\n"; return 2; }
-            const TextureId tex = r->createTexture(Image{best->width, best->height, best->rgba}, Wrap::Clamp, "fsh");
-            std::cout << "FSH bitmap " << best->width << 'x' << best->height << " (palette type 0x" << std::hex << int(best->paletteType) << ")\n";
-            const float ar = float(best->width) / float(best->height); // aspect-fit over the whole frame
-            float w = 640.f, h = w / ar;
-            if (h > 480.f) h = 480.f, w = h * ar;
-            ui.draw(tex, {(640.f - w) * .5f, (480.f - h) * .5f, w, h});
+            blit(*best, "FEFLOW02.FSH");
         } else { // synthetic checkerboard scene
             const TextureId checker = r->createTexture(checkerboard(), Wrap::Clamp, "checker");
             draws.push_back({r->createMesh(quad(-4.5f, -3.5f, 4.5f, 3.5f, 0, packRgba(255, 255, 255))),

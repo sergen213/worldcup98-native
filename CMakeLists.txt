@@ -23,10 +23,12 @@ add_compile_options(-Wall -Wextra -Werror)
 
 add_subdirectory(core)
 add_subdirectory(formats)
+add_subdirectory(simulation)
 add_subdirectory(platform)
 add_subdirectory(renderer)
 add_subdirectory(config)
 add_subdirectory(audio)
+add_subdirectory(input)
 add_subdirectory(tools)
 
 if(WC98_BUILD_TESTS)

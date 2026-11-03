@@ -29,6 +29,7 @@ add_subdirectory(renderer)
 add_subdirectory(config)
 add_subdirectory(audio)
 add_subdirectory(input)
+add_subdirectory(presentation)
 add_subdirectory(tools)
 
 if(WC98_BUILD_TESTS)

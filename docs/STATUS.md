@@ -111,7 +111,8 @@ counts in `docs/asset-formats/INVENTORY.md`, `docs/reverse-engineering/EXECUTABL
 
 ## Known limitations
 
-- Nothing playable yet: current scope = research + asset/format layer.
+- M6 vertical slice playable headless: exhibition match simulates and renders from original art
+  (`wc98-match-demo`, gate `match_demo_frames`); front-end flow, audio and HUD not wired yet.
 - Raw hexdump appendices of game files are kept out of the repo
   (copyright); research-inbox/ is gitignored.
 - Probe logs under /tmp are ephemeral; durable record = counts in docs.

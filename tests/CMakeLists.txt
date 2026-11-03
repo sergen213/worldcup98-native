@@ -70,4 +70,11 @@ if(DEFINED WC98_TREE)
     # M4 slice 3: original trophy model (GEOM draw-lists) rendered textured through Vulkan.
     add_test(NAME model_view_wcupf COMMAND wc98-model-view /tmp/wc98port-out/mdl_gate.png ${WC98_TREE}/FE/WCUPF.MDL)
     set_tests_properties(model_view_wcupf PROPERTIES SKIP_RETURN_CODE 2)
+    # M6 exhibition-match slice: simulate + render kickoff/midplay/sprint frames of a real match.
+    add_test(NAME match_demo_frames COMMAND wc98-match-demo /tmp/wc98port-out/m6 --tree ${WC98_TREE})
+    set_tests_properties(match_demo_frames PROPERTIES SKIP_RETURN_CODE 2)
 endif()
+
+# M6 presentation core: snapshot interpolation, camera names, kit-file selection, face composite.
+wc98_test(test_presentation unit/test_presentation.cpp)
+target_link_libraries(test_presentation PRIVATE wc98_presentation)

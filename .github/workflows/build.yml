@@ -54,7 +54,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y ninja-build cmake libpng-dev libvulkan-dev libopenal-dev \
-            libglm-dev glslang-tools glslc squashfs-tools imagemagick
+            libglm-dev glslang-tools glslc squashfs-tools imagemagick qt6-base-dev
       - name: Build and install SDL3 (no Ubuntu archive package for noble)
         run: |
           sudo apt-get install -y libx11-dev libxcursor-dev libxrandr-dev libxi-dev \
@@ -66,14 +66,19 @@ jobs:
           sudo cmake --install sdl3-build && sudo ldconfig
       - name: Configure (release build, C++23 toolchain floor)
         run: cmake --preset ci-cxx23
-      - name: Build app binary
-        run: cmake --build build/ci-cxx23 --target wc98-native
-      - name: Package AppImage
-        run: packaging/linux/build-appimage.sh -b build/ci-cxx23 -o dist
-      - name: Smoke (extract-and-run under Xvfb + lavapipe)
+      - name: Build shipped binaries
+        run: cmake --build build/ci-cxx23 --target wc98-native wc98-launcher
+      - name: Package AppImage (game + Qt launcher, linuxdeploy)
+        run: bash packaging/linux/deploy.sh build/ci-cxx23 dist
+      - name: Smoke game (extracted binary under Xvfb + lavapipe)
         run: |
           sudo apt-get install -y xvfb mesa-vulkan-drivers
-          APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run -a dist/wc98-native-linux-x86_64-*.AppImage --smoke 3
+          dist/wc98-native-linux-x86_64-*.AppImage --appimage-extract
+          xvfb-run -a squashfs-root/usr/bin/wc98-native --smoke 3
+      - name: Smoke launcher self-test (offscreen Qt, AppRun default Exec)
+        run: |
+          APPIMAGE_EXTRACT_AND_RUN=1 QT_QPA_PLATFORM=offscreen \
+            dist/wc98-native-linux-x86_64-*.AppImage --self-test
       - name: Upload artifact (releases are cut by hand from this)
         uses: actions/upload-artifact@v4
         with:

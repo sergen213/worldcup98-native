@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=World Cup 98 (Native) Launcher
+GenericName=Football game launcher
+Comment=Set up your World Cup 98 game files, graphics, audio and controls, then play natively
+Exec=wc98-launcher
+Icon=wc98-launcher
+Terminal=false
+Categories=Game;SportsGame;Utility;
+Keywords=football;soccer;world cup;retro;ea;
+StartupWMClass=wc98-launcher

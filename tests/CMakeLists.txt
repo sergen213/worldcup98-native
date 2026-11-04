@@ -28,6 +28,10 @@ wc98_test(test_anim unit/test_anim.cpp)
 wc98_test(test_gen4tbls unit/test_gen4tbls.cpp)
 wc98_test(test_audio unit/test_audio.cpp)
 
+# .HIS/.TRI team-history pair: synthetic round trips + tree gate over the 8 language pairs
+# (participant id invariance, TRI record/pool parses; docs/asset-formats/TEAMHIST.md).
+wc98_test(test_histtri unit/test_histtri.cpp)
+
 # Match simulation (ported from fifa99-native tests/sim.cmake). The F99_SIM_LINKS gate is dropped:
 # the linking gap Anim_evalSkeleton 0x460ACC is implemented against the WC98 rig
 # (docs/reverse-engineering/SIM_PORT_NOTES.md section 5), so all three suites build.

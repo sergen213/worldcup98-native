@@ -88,3 +88,10 @@ if(TARGET wc98-launcher)
     add_test(NAME launcher_selftest COMMAND wc98-launcher --self-test)
     set_tests_properties(launcher_selftest PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 endif()
+
+# M6 commentary substrate: PHRS/TYPE phrase-bank record tables (synthetic BIGF + stripped-mirror
+# leniency, tree gates on the 1,290-phrase mirror equality) and the headless SpeechQueue engine-ABI
+# model. docs/asset-formats/SPEECH_PHRASES.md.
+wc98_test(test_phrs unit/test_phrs.cpp)
+wc98_test(test_speechqueue unit/test_speechqueue.cpp)
+target_link_libraries(test_speechqueue PRIVATE wc98_audio)

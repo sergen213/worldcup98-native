@@ -11,7 +11,7 @@ bool BigArchive::isBig(std::span<const std::uint8_t> d) {
 }
 
 
-BigArchive BigArchive::parse(std::span<const std::uint8_t> data) {
+BigArchive BigArchive::parse(std::span<const std::uint8_t> data, bool tolerant) {
     // WC98 (matrix section 3): the 1998 BIGF table is
     //   magic[4], u32be declaredSize, u32be member count, u32be header size,
     //   count x { u32be data offset, u32be size, NUL-terminated member name }   // records packed
@@ -30,15 +30,24 @@ BigArchive BigArchive::parse(std::span<const std::uint8_t> data) {
     a.declaredSize = r.u32be();
     std::uint32_t count = r.u32be();
     a.headerSize = r.u32be();
-    if (count > arc.size() / 12) throw FormatError(std::format("BIG entry count {} implausible", count));
+    if (count > arc.size() / 12) {
+        if (!tolerant) throw FormatError(std::format("BIG entry count {} implausible", count));
+    }
     a.entries.reserve(count);
     for (std::uint32_t i = 0; i < count; ++i) {
         BigEntry e;
+        if (tolerant && r.remaining() < 9) break; // stripped mirror: table prefix readable, stop cleanly
         e.offset = base + r.u32be();
         e.size = r.u32be();
         e.name = r.cString(); // names are stored NUL-terminated, packed against the next record
-        if (std::uint64_t(e.offset) + e.size > data.size())
-            throw FormatError(std::format("BIG entry '{}' [{}+{}] exceeds archive ({})", e.name, e.offset, e.size, data.size()));
+        if (std::uint64_t(e.offset) + e.size > data.size()) {
+            if (!tolerant)
+                throw FormatError(std::format("BIG entry '{}' [{}+{}] exceeds archive ({})", e.name, e.offset, e.size, data.size()));
+            // Stripped mirror bank (PHRS/TYPE.PBK, SPEECH_INDEXING_NOTES.md §2): self-relative TOC
+            // offsets address the full sibling image and run past this member's end -> clamp the view.
+            e.size = e.offset < data.size() ? std::uint32_t(data.size() - e.offset) : 0;
+            e.truncated = true;
+        }
         a.entries.push_back(std::move(e));
     }
     return a;

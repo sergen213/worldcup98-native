@@ -7,6 +7,7 @@
 #include <cstring>
 #include <format>
 #include <limits>
+#include <string_view>
 
 namespace wc98::formats {
 namespace {
@@ -125,6 +126,16 @@ PtHeader PtHeader::parse(std::span<const std::uint8_t> data, std::size_t offset)
 Pcm decodePlayTrack(std::span<const std::uint8_t> data, std::size_t ptOffset) {
     // WC98 (matrix section 7): a standalone PT play track (.SMP, and each .PBK member) is
     // one PT v2 header followed by the raw payload — no SCHl chunk framing.
+    // WC98 (SPEECH_INDEXING_NOTES.md §5.2): dispatch on the payload magic at ptOffset, not an
+    // assumed PT header. "MIDx" streams (CRWD/COMOS.PBK crowd-MIDI beds), empty nested BIG
+    // archives (count=0, hdrSize=16: 268 silent PHRS phrases) and no-magic raw codec blocks
+    // (CRWD/CROWD.PBK crowd beds — §4 Hypothesis, not decoded) yield a silent Pcm instead of
+    // throwing. The 6,964 "PT" members keep the byte-identical decode path below; callers that
+    // need strictness gate on the PT magic first (as test_audio's PBK walk does).
+    const auto magicAt = [&](std::string_view m) {
+        return ptOffset + m.size() <= data.size() && std::memcmp(data.data() + ptOffset, m.data(), m.size()) == 0;
+    };
+    if (!magicAt("PT")) return Pcm{}; // MIDx / empty nested BIGF / raw crowd payload: no PCM samples
     const PtHeader h = PtHeader::parse(data, ptOffset);
     if (!h.dataOffset) throw FormatError("PT play track has no data offset (tag 0x88)");
     if (*h.dataOffset > data.size()) throw FormatError(std::format("PT play track: data offset {} past end", *h.dataOffset));

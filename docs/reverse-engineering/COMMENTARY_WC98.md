@@ -57,8 +57,11 @@ starts playback via the voice records (8-voice pool). autovol = per-word volume 
   four sentence-state globals; `FUN_004d9250` = play-status passthrough (SNDphrasestatus backend).
 
 ## Open items
-1. Map the 46 call sites to concrete sim events (needs M6 match event enum alignment; site addresses
-   above are the anchors — decompile each caller once the simulation-side event ids exist).
+1. Site map (run `analysis/pass7/eventmap.txt`): of the 46 gate call sites, **45 sit inside
+   undecomposed chunks** (`-noanalysis` DB — getFunctionContaining = None) in the match-director band
+   0x452af0..~0x458cf0 (the 7 builder-caller functions above cover the same band); the only resolved
+   function caller is **FUN_0045948c @ site 0x459715 = save/load screen** → commentary fires on load.
+   Disassembly of that band + alignment with M6 sim event ids remains open.
 2. **RESOLVED** (see Sentence assembly section): builder = event-flag scan + `FUN_0048d0dc` phrase pick
    + `FUN_0048d1f8` enqueue; flush = cancel-thunk walk at item+0x10. Remaining sub-item: FCLG id cross-map
    (NOTES §5.3) for what the picked bank ids index in the per-language commentary tables.

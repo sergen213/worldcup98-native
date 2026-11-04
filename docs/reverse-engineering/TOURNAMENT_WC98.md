@@ -71,10 +71,14 @@ open item.
   path-format cluster explains per-language dirs on other regional discs). Every `.HIS` shares the
   identical binary header: u32 @0 = **0x30028** (= magic '0x30' + declared index span 40),
   `u16@0x1e nRows=49`, `u16@0x20 nIdx=52`; the geometry predicate passes (10,304 ≤ every file size).
-  Files differ only in total size (161.7 KB SW .. 173.6 KB FR) = **language string lengths** ⇒ record
-  payloads embed localized strings inline; the numeric result matrix is language-invariant.
-- Index table u16 values at +0x28: {26,29,31,…} sequential-with-gaps ids — the 43-team participant
-  set (same count as DU.TRI) embedded in a 52-row container ⇒ rows 43.. = BYE/qualifier slots.
+  Files differ in total size (161.7 KB SW .. 173.6 KB FR) = **inline localized strings**; the grid
+  region [0x70, 10304) itself is NOT language-invariant (strings interleave there — verified by the
+  test_histtri sweep, `docs/asset-formats/TEAMHIST.md`).
+- The **language-invariant** region is bytes **[0x04, 0x28)**: a run of LE u16 participant ids
+  {26,29,…,88} = **33 ids**, terminated by the first value ≥ 0x100 (measured terminators 599/568).
+  The table at +0x28 diverges per language from element `599` on — it is localized payload, not an
+  index. Participant extraction = `wc98::formats::participants(His)` (+0x04 run), NOT "first 43 of
+  +0x28" (superseded claim).
 - Open: per-cell semantics of the 52×49 matrix + inter-page record framing (stream API paging).
   Full semantic decode is assigned to the tournament implementation slice; the participant list for
   team-selection UI needs only TRI strings + index ids, which are fully specified above.

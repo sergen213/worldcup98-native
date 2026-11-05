@@ -52,6 +52,8 @@ fetch_cached() { # fetch_cached <url> <sha256> <dest>: download+verify unless ca
 CACHE=${XDG_CACHE_HOME:-$HOME/.cache}/wc98-packaging
 fetch_cached "$LINUXDEPLOY_URL" "$LINUXDEPLOY_SHA256" "$CACHE/linuxdeploy-x86_64.AppImage"
 fetch_cached "$APPIMAGETOOL_URL" "$APPIMAGETOOL_SHA256" "$CACHE/appimagetool-x86_64-1.9.1.AppImage"
+# curl downloads land 0644; the tools are exec'd directly (extracted mode).
+chmod +x "$CACHE"/*.AppImage 2>/dev/null || true
 
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT

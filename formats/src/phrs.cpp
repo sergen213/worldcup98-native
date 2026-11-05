@@ -2,6 +2,7 @@
 #include "wc98/formats/phrs.hpp"
 #include "wc98/reader.hpp"
 #include "wc98/formats/refpack.hpp"
+#include <algorithm>
 #include "wc98/formats/schl.hpp"
 
 namespace wc98::formats {

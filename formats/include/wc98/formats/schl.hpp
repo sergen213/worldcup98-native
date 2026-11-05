@@ -70,6 +70,9 @@ Pcm decodeSchl(std::span<const std::uint8_t> data, const SchlStream& s);
 // WC98 (matrix section 7): decodes a standalone PT play track — a PT v2 header at
 // `ptOffset` followed by the raw payload (.SMP files, .PBK archive members). No SCHl
 // chunk framing; MicroTalk output levels are approximate (see utk::decodeSpeechPayload).
+// WC98 (docs/reverse-engineering/SPEECH_INDEXING_NOTES.md §5.2): payloads at `ptOffset`
+// without the "PT" magic ("MIDx" MIDI streams, empty nested BIGF archives, raw crowd
+// codec blocks) decode to a silent Pcm{}; only "PT" runs the header/codec path below.
 Pcm decodePlayTrack(std::span<const std::uint8_t> data, std::size_t ptOffset);
 
 // Block-by-block decoder for streaming playback; `data` must outlive it.

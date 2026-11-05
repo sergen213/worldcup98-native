@@ -34,3 +34,18 @@ assert on the SimEvent stream (type order + team/player fields) and World state 
 All 8 scenario tests run <60 s total (tick budgets capped), deterministic across machines (integer sim,
 no FP-order-sensitive asserts — compare event types/teams, not exact frames, unless stable); registration
 lines for tests/CMakeLists.txt; failures print seed + frame.
+
+## As built (2026-11-05, `tests/unit/test_sim_scenarios.cpp`, gate green 0.25 s)
+- All 8 scenarios shipped; seed 0x2E7A pinned throughout; per-scenario terminal-event tick caps
+  (kickoff t<=30, pass ~182, shot 155 -> goal 163 score+1, offside 154 restartType=5, corner/throw-in
+  each in its own seeded run at ~250 - post-corner restart cycles livelock in the synthetic world,
+  foul 262 -> yellow 300 (red via class 4), PeriodEnd#1 ~7380 + #2 a=15 + finished() periodIndex()==2,
+  shootout gameMode=3: ShootoutKick x4 @160/200/240/280).
+- Field-semantics corrections to the table above (measured): **cards carry foul class in `a`** (not b);
+  **Pass carries kind in `a`, mode in `b`**; Goal `a` = game seconds (confirmed); offside predicate is
+  driven via public `Rules_checkOffside` (the engine's own post-kick call site), and `teams[t].side`
+  = the goal that team DEFENDS.
+- No gtest in repo: scenarios are plain functions under tests/check.hpp CHECK style; "TEST_CASE" above
+  maps to that. Kick forcing recipe = Player_executeKick + animId 0x10/contactFrame -1 override +
+  Kick_arm + Player_onAnimContact (synthetic worlds have no clip contact frames); kickoff via forced
+  `Match_dispatchEvent(0xb)` — every site cites this doc in-code, natural trigger flips one line.

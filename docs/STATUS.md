@@ -101,11 +101,12 @@ counts in `docs/asset-formats/INVENTORY.md`, `docs/reverse-engineering/EXECUTABL
 3. `.MDL` GEOM/SKEL (FE 3D titles), `.SQF` EULZ sprites, `.DCT` EA-TREM
    video frames.
 4. `.SCI/.TBI` AI scripts (unparsed in FIFA 99 too), GEN4TBLS AT/DF.
-5. Save/replay/presentation files: see
-   `docs/reverse-engineering/SAVES.md` (options.sav layout hypothesis,
-   `rply%04d.dat`/`FEREPLAYBUFF` replay system, `.his`/`.tri` Classics
-   data, network.dat/dial.dat) — Ghidra xref pass + Wine-generated
-   reference saves pending.
+5. Save/replay/presentation files: see `docs/reverse-engineering/SAVES.md` (options.sav layout,
+   `rply%04d.dat`/`FEREPLAYBUFF` replay system, `.his`/`.tri` Classics data, network.dat/dial.dat).
+   Wine oracle pass 2026-11-05 (`WINE_ORACLE_WC98.md`): live `USER/options.sav` dumped (96 B, magic
+   `AFIFAFIF`) = runtime write confirmed; task tables `0x57fbc8/0x57fc40/0x581ac0` byte-identical to
+   image at all observed states (never runtime-patched); replay/network saves still not generated
+   (FE/match presentation never entered under wined3d - GPU path AV documented).
 6. Official patch lineage: `fifawc98_patch.zip` + moddb Ultimate Patch
    contents (download & diff pending).
 

@@ -37,13 +37,16 @@ is cited.
 
 ## Download
 
-Releases ship a self-contained x86_64 AppImage, `wc98-native-linux-x86_64-<version>.AppImage`
-with a `.sha256` sidecar. It needs only a Vulkan-capable driver on the host — the loader and
+The current pre-release is [v0.1.0](https://github.com/sergen213/worldcup98-native/releases/tag/v0.1.0):
+a self-contained x86_64 AppImage `wc98-native-linux-x86_64-<version>.AppImage` with a `.sha256`
+sidecar, shipping the game **and** the Qt6 launcher (the launcher is the default entry; unknown
+flags pass through to the game). It needs only a Vulkan-capable driver on the host — the loader and
 GPU drivers are deliberately never bundled.
 
 ```sh
 chmod +x wc98-native-linux-x86_64-*.AppImage
-./wc98-native-linux-x86_64-*.AppImage --smoke 3   # windowed self-check
+./wc98-native-linux-x86_64-*.AppImage              # launcher GUI (set up game files first)
+./wc98-native-linux-x86_64-*.AppImage --smoke 3   # windowed self-check of the game binary
 ```
 
 Self-update checks this repository's GitHub releases, verifies SHA-256 against the sidecar,

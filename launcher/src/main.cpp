@@ -16,6 +16,8 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <cerrno>
+#include <cstring>
 #include <format>
 
 #include <unistd.h>
@@ -121,20 +123,55 @@ int selfTest() {
 
 int main(int argc, char** argv) {
     QString page, shots;
+    auto consume = [&](int& i, int n) {  // drop consumed launcher flags so Qt/the game never see them
+        for (int k = i - n + 1; ; ++k)
+            if ((argv[k] = argv[k + n]) == nullptr) break;  // shifts tail incl. sentinel
+        argc -= n;
+        --i;
+    };
     for (int i = 1; i < argc; ++i) {
         std::string_view a = argv[i];
         if (a == "--self-test") return selfTest();
         if (a == "--version") return println("wc98-launcher {}", WC98_VERSION), 0;
-        if (a == "--page" && i + 1 < argc)
+        if (a == "--page" && i + 1 < argc) {
             page = argv[++i];
-        else if (a == "--screenshot-pages" && i + 1 < argc)
+            consume(i, 2);
+        } else if (a == "--screenshot-pages" && i + 1 < argc) {
             shots = argv[++i];
+            consume(i, 2);
+        }
         else if (a == "-h" || a == "--help") {
             println("usage: wc98-launcher [--page NAME] [--self-test] [--screenshot-pages DIR] [--version]");
             return 0;
         }
+        else if (!a.empty() && a.front() == '-') {
+            // AppImage single-entry contract (README): unknown flags pass through to the game,
+            // e.g. `wc98-native-*.AppImage --smoke 3` -> wc98-native --smoke 3.
+            if (auto game = launcher::findGame(); !game.empty()) {
+                std::vector<char*> pass{const_cast<char*>(game.c_str())};  // argv[0] = program name
+                for (int k = i; k < argc; ++k) pass.push_back(argv[k]);
+                pass.push_back(nullptr);
+                execv(game.c_str(), pass.data());  // returns only on failure
+                println("wc98-launcher: cannot exec {}: {}", game.string(), std::strerror(errno));
+                return 1;
+            }
+            println("wc98-launcher: unknown option {} and no game executable found", a);
+            return 2;
+        }
     }
-    QApplication app(argc, argv); // also consumes Qt's own options (-platform, -style, ...)
+    QApplication app(argc, argv); // consumes Qt's own options (-platform/-style pairs), shrinking argc
+    if (argc > 1) {              // AppRun path: linuxdeploy's AppRun pre-consumes -s/-style pairs,
+        auto game = launcher::findGame();  // e.g. `AppImage --smoke 3` arrives as Qt-stripped argv.
+        if (!game.empty()) {
+            std::vector<char*> pass(argv + 1, argv + argc);
+            pass.push_back(nullptr);
+            execv(game.c_str(), pass.data());  // returns only on failure
+            println("wc98-launcher: cannot exec {}: {}", game.string(), std::strerror(errno));
+            return 1;
+        }
+        println("wc98-launcher: leftover arguments and no game executable found");
+        return 2;
+    }
     QApplication::setApplicationName("wc98-launcher");
     QApplication::setApplicationVersion(WC98_VERSION);
     QApplication::setDesktopFileName("wc98-native"); // packaging/linux/wc98-native.desktop

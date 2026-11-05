@@ -17,22 +17,28 @@
 #include <cstdio>
 #include <cstdlib>
 #include <format>
-#include <print>
+
 #include <unistd.h>
 
 using namespace wc98;
 namespace fs = std::filesystem;
 
 namespace {
+// libstdc++ <print> needs GCC 14; the CI floor (Ubuntu 24.04 gcc-13) has full <format>.
+inline void printStr(std::string_view s) { std::fwrite(s.data(), 1, s.size(), stdout); }
+template <class... A> void println(std::string_view f, A&&... a) {
+    printStr(std::vformat(f, std::make_format_args(a...)));
+    std::fputc('\n', stdout);
+}
 
 int selfTest() {
     int failures = 0;
     auto check = [&](bool ok, const std::string& what) {
-        std::println("[{}] {}", ok ? "PASS" : "FAIL", what);
+        println("[{}] {}", ok ? "PASS" : "FAIL", what);
         failures += !ok;
     };
     auto p = launcher::paths();
-    std::println("wc98-launcher {} self-test", WC98_VERSION);
+    println("wc98-launcher {} self-test", WC98_VERSION);
 
     // 1. Settings: the user's file parses; a fully populated model survives serialize/parse and an
     //    atomic save/load next to it without warnings.
@@ -42,7 +48,7 @@ int selfTest() {
         user = r.settings;
         check(true, std::format("load {} ({}, {} warning(s))", p.settings.string(),
                                 r.existed ? "exists" : "absent, defaults", r.warnings.size()));
-        for (auto& w : r.warnings) std::println("       {}", w);
+        for (auto& w : r.warnings) println("       {}", w);
     } catch (const std::exception& e) {
         check(false, std::format("load {}: {}", p.settings.string(), e.what()));
     }
@@ -99,15 +105,15 @@ int selfTest() {
     }
     auto found = assets::searchCommonLocations();
     check(true, std::format("search common locations: {} candidate(s)", found.size()));
-    for (auto& d : found) std::println("       {} [{}]", d.path.string(), assets::layoutName(d.layout));
+    for (auto& d : found) println("       {} [{}]", d.path.string(), assets::layoutName(d.layout));
     if (candidates.empty())
-        std::println(
+        println(
             "       (no game path configured and WC98_TREE unset: detection of a real install not exercised)");
 
     // 4. Environment report (informational).
-    std::print("{}", launcher::diagnostics());
-    std::println("{}", failures ? std::format("self-test FAILED ({} failure(s))", failures)
-                                : std::string("self-test passed"));
+    printStr(launcher::diagnostics());
+    println("{}", failures ? std::format("self-test FAILED ({} failure(s))", failures)
+                           : std::string("self-test passed"));
     return failures ? 1 : 0;
 }
 
@@ -118,13 +124,13 @@ int main(int argc, char** argv) {
     for (int i = 1; i < argc; ++i) {
         std::string_view a = argv[i];
         if (a == "--self-test") return selfTest();
-        if (a == "--version") return std::println("wc98-launcher {}", WC98_VERSION), 0;
+        if (a == "--version") return println("wc98-launcher {}", WC98_VERSION), 0;
         if (a == "--page" && i + 1 < argc)
             page = argv[++i];
         else if (a == "--screenshot-pages" && i + 1 < argc)
             shots = argv[++i];
         else if (a == "-h" || a == "--help") {
-            std::println("usage: wc98-launcher [--page NAME] [--self-test] [--screenshot-pages DIR] [--version]");
+            println("usage: wc98-launcher [--page NAME] [--self-test] [--screenshot-pages DIR] [--version]");
             return 0;
         }
     }
@@ -147,8 +153,8 @@ int main(int argc, char** argv) {
                             .arg(shots)
                             .arg(i, 2, 10, QChar('0'))
                             .arg(w.pageName(i).toLower().replace(' ', '-'));
-            if (!w.grab().save(file)) return std::println(stderr, "cannot write {}", file.toStdString()), 1;
-            std::println("{}", file.toStdString());
+            if (!w.grab().save(file)) return fprintf(stderr, "cannot write %s\n", file.toStdString().c_str()), 1;
+            println("{}", file.toStdString());
         }
         return 0;
     }

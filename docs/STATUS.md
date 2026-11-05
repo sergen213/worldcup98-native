@@ -110,6 +110,22 @@ counts in `docs/asset-formats/INVENTORY.md`, `docs/reverse-engineering/EXECUTABL
 6. Official patch lineage: `fifawc98_patch.zip` + moddb Ultimate Patch
    contents (download & diff pending).
 
+
+## Progress snapshot (2026-11-05, v0.1.0 pre-release shipped)
+- Release: tag `v0.1.0` + GitHub release with AppImage (+`.sha256`/`.version` sidecars); clean-clone
+  build -> ctest 23/23 (tree-gated skips) -> game smoke + offscreen launcher self-test exit 0;
+  `packaging/update.sh --check` verified against the live endpoint (both branches). CI matrix
+  GCC-13/Clang C++23 + GCC-16 C++26 green incl. linuxdeploy AppImage job (game+Qt6 launcher,
+  single-entry passthrough proven: `AppImage --smoke 3` -> game exit 0).
+- Suite (tree build): 30 gates incl. M7 regression harness `test_sim_scenarios` (8 scenarios:
+  kickoff/pass/shot-goal/offside/set pieces/foul-cards/HT-FT/shootout, seed-pinned, 0.25 s),
+  commentary chain (`test_phrs` mirror equality 1290/1290, `test_speechqueue`, `test_commentary`).
+- Wine oracle (wine-11.21): original boots + runs under Xvfb 16bpp; live `options.sav` (AFIFAFIF)
+  captured; task tables == static image (never runtime-patched); wined3d 24bpp AV documented - FE
+  visuals not reached (black presentation), no fabricated captures. `WINE_ORACLE_WC98.md`.
+- Open: HUD overlay slice (in progress), tournament module spec + app mode, FE flow scenes in the
+  windowed app, save/load app-level integration.
+
 ## Known limitations
 
 - M6 vertical slice playable headless (`wc98-match-demo`, gate `match_demo_frames`); commentary

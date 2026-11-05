@@ -6,6 +6,8 @@ project goals.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-05 — first pre-release
+
 ### Added
 - CMake/Ninja C++26 project skeleton with CTest harness and CI.
 - `wc98::core` — bounds-checked little-endian `ByteReader`.
@@ -68,3 +70,15 @@ project goals.
   `wc98-launcher` (Qt6 GUI: game-files validation report, Match options page with USER/OPTIONS.SAV
   import/export bound to `[gameplay]` settings keys, SDL3 controls/keymap editor, graphics/audio/
   logs/troubleshooting pages, Play launching `wc98-native`; CI modes --self-test / --screenshot-pages).
+- Commentary pipeline: `PhraseBank` phrase-record index over PHRS.PBK (1,290 members / 4,665 phrases,
+  RefPack-transparent), tolerant BIGF mirror parsing for TYPE.PBK stubs (byte-exact prefix equality
+  gated), `MIDx`/empty/raw decode dispatch (CRWD banks live), engine-ABI `SpeechQueue`, and the
+  exhibition-loop integration `app/commentary.{hpp,cpp}` (FUN_004893ec trigger model -> queue ->
+  segment fetch/decode -> OpenAL Mixer; gates `test_phrs`/`test_speechqueue`/`test_commentary`).
+- Team-history/trivia parsers `.HIS`/`.TRI` (`formats/src/{his,tri}.cpp`, gate `test_histtri`;
+  language-invariant 33-id participant run at +0x04; trivia string pool) — tournament data layer.
+- OPTIONS.SAV codec port (`save::loadOptions/saveToBytes`, byte-exact original round-trip gate
+  `test_options_codec`) + launcher import/export wiring to `[gameplay]` keys.
+- Release packaging v2: `packaging/linux/deploy.sh` (linuxdeploy, pinned SHA-256; game + Qt6 launcher
+  in one AppImage with xcb/wayland/offscreen plugins, two desktop entries; host Vulkan never bundled);
+  CI package job runs it with game (`--smoke 3`) and offscreen launcher self-test smokes.

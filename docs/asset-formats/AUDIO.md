@@ -91,3 +91,5 @@ uses `AUDIO/PHRS/{PHRS.PBK (BIGF, 1290 members), PHRS.HDR, PHRS.INF}` where INF 
 `.ASF` music and video audio ride `SCHl` command streams (`schl.cpp`); in-game
 commentary is PT chains + PBK phrase fetch, timed by the CRDl event stream. MIDx
 event music (MIDI payload) remains a stub — no MIDI device emulation yet.
+
+Speech phrase record-table API + tolerant mirror rules: [SPEECH_PHRASES.md](SPEECH_PHRASES.md) (`formats/src/phrs.cpp`).

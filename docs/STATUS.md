@@ -111,8 +111,12 @@ counts in `docs/asset-formats/INVENTORY.md`, `docs/reverse-engineering/EXECUTABL
 
 ## Known limitations
 
-- M6 vertical slice playable headless: exhibition match simulates and renders from original art
-  (`wc98-match-demo`, gate `match_demo_frames`); front-end flow, audio and HUD not wired yet.
+- M6 vertical slice playable headless (`wc98-match-demo`, gate `match_demo_frames`); commentary
+  integrated in the exhibition loop via `app/commentary.{hpp,cpp}` (trigger seam FUN_004893ec model ->
+  SpeechQueue -> PHRS segment fetch/decode -> OpenAL Mixer, null-mixer headless; gates
+  `test_commentary`). Event->phrase pick = Hypothesis round-robin (pick logic FUN_0048d0dc undecomposed);
+  FCLG cross-map probed negative (`analysis/pass7/fclg_probe.txt`); gain calibration + autovol ramp open.
+  Front-end flow and HUD not wired yet.
 - Raw hexdump appendices of game files are kept out of the repo
   (copyright); research-inbox/ is gitignored.
 - Probe logs under /tmp are ephemeral; durable record = counts in docs.

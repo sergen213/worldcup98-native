@@ -141,6 +141,12 @@ usage, the within-phrase id permutation source, PHRS.INF u32@8 = 83,696.
 3. Cross-map the per-phrase id blocks against `COMMON/FC<LANG>.BIN` (`FCLG.V1.7`
    commentary tables, 42,840 B each) to pin what the u16@0x12 ids index — that unlocks
    sentence assembly (SNDsentencestart = an ordered run of segment ids).
+   **PROBED NEGATIVE (2026-11-05, `analysis/pass7/fclg_probe.py/.txt`)**: `FC<LANG>.BIN` is a pure
+   NUL-separated cp1252 string pool (`sum(len+1) == file size`, 9/9; no index table); token counts
+   ENG 6,392 / FRE 2,031 / JAP 25,344 != {4,665 segments, 1,290 phrases, 1,022 sentences}; content =
+   FE/UI catalog (menus/disk errors/credits), not a segment-id sentence table. u16@0x12 -> string
+   mapping stays Unknown; sentence producer remains undecomposed pick logic `FUN_0048d0dc -> FUN_004c4ce0`
+   (COMMENTARY_WC98 open item 2).
 4. **PARTIALLY DONE (pass 7, `docs/reverse-engineering/COMMENTARY_WC98.md`)**: the u16@0x12 id is
    consumed by the per-frame pump `FUN_0048f920` (`_DAT_006326bc = *(u16*)(record + 0x12)`, then the
    item start thunk at `**(item + 0x1c)`); full SNDphrase* API ABI + the 46-caller match-event trigger

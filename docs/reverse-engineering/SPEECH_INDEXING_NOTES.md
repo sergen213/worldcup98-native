@@ -1,4 +1,4 @@
-# Speech (.PBK) phrase-bank indexing — measured notes (2026-11-02)
+# Speech (.PBK) phrase-bank indexing — measured notes (2026-11-02; items 1-2 IMPLEMENTED 2026-11-03, see docs/asset-formats/SPEECH_PHRASES.md)
 
 Read-only audit of `WorldCup98_Extracted/AUDIO/**` (game tree untouched; ISO + FIFAWC.EXE
 scanned as raw bytes only). Every number below was re-measured this pass with a lenient
@@ -129,15 +129,15 @@ HDR prefix identity, declaredSize quirk (1232+1022 archives), class-letter tag 0
 0x08/0x0C as queue links, CROWD.PBK raw-payload purpose. Unknown: record 0x06/0x10
 usage, the within-phrase id permutation source, PHRS.INF u32@8 = 83,696.
 
-1. Implement the phrase index model: parse `PHRS.HDR` (or the PHRS.PBK TOC) +
-   `TYPE.PBK` stubs to get phrase -> (segment count, per-segment offsets/sizes, ids)
-   without touching PHRS.PBK audio; fetch segments lazily by
-   `(phraseIdx, segTocOrdinal)` and key runtime handles on the u16@0x12 id.
-   `BigArchive::parse` must grow a tolerant mode for truncated mirrors (offsets past
-   member end) or TYPE entries should be read via a dedicated stub-aware path.
-2. In `decodePlayTrack` dispatch, branch on payload magic at offset 20 (`PT`, `MIDx`,
-   none) so the two CRWD banks stop being dead members; treat empty nested archives
-   (count=0, hdrSize=16) as silent phrases instead of errors.
+1. **DONE (2026-11-03, `formats/src/phrs.cpp` + tolerant `BigArchive::parse(data, tolerant)` in
+   `big.cpp`; API doc `docs/asset-formats/SPEECH_PHRASES.md`)** phrase index model: PHRS.PBK TOC ->
+   PhraseBank records {index,phrase,segment,size,classLetter,id u16@0x12}; TYPE stubs parsed via the
+   tolerant clamp path (BigEntry::truncated), strict default preserved.
+   Lazy segment fetch by (phraseIdx, segment ordinal) + id-keyed handles land with the runtime queue;
+   TYPE/PHRS mirror equality is gated in `test_phrs` (1290/1290 members byte-exact).
+2. **DONE (2026-11-03, `formats/src/schl.cpp` decode dispatch)** payload magic at ptOffset branches:
+   `PT` full path; `MIDx`, empty nested BIGF, and no-magic CROWD beds return silent `Pcm{}` — the two
+   CRWD banks are live members now (gated in test_phrs).
 3. Cross-map the per-phrase id blocks against `COMMON/FC<LANG>.BIN` (`FCLG.V1.7`
    commentary tables, 42,840 B each) to pin what the u16@0x12 ids index — that unlocks
    sentence assembly (SNDsentencestart = an ordered run of segment ids).

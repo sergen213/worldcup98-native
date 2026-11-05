@@ -35,7 +35,9 @@ wc98_test(test_histtri unit/test_histtri.cpp)
 # Match simulation (ported from fifa99-native tests/sim.cmake). The F99_SIM_LINKS gate is dropped:
 # the linking gap Anim_evalSkeleton 0x460ACC is implemented against the WC98 rig
 # (docs/reverse-engineering/SIM_PORT_NOTES.md section 5), so all three suites build.
-foreach(t IN ITEMS test_sim_core test_sim_players test_sim_team)
+# test_sim_scenarios: M7 gameplay regression harness (docs/development/M7_REGRESSIONS.md) -
+# pure simulation on synthetic rosters, no tree/env gate.
+foreach(t IN ITEMS test_sim_core test_sim_players test_sim_team test_sim_scenarios)
     wc98_test(${t} unit/${t}.cpp)
     target_link_libraries(${t} PRIVATE wc98_simulation)
 endforeach()

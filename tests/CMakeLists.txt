@@ -95,3 +95,10 @@ endif()
 wc98_test(test_phrs unit/test_phrs.cpp)
 wc98_test(test_speechqueue unit/test_speechqueue.cpp)
 target_link_libraries(test_speechqueue PRIVATE wc98_audio)
+
+# M6 commentary adapter: headless trigger/queue selection gates + PHRS tree decode gate
+# (docs/reverse-engineering/COMMENTARY_WC98.md; app/commentary.cpp compiled in directly).
+wc98_test(test_commentary unit/test_commentary.cpp)
+target_sources(test_commentary PRIVATE ${CMAKE_SOURCE_DIR}/app/commentary.cpp)
+target_link_libraries(test_commentary PRIVATE wc98_audio)
+target_include_directories(test_commentary PRIVATE ${CMAKE_SOURCE_DIR}/simulation/include)

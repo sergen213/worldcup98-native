@@ -8,6 +8,7 @@
 // Interpolation: single-snapshot alpha = 1 per capture (the render alpha path is exercised by the
 // renderer tests; a demo frame needs no blend). Positions/angles come straight from World.
 #include "match_demo.hpp"
+#include "commentary.hpp" // M6 commentary adapter (trigger seam model: docs/reverse-engineering/COMMENTARY_WC98.md)
 
 #include "wc98/presentation/camera.hpp"
 #include "wc98/presentation/kits.hpp"
@@ -215,6 +216,14 @@ int runMatchDemo(int argc, char** argv) {
         if (!SDL_Init(SDL_INIT_EVENTS | SDL_INIT_GAMEPAD)) { std::cerr << "SDL_Init: " << SDL_GetError() << '\n'; return 1; } // headless-safe (test_input.cpp l.40)
         MatchCamera camera; // default Tele
         int controlledPid = -1;
+        // Commentary: mixer is best-effort — headless CI has no OpenAL device, and the adapter then
+        // runs decode-only (queue advances on silent completion).
+        std::unique_ptr<audio::Mixer> mixer;
+        try { mixer = std::make_unique<audio::Mixer>(); } catch (const std::exception& e) { std::cout << "commentary: no audio device (" << e.what() << ")\n"; }
+        app::Commentary commentary(mixer.get());
+        const bool haveSpeech = commentary.loadTree(root);
+        if (!haveSpeech) std::cout << "commentary: AUDIO/PHRS/PHRS.PBK unavailable, queue idle\n";
+        std::size_t evPos = 0; // World::events is append-only (world.hpp emit)
 
         constexpr int kHz = 30;
         int prevPhase = -1, kickIn = 0, kickDur = 0, forceIn = 0;
@@ -236,6 +245,16 @@ int runMatchDemo(int argc, char** argv) {
             if (forceIn > 0 && --forceIn == 0 && w.match.phase == 0) {
                 std::cout << "restart forced via Match_dispatchEvent(0xb)\n";
                 sim::Match_dispatchEvent(w, 0xb, w.match.phaseTeam);
+            }
+            if (haveSpeech) { // commentary trigger seam: drain new sim events + pump per engine-frame cadence
+                const std::uint32_t before = commentary.sentencesStarted();
+                for (; evPos < w.events.size(); ++evPos) commentary.trigger(w.events[evPos]);
+                if (commentary.sentencesStarted() > before)
+                    std::cout << "t=" << tick / kHz << " commentary " << sim::eventName(w.events[evPos - 1].type)
+                              << " -> phrase " << commentary.lastPhrase() << '\n';
+                commentary.pump(std::max(1, int(w.time.simFrames))); // FUN_004906f8 per-frame pump analog (DAT_0065F1E0 frames/tick)
+            } else {
+                evPos = w.events.size();
             }
             const MatchSnapshot snap = snapshotFromWorld(w, md);
             camera.tick(snap, w.time.simFrames != 0 ? w.time.simFrames : 2); // DAT_0065F1E0 frames/tick
@@ -264,6 +283,8 @@ int runMatchDemo(int argc, char** argv) {
             }
         }
         SDL_Quit();
+        std::cout << "commentary: " << commentary.sentencesStarted() << " sentence(s), "
+                  << commentary.decodedSegments() << " segment decode(s)\n";
 
         r.reset(); // drain validation messages before the check (render-demo l.436-440)
         if (*messages) { std::cerr << *messages << " validation message(s)\n"; return 3; }

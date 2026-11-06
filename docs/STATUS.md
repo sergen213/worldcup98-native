@@ -128,16 +128,17 @@ counts in `docs/asset-formats/INVENTORY.md`, `docs/reverse-engineering/EXECUTABL
 - Wine oracle (wine-11.21): original boots + runs under Xvfb 16bpp; live `options.sav` (AFIFAFIF)
   captured; task tables == static image (never runtime-patched); wined3d 24bpp AV documented - FE
   visuals not reached (black presentation), no fabricated captures. `WINE_ORACLE_WC98.md`.
-- Open: HUD overlay slice (in progress), tournament module core implemented (`wc98::tournament`, gate
-  `test_tournament`; TOURNAMENT_MODULE_WC98.md §4-§5) + app mode, FE flow scenes in the
-  windowed app, save/load app-level integration.
+- Open: tournament app integration in progress (core `wc98::tournament` + gate `test_tournament` shipped;
+  HUD overlay slice landed, commit 0752a4a), FE flow scenes in the windowed app, save/load
+  app-level integration.
 
 ## Known limitations
 
 - M6 vertical slice playable headless (`wc98-match-demo`, gate `match_demo_frames`); commentary
   integrated in the exhibition loop via `app/commentary.{hpp,cpp}` (trigger seam FUN_004893ec model ->
   SpeechQueue -> PHRS segment fetch/decode -> OpenAL Mixer, null-mixer headless; gates
-  `test_commentary`). Event->phrase pick = Hypothesis round-robin (pick logic FUN_0048d0dc undecomposed);
+  `test_commentary`). Event->phrase pick = Hypothesis round-robin (FUN_0048d0dc decomposed 2026-11-05:
+  gate DAT_0063241c + qfind with predicate callback; node-selection predicate still open);
   FCLG cross-map probed negative (`analysis/pass7/fclg_probe.txt`); gain calibration + autovol ramp open.
 - Record queue plumbing confirmed (2026-11-05, `analysis/pass7/rec1.txt`, GhidraWc98Rec1.py on saved wc98
   project): `FUN_004c4800` = cmn_queue push (qbottom, line 0x162), `FUN_004c4890` = pop (0x1cb),

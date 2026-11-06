@@ -134,7 +134,9 @@ void Commentary::onStart(int slot, std::uint16_t id) {
         const auto pcm = formats::decodePlayTrack(seg, std::min<std::size_t>(kRecordSize, seg.size()));
         ++decoded_;
         lastFrames_ = std::uint32_t(pcm.frames());
-        if (mixer_ && pcm.frames() > 0) sounds_[std::size_t(slot)] = mixer_->play(pcm, gainForClass(r.classLetter));
+        const float g = gainForClass(r.classLetter); // Hypothesis per-class level (see above)
+        slotGain_[std::size_t(slot)] = g;
+        if (mixer_ && pcm.frames() > 0) sounds_[std::size_t(slot)] = mixer_->play(pcm, g * gain_.frac());
     } catch (const FormatError&) {
         // Malformed segment: silent skip; onComplete reports done.
     }
@@ -143,7 +145,29 @@ void Commentary::onStart(int slot, std::uint16_t id) {
 bool Commentary::onComplete(int slot) {
     const auto sid = sounds_[std::size_t(slot)];
     if (mixer_ && sid != 0) return !mixer_->playing(sid); // play-status probe (FUN_004d9250 analog)
+    slotGain_[std::size_t(slot)] = 0.f;
     return true; // silent decode or no device: complete immediately
+}
+
+// Per-frame: SpeechQueue pump (FUN_0048f920) + speech state-cb tick (0x4dfca0 semantics: advance
+// the 16.16 master volume, clamp at target) + per-voice apply (the original applies cur>>16 via
+// SNDvol to the live streams each tick). Scene-ramp seam: a sentence is ACTIVE from its start
+// (queued segments) until the queue drains; rising edge ramps toward the scene level, draining
+// edge back toward silence (autovol sites 0x48fcb7 / 0x491125).
+void Commentary::pump(int frames) {
+    for (int f = 0; f < frames; ++f) {
+        q_.pump(1);
+        const bool active = q_.sentenceStatus() == audio::SpeechQueue::kSentenceSpeaking && q_.queued() > 0;
+        if (active != prevSpeaking_) {
+            gain_.ramp(active ? volume_ : 0, kRampTicks);
+            prevSpeaking_ = active;
+        }
+        gain_.tick();
+        if (!mixer_) continue;
+        const float m = gain_.frac();
+        for (std::size_t s = 0; s < audio::SpeechQueue::kSlots; ++s)
+            if (sounds_[s] && slotGain_[s] > 0.f) mixer_->setGain(sounds_[s], slotGain_[s] * m);
+    }
 }
 
 } // namespace wc98::app

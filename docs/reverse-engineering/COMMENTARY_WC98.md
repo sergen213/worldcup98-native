@@ -75,3 +75,46 @@ starts playback via the voice records (8-voice pool). autovol = per-word volume 
   high-byte classes + index fields), consistent with a bank/voice-slot selector key (runtime use = pump
   `_DAT_006326bc`), NOT an FCLG string index. NOTES §5.3 cross-map stays open; commentary text selection
   must live in the `FUN_0048d0dc` pick logic (phrase id source) — decompile it next.
+
+## Speech gain / autovol chain (pass 7b, 2026-11-05)
+Evidence: `analysis/pass7/gain.txt`..`gain5.txt` (scripts `ghidra-scripts/GhidraWc98Gain{,2,3,4,5}.py`,
+pure-JPype runs on the saved wc98 project). Closes STATUS "gain calibration + autovol ramp open".
+
+### Confirmed
+- **Vol domain**: every EACSND volume entry point (`SNDvol` 0x52c71c backend FUN_0052c660,
+  `SNDspeechinit`, `SNDautovol`) takes a byte vol ∈ [0, 0x80) and stores it as **16.16** (`vol << 16`)
+  in the 16-slot voice table (stride 0x18 at DAT_006597e8; current = slot+0x20, ramp delta = slot+0x18).
+- **Game-side percent → vol**: `FUN_004906a4` = `pct * 0x7f / 100`, clamp ≥ 1 (percent table
+  DAT_00632778[idx]); two-stage per-voice scaling `FUN_004906d0` = `param2 * pct[idx] * 0x7f / 100 / 100`.
+- **Speech master ramp** (`SNDspeechautovol(target, steps)` 0x4df8a4 + state cb @0x4dfca0 in the
+  pump callback): live volume = DAT_00588d68 (16.16), target = DAT_0064b064; on call
+  `delta = (target<<16 − cur) / steps` (IDIV trunc, steps clamped ≥ 1); each tick `cur += delta`, and
+  when the ramp crosses/lands on the target it **clamps to target with delta zeroed** (both directions).
+  Every tick applies `SNDvol(cur >> 16)` (arithmetic SAR) to the two speech output streams
+  (DAT_00588d70/DAT_00588d74, call sites 0x4dfd06/0x4dfd19). Truncating delta leaves one tick short of
+  target, which the overshoot-clamp closes on the next tick — reproduced in the port.
+- **Per-voice ramp**: `SNDautovol` variant FUN_004e2b30 sets slot target (+0x1c) + per-tick delta; plain
+  `SNDvol` (FUN_0052c660) sets current with **delta = 0** (immediate).
+- **Channel duck/mix table**: applier loops at 0x4e3c7f..0x4e3cc2 and 0x4e40b6..0x4e40e1 (undecomposed
+  band) recompute per active channel `vol = mixerTable[channel] * (voiceVol16 >> 16) / 0x7f` →
+  `SNDvol(handle, vol)` each frame — a byte scale table at DAT_0064b9dc[] implementing bus ducking
+  (music/CD scaled against scene priority while speech plays).
+- **Hardware mix** FUN_00544bd0: output byte = product of the volume chain normalized by **0x1f417f
+  (≈ 0x7f³)**; an alternative branch indexes a **byte curve/compressor table**
+  (`tbl[byte(+0x26)] * factor / 0x7f`, then `out = tbl2[factor]`). Linear-domain products saturate at
+  0x7f — explains the measured "levels hot, occasional saturation" (no headroom in the chain).
+- **Scene ramp seam (game side)**: `SNDspeechautovol` sites 0x48fcb2-0x48fcb7 (preceded by FUN_004906a4
+  percent conversion at 0x48fcb2) and 0x491125 = sentence start/stop ramps; the `steps` argument is
+  runtime data in the undecomposed band.
+
+### Hypothesis (marked as such in code)
+- Percent-table DAT_00632778 scene defaults are built at init by FUN_004c46a0 from string tables →
+  exact default percentages need runtime measurement; port default = full-open vol 0x7f.
+- Port ramp tick count `kRampTicks = 5` (original steps argument unmeasured) — ponytail-marked in
+  `app/commentary.hpp`.
+
+### Native mapping
+`SpeechGain` (app/commentary.hpp) mirrors the state cb 16.16 arithmetic; Commentary::pump runs
+queue pump + gain tick + per-voice `setGain(class * master)` each frame, with sentence-start/stop
+ramp edges reproducing the autovol seam sites. Gate: `test_commentary` (`gainModel()` exact-tick
+sequence asserts + wiring asserts at fixed timeline positions).

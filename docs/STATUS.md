@@ -65,8 +65,8 @@ counts in `docs/asset-formats/INVENTORY.md`, `docs/reverse-engineering/EXECUTABL
   colours); PT v2 .SMP streams are 756/756 MicroTalk (tag 9) with
   header-relative 0x88; .PBK = BIGF archives whose members each carry a
   20 B phrase record + `PT` v2 play track at offset 20 — all speech decodes
-  via codec-tag routing, 6,964/6,964 members measured 2026-11-01 (gain
-  calibration open; see asset-formats/AUDIO.md); 1998 PT v0 nests the
+  via codec-tag routing, 6,964/6,964 members measured 2026-11-01 (gain chain closed 2026-11-05 —
+  `COMMENTARY_WC98.md` §gain); 1998 PT v0 nests the
   standard meta tags (0x85 samples / 0x82 channels / 0x83 codec)
   inside 0x65 blocks (.ASF/.DCT audio) and 0xa2 meta blocks (.BNK
   SFX members, which also use a 1998 tag dialect 0x06/0x5a/0x91 —
@@ -100,9 +100,11 @@ counts in `docs/asset-formats/INVENTORY.md`, `docs/reverse-engineering/EXECUTABL
    7 unknown types) + FE art pipeline (SQF/MDL/palettes).
 2. Speech/commentary indexing (decoder itself is COMPLETE: 6,964/6,964 `.PBK`
    members decode via PT-tag routing, measured 2026-11-01): PHRS.INF index
-   semantics + event→phrase tables; decoded-speech gain calibration (levels
-   hot, occasional saturation); rate default when tag `0x84` is absent
+   semantics + event→phrase tables; rate default when tag `0x84` is absent
    (currently 22050 Hz — speech likely 8 kHz, unverified).
+Gain calibration resolved 2026-11-05 (`analysis/pass7/gain*.txt`, `COMMENTARY_WC98.md` §gain):
+EACSND linear vol chain (domain [0,0x7f], 16.16) saturating at 0x7f + byte curve table explains
+the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_commentary`).
 3. `.MDL` GEOM/SKEL (FE 3D titles), `.SQF` EULZ sprites, `.DCT` EA-TREM
    video frames.
 4. `.SCI/.TBI` AI scripts (unparsed in FIFA 99 too), GEN4TBLS AT/DF.
@@ -139,7 +141,8 @@ counts in `docs/asset-formats/INVENTORY.md`, `docs/reverse-engineering/EXECUTABL
   SpeechQueue -> PHRS segment fetch/decode -> OpenAL Mixer, null-mixer headless; gates
   `test_commentary`). Event->phrase pick = Hypothesis round-robin (FUN_0048d0dc decomposed 2026-11-05:
   gate DAT_0063241c + qfind with predicate callback; node-selection predicate still open);
-  FCLG cross-map probed negative (`analysis/pass7/fclg_probe.txt`); gain calibration + autovol ramp open.
+  FCLG cross-map probed negative (`analysis/pass7/fclg_probe.txt`); gain calibration + autovol ramp
+  closed 2026-11-05 (`analysis/pass7/gain*.txt`, COMMENTARY_WC98 §gain; `SpeechGain` model in the port).
 - Record queue plumbing confirmed (2026-11-05, `analysis/pass7/rec1.txt`, GhidraWc98Rec1.py on saved wc98
   project): `FUN_004c4800` = cmn_queue push (qbottom, line 0x162), `FUN_004c4890` = pop (0x1cb),
   `FUN_004c4ce0` = qfind with predicate callback (0x431); node +0x00 = next link, queue object fields

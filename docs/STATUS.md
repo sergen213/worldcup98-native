@@ -163,7 +163,8 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
   count/flags/head/tail. Phrase-record consumers of +0x04/+0x08 therefore are the linked-list slots
   written by push (`*prev->next = node`) - hypothesis "queue links" confirmed; pick `FUN_0048d0dc` is
   gate DAT_0063241c + qfind, drain `FUN_0048d1f8` pops all + per-item handler FUN_0048d0c0.
-- Front-end flow (FEFLOW05 nav) and in-match HUD landed; slot save/load wiring open.
+- Front-end flow (FEFLOW05 nav + team-select + fonts/lang) and in-match HUD landed; slot save/load
+  landed (`SLOT%.2d.SAV` codec, tournament state persisted per round, `--tournament-saveload` gate).
 - Gamepad FE nav landed (platform `Window.poll` padButtons/padNav + canonical `PadButton`, app FE loop
   South/Start confirm, d-pad/stick nav with 0.25 s repeat): CI gates cover mapping, throttle and virtual-pad
   poll (`test_gamepad`) plus pad-less dummy-driver startup (`gamepad_smoke_dummy`); real-hardware path is not

@@ -190,7 +190,32 @@ void gainModel() {
     g.ramp(10, 0); // steps clamped >= 1 (SNDspeechautovol)
     g.tick(); CHECK(g.applied() == 10);
 }
+// Duck/mix table model (DAT_0064b9dc, pass 7d): SNDmidiinit byte defaults + CC7 writes, key-on
+// scaling formula, percent-table getter FUN_004906a4 clamp + scene seam. analysis/pass7/duck2.txt, duck3.txt.
+void duckModel() {
+    app::ChannelMix m;
+    for (int c = 0; c < app::ChannelMix::kSlots; ++c) CHECK(m.volume(c) == 0x7F); // full-volume default bytes
+    CHECK(app::ChannelMix::scaled(0x40, 0x40) == 32 && app::ChannelMix::scaled(0x7f, 100) == 100);
+    m.setVolume(3, 64); // CC7 write: tbl[chan][+1] = data byte
+    CHECK(m.volume(3) == 64 && m.scaledFor(3, 100) == 50 && m.scaledFor(4, 100) == 100); // 100*64/127 int div; other chan untouched
+    m.setVolume(3, 0x1FF); // MIDI data byte masked & 0x7f (CC handler stores the raw byte)
+    CHECK(m.volume(3) == 0x7F && m.scaledFor(3, 65) == 65);
+    m.setVolume(3, 0);
+    CHECK(m.scaledFor(3, 100) == 0); // full duck = silence
+    m.reset();
+    CHECK(m.volume(3) == 0x7F); // SNDseqstop default restore
+    // Percent table FUN_004906a4: pct*0x7f/100, clamp >= 1, NO upper clamp (original has none).
+    CHECK(app::Commentary::percentToVol(100) == 0x7F && app::Commentary::percentToVol(50) == 63);
+    CHECK(app::Commentary::percentToVol(0) == 1 && app::Commentary::percentToVol(-5) == 1);
+    // Scene seam (site 0x48fcb2): percent -> vol, then autovol ramp toward the scene level.
+    app::Commentary c;
+    c.setScenePercent(50);
+    CHECK(c.volume() == 63 && c.masterGain() == 1.f); // ramp is per-tick (state cb), not immediate
+    c.pump();                                         // one pump tick advances cur toward the scene level
+    CHECK(c.masterGain() < 1.f && c.masterGain() > 0.f);
+}
 // --- tree gate: real PHRS.PBK selection + decode (skipping when the tree is absent) ---
+
 void original() {
     const auto root = treeDirOrSkip();
     app::Commentary c; // null mixer keeps the gate headless on CI runners with audio hardware
@@ -217,6 +242,7 @@ void original() {
 int main() {
     synthetic();
     original();
+    duckModel();
     gainModel();
     std::puts("test_commentary OK");
     return 0;

@@ -62,6 +62,28 @@ private:
     std::int32_t cur_ = kMaxVol << 16, target_ = kMaxVol << 16, delta_ = 0;
 };
 
+// EACSND MIDI module channel state table DAT_0064b9dc (stride 4 bytes, range 0x64b9dc..0x64bddc =
+// 64 slots: 16 sequence tracks x 16 MIDI channels; init loop in SNDmidiinit FUN_004e41d4, reset
+// loop in SNDseqstop FUN_004e48d0). Per channel: +0 CC10 expression (default 0x40), +1 CC7 volume
+// (default 0x7f full), +2 pitch-bend merge byte (default 0x40 center), +3 program (default 0xff).
+// The MIDI timer callback LAB_004e3bd4 (registered at DAT_006597cc by SNDmidiinit; loops the 16
+// sequence tracks @DAT_0064bee8 per tick) consumes the event stream: key-on voice vol =
+// velocity * cc7 / 0x7f, and a CC7 write stores tbl[chan].vol then re-applies SNDvol (FUN_0052c71c)
+// to every active voice on that channel — the "channel duck/mix table" of the gain section.
+// Evidence: analysis/pass7/duck2.txt + duck3.txt; docs/reverse-engineering/COMMENTARY_WC98.md §pass 7d.
+struct ChannelMix {
+    struct Chan { std::uint8_t expr = 0x40, vol = 0x7F, bend = 0x40, prog = 0xFF; }; // SNDmidiinit defaults
+    static constexpr int kSlots = 64; // DAT_0064b9dc..0x64bddc stride-4 window
+
+    void reset() { for (auto& c : tbl_) c = Chan{}; } // SNDmidiinit init + SNDseqstop reset loops
+    std::uint8_t volume(int ch) const { return tbl_[std::size_t(ch & 63)].vol; }
+    void setVolume(int ch, int byteVal) { tbl_[std::size_t(ch & 63)].vol = std::uint8_t(byteVal & 0x7f); } // CC7 handler: data byte masked
+    [[nodiscard]] static constexpr int scaled(int chVol, int voiceVol) { return voiceVol * chVol / 0x7f; } // key-on formula (int div)
+    [[nodiscard]] int scaledFor(int ch, int voiceVol) const { return scaled(volume(ch), voiceVol); }
+    private:
+        std::array<Chan, kSlots> tbl_{};
+};
+
 class Commentary {
 public:
     explicit Commentary(audio::Mixer* mixer = nullptr);
@@ -87,6 +109,19 @@ public:
     // Ramp tick count toward the scene level: the autovol step argument at 0x48fcb7 is runtime
     // data (undecomposed band); ponytail: constant stand-in, replace when measured.
     static constexpr int kRampTicks = 5;
+
+    // Percent-table API (DAT_00632778): FUN_004906a4 = pct * 0x7f / 100, clamp >= 1 (NO upper clamp;
+    // setter FUN_0049067c writes DAT_00632778[idx] + fires the per-index notify cb at DAT_004904b0[idx*4]).
+    // Scene seam: game scene handlers (FUN_0046b074/0x46b130/...) convert percent -> vol and feed the
+    // autovol ramp (site 0x48fcb2). Exact default percents are runtime args = Unknown (pass 7d).
+    static constexpr int percentToVol(int pct) { const int v = pct * SpeechGain::kMaxVol / 100; return v < 1 ? 1 : v; }
+    void setScenePercent(int pct) { volume_ = percentToVol(pct); gain_.ramp(volume_, kRampTicks); }
+
+    // Channel duck/mix table (ChannelMix above). Deviation note: the original table scales MIDI music
+    // voices; this port has no MIDI backend, so Commentary::pump applies scaledFor() to live speech
+    // slots per frame (SNDvol-per-event semantics), default vol 0x7f = identity.
+    ChannelMix& mix() { return mix_; }
+    const ChannelMix& mix() const { return mix_; }
 
     // SpeechQueue pump = engine FUN_0048f920 per-frame call (1 frame = 1/50 s, camera cadence) +
     // speech state-cb tick + per-voice gain apply. Defined in commentary.cpp.
@@ -114,6 +149,7 @@ private:
     std::size_t head_ = 0;                               // ready-list head: picks consume entries (FUN_004c4a70 qremove)
     std::array<audio::SoundId, audio::SpeechQueue::kSlots> sounds_{}; // slot -> mixer voice (0 = silent/done)
     std::array<float, audio::SpeechQueue::kSlots> slotGain_{}; // per-slot class gain (Hypothesis)
+    ChannelMix mix_;                                           // DAT_0064b9dc model (duck/mix table)
     SpeechGain gain_;                                          // speech master ramp
     int volume_ = SpeechGain::kMaxVol;                         // SNDspeechinit vol (percent table FUN_004906a4, values runtime)
     std::unordered_map<std::uint32_t, std::vector<std::uint8_t>> phraseCache_; // lazy decompressed phrase members

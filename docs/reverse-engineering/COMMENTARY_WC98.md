@@ -95,10 +95,11 @@ pure-JPype runs on the saved wc98 project). Closes STATUS "gain calibration + au
   target, which the overshoot-clamp closes on the next tick — reproduced in the port.
 - **Per-voice ramp**: `SNDautovol` variant FUN_004e2b30 sets slot target (+0x1c) + per-tick delta; plain
   `SNDvol` (FUN_0052c660) sets current with **delta = 0** (immediate).
-- **Channel duck/mix table**: applier loops at 0x4e3c7f..0x4e3cc2 and 0x4e40b6..0x4e40e1 (undecomposed
-  band) recompute per active channel `vol = mixerTable[channel] * (voiceVol16 >> 16) / 0x7f` →
-  `SNDvol(handle, vol)` each frame — a byte scale table at DAT_0064b9dc[] implementing bus ducking
-  (music/CD scaled against scene priority while speech plays).
+- **Channel duck/mix table**: byte scale table `DAT_0064b9dc[]` (stride 4, window
+  0x64b9dc..0x64bddc) implements bus ducking — key-on voice vol = velocity * tbl[chan].vol / 0x7f and
+  every CC7 write re-applies `SNDvol(handle, vol)` to all active voices of that channel. The applier
+  loops at 0x4e3c7f..0x4e3cc2 / 0x4e40b6..0x4e40e1 sit in the MIDI timer callback; model + full
+  semantics in §pass 7d (band was undecomposed when this section was written).
 - **Hardware mix** FUN_00544bd0: output byte = product of the volume chain normalized by **0x1f417f
   (≈ 0x7f³)**; an alternative branch indexes a **byte curve/compressor table**
   (`tbl[byte(+0x26)] * factor / 0x7f`, then `out = tbl2[factor]`). Linear-domain products saturate at
@@ -110,6 +111,7 @@ pure-JPype runs on the saved wc98 project). Closes STATUS "gain calibration + au
 ### Hypothesis (marked as such in code)
 - Percent-table DAT_00632778 scene defaults are built at init by FUN_004c46a0 from string tables →
   exact default percentages need runtime measurement; port default = full-open vol 0x7f.
+  - **Disproved pass 7d**: `FUN_004c46a0` decompiles to queue init (`s_qinit`, cmn_queue.c line 173) — no string tables, no percent writes. Scene defaults are written at runtime by scene handlers through setter FUN_0049067c; exact percentages remain Unknown (runtime args).
 - Port ramp tick count `kRampTicks = 5` (original steps argument unmeasured) — ponytail-marked in
   `app/commentary.hpp`.
 
@@ -159,3 +161,46 @@ callback + record helpers). Scripts `ghidra-scripts/GhidraWc98Pick{1,2,3,4}.py`.
 ### Gate
 `test_commentary`: consumption asserts — picks step 0→2→3→4→5 (empty phrase skipped), the 6th event
 is silent (`sentencesStarted == 5`, pool exhausted); gain seam re-verified on a fresh instance.
+
+## Duck/mix table + percent-table scene defaults (pass 7d, 2026-11-06)
+Evidence: `analysis/pass7/duck.txt` (percent getters + FUN_004c46a0 decompiles), `duck2.txt`
+(SNDmidiinit/SNDseqstop + table-window byte scan), `duck3.txt` (function created at LAB_004e3bd4
+after forced disassembly: applier decompiled; percent setter callers). Scripts
+`ghidra-scripts/GhidraWc98Duck{1,2,3}.py`.
+
+### Confirmed
+- **The channel table is the MIDI module** (not speech): `DAT_0064b9dc` stride 4 x 64 slots =
+  16 sequence tracks x 16 channels. Per-channel bytes: +0 CC10 expression, +1 CC7 volume,
+  +2 pitch-bend merge byte, +3 program. Defaults {0x40, 0x7f, 0x40, 0xff} set by the init loop of
+  **SNDmidiinit FUN_004e41d4** and restored per sequence channel by the reset loop of
+  **SNDseqstop FUN_004e48d0**.
+- **Applier = MIDI timer callback `LAB_004e3bd4`** (registered at DAT_006597cc by SNDmidiinit; band
+  0x4e3bd4..0x4e41d4 — both §gain applier loops are inside this function, created in-pass after
+  forcing disassembly): iterates the 16 sequence tracks per tick (@DAT_0064bee8), consuming each
+  MIDI event stream:
+  - key-on (status 0x90) → voice vol = velocity * tbl[chan].vol / 0x7f (int div), voice via FUN_004e2d74;
+  - **CC7 write** (~0x4e3d20, loop at 0x4e40b6): `tbl[chan][+1] = data`, then every active voice on
+    that channel (voice table DAT_0064bddc..0x64be9c stride 8, handle @+4) gets **SNDvol FUN_0052c71c**
+    — the per-event bus ducking;
+  - CC10 → tbl[chan][+0] + FUN_0052f1f0 per voice; pitch bend (0xE0) → tbl[chan][+2] = (d0 + d1*0x80)>>7;
+    program change (0xC0) → tbl[chan][+3]; sequence end (F0 2F) triggers the FUN_004e48d0 default restore.
+- **Percent-table API**: setter `FUN_0049067c` = `DAT_00632778[idx] = param2`, then fires a per-index
+  notify callback stored at `DAT_004904b0[idx*4]` (null = none). Getter FUN_004906a4 has **no upper
+  clamp** (only the ≥1 lower clamp); FUN_004906d0 two-stage scaling unchanged (§gain).
+- **Scene defaults are written by scene handlers, not an init builder**: FUN_0046b130 writes five
+  consecutive percent entries; FUN_0046b074 / FUN_0046b230 / FUN_0046b2b0 (menu/scene transitions)
+  write single entries then call SNDspeech* helpers (FUN_0048ed9c / FUN_0048ed24). The §gain
+  init-builder hypothesis is **disproved** — `FUN_004c46a0` = queue init (`s_qinit`, cmn_queue.c
+  line 173), no string tables, no percent writes.
+
+### Hypothesis / Unknown
+- Exact scene default percentages = runtime arguments at the setter call sites (Watcom callee-clean
+  drops them in Ghidra display) — stays **Unknown**; port keeps full-open defaults as before.
+- Port model (`ChannelMix`, app/commentary.hpp): byte table + `scaled()` key-on formula;
+  Commentary::pump applies it per frame to live speech voices (SNDvol-per-event semantics).
+  Deviation: the original scales MIDI music voices; this port has no MIDI backend — speech slots
+  occupy the channel window and default vol 0x7f = identity (no behavior change on a default table).
+
+### Gate
+`test_commentary duckModel()`: exact byte defaults for all 64 slots, CC7 masked writes + per-channel
+isolation, int-div scaling (100*64/127=50), full-duck silence, percentToVol clamp + scene-seam ramp.

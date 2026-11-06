@@ -49,3 +49,16 @@ lines for tests/CMakeLists.txt; failures print seed + frame.
   maps to that. Kick forcing recipe = Player_executeKick + animId 0x10/contactFrame -1 override +
   Kick_arm + Player_onAnimContact (synthetic worlds have no clip contact frames); kickoff via forced
   `Match_dispatchEvent(0xb)` — every site cites this doc in-code, natural trigger flips one line.
+
+### Extra time + golden goal (2026-11-06, scenarios 9-10)
+- Scenarios `extra-time` / `golden-goal` added; seed 0x2E7A pinned; no simulation change needed — the
+  native flow is complete: with `opt.tieBreak != 0` (DAT_0065EEEC) a tied FT runs
+  `Match_decidePeriodOutcome` -> `requestPeriodEnd(1, 0xe)` and SimRunner starts periods[2] = {type 2,
+  half\*20} (period table "normal" mode, `Match_buildPeriodTable` 0x454888); a goal in periodType 2 goes
+  `Match_onEvent` case 6 -> `Match_endPeriodSuddenDeath` — WC98 knockout extra time IS golden goal
+  (first goal ends the match; periods[3] never starts, MatchEnd endTeam = scoring side). The
+  gameMode-6/periodType-4 `goldenGoalTarget` check (DAT_0065EEF0) is the separate single-goal-race mode.
+- Measured: `opt.halfLengthMinutes = 1` keeps runtime comparable; extra-time entry PeriodStart(a=2,b=2)
+  at sim-tick ~4008 with score 0-0, preceded by PeriodEnd(a=0xe,b=1); golden-goal Goal event (team 1,
+  player 13, forced scenario-3 shot recipe in ET open play) at tick ~4176, `finished()` within the seq-9
+  full-time sequence (<400 ticks), score 0-1 endTeam=1. Forcing = same dispatch-0xb kickoff + kick recipe.

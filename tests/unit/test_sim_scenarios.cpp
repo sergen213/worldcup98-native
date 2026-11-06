@@ -490,6 +490,103 @@ void scenarioShootout() {
     ck(w.match.so.goals[0] + w.match.so.goals[1] >= 2, "so.goals not incremented by the kicks");
 }
 
+// ---------------------------------------------------------------------------------------------
+// 9. Extra time: a knockout fixture (opt.tieBreak != 0, DAT_0065EEEC) ends regulation tied ->
+// MatchClock_update at clock expiry runs Match_decidePeriodOutcome (rules.cpp 0x46FBDC): with
+// scores level and winTarget unset, requestPeriodEnd(whistle 1, nextPhase 0xe) starts the period
+// table entry periods[2] = {type 2 extra time, half*20} built by Match_buildPeriodTable (0x454888)
+// "normal" mode. Half length is shortened to one game minute per period so the full regulation
+// drive stays in the ~0.25 s gate budget. Seed-pinned: no goal through 90' (a regulation lead ends
+// the match at FT via Match_decideByTargets, nextPhase 0x11, and PeriodStart index 2 is not seen).
+void scenarioExtraTime() {
+    gName = "extra-time";
+    MatchData md = makeMd();
+    Options opt{};
+    opt.tieBreak = 1;
+    opt.halfLengthMinutes = 1;
+    SimRunner r(md, opt, kSeed);
+    auto& w = r.world();
+    std::vector<Rec> all;
+    int forceIn = 0, prevPhase = -1;
+    bool etSeen = false;
+    for (int i = 1; i <= 4500 && !r.finished() && !etSeen; ++i) {
+        auto ev = step(r);
+        all.insert(all.end(), ev.begin(), ev.end());
+        for (auto& e : ev) if (e.type == EventType::PeriodStart && e.a == 2 && e.b == 2) etSeen = true;
+        if (w.match.phase == 0 && prevPhase != 0) forceIn = 154;
+        prevPhase = w.match.phase;
+        if (forceIn > 0 && --forceIn == 0 && w.match.phase == 0) {
+            Match_dispatchEvent(w, 0xb, w.match.phaseTeam); // forced in-ball (see scenario 2 note)
+            forceIn = 0;
+        }
+    }
+    ck(etSeen, "no PeriodStart index 2 type 2 (extra-time entry at tied FT)");
+    ck(w.match.score[0] == w.match.score[1], "FT score not tied at extra-time entry");
+    ck(w.match.periodType == 2 && w.match.periodIndex == 2, "periodType/periodIndex not 2 in extra time");
+    bool endOfSecond = false;
+    for (auto& e : all) if (e.type == EventType::PeriodEnd && e.a == 0xe && e.b == 1) endOfSecond = true;
+    ck(endOfSecond, "no PeriodEnd(nextPhase 0xe, type 1) for the tied second half");
+    ck(r.periodIndex() == 3, "periodIndex not 3 (third period started) in extra time");
+}
+
+// ---------------------------------------------------------------------------------------------
+// 10. Golden goal: first goal in extra time ends the match immediately - Match_onEvent case 6
+// (rules.cpp 0x452A58): m.periodType == 2 -> Match_endPeriodSuddenDeath (FUN_0046FD94), i.e. WC98's
+// knockout extra time is sudden death; periods[3] never starts and no period-4 goldenGoalTarget
+// check (DAT_0065EEF0, gameMode 6 table) is needed on this path. Shot forcing = scenario 3 recipe.
+void scenarioGoldenGoal() {
+    gName = "golden-goal";
+    MatchData md = makeMd();
+    Options opt{};
+    opt.tieBreak = 1;
+    opt.halfLengthMinutes = 1;
+    SimRunner r(md, opt, kSeed);
+    auto& w = r.world();
+    std::vector<Rec> all;
+    int forceIn = 0, prevPhase = -1, shotTick = 0;
+    bool etSeen = false, fired = false, sawGoal = false;
+    for (int i = 1; i <= 4500 && !r.finished() && !sawGoal; ++i) {
+        auto ev = step(r);
+        all.insert(all.end(), ev.begin(), ev.end());
+        for (auto& e : ev) if (e.type == EventType::PeriodStart && e.a == 2 && e.b == 2) etSeen = true;
+        if (w.match.phase == 0 && prevPhase != 0) forceIn = 154;
+        prevPhase = w.match.phase;
+        if (forceIn > 0 && --forceIn == 0 && w.match.phase == 0) {
+            Match_dispatchEvent(w, 0xb, w.match.phaseTeam); // forced in-ball (see scenario 2 note)
+            if (etSeen && !fired) shotTick = gTick + 4;      // strike once extra-time play is live
+        }
+        if (shotTick && gTick == shotTick) {
+            shotTick = 0; fired = true;
+            const int sh = 13; // team-1 field player attacks the -z goal (ET period sideFlag 0)
+            setPos(w, sh, -60, -2450);
+            Ball_placeAt(w, {-60, 2, -2460});
+            w.ball.possessor = sh;
+            w.ball.dribbler = sh;
+            w.ball.lastToucher = sh;
+            w.ball.flags |= 0x20;
+            setPos(w, 12, 0, 1500); // keeper off its line so the net is open (scenario 3 recipe)
+            forceKick(w, sh, 14, 2); // code 14: driven shot (kind 4), set-piece aim at goal
+        }
+        if (has(ev, EventType::Goal)) sawGoal = true;
+    }
+    ck(etSeen, "extra time not reached");
+    ck(fired, "golden-goal shot never fired in extra time");
+    const Rec* goal = nullptr;
+    for (auto& e : all) if (e.type == EventType::Goal) { goal = &e; break; }
+    ck(goal != nullptr, "no Goal event in extra time");
+    ck(goal->team == 1 && goal->player == 13, "golden goal credited to wrong team/scorer");
+    for (auto& e : all)
+        ck(!(e.type == EventType::PeriodStart && e.a == 3), "second extra-time half started after the golden goal");
+    int guard = 0; // seq 9 runs the full-time sequence: tick out to finished()
+    while (!r.finished() && ++guard < 400) {
+        auto ev = step(r);
+        all.insert(all.end(), ev.begin(), ev.end());
+    }
+    ck(r.finished(), "match not finished right after the golden goal");
+    ck(has(all, EventType::MatchEnd), "no MatchEnd event after the golden goal");
+    ck(w.match.endTeam == 1, "endTeam (winner) is not the scoring team");
+    ck(w.match.score[1] == w.match.score[0] + 1 && w.match.score[0] == 0, "golden goal did not win it 1-0");
+}
 } // namespace
 
 int main() {
@@ -501,5 +598,7 @@ int main() {
     scenarioFoulCard();
     scenarioPeriods();
     scenarioShootout();
+    scenarioExtraTime();
+    scenarioGoldenGoal();
     return 0;
 }

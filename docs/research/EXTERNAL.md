@@ -102,7 +102,7 @@ Notation: [S#] = source URL (see §Sources). Claims marked (RTWC98) are facts ab
 2. **WC98 multiplayer truth**: is there ANY menu for network/modem/serial? PCGW table shows no native LAN/online; categories say local + self-hosting. Resolve by: running retail ISO (via PCGW install workaround) and checking menus, or GameFAQs WC98 FAQ (not yet located), or checking FIFAWC.EXE WSOCK32 call sites (internal task, not web).
 3. **fifawc98_patch.zip contents** RESOLVED 2026-11-06 — downloaded + diffed; see "Community patches" VERIFIED entry (reg keys, SDB shims SingleProcAffinity/GlobalMemoryStatusLie/EmulateDirectDrawSync, nGlide voodooa replacement). [S8]
 4. **Ultimate Patch contents** — moddb direct download is behind a Cloudflare JS challenge (curl hits `cdn-cgi/challenge-platform`, 2026-11-06); md5 `5d878dc7…` on record; remains black box until fetched with a browser. [S10]
-5. **WC98 official EA patch**: none documented on PCGW WC98 page; confirm whether an official 1.x patch exists (RTWC98 had 1.30/1.40 [S9]).
+5. **WC98 official EA patch**: RESOLVED (negative) 2026-11-06 — no official EA patch exists; ModDB WC98-family file list contains only community artifacts (Ultimate Patch, 3rd-party loader), PCGW documents none. ISO `FIFAWC.EXE` build stamp 1998-04-13 = final gold master. [S2][S10]
 6. **Exact FSH/FCDB/DBI binary layouts for WC98**: fifa98edit targets RTWC98; validate field offsets (esp. hair/face/skin, kits, formations) against WC98 FCDB; TMMNG.DB tactics encoding incompletely understood even for RTWC98 [S17][S18].
 7. **PBK/BNK/EAM format spec**: no public spec found; Reddit + adams06 tool are the only known material. [S31][S13]
 8. **Wolstenholme Classics audio assets**: on which files, same PBK path? unverified.

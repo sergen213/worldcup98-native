@@ -47,7 +47,10 @@ the compositor lives in `tools/render-demo/main.cpp` (`--lay <spec> [--tree <dir
 | `LAYOUTS.BIG@FEFLOW11.LAY` | → 24 shapes + 8 text rows (`--fe-team`, gate `fe_render_tournament`) | ZWCUP team-select pick grid — see section below |
 
 ## Open items
-- Alpha/blend state per element type (hidden flags drive `shown()` only); IGLAY in-game HUD needs the match scene behind it (M5).
+- Alpha/blend state per element type RESOLVED 2026-11-07 (see section below): no per-element GPU
+  blend mode exists — colour state is palette-index switching (`normalColour`/`hiliteColour`) and
+  art-state keys (`HILITEDSHAPEID`); hidden flags drive `shown()` only. IGLAY in-game HUD needs
+  the match scene behind it (M5).
 - Mouse cursor art RESOLVED 2026-11-06 (`presentation::loadFeCursor` + app overlay after each FE composite; gates: `test_presentation` tree checks, `fe_render_tournament` FAIL regex `cursors=0`). The engine hard-codes `.\fe\pack\maus.pak` at FIFAWC.EXE file offset 1451894 (bytes: `$AVER$FEPCV2-0-3      \0\0\0.\fe\pack\maus.pak\0\0.\\user\\options.sav\0\0VPATH\0FNAME\0SHAPEID\0BOXWIDTH\0`). No `curs` string exists in FIFAWC.EXE; no `.LAY` references maus — the cursor is drawn by engine code with LAY-style object keys (VPATH/FNAME/SHAPEID adjacent strings). MAUS.PAK is RefPack-wrapped and decompresses byte-identical to FE/MAUS.FSH; SHPI has 2 entries, both tag `curs`: entry0 off=32 w=28 h=26 (the arrow), entry1 off=1880 w=21 h=20. Selection among the two `curs` entries is Hypothesis: draw entry 0; hotspot from FshBitmap centerX/centerY (measured 0,0).
 - Shipped gap: CONTROL1.LAY object `ls4` (`fname=redleft.fsh, sname=mous`) references a shape that does not exist on the shipped disc — FE/PACK/FEFLOW09/REDLEFT.PAK carries keyb/joys/gpad/grav only. The original silently skips it; NOT a loader bug (asserted in `test_presentation`).
 - Gate: ctest `render_demo_lay` runs FEFLOW05 with `--min-shapes 8`, skipped without a tree;
@@ -80,3 +83,39 @@ Port: `app/fe_flow.cpp drawTeamsGrid` composites the LAY (`presentation::composi
 row flags + FCDB STR0 names at the LAY's own slot positions, scrollbar thumb page-proportional in
 `sbar`. Gate: ctest `fe_render_tournament` (--fe-team; evidence line `FEFLOW11: shapes=24 texts=8`,
 FAIL regex on zero counts). Nav model unchanged (`TeamListNav` pages of 8 — matches the LAY's 8 slots).
+
+## Alpha/blend & colour state per element type — RESOLVED (2026-11-07, pass 8)
+
+**There is no per-element GPU blend mode.** The FE UI pass composites all LAY elements as alpha-blended
+sprites; the only "blend" inputs are (a) the flat-panel ARGB key's alpha byte (`FILLCOLOUR`/`COLOUR`
+`0x80…` = translucent panel, already implemented), (b) FSH palette-index-0 transparency. No widget-class
+key table in the 80-key vocabulary carries a blend/filter mode — full per-class key dumps:
+`analysis/pass8/layalpha_vocab.txt` (DGROUP blocks from 0x5643cc; button class lists
+`RELEASEDSHAPEID, PUSHEDSHAPEID, HILITEDSHAPEID, DISABLEDSHAPEID, TEXTCOLOUR, NORMALCOLOUR,
+HILITECOLOUR, MORPHER*, DELAYTICKS`; text/list classes list `TEXTCOLOUR, NORMALCOLOUR, HILITECOLOUR,
+DISABLECOLOUR, FONTID, TEXTBACKCOLOUR, TEXTBACKSHADOW`).
+
+**Colour state = global-palette index switching per widget state.** The key-compare parse chain in the
+widget class constructor region disassembles 1:1 (`analysis/pass8/layalpha_disasm.txt`): at `0x46e0d9`
+the compare against `"NORMALCOLOUR"` (string 0x5644ac) calls the int reader and stores into widget
+field **+0x68**; the next compare `"HILITECOLOUR"` (0x5644bc, `0x46e10b`) stores into **+0x6C** — both
+dword global-FE-palette indices. List class additionally ships `DISABLECOLOUR` in its key table.
+The listbox draw routine `FUN_00477f54` @0x477f54 (`analysis/pass8/layalpha_widget.txt`) selects the
+draw path per row: plain rows take the normal text path; the current/selected row (field compare vs
++0x3e/+0x40) takes the hilite text path (`FUN_0046a0f0`); a row whose u16 in the table at `[obj+0x68]
+++row*2` has bit 0x8000 is drawn via the disabled path; widget field +0x18 bit 0x80 = widget-level
+"no hilite". Button draw handlers `FUN_0046e2a6`/`FUN_0046e2b5` @0x46e2a6 branch on state byte +0x79
+(1 normal, 2/3/10 pressed/hilite animation cases in the switch at 0x46e310) and +0x18 bit 4 (pressed).
+
+**Art-state keys** select a different shape per state: `RELEASED/PUSHED/HILITED/DISABLEDSHAPEID`
+(button key table strings 0x564438..0x564468; parsed into widget fields — same compare-chain form).
+The screen's initial highlight target is `[screen] HILITEPANE` (parsed at layout.cpp:224; runtime
+state setter `FUN_0044e178`).
+
+**Port:** `presentation::composite` now honours the initial state — for the object named by
+`screen.hilitePane` it prefers `HILITEDSHAPEID` as the shape tag and draws its label with
+`HILITECOLOUR` (falling back to `NORMALCOLOUR`, then `TEXTCOLOUR` first index); every other pane uses
+`NORMALCOLOUR`. Runtime state changes (focus messages) remain app-layer work. Gate: ctest
+`test_presentation` tree checks build a synthetic screen with `HILITEPANE=TXT` +
+`hilitecolour=2 normalcolour=1` and assert the glyph-quad rgba equals `pal[2]` vs `pal[1]`
+deterministically (NullRenderer, real FFN/FCENG/PAL.PAK on WC98_TREE).

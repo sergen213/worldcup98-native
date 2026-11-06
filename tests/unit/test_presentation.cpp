@@ -185,7 +185,53 @@ void treeChecks() {
     for (const char* t : {"keyb", "joys", "gpad", "grav"})
         CHECK(rlTags.find(std::string(t) + ",") != std::string::npos);
 
-    std::printf("presentation tree checks done (%zu images for PK026A@30)\n", imgs.size());
+    // FE text colour-state gate (LAY_COMPOSITOR_NOTES RESOLVED): the hilite pane draws its label
+    // with HILITECOLOUR, every other pane with NORMALCOLOUR. Evidence: parse chain 0x46e0d9/0x46e10b
+    // maps NORMALCOLOUR/HILITECOLOUR to widget fields +0x68/+0x6C (global-palette indices), and the
+    // listbox draw FUN_00477f54 @0x477f54 takes the hilite text path only for the selected row.
+    struct NullRenderer : render::Renderer {
+        wc98::render::TextureId createTexture(const wc98::render::Image&, wc98::render::Wrap, std::string_view) override { return ++n; }
+        void destroyTexture(wc98::render::TextureId) override {}
+        wc98::render::MeshId createMesh(const wc98::render::MeshData&, std::string_view) override { return 0; }
+        void destroyMesh(wc98::render::MeshId) override {}
+        void setSettings(const wc98::render::RenderSettings&) override {}
+        const wc98::render::RenderSettings& settings() const override { static wc98::render::RenderSettings s; return s; }
+        bool present(const wc98::render::Frame&) override { return false; }
+        wc98::render::Image renderOffscreen(const wc98::render::Frame&, std::uint32_t, std::uint32_t) override { return {}; }
+        std::uint32_t validationMessageCount() const override { return 0; }
+        std::string deviceName() const override { return "null"; }
+        wc98::render::TextureId n = 0;
+    } nullR;
+    {
+        wc98::presentation::FeText txt(nullR, tree);
+        CHECK(txt.ready());
+        // Pick the first FC string index with a non-empty label (deterministic on this tree).
+        int textId = -1;
+        for (int id = 1; id < 512 && textId < 0; ++id) {
+            formats::LayoutObject probe; probe.props["TEXTID"] = std::to_string(id);
+            if (!txt.label(probe).empty()) textId = id;
+        }
+        CHECK(textId > 0);
+        const auto mk = [&](const char* pane) {
+            const std::string lay = std::string("[screen]\nnumobjects=1\n") + (pane ? "HILITEPANE=TXT\n" : "") +
+                "[object 1]\nobjecttype=0\nobjectname=TXT\nxposition=10\nyposition=10\nwidth=12\nheight=12\n"
+                "vpath=.\\global\\\nfname=null.fsh\nshapeid=null\ntextid=" + std::to_string(textId) +
+                "\nfontid=4\nhilitecolour=2\nnormalcolour=1\n";
+            auto d = formats::LayoutDocument::parse(std::string_view(lay));
+            return formats::ScreenLayout::build("HLTEST", d, nullptr, nullptr);
+        };
+        wc98::presentation::ScreenArt art(nullR, tree, tree / "FE" / "INGAME");
+        const auto& pal = formats::globalPalette();
+        CHECK(pal.size() > 21);
+        const std::uint32_t wantN = render::packRgba(pal[1][0], pal[1][1], pal[1][2]);
+        const std::uint32_t wantH = render::packRgba(pal[2][0], pal[2][1], pal[2][2]);
+        render::SpriteBatch uiN, uiH;
+        CHECK(composite(mk(nullptr), uiN, art, &txt).texts > 0);
+        CHECK(composite(mk("TXT"), uiH, art, &txt).texts > 0);
+        const auto firstRgba = [](const render::SpriteBatch& u) { return u.vertices().empty() ? 0u : u.vertices()[0].rgba; };
+        CHECK(firstRgba(uiN) == wantN);   // plain pane -> NORMALCOLOUR index 1
+        CHECK(firstRgba(uiH) == wantH);   // hilitePane=TXT -> HILITECOLOUR index 2
+    }
 }
 } // namespace
 

@@ -196,7 +196,7 @@ namespace {
 // Draws one object's label through `txt`; returns the number of glyph quads emitted. Placement
 // keys measured in FEFLOW05.LAY: plain labels use TEXTX/YOFFSET + ALIGNMENT, list entries use
 // "TEXTXY=x,y,a" (a=3 centers within the box). Colour keys index the global FE palette.
-int drawLabel(const formats::LayoutObject& o, render::SpriteBatch& ui, const FeText& txt) {
+int drawLabel(const formats::LayoutObject& o, render::SpriteBatch& ui, const FeText& txt, bool hilited) {
     if (!txt.ready()) return 0;
     const std::string s = txt.label(o);
     if (s.empty()) return 0;
@@ -218,6 +218,11 @@ int drawLabel(const formats::LayoutObject& o, render::SpriteBatch& ui, const FeT
         const long n = std::strtol(tc->c_str(), &e, 10);
         if (e != tc->c_str()) cidx = int(n);
     }
+    // Highlight state (initial pane = [screen] HILITEPANE): the widget repaints its label with
+    // HILITECOLOUR. Parse evidence: 0x46e10b maps NORMALCOLOUR/HILITECOLOUR to widget fields
+    // +0x68/+0x6C (global-palette indices); listbox draw FUN_00477f54 @0x477f54 picks the hilite
+    // text path when the row is the selected one. Falls back to NORMALCOLOUR.
+    if (hilited) { if (const int h = o.intProp("HILITECOLOUR", -1); h >= 0) cidx = h; }
     if (cidx < 0) cidx = o.intProp("NORMALCOLOUR", -1);
     std::uint32_t rgba = render::packRgba(0xFF, 0xFF, 0xFF); // white fallback: palette not loaded
     const auto& pal = formats::globalPalette();
@@ -252,7 +257,12 @@ FeDrawStats composite(const formats::ScreenLayout& screen, render::SpriteBatch& 
     FeDrawStats st;
     for (const auto& o : screen.objects) {
         if (!o.shown()) { ++st.hidden; continue; }
+        // Initial highlight state of the screen ([screen] HILITEPANE, parsed at layout.cpp:224):
+        // that one pane starts hilited, drawing its label in HILITECOLOUR and its art in
+        // HILITEDSHAPEID (button class key table 0x564458; runtime state switch FUN_0044e178).
+        const bool hl = !screen.hilitePane.empty() && iequals(o.name, screen.hilitePane);
         const std::string* tag = nullptr;
+        if (hl) { if (const std::string* h = o.prop("HILITEDSHAPEID"); h && !h->empty() && !iequals(*h, "null")) tag = h; }
         for (std::string_view k : {"SHAPEID", "SNAME", "RELEASEDSHAPEID", "RELEASEDSHAPE", "NORMALSHAPEID", "NSHAPEID", "BARSHAPEID"})
             if (const std::string* v = o.prop(k); v && !v->empty() && !iequals(*v, "null")) { tag = v; break; }
         const fs::path fname{slashes(o.fname)};
@@ -276,7 +286,7 @@ FeDrawStats composite(const formats::ScreenLayout& screen, render::SpriteBatch& 
                 ++st.rects;
                 boxDrawn = true;
             }
-            const int t = text ? drawLabel(o, ui, *text) : 0;
+            const int t = text ? drawLabel(o, ui, *text, hl) : 0;
             st.texts += t;
             if (!boxDrawn && !t) ++st.noArt; // unresolvable label: keep the pre-text count exactly
             continue;
@@ -287,7 +297,7 @@ FeDrawStats composite(const formats::ScreenLayout& screen, render::SpriteBatch& 
         if (!sh.tex) { ++st.missing; continue; }
         ui.draw(sh.tex, {float(o.x), float(o.y), float(sh.w), float(sh.h)});
         ++st.shapes;
-        if (text) st.texts += drawLabel(o, ui, *text); // list/button entries carry their label on the art
+        if (text) st.texts += drawLabel(o, ui, *text, hl); // list/button entries carry their label on the art
     }
     return st;
 }

@@ -7,6 +7,13 @@ project goals.
 
 ## [Unreleased]
 
+### Added
+- Team-select is the authentic `FEFLOW11.LAY` pick grid (`app/fe_flow.cpp drawTeamsGrid`):
+  compositor composite of map background, flags, group cells + dynamic ZWCUP pool rows
+  (F<id>.FSH shape `f000`, FCDB names, scrollbar thumb in the LAY's `sbar` track); scene registry
+  evidence `analysis/pass7/grid{5,6,7}.txt`, doc LAY_COMPOSITOR_NOTES.md; gate
+  `fe_render_tournament` (--fe-team) + existing fe_nav/teamselect gates unchanged.
+
 ### Changed
 - Commentary pick model is now the faithful consume-on-use predicate, not round-robin
   (`app/commentary.cpp`): pass-7c RE closed `FUN_0048d0dc` = qfind over the class-keyed ready list

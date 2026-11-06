@@ -33,23 +33,28 @@ public:
     // Composites the current screen into `ui` and returns draw stats (shapes > 0 = real art drew).
     presentation::FeDrawStats drawCurrent(render::SpriteBatch& ui) const;
     [[nodiscard]] const std::string& lastError() const { return lastError_; } // menu load failure reason ("" = ok)
+    // Active screen layout name for the gate evidence line ("FEFLOW05" menu / "FEFLOW11" team-select).
+    [[nodiscard]] const char* screenName() const { return teamScreen_ ? "FEFLOW11" : "FEFLOW05"; }
 
     void move(int delta);              // arrow keys: cycle menu selection
     [[nodiscard]] int selected() const { return sel_; }
-    // Team-select screen (FE usability slice): Enter on Tournament opens the ZWCUP pool list
-    // (40 FCDB STR0 names, pages of 8); arrows/pad move the cursor, Enter confirms a pick,
-    // Esc returns. ponytail: flat text panel; FEFLOW map-grid fidelity art is a later slice.
+    // Team-select screen = the authentic FEFLOW11.LAY grid (LAY_COMPOSITOR_NOTES.md): Enter on
+    // Tournament opens it; arrows/pad move the cursor through the ZWCUP pool (pages of 8 rows,
+    // matching the LAY's 8 row slots), Enter confirms a pick, Esc returns.
     bool enter(); // Enter/confirm; true = shell launches selected entry (Tournament uses pickedTeam())
     void back();  // Esc: team-select -> main menu (no-op on the menu)
     [[nodiscard]] int pickedTeam() const { return pick_; } // confirmed FCDB id (-1 = no pick)
 
 private:
     void loadTeams(); // ZWCUP.RES pool + FCDB STR0 names (non-throwing; empty = no team-select)
+    presentation::FeDrawStats drawTeamsGrid(render::SpriteBatch& ui) const; // FEFLOW11 composite + dynamic rows
     presentation::FeDrawStats drawTeams(render::SpriteBatch& ui) const; // team-select frame (flat panel + FFN rows)
     std::filesystem::path tree_;
     presentation::ScreenArt art_; // texture handles cached per FSH member
     std::string lastError_; // set when LAYOUTS.BIG@FEFLOW05.LAY cannot be loaded
     formats::ScreenLayout screen_;     // main-menu layout (FEFLOW05)
+    formats::ScreenLayout gridScreen_;     // team-select layout (FEFLOW11.LAY, world-cup pick grid)
+    bool haveGrid_ = false;
     bool haveScreen_ = false;
     int sel_ = 0;
     std::unique_ptr<presentation::FeText> text_; // FFN face + FC*.BIN strings, loaded once (fe_screen.hpp)

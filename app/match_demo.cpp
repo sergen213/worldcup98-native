@@ -311,7 +311,7 @@ int runMatchDemo(int argc, char** argv) {
             }
         }
         hudLine(prevPeriod); // final half summary
-        SDL_Quit();
+        SDL_QuitSubSystem(SDL_INIT_EVENTS | SDL_INIT_GAMEPAD); // scoped: safe when driven from the FE shell (keeps video alive)
         std::cout << "commentary: " << commentary.sentencesStarted() << " sentence(s), "
                   << commentary.decodedSegments() << " segment decode(s)\n";
 
@@ -326,4 +326,3 @@ int runMatchDemo(int argc, char** argv) {
     return 0;
 }
 
-int main(int argc, char** argv) { return runMatchDemo(argc, argv); }

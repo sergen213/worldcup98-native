@@ -124,6 +124,11 @@ if(DEFINED WC98_TREE)
     set_tests_properties(fe_nav_tournament PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}")
     add_test(NAME fe_nav_exhibition COMMAND wc98-native --fe-smoke 1 --fe-nav exhibition --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/fe)
     set_tests_properties(fe_nav_exhibition PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}")
+    # M10 interactive playable match (app/livematch.cpp): real-time window loop - sim fixed 1/50 s
+    # cadence, scene + HUD drawn each frame with camera follow, commentary pump; synthesized keyboard
+    # input drives the ported pad path (FUN_0047836c bit writes) proving the input->sim chain.
+    add_test(NAME interactive_match COMMAND wc98-native --live-match-smoke 150 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/live)
+    set_tests_properties(interactive_match PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" FAIL_REGULAR_EXPRESSION "shapes=0 ")
     # Authentic team-select fidelity (FEFLOW11.LAY pick grid, LAY_COMPOSITOR_NOTES.md): render the
     # screen via --fe-team; the shell asserts shapes/texts > 0 and this gate fails on zero-count evidence.
     add_test(NAME fe_render_tournament COMMAND wc98-native --fe-smoke 2 --fe-team --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/feteam)

@@ -114,30 +114,29 @@ void addPlayTrack(std::vector<Job>& jobs, const fs::path& abs, const std::string
 void addPlayBank(std::vector<Job>& jobs, Data d, const std::string& rel, const fs::path& outDir, int depth, std::size_t prefix) {
     // WC98 .PBK files put BIGF behind a 48-byte prefix (0x30), and a minority at offset 0
     // (matrix section 2/3); nested phrase banks (PHRS.PBK members) are plain BIGF.
+    // Each member is a 20-byte phrase record followed by a "PT" v2 play track (gate test_audio
+    // walks all 6,964 members this way); RefPack-compressed members expand first; PHRS.PBK nests
+    // second-level BIG containers. Mirrors tests/unit/test_audio.cpp walkBig.
     const std::span<const std::uint8_t> body(d->data() + prefix, d->size() - prefix);
     const auto big = BigArchive::parse(body);
     for (std::size_t i = 0; i < big.entries.size(); ++i) {
-        const auto p = BigArchive::payload(body, big.entries[i]);
+        const auto raw = BigArchive::payload(body, big.entries[i]);
+        const Data m = std::make_shared<std::vector<std::uint8_t>>(refpack::decompressIfNeeded(raw));
         std::string sub = std::format("{}#{}#{}", rel, i, big.entries[i].name);
         fs::path subDir = outDir / std::format("m{:05}", i);
-        if (BigArchive::isBig(p)) {
-            if (depth > 0) {
-                auto nested = std::make_shared<std::vector<std::uint8_t>>(p.begin(), p.end());
-                addPlayBank(jobs, nested, sub, subDir, depth - 1, 0);
-            }
-            continue;
+        if (m->size() > 24 && (*m)[20] == 'P' && (*m)[21] == 'T') {
+            Job j{sub, subDir / "stream.wav", ",\"kind\":\"playtrack\",\"member\":true", {}};
+            j.run = [m](const fs::path& o) {
+                const std::span<const std::uint8_t> member(m->data(), m->size());
+                const PtHeader h = PtHeader::parse(member, 20);
+                auto pcm = decodePlayTrack(member, 20);
+                writeWav(o, pcm);
+                return pcmJson(pcm, h, *h.dataOffset);
+            };
+            jobs.push_back(std::move(j));
+        } else if (m->size() > 4 && (*m)[0] == 'B' && (*m)[1] == 'I' && (*m)[2] == 'G') {
+            if (depth > 0) addPlayBank(jobs, m, sub, subDir, depth - 1, 0);
         }
-        if (p.size() < 4 || p[0] != 'P' || p[1] != 'T') continue;
-        const std::size_t off = std::size_t(p.data() - d->data()), len = p.size();
-        Job j{sub, subDir / "stream.wav", ",\"kind\":\"playtrack\",\"member\":true", {}};
-        j.run = [d, off, len](const fs::path& o) {
-            const std::span<const std::uint8_t> member(d->data() + off, len);
-            const PtHeader h = PtHeader::parse(member, 0);
-            auto pcm = decodePlayTrack(member, 0);
-            writeWav(o, pcm);
-            return pcmJson(pcm, h, *h.dataOffset);
-        };
-        jobs.push_back(std::move(j));
     }
 }
 

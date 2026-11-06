@@ -76,6 +76,7 @@ int run(int argc, char** argv) {
     int saveloadSlot = -1; // --tournament-saveload N: headless save->load scenario on slot N
     int fePick = -1; // --fe-pick ID: scripted team-select pick for the tournament entry (non-interactive gate)
     bool feTeam = false; // --fe-team: open the team-select screen (FEFLOW11 grid) before the smoke frames
+    std::string lang = "eng"; // --lang CODE: FC*.BIN UI-string bank (registry Language key)
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         auto next = [&]() -> std::string { if (i + 1 >= argc) throw std::invalid_argument(a + " needs a value"); return argv[++i]; };
@@ -88,6 +89,7 @@ int run(int argc, char** argv) {
         else if (a == "--fe-smoke") { feMode = true, smokeFrames = std::stoi(next()); }
         else if (a == "--out-prefix") outPrefix = next();
         else if (a == "--tree") tree = next();
+        else if (a == "--lang") { lang = next(); } // FC*.BIN bank; used by --fe/--fe-smoke gates
         else if (a == "--fe-nav") { // gate mode: simulate Enter on the named entry after the frames
             feMode = true, strictNav = true;
             const std::string e = next();
@@ -146,7 +148,7 @@ int run(int argc, char** argv) {
     log::info("device: {}", renderer->deviceName());
 
     std::unique_ptr<app::FeFlow> fe;
-    if (feMode) fe = std::make_unique<app::FeFlow>(*renderer, tree);
+    if (feMode) fe = std::make_unique<app::FeFlow>(*renderer, tree, lang);
     int totalShapes = 0, totalTexts = 0, presented = 0, navRc = -1;
         if (fe && feTeam) { fe->move(1); fe->enter(); } // Tournament entry -> team-select grid
 
@@ -196,6 +198,7 @@ int run(int argc, char** argv) {
         }
         if (fe && smokeFrames && presented == 0) { // gate evidence line (render_demo_lay pattern)
             std::cout << fe->screenName() << ": shapes=" << totalShapes << " texts=" << totalTexts
+                      << " faces=" << fe->fontsLoaded() << " lang=" << fe->language()
                       << (fe->lastError().empty() ? std::string() : (" load-error=" + fe->lastError())) << '\n';
             if (totalShapes <= 0) { std::cerr << "FE screen drew no shapes\n"; return 1; }
             // Labels must be visible: FC*.BIN strings through the FFN face (FeText).
@@ -244,7 +247,8 @@ int main(int argc, char** argv) {
         if (std::strcmp(argv[i], "--help") == 0) {
             std::puts("usage: wc98-native [--width N] [--height N] [--fullscreen|--windowed] [--smoke N]"
                       " [--fe] [--tree DIR] [--out-prefix P] [--fe-smoke N] [--tournament-saveload N] [--fe-pick N]"
-                      " [--fe-nav exhibition|tournament|tournament-load] [--fe-team] [--pad-smoke]");
+                      " [--fe-nav exhibition|tournament|tournament-load] [--fe-team] [--pad-smoke]"
+                      " [--lang eng|fre|ger|ita|spa|dut|dan|swe|jap]");
             return 0;
         }
     }

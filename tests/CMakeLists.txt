@@ -128,6 +128,12 @@ if(DEFINED WC98_TREE)
     # screen via --fe-team; the shell asserts shapes/texts > 0 and this gate fails on zero-count evidence.
     add_test(NAME fe_render_tournament COMMAND wc98-native --fe-smoke 2 --fe-team --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/feteam)
     set_tests_properties(fe_render_tournament PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" FAIL_REGULAR_EXPRESSION "shapes=0 |texts=0 ")
+    # Font fidelity (exe font table DAT_0057d2c0 -> FEFONTS/IGFONTS.BIG, fe_screen.hpp): the tree
+    # carries exactly 10 faces; every FC*.BIN code must load its string bank (registry Language).
+    add_test(NAME fe_text_fonts COMMAND wc98-native --fe-smoke 2 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/fefonts)
+    set_tests_properties(fe_text_fonts PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "faces=10 lang=" FAIL_REGULAR_EXPRESSION "load-error")
+    add_test(NAME fe_text_lang_ger COMMAND wc98-native --fe-smoke 2 --lang ger --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/feger)
+    set_tests_properties(fe_text_lang_ger PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "faces=10 lang=ger")
     # the Load entry restores it and verifies byte-identical state (app/saveload.cpp).
     add_test(NAME fe_nav_tournament_save COMMAND wc98-native --fe-smoke 2 --fe-nav tournament --fe-pick 35 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/fe)
     set_tests_properties(fe_nav_tournament_save PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE};WC98_SAVE_SLOT=7" FIXTURES_REQUIRED slot)

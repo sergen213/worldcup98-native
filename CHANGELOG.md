@@ -13,6 +13,14 @@ project goals.
   (F<id>.FSH shape `f000`, FCDB names, scrollbar thumb in the LAY's `sbar` track); scene registry
   evidence `analysis/pass7/grid{5,6,7}.txt`, doc LAY_COMPOSITOR_NOTES.md; gate
   `fe_render_tournament` (--fe-team) + existing fe_nav/teamselect gates unchanged.
+- FE text draws authentic fonts + language knob (`presentation/fe_screen.cpp FeText`): fontID -> face
+  CONFIRMED from the exe font pointer table `DAT_0057d2c0` (raw 0x17b8c0, loader loop code VA
+  0x46933a opens "%s.ffn"): eras10/eras12/eras20/eras36/eras11i/eras8i from FE/PACK/FEFONTS.BIG,
+  BI faces (eras11bi/eras14bi/eras9bi/eras20bi) from IGFONTS.BIG; labels take their TEXTID "id,font"
+  face at native line height (measured header lineHeights eras8i=18 … eras36=79 px). `--lang CODE`
+  selects the FC{DAN,DUT,ENG,FRE,GER,ITA,JAP,SPA,SWE}.BIN UI-string bank (registry Language key);
+  German FEFLOW05 visually verified (umlaut glyphs, EA's own "wirlich" string kept verbatim).
+  Gates `fe_text_fonts` (faces=10), `fe_text_lang_ger`; doc LAY_COMPOSITOR_NOTES.md.
 
 ### Changed
 - Commentary pick model is now the faithful consume-on-use predicate, not round-robin

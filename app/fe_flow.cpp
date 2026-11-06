@@ -17,7 +17,7 @@ namespace fs = std::filesystem;
 using presentation::FeDrawStats;
 using presentation::ScreenArt;
 
-FeFlow::FeFlow(render::Renderer& r, fs::path tree) : tree_(std::move(tree)), art_(r, tree_, tree_ / "FE/PACK/LAYOUTS") {
+FeFlow::FeFlow(render::Renderer& r, fs::path tree, std::string lang) : tree_(std::move(tree)), art_(r, tree_, tree_ / "FE/PACK/LAYOUTS") {
     // Main menu screen (LAY_COMPOSITOR_NOTES.md measured table: FEFLOW05 -> 26 objects -> 11 shapes).
     std::string text;
     try {
@@ -31,7 +31,7 @@ FeFlow::FeFlow(render::Renderer& r, fs::path tree) : tree_(std::move(tree)), art
         lastError_ = e.what();
     }
     // Text resources for the whole session (fe_screen.hpp FeText): FFN face, FC*.BIN strings, FEMSG.
-    text_ = std::make_unique<presentation::FeText>(r, tree_);
+    text_ = std::make_unique<presentation::FeText>(r, tree_, std::move(lang));
     // Team-select screen (FEFLOW11.LAY = the original ZWCUP pick grid: map, flags, group cells;
     // LAY_COMPOSITOR_NOTES.md). Absent -> drawTeams keeps the flat usability list.
     try {

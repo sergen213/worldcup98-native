@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <string_view>
 #include "team_select.hpp"
 #include <cstdint>
 #include <vector>
@@ -28,7 +29,8 @@ constexpr int kFeEntryCount = int(FeEntry::Count);
 class FeFlow {
 public:
     // tree = extracted game tree (FE/PACK/LAYOUTS/LAYOUTS.BIG + art under it).
-    FeFlow(render::Renderer& r, std::filesystem::path tree);
+    // lang = FC*.BIN UI-string code (eng/fre/ger/ita/spa/dut/dan/swe/jap; registry Language key).
+    FeFlow(render::Renderer& r, std::filesystem::path tree, std::string lang = "eng");
 
     // Composites the current screen into `ui` and returns draw stats (shapes > 0 = real art drew).
     presentation::FeDrawStats drawCurrent(render::SpriteBatch& ui) const;
@@ -44,6 +46,9 @@ public:
     bool enter(); // Enter/confirm; true = shell launches selected entry (Tournament uses pickedTeam())
     void back();  // Esc: team-select -> main menu (no-op on the menu)
     [[nodiscard]] int pickedTeam() const { return pick_; } // confirmed FCDB id (-1 = no pick)
+    // Gate evidence: UI string bank in use + how many exe font-table faces the tree carries.
+    [[nodiscard]] std::string_view language() const { return text_ ? text_->language() : std::string_view{}; }
+    [[nodiscard]] std::size_t fontsLoaded() const { return text_ ? text_->facesLoaded() : 0; }
 
 private:
     void loadTeams(); // ZWCUP.RES pool + FCDB STR0 names (non-throwing; empty = no team-select)

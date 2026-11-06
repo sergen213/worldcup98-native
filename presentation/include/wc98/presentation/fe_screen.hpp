@@ -13,8 +13,9 @@
 #include <filesystem>
 #include <map>
 #include <memory>
-#include <optional>
+#include <array>
 #include <string>
+#include <string_view>
 #include <vector>
 namespace wc98::presentation {
 
@@ -61,19 +62,37 @@ private:
 // a tree without the assets leaves ready() false and composite keeps its noArt counting.
 class FeText {
 public:
-    FeText(render::Renderer& r, std::filesystem::path tree);
+    // `lang` is an FC*.BIN code (eng, fre, ger, ita, spa, dut, dan, swe, jap); falls back to eng.
+    FeText(render::Renderer& r, std::filesystem::path tree, std::string lang = "eng");
 
     [[nodiscard]] bool ready() const { return tex_ != 0 && strings_.size() > 1; } // index 0 is the FCLG magic
     [[nodiscard]] render::TextureId texture() const { return tex_; }
     [[nodiscard]] const formats::FfnFont* font() const { return font_ ? &*font_ : nullptr; }
+    // FontID -> face: exe font pointer table DAT_0057d2c0 (raw 0x17b8c0), 11 entries; the loader
+    // loop iterates ids 0..10 opening "%s.ffn" members of FE/PACK/FEFONTS.BIG + IGFONTS.BIG
+    // (decompiled loader: code VA 0x46933a `mov edi,[eax+057d2c0]` feeds FUN_0045ca68; the loop
+    // body at 0x46936f prints "lp %2d"). Slot 9 is NULL in the exe table. face() null = id not
+    // present on this tree (drawLabel then uses font()).
+    static constexpr std::array<const char*, 11> kFontNames = {
+        "eras10", "eras12", "eras20", "eras36", "eras11i", "eras8i",
+        "eras11bi", "eras14bi", "eras9bi", "", "eras20bi"};
+    [[nodiscard]] const formats::FfnFont* face(int fontId) const;
+    [[nodiscard]] render::TextureId faceTexture(int fontId) const; // lazy; 0 = face absent (use texture())
+    [[nodiscard]] std::size_t facesLoaded() const { return facesCount_; }
+    [[nodiscard]] std::string_view language() const { return lang_; }
     // Resolved label for one object's TEXTID key ("" when absent/unresolvable). The string bytes
     // are cp1252, matching FFN glyph codes; layoutText feeds them straight through.
     [[nodiscard]] std::string label(const formats::LayoutObject& o) const;
 
 private:
     std::filesystem::path tree_;
+    render::Renderer* r_ = nullptr; // lazy texture creation target
     render::TextureId tex_ = 0;
     std::optional<formats::FfnFont> font_;
+    std::vector<std::unique_ptr<formats::FfnFont>> faces_; // parallel to kFontNames (null = absent)
+    mutable std::array<render::TextureId, 11> faceTex_{};
+    std::size_t facesCount_ = 0;
+    std::string lang_;                                    // FC*.BIN code in use
     std::vector<std::string> strings_;            // FC*.BIN, index = textid value
     std::optional<formats::FemsgTable> femsg_;    // name -> value (TEXTID "SM_..." form)
 };

@@ -131,7 +131,12 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
 - Wine oracle (wine-11.21): original boots + runs under Xvfb 16bpp; live `options.sav` (AFIFAFIF)
   captured; task tables == static image (never runtime-patched); wined3d 24bpp AV documented - FE
   visuals not reached (black presentation), no fabricated captures. `WINE_ORACLE_WC98.md`.
-- Open: FE fidelity polish (map-grid team-select art, fontID faces, lang knob), percent-table scene
+- Landed (2026-11-06): map-grid team-select, fontID faces + lang knob. FontID -> face CONFIRMED via exe
+  font pointer table `DAT_0057d2c0` (raw 0x17b8c0: eras10/12/20/36/11i/8i FEFONTS.BIG + BI faces
+  IGFONTS.BIG, slot 9 null; loader code VA 0x46933a) - labels draw their own face at native line
+  height (`FeText::kFontNames`); `--lang CODE` selects FC{DAN,DUT,ENG,FRE,GER,ITA,JAP,SPA,SWE}.BIN
+  (registry Language key; gates fe_text_fonts/fe_text_lang_ger). LAY_COMPOSITOR_NOTES.md.
+- Open: percent-table scene
   default percentages (Wine oracle; setter runtime args). Landed: duck/mix table model +
   scene-percent seam (`ChannelMix`, pass 7d, `analysis/pass7/duck*.txt`); tournament module + progression demo + team pick
   (`--fe-pick`), save/load, HUD, FE flow w/ drawn text, commentary pick chain closed + faithful port

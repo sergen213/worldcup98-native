@@ -5,7 +5,7 @@ tournament playable natively, per the definition of success in the
 project goals.
 
 
-## [Unreleased]
+## [0.3.0] - 2026-11-06 — playable live match + authentic FE fonts, team-select grid, measured scene defaults
 
 ### Added
 - Interactive playable match (`app/livematch.{hpp,cpp}`, gate `interactive_match` via

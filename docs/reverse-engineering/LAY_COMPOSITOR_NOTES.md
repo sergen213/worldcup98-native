@@ -10,6 +10,20 @@ the compositor lives in `tools/render-demo/main.cpp` (`--lay <spec> [--tree <dir
   (`CONTROL1.LAY`, `IGOPTN2.LAY`, per-venue `IGteam7x.lay`…). Both archives decode
   through the same reader as loose `.LAY` files (48-byte-prefix variant handled).
 
+
+## Netplay UI presence (probe 2026-11-07, FCENG.BIN + LAYOUTS/IGLAY member scan)
+- `FE/PACK/LAYOUTS/LAYOUTS.BIG@FEFLOW80.LAY` = create/edit custom team screen; carries netplay
+  chat widgets (`;chat box, enter text area`, `;display text in short/tall box`, objects at
+  lines 2159-2174) and TEXTID labels 1079 `Modem`, 1081 `Modem Connect Menu`, 1084
+  `Modem Setup Menu`, 1085 `Modem Type`. `IGLAY.BIG@IGCHAT.LAY` = in-game chat screen.
+- FCLG catalog (`COMMON/FCENG.BIN`, 2,031 strings) netplay labels: 588-591 `Dial*`,
+  913 `Initiate Network Game`, 938 `Join Network Game`, 1079-1086 `Modem*`,
+  1203-1206 `Network*`, 1234 `No network game detected.`.
+- No shipped `.LAY` (all 101 LAYOUTS + 30 IGLAY members) references 913/938/588-591/
+  1203-1206/1234 → the Initiate/Join network menus are NOT `.LAY` screens; their labels
+  resolve at runtime in scene code (exe IPX service strings `getnetgames/setnetgame/
+  readnetgame/newnetgame`, EXECUTABLE.md §9). Netplay stays out of scope for the port.
+
 ## Element → draw mapping (what the compositor implements)
 - Shape identity: first non-null of `SHAPEID, SNAME, RELEASEDSHAPEID, RELEASEDSHAPE,
   NORMALSHAPEID, NSHAPEID, BARSHAPEID`; else `SHAPEINDEX`/`DEFAULTSHAPENO` entry index.

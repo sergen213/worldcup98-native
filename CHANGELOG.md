@@ -8,6 +8,12 @@ project goals.
 
 ### Added
 
+- Speech master-gain model (`app/commentary.{hpp,cpp}`): `SpeechGain` mirrors the EACSND speech
+  volume chain (SNDspeechinit vol domain [0,0x7f], SNDspeechautovol linear 16.16 ramp with
+  overshoot clamp at target, state-cb per-tick apply; pass-7b RE in COMMENTARY_WC98.md §gain,
+  evidence `analysis/pass7/gain*.txt`). Commentary pump now ticks the master ramp and re-applies
+  `class gain * master` to live voices each frame, with sentence start/stop autovol seam edges
+  (sites 0x48fcb7/0x491125). Gate: `test_commentary` exact-tick ramp asserts + wiring.
 - Gamepad support in the platform + app layers (`platform window.{hpp,cpp}`, `app/main.cpp`): SDL3
   gamepad subsystem init (failure-tolerant: pad-less startup never fatal), hot-plug tracking, per-poll
   `Events.padButtons`/`connectedCount`, canonical cross-platform button enum (`Window::PadButton`,

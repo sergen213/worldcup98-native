@@ -143,10 +143,51 @@ void synthetic() {
     CHECK(c.lastPhrase() == 5 && c.queue().queued() == audio::SpeechQueue::kMaxQueued); // cap 0x12 = 18
     c.pump(40);
     CHECK(c.queue().queued() == 0);
+    // --- speech master-gain seam (SNDspeechinit / SNDspeechautovol; state cb 0x4dfca0) ---
+    CHECK(c.masterGain() == 0.f); // burst drained -> scene-stop ramp silenced the speech stream
+    c.setVolume(0x40);             // pct->vol domain: applied = 0x40, normalized = 64/127
+    CHECK(c.masterGain() == float(0x40) / 127.f && c.volume() == 0x40);
+    c.autoVol(0, 1);               // steps clamped >=1: one tick lands on target
+    c.pump(1);
+    CHECK(c.masterGain() == 0.f);
+    c.trigger(ev(sim::EventType::KickOff)); // sentence start -> rising edge ramp to scene level
+    c.pump(1);                                // delta = (0x40<<16)/5 trunc: applied = 838860>>16
+    CHECK(c.masterGain() == float(12) / 127.f && c.masterGain() < float(0x40) / 127.f);
+    c.pump(64);                    // sentence drains (null mixer) -> scene-stop edge ramps to silence
+    for (int i = 0; i < app::Commentary::kRampTicks + 1; ++i) c.pump(1);
+    CHECK(c.masterGain() == 0.f);
     std::printf("commentary synthetic gates OK: %u sentences, %u segment decodes\n",
                 c.sentencesStarted(), c.decodedSegments());
 }
 
+// --- pure ramp-model gates: exact 16.16 arithmetic of the EACSND state cb (0x4dfca0),
+// SNDvol domain clamp + SNDspeechautovol semantics; evidence analysis/pass7/gain*.txt ---
+void gainModel() {
+    app::SpeechGain g; // default = full-open (SNDspeechinit vol 0x7f)
+    CHECK(g.applied() == 0x7F && g.frac() == 1.0f);
+    g.set(0x40);
+    CHECK(g.applied() == 0x40 && g.frac() == float(0x40) / 127.f);
+    g.set(0x80); // SNDvol domain clamp [0,0x7f]
+    CHECK(g.applied() == 0x7F);
+
+    g.ramp(0, 4); // linear down: cur -= cur/4 per tick; SAR apply floors toward zero
+    g.tick(); CHECK(g.applied() == 95);   // (8323072 - 2080768) >> 16
+    g.tick(); CHECK(g.applied() == 63);
+    g.tick(); CHECK(g.applied() == 31);
+    g.tick(); CHECK(g.applied() == 0);    // clamp at target, delta zeroed
+    g.tick(); CHECK(g.applied() == 0);
+
+    g.set(0);
+    g.ramp(100, 3); // truncating delta: one tick short of target, overshoot clamps next tick
+    g.tick(); CHECK(g.applied() == 33);
+    g.tick(); CHECK(g.applied() == 66);
+    g.tick(); CHECK(g.applied() == 99);   // truncation artifact matches the original SAR clamp path
+    g.tick(); CHECK(g.applied() == 100);
+    g.tick(); CHECK(g.applied() == 100);
+
+    g.ramp(10, 0); // steps clamped >= 1 (SNDspeechautovol)
+    g.tick(); CHECK(g.applied() == 10);
+}
 // --- tree gate: real PHRS.PBK selection + decode (skipping when the tree is absent) ---
 void original() {
     const auto root = treeDirOrSkip();
@@ -174,6 +215,7 @@ void original() {
 int main() {
     synthetic();
     original();
+    gainModel();
     std::puts("test_commentary OK");
     return 0;
 }

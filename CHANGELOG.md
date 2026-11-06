@@ -7,6 +7,15 @@ project goals.
 ## [Unreleased]
 
 ### Added
+
+- Gamepad support in the platform + app layers (`platform window.{hpp,cpp}`, `app/main.cpp`): SDL3
+  gamepad subsystem init (failure-tolerant: pad-less startup never fatal), hot-plug tracking, per-poll
+  `Events.padButtons`/`connectedCount`, canonical cross-platform button enum (`Window::PadButton`,
+  values mirror `SDL_GamepadButton`) so app code stays SDL-free; d-pad-as-buttons plus left-stick/d-pad
+  navigation surfaced as repeat-throttled nav events (`PadNavThrottle`, ~0.25 s) driving the same FE
+  menu actions as the arrow keys (South/Start = confirm, East/Back = Esc parity). Match input unchanged:
+  gamepads already map through `wc98::input` config bindings. Gates `test_gamepad` (mapping + throttle +
+  virtual-pad poll glue), `gamepad_smoke_dummy` (`--pad-smoke`, SDL dummy driver, exits 0 pad-less headless).
 - FE screen text objects (`FeText` in `presentation fe_screen.{hpp,cpp}`): LAY `textid` -> FC<lang>.BIN
   ("FCLG") string index (symbol form via the FEMSG table where present) -> `eras14bi.ffn` glyph quads
   through the HUD layout API (`layoutText`, new additive `textWidthPx`); LAY offsets/alignment/colour

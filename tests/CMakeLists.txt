@@ -68,6 +68,16 @@ endforeach()
 wc98_test(test_input unit/test_input.cpp)
 target_link_libraries(test_input PRIVATE wc98_input)
 
+# Gamepad platform layer: canonical layout mapping + nav repeat throttle + poll() glue
+# through an SDL virtual pad under the dummy video driver (no hardware, no display).
+wc98_test(test_gamepad unit/test_gamepad.cpp)
+target_link_libraries(test_gamepad PRIVATE wc98_platform)
+
+# App-level gamepad startup contract: --pad-smoke exits 0 with zero pads under the SDL
+# dummy driver (headless-safe; skip 2 only if the pad subsystem itself is unavailable).
+add_test(NAME gamepad_smoke_dummy COMMAND wc98-native --pad-smoke)
+set_tests_properties(gamepad_smoke_dummy PROPERTIES ENVIRONMENT "SDL_VIDEODRIVER=dummy" SKIP_RETURN_CODE 2)
+
 
 # Platform/renderer stack: these link the engine modules instead of only formats.
 function(wc98_vulkan_test name source)

@@ -71,6 +71,7 @@ int run(int argc, char** argv) {
     std::string outPrefix = "/tmp/wc98port-out/fe"; // capture prefix for --fe-smoke PNGs
     bool feMode = false, strictNav = false;
     int navEntry = -1; // --fe-nav target (exhibition/tournament), simulated after the smoke frames
+    bool padSmoke = false; // --pad-smoke: headless gamepad startup gate (SDL dummy driver)
 
     int saveloadSlot = -1; // --tournament-saveload N: headless save->load scenario on slot N
     for (int i = 1; i < argc; ++i) {
@@ -91,10 +92,16 @@ int run(int argc, char** argv) {
             navEntry = e == "exhibition" ? int(app::FeEntry::Exhibition) : e == "tournament" ? int(app::FeEntry::Tournament) : e == "tournament-load" ? 2 : -1;
         }
         else if (a == "--tournament-saveload") { saveloadSlot = std::stoi(next()); }
+        else if (a == "--pad-smoke") { padSmoke = true; }
         else throw std::invalid_argument("unknown argument '" + a + "'");
     }
 
     if (saveloadSlot >= 0) return app::runTournamentSaveLoad(saveloadSlot, app::defaultSlotDir());
+    if (padSmoke) { // headless gamepad gate: graceful startup with no pads present (SDL dummy driver).
+        if (!platform::initGamepads()) return 2; // pad subsystem unavailable here: skip, not fail
+        std::cout << "gamepads=" << platform::connectedGamepadCount() << '\n';
+        return 0;
+    }
     if (feMode) {
         if (!std::filesystem::is_directory(tree)) {
             // Gate skip pattern: no tree -> exit 2 (ctest SKIP_RETURN_CODE 2).
@@ -149,15 +156,30 @@ int run(int argc, char** argv) {
             totalTexts += presented == 0 ? st.texts : 0;
             frame.ui = &ui;
         }
+        auto launchSelected = [&] { // Enter/confirm: launch the selected entry, back to menu 0.
+            navRc = launchEntry(app::FeEntry(fe->selected()), tree, outPrefix);
+            std::cout << "fe: entry " << fe->selected() << " returned " << navRc << '\n';
+            if (strictNav && navRc != 0 && navRc != 2 && navRc != 77) return false; // gate mode propagates failures
+            fe->move(-fe->selected());
+            return true;
+        };
         for (const int sc : ev.keys) { // FE navigation: arrows select, Enter launches, Esc quits to menu
             if (!fe) break;
             if (sc == SDL_SCANCODE_UP || sc == SDL_SCANCODE_LEFT) fe->move(-1);
             else if (sc == SDL_SCANCODE_DOWN || sc == SDL_SCANCODE_RIGHT) fe->move(+1);
             else if (sc == SDL_SCANCODE_RETURN || sc == SDL_SCANCODE_KP_ENTER) {
-                navRc = launchEntry(app::FeEntry(fe->selected()), tree, outPrefix);
-                std::cout << "fe: entry " << fe->selected() << " returned " << navRc << '\n';
-                if (strictNav && navRc != 0 && navRc != 2 && navRc != 77) return navRc; // gate mode propagates failures
-                fe->move(-fe->selected()); // back to menu entry 0 (Esc is app-owned, see window.hpp)
+                if (!launchSelected()) return navRc;
+            }
+        }
+        for (const int d : ev.padNav) { // gamepad nav: same actions as the arrow keys
+            if (!fe) break;
+            if (d == platform::Window::kPadNavUp || d == platform::Window::kPadNavLeft) fe->move(-1);
+            else if (d == platform::Window::kPadNavDown || d == platform::Window::kPadNavRight) fe->move(+1);
+        }
+        for (const int b : ev.padButtons) { // confirm = South/Start; East/Back = Esc parity (app-owned exit, no-op here)
+            if (!fe) break;
+            if (b == platform::Window::kPadSouth || b == platform::Window::kPadStart) {
+                if (!launchSelected()) return navRc;
             }
         }
         if (window->minimized() || !renderer->present(frame)) {
@@ -214,7 +236,7 @@ int main(int argc, char** argv) {
         if (std::strcmp(argv[i], "--help") == 0) {
             std::puts("usage: wc98-native [--width N] [--height N] [--fullscreen|--windowed] [--smoke N]"
                       " [--fe] [--tree DIR] [--out-prefix P] [--fe-smoke N] [--tournament-saveload N]"
-                      " [--fe-nav exhibition|tournament|tournament-load]");
+                      " [--fe-nav exhibition|tournament|tournament-load] [--pad-smoke]");
             return 0;
         }
     }

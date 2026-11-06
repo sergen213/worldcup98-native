@@ -167,7 +167,14 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
   input/src/input.cpp); the live loop reuses the M6 scene/HUD/camera as-is - no new presentation
   fidelity claimed.
 - Live match first-second pose: mass-prone field-player poses at the kickoff whistle moment are sim
-  data (open-play poses verified upright in late live captures); investigate with a t<1 s demo capture.
+  data (open-play poses verified upright in late live captures); t<1 s demo probe closed 2026-11-06 -
+  faithful exe data path, not a seeding bug: idle loco selector is speed-gait row col 0 = anim id 358
+  (`kLoco` verbatim from exe 0x59F918), AISEQS.TBI id==index holds across all 534 records -> clip 278
+  `bsppob1`, whose name-table entry is loaded (flags +0xD = 0, clip ptr 0x94ac a4) and FK-decodes as a
+  fall/prone clip (head bone y 424->~90 across keys 0..128, span 0x200 => sampled mid-clip in the first
+  ~1 s); GK keeps standClip via keeper state path. Instance advance/key math (`anim.cpp` 0x460050 /
+  0x45FC30) matches the exe addresses; pose sampling in `snapshotFromWorld` tracks instance keyPos, so
+  the snapshot layer is exonerated as claimed. No code change made.
 - M6 vertical slice playable headless (`wc98-match-demo`, gate `match_demo_frames`); commentary
   integrated in the exhibition loop via `app/commentary.{hpp,cpp}` (trigger seam FUN_004893ec model ->
   SpeechQueue -> PHRS segment fetch/decode -> OpenAL Mixer, null-mixer headless; gates

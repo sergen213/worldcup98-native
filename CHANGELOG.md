@@ -7,6 +7,7 @@ project goals.
 ## [Unreleased]
 ### Added
 - FE mouse cursor drawn from MAUS.PAK (`presentation::loadFeCursor`, 28x26 `curs` arrow, engine-hardcoded path at FIFAWC.EXE offset 1451894) over every FE composite in the window loop; gates `test_presentation` tree checks (MAUS entries + REDLEFT shipped-gap assert), `fe_render_tournament` FAIL regex `cursors=0`.
+- FE element colour state RESOLVED + implemented: hilite pane (HILITEPANE) draws HILITECOLOUR/HILITEDSHAPEID, plain panes NORMALCOLOUR (exe parse chain 0x46e0d9/0x46e10b fields +0x68/+0x6C; listbox draw FUN_00477f54 @0x477f54); no per-element blend mode exists. Gate `test_presentation` tree checks assert hilite/plain glyph rgba = pal[2]/pal[1].
 
 
 ## [0.3.0] - 2026-11-06 — playable live match + authentic FE fonts, team-select grid, measured scene defaults

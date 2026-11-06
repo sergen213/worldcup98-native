@@ -146,7 +146,7 @@ counts in `docs/asset-formats/INVENTORY.md`, `docs/reverse-engineering/EXECUTABL
   count/flags/head/tail. Phrase-record consumers of +0x04/+0x08 therefore are the linked-list slots
   written by push (`*prev->next = node`) - hypothesis "queue links" confirmed; pick `FUN_0048d0dc` is
   gate DAT_0063241c + qfind, drain `FUN_0048d1f8` pops all + per-item handler FUN_0048d0c0.
-- Front-end flow and HUD not wired yet.
+- Front-end flow (FEFLOW05 nav) and in-match HUD landed; slot save/load wiring open.
 - Raw hexdump appendices of game files are kept out of the repo
   (copyright); research-inbox/ is gitignored.
 - Probe logs under /tmp are ephemeral; durable record = counts in docs.

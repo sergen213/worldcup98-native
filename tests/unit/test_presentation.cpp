@@ -232,6 +232,20 @@ void treeChecks() {
         CHECK(firstRgba(uiN) == wantN);   // plain pane -> NORMALCOLOUR index 1
         CHECK(firstRgba(uiH) == wantH);   // hilitePane=TXT -> HILITECOLOUR index 2
     }
+    // Language knob (--lang): every shipped FC*.BIN bank loads through FeText and the same
+    // label index resolves per-language (FCFRE 220 "Are you sure?" differs from FCENG).
+    for (const char* code : {"eng", "fre", "ger", "ita", "spa", "dut", "swe", "dan", "jap"}) {
+        wc98::presentation::FeText txt(nullR, tree, code);
+        CHECK(txt.ready());
+        CHECK(txt.language() == std::string_view(code));
+    }
+    {
+        const auto eng = wc98::presentation::FeText(nullR, tree, "eng");
+        const auto fre = wc98::presentation::FeText(nullR, tree, "fre");
+        formats::LayoutObject probe; probe.props["TEXTID"] = "220"; // Are you sure.. (FCENG.BIN:178)
+        const std::string a = eng.label(probe), b = fre.label(probe);
+        CHECK(a.size() > 3 && b.size() > 3 && a != b);
+    }
 }
 } // namespace
 

@@ -21,13 +21,15 @@ FeFlow::FeFlow(render::Renderer& r, fs::path tree) : tree_(std::move(tree)), art
         // Menu art absent: the shell still navigates; drawCurrent reports shapes == 0.
         lastError_ = e.what();
     }
+    // Text resources for the whole session (fe_screen.hpp FeText): FFN face, FC*.BIN strings, FEMSG.
+    text_ = std::make_unique<presentation::FeText>(r, tree_);
 }
 
 FeDrawStats FeFlow::drawCurrent(render::SpriteBatch& ui) const {
     FeDrawStats st;
-    if (haveScreen_) st = presentation::composite(screen_, ui, const_cast<ScreenArt&>(art_));
-    // Selection marker: two 20x20 flat panels, filled when selected. Text labels need the FFN/FC*.BIN
-    // slice (LAY_COMPOSITOR_NOTES.md open item); ponytail: boxes until that lands.
+    if (haveScreen_) st = presentation::composite(screen_, ui, const_cast<ScreenArt&>(art_), text_.get());
+    // Selection marker: two flat panels per entry, filled when selected. The LAY objects themselves
+    // draw their FC*.BIN labels through FeText above.
     for (int i = 0; i < kFeEntryCount; ++i) {
         const float y = 380.f + 28.f * i;
         if (i == sel_) ui.draw(0, {36.f, y, 18.f, 18.f}, {}, render::packRgba(90, 200, 255, 255));

@@ -1,6 +1,8 @@
 // FE screen composite implementation, ported from tools/render-demo/main.cpp (M4 slice 2); the
 // reference compositor now runs on this code. Evidence for every rule: LAY_COMPOSITOR_NOTES.md.
 #include "wc98/presentation/fe_screen.hpp"
+#include "wc98/presentation/data.hpp"
+#include "wc98/presentation/hud.hpp"
 
 #include "wc98/formats/big.hpp"
 #include "wc98/formats/fsh.hpp"
@@ -123,7 +125,87 @@ ScreenArt::Shape ScreenArt::shape(const std::string& vpath, const std::string& f
     return out;
 }
 
-FeDrawStats composite(const formats::ScreenLayout& screen, render::SpriteBatch& ui, ScreenArt& art) {
+// ---- Text resources -------------------------------------------------------------------------
+
+FeText::FeText(render::Renderer& r, fs::path tree) : tree_(std::move(tree)) {
+    const GameData data{tree_};
+    try { // HUD-proven face; the fontID -> FEFONTS.BIG family mapping is unmeasured.
+        font_ = formats::FfnFont::parse(data.member("FE/PACK/IGFONTS.BIG", "eras14bi.ffn"));
+        tex_ = r.createTexture(toImage(font_->atlas), render::Wrap::Clamp, "fe-ffn-face");
+    } catch (const std::exception&) {} // tree without fonts: ready() stays false
+    try { strings_ = formats::FclgStrings::parse(data.file("COMMON/FCENG.BIN")).strings; } catch (const std::exception&) {}
+    if (data.exists("FE/PACK/MSGS/FEMSG.BIN")) // absent on this CD: TEXTID names then never resolve
+        try { femsg_ = formats::FemsgTable::parse(data.file("FE/PACK/MSGS/FEMSG.BIN")); } catch (const std::exception&) {}
+}
+
+std::string FeText::label(const formats::LayoutObject& o) const {
+    if (!ready()) return {};
+    const std::string* t = o.prop("TEXTID");
+    if (!t || t->empty()) return {};
+    int idx;
+    char* end = nullptr;
+    if (const long n = std::strtol(t->c_str(), &end, 10); end != t->c_str())
+        idx = int(n); // "231" / "209,4": leading FCLG string index
+    else { // symbol form ("SM_*") -> FEMSG value; no table on this CD
+        const auto v = femsg_ ? femsg_->value(t->substr(0, t->find_first_of(", \t"))) : std::nullopt;
+        if (!v) return {};
+        idx = *v;
+    }
+    if (idx <= 0 || size_t(idx) >= strings_.size()) return {}; // id 0 = dynamic/dummy (measured textid=0,5)
+    return strings_[size_t(idx)]; // cp1252 bytes == FFN glyph codes
+}
+
+namespace {
+// Draws one object's label through `txt`; returns the number of glyph quads emitted. Placement
+// keys measured in FEFLOW05.LAY: plain labels use TEXTX/YOFFSET + ALIGNMENT, list entries use
+// "TEXTXY=x,y,a" (a=3 centers within the box). Colour keys index the global FE palette.
+int drawLabel(const formats::LayoutObject& o, render::SpriteBatch& ui, const FeText& txt) {
+    if (!txt.ready()) return 0;
+    const std::string s = txt.label(o);
+    if (s.empty()) return 0;
+    int xoff = 0, yoff = 0, align = 1;
+    int boxw = o.width > 0 ? o.width : o.intProp("PIXELWIDTH", 0);
+    if (const std::string* xy = o.prop("TEXTXY")) { // "x,y[,align]"
+        char* e = nullptr;
+        xoff = int(std::strtol(xy->c_str(), &e, 10));
+        if (e && *e == ',') yoff = int(std::strtol(e + 1, &e, 10));
+        if (e && *e == ',') align = int(std::strtol(e + 1, &e, 10));
+    } else {
+        xoff = o.intProp("TEXTXOFFSET", 0);
+        yoff = o.intProp("TEXTYOFFSET", 0);
+        align = o.intProp("ALIGNMENT", 1);
+    }
+    int cidx = -1;
+    if (const std::string* tc = o.prop("TEXTCOLOUR")) { // list form "c1,c2,c3": first index wins
+        char* e = nullptr;
+        const long n = std::strtol(tc->c_str(), &e, 10);
+        if (e != tc->c_str()) cidx = int(n);
+    }
+    if (cidx < 0) cidx = o.intProp("NORMALCOLOUR", -1);
+    std::uint32_t rgba = render::packRgba(0xFF, 0xFF, 0xFF); // white fallback: palette not loaded
+    const auto& pal = formats::globalPalette();
+    if (cidx >= 0 && size_t(cidx) < pal.size()) {
+        const auto& c = pal[size_t(cidx)];
+        rgba = render::packRgba(c[0], c[1], c[2], 0xFF);
+    }
+    // ponytail: fontID -> px is unmeasured (FEFONTS.BIG family eras8/10/12/20/36 not wired);
+    // all labels draw through the single proven face at a size-approximated cap height.
+    const int fontId = o.intProp("FONTID", 4);
+    const float sizePx = 8.f + 2.f * float(fontId > 0 ? fontId : 4);
+    const formats::FfnFont& f = *txt.font();
+    const float w = presentation::textWidthPx(f, s, sizePx);
+    float px = float(o.x) + xoff;
+    if (align == 2) px -= w; // right edge at the offset anchor (measured subtitle: textXoffset=550)
+    else if (align >= 3) px += (float(boxw) - w) * 0.5f;
+    int n = 0;
+    for (const auto& q : presentation::layoutText(f, s, px, float(o.y) + yoff, sizePx, rgba)) {
+        ui.draw(txt.texture(), q.dst, q.uv, q.rgba);
+        ++n;
+    }
+    return n;
+}
+} // namespace
+FeDrawStats composite(const formats::ScreenLayout& screen, render::SpriteBatch& ui, ScreenArt& art, FeText* text) {
     FeDrawStats st;
     for (const auto& o : screen.objects) {
         if (!o.shown()) { ++st.hidden; continue; }
@@ -131,23 +213,29 @@ FeDrawStats composite(const formats::ScreenLayout& screen, render::SpriteBatch& 
         for (std::string_view k : {"SHAPEID", "SNAME", "RELEASEDSHAPEID", "RELEASEDSHAPE", "NORMALSHAPEID", "NSHAPEID", "BARSHAPEID"})
             if (const std::string* v = o.prop(k); v && !v->empty() && !iequals(*v, "null")) { tag = v; break; }
         const fs::path fname{slashes(o.fname)};
-        if (isNullArt(fname) || lowered(fname.stem().string()) == "rect") { // flat colour panel
+        if (isNullArt(fname) || lowered(fname.stem().string()) == "rect") { // flat colour panel / text label
             std::uint32_t argb = 0;
             for (std::string_view k : {"FILLCOLOUR", "COLOUR", "BOXCOLOUR"})
                 if (const std::string* v = o.prop(k); v && !v->empty()) { argb = argbOf(*v); break; }
             const int w = o.width > 0 ? o.width : o.intProp("BOXWIDTH", 0);
             const int h = o.height > 0 ? o.height : o.intProp("BOXHEIGHT", 0);
-            if (!argb || w <= 0 || h <= 0) { ++st.noArt; continue; }
-            const std::uint32_t rgba = render::packRgba(std::uint8_t(argb >> 16), std::uint8_t(argb >> 8), std::uint8_t(argb), std::uint8_t(argb >> 24));
-            if (o.type == int(formats::LayoutObjectType::FrameRect)) { // 1-pixel outline
-                ui.draw(0, {float(o.x), float(o.y), float(w), 1}, {}, rgba);
-                ui.draw(0, {float(o.x), float(o.y + h - 1), float(w), 1}, {}, rgba);
-                ui.draw(0, {float(o.x), float(o.y), 1, float(h)}, {}, rgba);
-                ui.draw(0, {float(o.x + w - 1), float(o.y), 1, float(h)}, {}, rgba);
-            } else {
-                ui.draw(0, {float(o.x), float(o.y), float(w), float(h)}, {}, rgba);
+            bool boxDrawn = false;
+            if (argb && w > 0 && h > 0) {
+                const std::uint32_t rgba = render::packRgba(std::uint8_t(argb >> 16), std::uint8_t(argb >> 8), std::uint8_t(argb), std::uint8_t(argb >> 24));
+                if (o.type == int(formats::LayoutObjectType::FrameRect)) { // 1-pixel outline
+                    ui.draw(0, {float(o.x), float(o.y), float(w), 1}, {}, rgba);
+                    ui.draw(0, {float(o.x), float(o.y + h - 1), float(w), 1}, {}, rgba);
+                    ui.draw(0, {float(o.x), float(o.y), 1, float(h)}, {}, rgba);
+                    ui.draw(0, {float(o.x + w - 1), float(o.y), 1, float(h)}, {}, rgba);
+                } else {
+                    ui.draw(0, {float(o.x), float(o.y), float(w), float(h)}, {}, rgba);
+                }
+                ++st.rects;
+                boxDrawn = true;
             }
-            ++st.rects;
+            const int t = text ? drawLabel(o, ui, *text) : 0;
+            st.texts += t;
+            if (!boxDrawn && !t) ++st.noArt; // unresolvable label: keep the pre-text count exactly
             continue;
         }
         const std::string* vpath = o.prop("VPATH");
@@ -156,6 +244,7 @@ FeDrawStats composite(const formats::ScreenLayout& screen, render::SpriteBatch& 
         if (!sh.tex) { ++st.missing; continue; }
         ui.draw(sh.tex, {float(o.x), float(o.y), float(sh.w), float(sh.h)});
         ++st.shapes;
+        if (text) st.texts += drawLabel(o, ui, *text); // list/button entries carry their label on the art
     }
     return st;
 }

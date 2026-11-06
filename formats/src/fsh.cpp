@@ -284,6 +284,8 @@ void setGlobalPalette(std::span<const std::array<std::uint8_t, 4>> palette) {
 
 std::size_t globalPaletteSize() { return globalPaletteStore().size(); }
 
+const std::vector<std::array<std::uint8_t, 4>>& globalPalette() { return globalPaletteStore(); }
+
 std::vector<std::array<std::uint8_t, 4>> fshPaletteRecordsAt(std::span<const std::uint8_t> data,
                                                              std::size_t offset, std::size_t end) {
     // WC98 (matrix section 4): walk the 16-byte-headed record chain at `offset` and collect

@@ -51,6 +51,8 @@ std::vector<HudQuad> layoutText(const formats::FfnFont& font, std::string_view t
 // Centered variant: returns quads for `text` centred on (cx, cy) at cap height sizePx.
 std::vector<HudQuad> layoutTextCentered(const formats::FfnFont& font, std::string_view text, float cx,
                                         float cy, float sizePx, std::uint32_t rgba);
+// Laid-out width of `text` at cap height sizePx, px (pen model; used for FE label alignment).
+[[nodiscard]] float textWidthPx(const formats::FfnFont& font, std::string_view text, float sizePx);
 
 // Scoreboard strip: panel rects + team abbreviations (HudView::teamNames) + "a-b" score + clock.
 // Clock semantics (DAT_0065F1C8): whole seconds elapsed in the current period -> floor/60 ':' ss.

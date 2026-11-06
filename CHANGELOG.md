@@ -21,6 +21,11 @@ project goals.
   selects the FC{DAN,DUT,ENG,FRE,GER,ITA,JAP,SPA,SWE}.BIN UI-string bank (registry Language key);
   German FEFLOW05 visually verified (umlaut glyphs, EA's own "wirlich" string kept verbatim).
   Gates `fe_text_fonts` (faces=10), `fe_text_lang_ger`; doc LAY_COMPOSITOR_NOTES.md.
+- Commentary scene defaults are measured, not inferred (`app/commentary.hpp`): live winedbg launch-under-
+  debugger capture pass 7e recorded setter triples (FUN_0046b074 idx4=65 @0x46b095 + idx3=80 @0x46b0f8;
+  FUN_0046b130 quintet loop idx{0,2,1,5}=80) and the post-boot table DAT_00632778 = {80,80,80,80,65,80,1};
+  port encodes `kScenePct`/`kSceneSpeechPct` (speech scene level 65 % via getter FUN_0048ed9c). Evidence
+  `analysis/pass7/percent1.txt`, COMMENTARY_WC98.md §"Scene defaults measured"; gate duckModel.
 
 ### Changed
 - Commentary pick model is now the faithful consume-on-use predicate, not round-robin

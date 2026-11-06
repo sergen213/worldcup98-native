@@ -213,6 +213,11 @@ void duckModel() {
     CHECK(c.volume() == 63 && c.masterGain() == 1.f); // ramp is per-tick (state cb), not immediate
     c.pump();                                         // one pump tick advances cur toward the scene level
     CHECK(c.masterGain() < 1.f && c.masterGain() > 0.f);
+    // Scene defaults MEASURED live (pass 7e, analysis/pass7/percent1.txt): table snapshot
+    // DAT_00632778 = {80,80,80,80,65,80,1}; speech scene level = idx4 getter -> 65 %.
+    CHECK(app::Commentary::kScenePct[4] == 65 && app::Commentary::kSceneSpeechPct == 65);
+    c.setScenePercent(app::Commentary::kSceneSpeechPct); // live setter triple @0x46b095 value
+    CHECK(c.volume() == app::Commentary::percentToVol(65));
 }
 // --- tree gate: real PHRS.PBK selection + decode (skipping when the tree is absent) ---
 

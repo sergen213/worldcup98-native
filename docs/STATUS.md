@@ -136,9 +136,12 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
   IGFONTS.BIG, slot 9 null; loader code VA 0x46933a) - labels draw their own face at native line
   height (`FeText::kFontNames`); `--lang CODE` selects FC{DAN,DUT,ENG,FRE,GER,ITA,JAP,SPA,SWE}.BIN
   (registry Language key; gates fe_text_fonts/fe_text_lang_ger). LAY_COMPOSITOR_NOTES.md.
-- Open: percent-table scene
-  default percentages (Wine oracle; setter runtime args). Landed: duck/mix table model +
-  scene-percent seam (`ChannelMix`, pass 7d, `analysis/pass7/duck*.txt`); tournament module + progression demo + team pick
+- Landed (2026-11-06): percent-table scene defaults MEASURED live pass 7e - winedbg launch-under-
+  debugger capture: setter triples FUN_0046b074 idx4=65/idx3=80, FUN_0046b130 loop idx{0,2,1,5}=80;
+  live table DAT_00632778 = {80,80,80,80,65,80,1}; speech scene level idx4 getter -> 65 %
+  (`Commentary::kScenePct/kSceneSpeechPct`, gate duckModel; `analysis/pass7/percent1.txt`,
+  COMMENTARY_WC98.md §"Scene defaults measured"). Duck/mix table model (`ChannelMix`, pass 7d).
+  Landed earlier: scene-percent seam (`ChannelMix`, pass 7d, `analysis/pass7/duck*.txt`); tournament module + progression demo + team pick
   (`--fe-pick`), save/load, HUD, FE flow w/ drawn text, commentary pick chain closed + faithful port
   model (pass 7c); suite 43.
 

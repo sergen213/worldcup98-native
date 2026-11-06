@@ -74,7 +74,7 @@ starts playback via the voice records (8-voice pool). autovol = per-word volume 
 - The PHRS record u16@0x12 takes only **32 distinct values** over the 1,290 members (bit-packed:
   high-byte classes + index fields), consistent with a bank/voice-slot selector key (runtime use = pump
   `_DAT_006326bc`), NOT an FCLG string index. NOTES §5.3 cross-map stays open; commentary text selection
-  must live in the `FUN_0048d0dc` pick logic (phrase id source) — decompile it next.
+  must live in the `FUN_0048d0dc` pick logic (phrase id source) — **resolved: see §Pick predicate below**.
 
 ## Speech gain / autovol chain (pass 7b, 2026-11-05)
 Evidence: `analysis/pass7/gain.txt`..`gain5.txt` (scripts `ghidra-scripts/GhidraWc98Gain{,2,3,4,5}.py`,
@@ -118,3 +118,44 @@ pure-JPype runs on the saved wc98 project). Closes STATUS "gain calibration + au
 queue pump + gain tick + per-voice `setGain(class * master)` each frame, with sentence-start/stop
 ramp edges reproducing the autovol seam sites. Gate: `test_commentary` (`gainModel()` exact-tick
 sequence asserts + wiring asserts at fixed timeline positions).
+
+## Pick predicate + activation chain (pass 7c, 2026-11-06)
+Evidence: `analysis/pass7/pick.txt` (builder/qfind decompiles), `pick2.txt` (producers/enqueue
+helpers), `pick3.txt` (raw disasm: builder, pick wrapper, activation tail), `pick4.txt` (predicate
+callback + record helpers). Scripts `ghidra-scripts/GhidraWc98Pick{1,2,3,4}.py`.
+
+### Confirmed
+- **Pick = list lookup; no rotation.** `FUN_0048d0dc` is a 56-byte wrapper: if the module init flag
+  (`DAT_0063241c`) == 0 return null, else forward to `FUN_004c4ce0` (**qfind**, cmn_queue.c string
+  `s_qfind` @0x5695c8). No counter/modulo anywhere in the chain — the round-robin Hypothesis had no
+  basis here.
+- **Builder (disasm 0x489460):** 6-slot event ring at `DAT_0057e380` stride 0x10: +0 payload,
+  +4 event code, +8 pending flag, +0xC class word. Per slot with pending == 1:
+  `EAX = [slot+0xC]`, `EDX = slot index (0..5)`, `CALL FUN_0048d0dc`; non-null pick result →
+  `CALL FUN_0048d1f8` (activate); the three fields of every scanned slot are cleared unconditionally.
+- **Pick wrapper (disasm 0x48d0dc):** saves EDX (slot index) on the stack; target queue =
+  `DAT_00632428 + ([slot+0xC] << 2)` — a handle array indexed by the event's class word; predicate
+  callback pointer = **FUN_0048cf10** (`MOV EDX,0x48cf10`).
+- **Predicate FUN_0048cf10 (disasm):** `MOV ECX,[EDX]; CMP ECX,[EAX+0xC]` → true iff the record's
+  +0xC tag field equals the ring slot index. qfind walks the class queue from its head (`obj+8`,
+  node-linked list) under a critical section and returns the first match, else null.
+- **Activation `FUN_0048d1f8` (disasm):** record's embedded segment subqueue at +0x14: drain loop
+  qpop (`FUN_004c4890`) → per-item start thunk `FUN_0048d0c0` → `FUN_004e3330`; then qfree the
+  subqueue (`FUN_004c4720`) and **remove the record** from its class list (`FUN_004c4a70` qremove on
+  `DAT_00632428 + [rec+8]*4`). Picked records are consumed on use.
+- Record fields: +6/+0xA = u16 voice-stream handles (-1 = none; play-status probe `FUN_004d9250`,
+  autovol ramp helper at 0x48cf24 = vol 0x10 via `FUN_004e2b30`); +8 = class index into the handle
+  array; +0xC = ring-slot tag; +0x14 = segment subqueue.
+- Null pick → builder skips enqueue ⇒ **exhausted pool = event silent** (no commentary fallback).
+
+### Hypothesis / Unknown
+- The record preload that fills the ready queues and sets each record's slot tag (+0xC) is not in
+  the analyzed band; per-event phrase *content* mapping stays **Unknown** (FCLG probe negative above:
+  no sentence cross-map table found).
+- Port model (`app/commentary.cpp`): shared commentary pool consumed once in storage order
+  (head-scan first-match == qfind over a single-tag list), exhausted pool -> silent. Deviation
+  marked in code; per-event tag table = open item.
+
+### Gate
+`test_commentary`: consumption asserts — picks step 0→2→3→4→5 (empty phrase skipped), the 6th event
+is silent (`sentencesStarted == 5`, pool exhausted); gain seam re-verified on a fresh instance.

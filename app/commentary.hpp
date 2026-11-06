@@ -73,8 +73,9 @@ public:
     bool loadTree(const std::filesystem::path& treeRoot);
 
     // FUN_004893ec trigger seam: unmapped events are silent; mapped ones flush the queue, stop
-    // any in-flight sentence, pick a phrase (rotation — Hypothesis, see commentary.cpp) and
-    // enqueue its segment-id run in TOC order before sentenceStart.
+    // any in-flight sentence, pick a phrase (qfind first-match over the ready pool, consumed on
+    // use — see commentary.cpp / COMMENTARY_WC98.md §pick) and enqueue its segment-id run in TOC
+    // order before sentenceStart. Exhausted pool -> null pick -> event stays silent.
     void trigger(const sim::SimEvent& e);
     // Speech master gain (SNDspeechinit vol + SNDspeechautovol scene ramp seam): the original
     // ramps the speech stream volume to the scene level on sentence start and back toward 0 at
@@ -110,7 +111,7 @@ private:
     std::unordered_map<std::uint16_t, std::uint32_t> byId_;  // record u16@0x12 -> record index
     std::vector<std::vector<std::uint16_t>> segIds_;         // phrase ordinal -> segment ids (TOC order)
     std::vector<std::uint32_t> candidates_;                  // pick pool: non-empty commentary phrases
-    std::size_t rotation_ = 0;                               // round-robin cursor (Hypothesis policy)
+    std::size_t head_ = 0;                               // ready-list head: picks consume entries (FUN_004c4a70 qremove)
     std::array<audio::SoundId, audio::SpeechQueue::kSlots> sounds_{}; // slot -> mixer voice (0 = silent/done)
     std::array<float, audio::SpeechQueue::kSlots> slotGain_{}; // per-slot class gain (Hypothesis)
     SpeechGain gain_;                                          // speech master ramp

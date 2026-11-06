@@ -100,8 +100,8 @@ counts in `docs/asset-formats/INVENTORY.md`, `docs/reverse-engineering/EXECUTABL
    7 unknown types) + FE art pipeline (SQF/MDL/palettes).
 2. Speech/commentary indexing (decoder itself is COMPLETE: 6,964/6,964 `.PBK`
    members decode via PT-tag routing, measured 2026-11-01): PHRS.INF index
-   semantics + event→phrase tables; rate default when tag `0x84` is absent
-   (currently 22050 Hz — speech likely 8 kHz, unverified).
+   semantics; rate default when tag `0x84` is absent RESOLVED 2026-11-06 — 22,050 Hz confirmed
+   from `EACSND.DLL@0xe01` (`mov [0x40aa10],0x5622`, driver global rate var; see AUDIO.md).
 Gain calibration resolved 2026-11-05 (`analysis/pass7/gain*.txt`, `COMMENTARY_WC98.md` §gain):
 EACSND linear vol chain (domain [0,0x7f], 16.16) saturating at 0x7f + byte curve table explains
 the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_commentary`).

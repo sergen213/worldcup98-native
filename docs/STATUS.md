@@ -205,5 +205,4 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
 - Raw hexdump appendices of game files are kept out of the repo
   (copyright); research-inbox/ is gitignored.
 - Probe logs under /tmp are ephemeral; durable record = counts in docs.
-- Community patches' internals (Ultimate Patch, 3rd-party loader)
-  unpacked/analyzed = pending; treat as black boxes until then.
+- Community patch lineage: nGlide `fifawc98_patch.zip` contents VERIFIED (reg keys force Glide/voodoo + 640x480; SDB shims SingleProcAffinity/GlobalMemoryStatusLie/EmulateDirectDrawSync; ships nGlide's own voodooa wrapper, not EA code) — EXTERNAL.md. Ultimate Patch / 3rd-party loader downloads sit behind moddb Cloudflare (curl = JS challenge); internals remain black boxes until fetched with a browser session.

@@ -25,6 +25,8 @@ namespace wc98::formats {
 void setGlobalPalette(std::span<const std::array<std::uint8_t, 4>> palette);
 // Number of colours currently loaded via setGlobalPalette (0 = feature off).
 [[nodiscard]] std::size_t globalPaletteSize();
+// The palette itself; FE text colour indices key into it (LAY normalColour/hiliteColour).
+[[nodiscard]] const std::vector<std::array<std::uint8_t, 4>>& globalPalette();
 
 // Global-palette candidate from an archive of PAL#### members
 // (FE/PACK/GLOBAL/PAK10042.BIG, matrix section 4): members are decoded as palette

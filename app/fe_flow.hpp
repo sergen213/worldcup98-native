@@ -8,6 +8,7 @@
 #include "wc98/presentation/fe_screen.hpp"
 
 #include <filesystem>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -41,6 +42,7 @@ private:
     formats::ScreenLayout screen_;     // main-menu layout (FEFLOW05)
     bool haveScreen_ = false;
     int sel_ = 0;
+    std::unique_ptr<presentation::FeText> text_; // FFN face + FC*.BIN strings, loaded once (fe_screen.hpp)
 };
 
 } // namespace wc98::app

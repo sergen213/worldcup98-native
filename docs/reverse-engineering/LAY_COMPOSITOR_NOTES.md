@@ -22,15 +22,20 @@ the compositor lives in `tools/render-demo/main.cpp` (`--lay <spec> [--tree <dir
   nvicons `qui1` 51×55 in a 55×50 box; aflag `0001` 193×100 in a 322×106 box).
 - Flat panels (`fname` null/RECT): filled rect from `FILLCOLOUR/COLOUR/BOXCOLOUR`
   ARGB key (hex, `H…`/`0x…` forms); `FrameRect` type draws a 1-px outline.
-- Text objects: not drawn (need FFN fonts + FC*.BIN strings — separate slice); counted `noArt`.
+  Text objects (`textid` = FC*.BIN string index, comma form `id,fontID`; measured FEFLOW05): resolved
+  via `FeText` (FFN face eras14bi.ffn + FCENG.BIN strings), drawn at the object position with
+  `TEXTX/YOFFSET`/`TEXTXY=x,y,a` offsets, `ALIGNMENT` 1=left 2=right >=3=center-in-box; colour keys
+  (`NORMALCOLOUR`, list-form `TEXTCOLOUR` first index) index the global FE palette. Unresolvable
+  TEXTID (id 0 = dynamic/dummy, e.g. measured `textid=0,5`) keeps counting `noArt`.
 
-## Measured composites (2026-11-02, RX 7900 XTX)
+## Measured composites (text slice 2026-11-05, RX 7900 XTX)
 | screen | objects → shapes | notes |
 |---|---|---|
-| `LAYOUTS.BIG@FEFLOW05.LAY` | 26 → 11 (+14 text, 1 unresolved) | main menu: France98 + EA SPORTS logos, tricolour, selector arrows, blue banners — PNG visually authentic; background flow bitmap composites over it (blending order is a known polish item) |
-| `IGLAY.BIG@CONTROL1.LAY` | 27 → 9 (+17 text, 1 unresolved) | controller setup: four 1998 gamepads + keyboards + pitch diagram; unresolved `redleft.fsh#mous` = cursor sprite (maus.pak family) |
+| `LAYOUTS.BIG@FEFLOW05.LAY` | 26 → 11 shapes + 100 text quads, 1 unresolved (text landed 2026-11-05) | main menu: France98 + EA SPORTS logos, tricolour, selector arrows, blue banners, FC*.BIN labels — PNG visually authentic; background flow bitmap composites over it (blending order is a known polish item) |
+| `IGLAY.BIG@CONTROL1.LAY` | 27 → 9 (+17 text via FeText in the app compositor; render-demo passes no text, counted `noArt`) | controller setup: four 1998 gamepads + keyboards + pitch diagram; unresolved `redleft.fsh#mous` = cursor sprite (maus.pak family) |
 
 ## Open items
-- Alpha/blend state per element type (hidden flags drive `shown()` only); text slice;
+- Alpha/blend state per element type (hidden flags drive `shown()` only);
   mouse cursor art; IGLAY in-game HUD needs the match scene behind it (M5).
-- Gate: ctest `render_demo_lay` runs FEFLOW05 with `--min-shapes 8`, skipped without a tree.
+- Gate: ctest `render_demo_lay` runs FEFLOW05 with `--min-shapes 8`, skipped without a tree;
+  ctest `fe_flow_render` additionally asserts text quads > 0 (menu labels visible).

@@ -7,6 +7,11 @@ project goals.
 ## [Unreleased]
 
 ### Added
+- FE screen text objects (`FeText` in `presentation fe_screen.{hpp,cpp}`): LAY `textid` -> FC<lang>.BIN
+  ("FCLG") string index (symbol form via the FEMSG table where present) -> `eras14bi.ffn` glyph quads
+  through the HUD layout API (`layoutText`, new additive `textWidthPx`); LAY offsets/alignment/colour
+  keys, colour indices into the global FE palette (additive `formats::globalPalette()` accessor).
+  Unresolvable TEXTID keeps counting `noArt`. Gate `fe_flow_render` asserts menu text quads > 0 on FEFLOW05.
 - Save framing + `USER/SLOT%.2d.SAV` codec (`formats/src/saveframe.cpp`, `slot.cpp`; SAVESLOT_WC98.md):
   record stream with the FUN_004c8070 CRC-16/ARC walk (seed 0xFBEA, table @DAT_00585d50), slot summary
   header id `0x10000`, FUN_0047b67c scan loop mirror. App-level tournament save/load (`app/saveload.{hpp,cpp}`):

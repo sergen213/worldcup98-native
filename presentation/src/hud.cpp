@@ -61,6 +61,10 @@ std::vector<HudQuad> layoutTextCentered(const formats::FfnFont& font, std::strin
     const float scale = lineH > 0 ? sizePx / static_cast<float>(lineH) : 1.f;
     return layoutText(font, text, cx - textWidth(font, text, scale) * 0.5f, cy - sizePx * 0.5f, sizePx, rgba);
 }
+float textWidthPx(const formats::FfnFont& font, std::string_view text, float sizePx) {
+    const int lineH = font.lineHeight > 0 ? font.lineHeight : static_cast<int>(font.atlas.height);
+    return textWidth(font, text, lineH > 0 ? sizePx / static_cast<float>(lineH) : 1.f);
+}
 
 std::string formatClock(int clockSeconds) {
     const int s = std::max(0, clockSeconds);

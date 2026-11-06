@@ -136,7 +136,7 @@ int run(int argc, char** argv) {
 
     std::unique_ptr<app::FeFlow> fe;
     if (feMode) fe = std::make_unique<app::FeFlow>(*renderer, tree);
-    int totalShapes = 0, presented = 0, navRc = -1;
+    int totalShapes = 0, totalTexts = 0, presented = 0, navRc = -1;
 
     while (smokeFrames == 0 || presented < smokeFrames) {
         auto ev = window->poll();
@@ -146,6 +146,7 @@ int run(int argc, char** argv) {
         if (fe) {
             const auto st = fe->drawCurrent(ui);
             totalShapes += presented == 0 ? st.shapes : 0; // first-frame stats are gate evidence
+            totalTexts += presented == 0 ? st.texts : 0;
             frame.ui = &ui;
         }
         for (const int sc : ev.keys) { // FE navigation: arrows select, Enter launches, Esc quits to menu
@@ -164,8 +165,11 @@ int run(int argc, char** argv) {
             continue;
         }
         if (fe && smokeFrames && presented == 0) { // gate evidence line (render_demo_lay pattern)
-            std::cout << "FEFLOW05: shapes=" << totalShapes << (fe->lastError().empty() ? std::string() : (" load-error=" + fe->lastError())) << '\n';
+            std::cout << "FEFLOW05: shapes=" << totalShapes << " texts=" << totalTexts
+                      << (fe->lastError().empty() ? std::string() : (" load-error=" + fe->lastError())) << '\n';
             if (totalShapes <= 0) { std::cerr << "FE main menu drew no shapes\n"; return 1; }
+            // Menu labels must be visible: FC*.BIN strings through the FFN face (FeText).
+            if (totalTexts <= 0) { std::cerr << "FE main menu drew no text quads\n"; return 1; }
         }
         if (fe && smokeFrames) { // per-frame offscreen capture: the gate asserts non-trivial PNGs
             render::Frame cap{};

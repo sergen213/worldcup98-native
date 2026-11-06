@@ -32,6 +32,19 @@ wc98_test(test_audio unit/test_audio.cpp)
 # (participant id invariance, TRI record/pool parses; docs/asset-formats/TEAMHIST.md).
 wc98_test(test_histtri unit/test_histtri.cpp)
 
+# Tournament module slice (docs/reverse-engineering/TOURNAMENT_MODULE_WC98.md §4-§5): standings +
+# tiebreak chain, bracket propagation, schedule plan, ZWCUP/ZINTER.RES pair matrix (§2.5).
+wc98_test(test_tournament unit/test_tournament.cpp)
+target_link_libraries(test_tournament PRIVATE wc98::tournament)
+
+# App-slice tournament progression gate (TOURNAMENT_MODULE_WC98.md §4-§5): full 64-fixture run
+# through standings -> qualifiers -> knockout propagation to a champion; env-gated exit 77 skip.
+add_test(NAME tournament_progression COMMAND wc98-tournament-demo)
+set_tests_properties(tournament_progression PROPERTIES SKIP_RETURN_CODE 77)
+if(DEFINED WC98_TREE)
+    set_tests_properties(tournament_progression PROPERTIES ENVIRONMENT "WC98_TREE=${WC98_TREE}")
+endif()
+
 # Match simulation (ported from fifa99-native tests/sim.cmake). The F99_SIM_LINKS gate is dropped:
 # the linking gap Anim_evalSkeleton 0x460ACC is implemented against the WC98 rig
 # (docs/reverse-engineering/SIM_PORT_NOTES.md section 5), so all three suites build.

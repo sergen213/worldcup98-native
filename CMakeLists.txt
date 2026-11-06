@@ -31,6 +31,7 @@ add_subdirectory(config)
 add_subdirectory(audio)
 add_subdirectory(input)
 add_subdirectory(presentation)
+add_subdirectory(tournament)
 add_subdirectory(tools)
 add_subdirectory(launcher)
 

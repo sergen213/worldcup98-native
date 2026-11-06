@@ -7,6 +7,11 @@ project goals.
 ## [Unreleased]
 
 ### Added
+- Save framing + `USER/SLOT%.2d.SAV` codec (`formats/src/saveframe.cpp`, `slot.cpp`; SAVESLOT_WC98.md):
+  record stream with the FUN_004c8070 CRC-16/ARC walk (seed 0xFBEA, table @DAT_00585d50), slot summary
+  header id `0x10000`, FUN_0047b67c scan loop mirror. App-level tournament save/load (`app/saveload.{hpp,cpp}`):
+  FE New game persists a slot after every completed round (XDG user dir, `WC98_SAVE_SLOT`), Load entry
+  restores and verifies identical state. Gates `test_slot`, `tournament_saveload`, `fe_nav_tournament_save/_load`.
 - In-match HUD overlay (`presentation/src/hud.cpp` + `match_scene` Frame::ui seam): scoreboard strip,
   clock (`DAT_0065F1C8`), radar from `MISC8.FSH` art at the exe-recovered rect (float block
   `0x55a9a8` = 533,67 / 180×120), FCDB STR0 team abbreviations, `eras14bi.ffn` glyphs, shirt-number

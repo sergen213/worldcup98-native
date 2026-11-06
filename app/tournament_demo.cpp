@@ -15,7 +15,9 @@
 #include <string>
 
 #include "wc98/file.hpp"
+#include "saveload.hpp"
 #include "wc98/tournament/tournament.hpp"
+#include "wc98/formats/slot.hpp"
 
 using namespace wc98::tournament;
 
@@ -72,11 +74,34 @@ int runTournamentDemo() {
     // --- Schedule: 48 group + 16 knockout, seed-pinned -------------------------------------
     const auto sched = generateSchedule(groups, kScheduleSeed);
     CHECK(sched.size() == 64 && sched == generateSchedule(groups, kScheduleSeed));
+    std::array<std::vector<MatchResult>, 8> groupMatches{}; // played fixtures per group (index = group)
 
-    std::vector<MatchResult> groupMatches[8];
-    std::array<Fixture, 16> koFixtures{}; // index = bracketNode (makeTree(16): R16 0..7, QF 8..11, SF 12..13, TP 15, F 14)
+    std::array<Fixture, 16> koFixtures{}; // index = bracketNode (R16 0..7, QF 8..11, SF 12..13, TP 15, F 14)
+    int nGroup = 0; // count of group fixtures collected
     std::array<bool, 16> koSeen{};
-    int nGroup = 0;
+    // Slot persistence (WC98_SAVE_SLOT env): the driver writes its TournamentState to
+    // SLOT%.2d.SAV after each completed round (app/saveload.{hpp,cpp}).
+    int saveSlot = -1;
+    if (const char* v = std::getenv("WC98_SAVE_SLOT"); v && *v) saveSlot = std::atoi(v);
+    wc98::app::TournamentState st;
+    st.groups = groups;
+    st.seed = kScheduleSeed;
+    st.koWinner.fill(kNoTeam);
+    st.koLoser.fill(kNoTeam);
+    std::array<std::uint32_t, 16> winners{}, losers{}; // bracket node results (propagation)
+    winners.fill(kNoTeam);
+    losers.fill(kNoTeam);
+    auto persist = [&](const char* roundName) {
+        if (saveSlot < 0 || saveSlot >= wc98::formats::kSlotCount) return;
+        st.groupResults.clear();
+        for (auto& gm : groupMatches)
+            st.groupResults.insert(st.groupResults.end(), gm.begin(), gm.end());
+        st.koWinner = winners;
+        st.koLoser = losers;
+        const auto p = wc98::app::defaultSlotDir() / wc98::formats::slotFileName(saveSlot);
+        wc98::app::saveTournament(p, st);
+        std::printf("wc98-tournament-demo: saved slot %02d after %s\n", saveSlot, roundName);
+    };
     for (const auto& f : sched) {
         if (f.group >= 0) {
             ++nGroup;
@@ -127,6 +152,7 @@ int runTournamentDemo() {
         place[static_cast<std::size_t>(g * 2)] = table[0];
         place[static_cast<std::size_t>(g * 2 + 1)] = table[1];
     }
+    persist("group stage"); // slot cache refreshed after each completed round
 
     // --- Qualification: top-2 advance; WC98 bracket uses group placings 1|2 only (§4) -------
     auto placeTeam = [&](const SlotRef& r) {
@@ -150,9 +176,6 @@ int runTournamentDemo() {
     KnockoutBracket bracket =
         KnockoutBracket::makeTree(std::vector<std::uint32_t>(seeds.begin(), seeds.end()), true);
     CHECK(bracket.nodeCount() == 16 && bracket.finalNode() == 14 && bracket.thirdPlaceNode() == 15);
-    std::array<std::uint32_t, 16> winners{}, losers{};
-    winners.fill(kNoTeam);
-    losers.fill(kNoTeam);
     for (int n = 0; n < 16; ++n) { // topological: R16, QF, SF, third-place, final
         const BracketNode& node = bracket.node(static_cast<std::size_t>(n));
         CHECK(node.teamA != kNoTeam && node.teamB != kNoTeam); // no orphan slots
@@ -174,12 +197,18 @@ int runTournamentDemo() {
             CHECK(bracket.setLoser(static_cast<std::size_t>(n), l)); // SF losers -> THIRDROUND_PLAYOFF
         winners[static_cast<std::size_t>(n)] = w;
         losers[static_cast<std::size_t>(n)] = l;
+        if (n == 7) persist("R16");           // round boundaries: save slot after each completes
+        else if (n == 11) persist("QF");
+        else if (n == 13) persist("SF");
+        else if (n == 15) persist("third-place");
     }
 
     // Final + third-place played, champion recorded in the final SF half.
     CHECK(bracket.champion() != kNoTeam);
     CHECK(bracket.champion() == winners[12] || bracket.champion() == winners[13]);
     CHECK(winners[bracket.thirdPlaceNode()] != kNoTeam);
+    st.champion = bracket.champion(); // final state recorded in slot cache
+    persist("final");
 
     // Seed-pinned fixture outcome: fails if schedule order / score stream reproducibility moves.
     {

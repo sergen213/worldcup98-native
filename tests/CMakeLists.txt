@@ -37,6 +37,15 @@ wc98_test(test_histtri unit/test_histtri.cpp)
 wc98_test(test_tournament unit/test_tournament.cpp)
 target_link_libraries(test_tournament PRIVATE wc98::tournament)
 
+# Save framing + SLOT%.2d.SAV codec (docs/reverse-engineering/SAVESLOT_WC98.md): CRC-16 vector,
+# framing round-trip identity, summary header id gate, byte-exact slot round trips, scan loop.
+wc98_test(test_slot unit/test_slot.cpp)
+
+# App-level tournament save->load scenario (no tree needed): new game -> play each round ->
+# persist SLOT%02d.SAV after the round -> restore; state identical at every boundary.
+add_test(NAME tournament_saveload COMMAND wc98-native --tournament-saveload 7)
+set_tests_properties(tournament_saveload PROPERTIES SKIP_RETURN_CODE 2 FIXTURES_SETUP slot)
+
 # App-slice tournament progression gate (TOURNAMENT_MODULE_WC98.md §4-§5): full 64-fixture run
 # through standings -> qualifiers -> knockout propagation to a champion; env-gated exit 77 skip.
 add_test(NAME tournament_progression COMMAND wc98-tournament-demo)
@@ -101,6 +110,11 @@ if(DEFINED WC98_TREE)
     set_tests_properties(fe_nav_tournament PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}")
     add_test(NAME fe_nav_exhibition COMMAND wc98-native --fe-smoke 1 --fe-nav exhibition --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/fe)
     set_tests_properties(fe_nav_exhibition PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}")
+    # the Load entry restores it and verifies byte-identical state (app/saveload.cpp).
+    add_test(NAME fe_nav_tournament_save COMMAND wc98-native --fe-smoke 2 --fe-nav tournament --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/fe)
+    set_tests_properties(fe_nav_tournament_save PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE};WC98_SAVE_SLOT=7" FIXTURES_REQUIRED slot)
+    add_test(NAME fe_nav_tournament_load COMMAND wc98-native --fe-smoke 2 --fe-nav tournament-load --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/fe)
+    set_tests_properties(fe_nav_tournament_load PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE};WC98_SAVE_SLOT=7" FIXTURES_REQUIRED slot)
 endif()
 
 # M6 presentation core: snapshot interpolation, camera names, kit-file selection, face composite.

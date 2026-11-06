@@ -36,6 +36,13 @@ counts in `docs/asset-formats/INVENTORY.md`, `docs/reverse-engineering/EXECUTABL
   56 teams, 1,782 players, 20-byte player records), LAY 29, FCLG 9,
   BNK 47, CRD 2, SCHl 37 (8 `.ASF` music incl. Tubthumping, 29 `.DCT`
   video), EULZ/Squish `.SQF` 49, TRE 9, `USER/OPTIONS.SAV` = `AFIFAFIF`.
+- `.DCT` EA SRE video **decoded + playable** (2026-11-06, pass 8): SCHl/mTCD container, MPEG-1
+  VLC + EA scan swap (zigzag pair 10/17), escape `000001`+run5+level8, EOB=`10`, 2-bit cell
+  header / 6 blocks per 8x8 cell, luma 4x4 quadrants + V/U chroma 4x4 (b4=V, b5=U), float IDCT
+  +128. Full-stream verification: INT_FIFA.DCT 1,017 frames deterministic checksums; all 29
+  files (9,915 frames) scan clean. Gates `test_dct` + `video_play`; `wc98-native --video-play
+  FILE.DCT` plays through the Vulkan renderer at the record cadence (56 ms → fps=17.9).
+  `docs/asset-formats/VIDEO.md`, `docs/reverse-engineering/VIDEO_DCT_NOTES.md`.
 - FIFA 99 native toolchain validated against WC98 (see REUSABILITY.md):
   core, BIG/RefPack, FSH (98.5%), FFN, PCMD, MO/ANIM (404/413),
   GEN4TBLS, FCDB names/players, FCLG, LAY grammar, all audio codecs
@@ -109,8 +116,8 @@ counts in `docs/asset-formats/INVENTORY.md`, `docs/reverse-engineering/EXECUTABL
 Gain calibration resolved 2026-11-05 (`analysis/pass7/gain*.txt`, `COMMENTARY_WC98.md` §gain):
 EACSND linear vol chain (domain [0,0x7f], 16.16) saturating at 0x7f + byte curve table explains
 the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_commentary`).
-3. `.MDL` GEOM/SKEL (FE 3D titles), `.SQF` EULZ sprites, `.DCT` EA-TREM
-   video frames.
+3. `.MDL` GEOM/SKEL (FE 3D titles), `.SQF` EULZ sprites. `.DCT` EA SRE video RESOLVED
+   2026-11-06 (`VIDEO_DCT_NOTES.md`, `docs/asset-formats/VIDEO.md`); inter-cell motion compensation = Hypothesis.
 4. `.SCI` AI-script bytecode (VM unparsed, parity with FIFA 99), GEN4TBLS AT/DF. `AISEQS.TBI`
    index format decoded 2026-11-06 (`AI_SEQS_TBI.md`: stride-20 records, id==index, clip-code pool).
 5. Save/replay/presentation files: see `docs/reverse-engineering/SAVES.md` (options.sav layout,

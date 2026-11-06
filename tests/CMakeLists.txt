@@ -35,6 +35,9 @@ wc98_test(test_rply unit/test_rply.cpp)
 # .HIS/.TRI team-history pair: synthetic round trips + tree gate over the 8 language pairs
 # (participant id invariance, TRI record/pool parses; docs/asset-formats/TEAMHIST.md).
 wc98_test(test_histtri unit/test_histtri.cpp)
+# EA .DCT movie container (SCHl + mTCD, SRE v2 video plane): header framing walk across all
+# 30 tree videos, deterministic decode checksums; docs/asset-formats/VIDEO.md.
+wc98_test(test_dct unit/test_dct.cpp)
 
 # Tournament module slice (docs/reverse-engineering/TOURNAMENT_MODULE_WC98.md §4-§5): standings +
 # tiebreak chain, bracket propagation, schedule plan, ZWCUP/ZINTER.RES pair matrix (§2.5).
@@ -123,6 +126,10 @@ if(DEFINED WC98_TREE)
     # user-slot files, then re-drive from disk and assert final world state-hash equality.
     add_test(NAME replay_record_play COMMAND wc98-replay --gate /tmp/wc98port-out/replay --tree ${WC98_TREE})
     set_tests_properties(replay_record_play PROPERTIES SKIP_RETURN_CODE 2)
+    # .DCT movie playback (docs/asset-formats/VIDEO.md): headless decode + Vulkan texture upload
+    # of every INT_FIFA.DCT frame; frames=0 output fails the gate.
+    add_test(NAME video_play COMMAND wc98-video-play --gate ${WC98_TREE}/VIDEO/INT_FIFA.DCT)
+    set_tests_properties(video_play PROPERTIES SKIP_RETURN_CODE 2 PASS_REGULAR_EXPRESSION "VIDEO frames=[1-9]")
     # M4/M9 FE flow: windowed shell renders FEFLOW05 real art (presentation compositor),
     # captures per-frame PNGs, Enter reaches exhibition + tournament entry points.
     # Skip code 2 = no display / headless CI, like match_demo_frames.

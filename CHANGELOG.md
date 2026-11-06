@@ -25,6 +25,18 @@ project goals.
   stateHash equality (seed-pinned 0x2E7A scripted scenario). Gates: `test_rply` (byte constants +
   writer round-trip), `replay_record_play` (record to disk -> re-drive -> hash MATCH; skip-2 w/o tree).
 - Tournament presentation flow RE-confirmed + implemented (Ghidra pass 8, `analysis/pass8/tourney_*.txt`): scene registry FUN_004479d0 enumerates all 49 feflowNN scenes with handler VAs; CONFIRMED mapping = feflow19 groupings, feflow35 group standings (`ssnN` rows), feflow25 QF board, feflow26 SF board + trophy slots `wcup`/`wcps`, feflow27 full bracket + `chmp` champion + third-place `3mat`, feflow23 KO matchup preview. fe_flow composites FEFLOW35->25->26(+wcup)->27 between rounds with standings/bracket overlays at the LAY's own slot positions (`--fe-present`). Gate `fe_render_present` (stat lines shapes/texts nonzero per screen; 50 -> 51).
+- `.DCT` EA SRE movie codec RE'd + implemented (Ghidra pass 8, `analysis/pass8/dct_*.txt`,
+  docs/reverse-engineering/VIDEO_DCT_NOTES.md): SCHl/mTCD container (BE fourcc + LE self-size;
+  dims LE16 at record +12/+14 = 320x240, BE-u16 delay `0x0038`=56 ms at +18); payload word-swapped,
+  MSB-first, 64-bit preamble; 2-bit cell header (`11` = inter, 9-bit field skipped) / 6 blocks per
+  8x8 cell with present flags — luma 4x4 quadrants + V(b4)/U(b5) chroma 4x4 (4:2:0); EA SRE VLC =
+  MPEG-1 ff_mpeg1_vlc_table with EOB=`10` resolving before longer prefix codes, escape `000001`+run(5)+level(8 signed),
+  EA scan table = zigzag direct with (10,17) pair swapped, dequant `level*matrix[i]/8` floor, float
+  reference IDCT +128. Byte-verified on all 29 tree videos (9,915 frames; INT_FIFA.DCT 1,017-frame
+  deterministic checksums, Python-oracle sample-exact). Codec `formats/src/dct.cpp` (+dct_tables.inc)
+  docs/asset-formats/VIDEO.md; playback `wc98-native --video-play FILE.DCT` (`app/video.cpp`, Vulkan
+  texture upload per frame at measured cadence). Gates: `test_dct` (29 files scan + full-stream decode,
+  determinism, SEQ_OPEN smoke), `video_play` (headless decode+upload stat line; suite 51 -> 53).
 
 
 ## [0.3.0] - 2026-11-06 — playable live match + authentic FE fonts, team-select grid, measured scene defaults

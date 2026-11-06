@@ -9,6 +9,7 @@
 #include "saveload.hpp"
 #include "tournament_demo.hpp"
 #include "game_audio.hpp" // FE menu music + shared runtime-audio helpers
+#include "video.hpp" // --video-play FILE.DCT (docs/asset-formats/VIDEO.md)
 
 #include "wc98/config/settings.hpp"
 #include "wc98/formats/fsh.hpp"
@@ -89,6 +90,7 @@ int run(int argc, char** argv) {
     int fePick = -1; // --fe-pick ID: scripted team-select pick for the tournament entry (non-interactive gate)
     bool feTeam = false; // --fe-team: open the team-select screen (FEFLOW11 grid) before the smoke frames
     std::string lang = "eng"; // --lang CODE: FC*.BIN UI-string bank (registry Language key)
+    std::string videoPlay; // --video-play FILE.DCT: movie playback through the Vulkan renderer (VIDEO.md)
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         auto next = [&]() -> std::string { if (i + 1 >= argc) throw std::invalid_argument(a + " needs a value"); return argv[++i]; };
@@ -114,6 +116,7 @@ int run(int argc, char** argv) {
         else if (a == "--pad-smoke") { padSmoke = true; }
         else if (a == "--live-match-smoke") { liveSmoke = std::stoi(next()); }
         else if (a == "--record-replay") { recordReplay = true; }
+        else if (a == "--video-play") { videoPlay = next(); }
         else throw std::invalid_argument("unknown argument '" + a + "'");
     }
 
@@ -124,6 +127,8 @@ int run(int argc, char** argv) {
         return 0;
     }
     if (liveSmoke > 0) return app::runLiveMatch(argc, argv); // M10 gate: driver-owned window + swapchain; skip-2 pattern.
+    // .DCT movie playback: driver owns its window + renderer (skip-2 on no display).
+    if (!videoPlay.empty()) return app::runVideoPlay(videoPlay, 0, width, height, fullscreen);
     if (feMode) {
         if (!std::filesystem::is_directory(tree)) {
             // Gate skip pattern: no tree -> exit 2 (ctest SKIP_RETURN_CODE 2).

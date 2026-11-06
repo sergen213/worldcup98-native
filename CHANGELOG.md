@@ -8,6 +8,17 @@ project goals.
 ## [Unreleased]
 
 ### Added
+- Interactive playable match (`app/livematch.{hpp,cpp}`, gate `interactive_match` via
+  `wc98-native --live-match-smoke N`): FE Enter on Exhibition launches a live on-screen match - sim
+  ticked from the wall clock in fixed 1/50 s engine steps, MatchScene + tele camera follow + HUD strip
+  drawn every frame, commentary pumped every 2 frames off the World::events trigger seam (SpeechQueue
+  -> PHRS decode; null mixer headless), Esc/window-close quits. Keyboard + gamepad drive controller 0
+  through the ported input layer's pad word (bindings: pass S/pad A = bit 0x20, shoot D/B, sprint W/Y,
+  lob A/X, evade Q/LB, through-ball E/RB, arrows/stick move; settings.ini overrides), proving the
+  input->sim command path in-gate. Evidence: shapes=340 uiVerts=264, "pass bit 0x20 reached controller
+  0", clock advanced 0 -> 1, events=3, commentary phrase 0 started. Shared `MatchBoot` bootstrap +
+  `snapshotFromWorld` now live in livematch.{hpp,cpp} and are reused by `wc98-match-demo` (duplicated
+  M6 preflight/palette/FCDB/sheet code deleted).
 - Team-select is the authentic `FEFLOW11.LAY` pick grid (`app/fe_flow.cpp drawTeamsGrid`):
   compositor composite of map background, flags, group cells + dynamic ZWCUP pool rows
   (F<id>.FSH shape `f000`, FCDB names, scrollbar thumb in the LAY's `sbar` track); scene registry

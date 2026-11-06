@@ -144,9 +144,26 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
   Landed earlier: scene-percent seam (`ChannelMix`, pass 7d, `analysis/pass7/duck*.txt`); tournament module + progression demo + team pick
   (`--fe-pick`), save/load, HUD, FE flow w/ drawn text, commentary pick chain closed + faithful port
   model (pass 7c); suite 43.
+- Landed (2026-11-06): INTERACTIVE playable match (`app/livematch.{hpp,cpp}`, gate `interactive_match`
+  via `--live-match-smoke N`): FE Enter on Exhibition now launches a live on-screen loop - sim ticks
+  real-time at the 1/50 s engine cadence, scene + HUD drawn every frame with camera follow, commentary
+  pump every 2 frames off the event trigger seam, Esc/window-close quits; keyboard/pad mapping (S/W/A
+  D-F-C-Q-E + pad West/North/Left/Right/Back/Start) drives controller 0 through the ported pad word.
+  Gate evidence: shapes=340 uiVerts=264, pass bit 0x20 reached controller 0, clock advanced, phrase 0
+  started. MatchBoot/snapshotFromWorld shared with `wc98-match-demo` (de-duplicated bootstrap).
+  Camera init snaps to the tele target with one `tick(init, 600)` (live smoothing climbs eye.y only
+  +/-frames/tick; from 0 it crawls for seconds - kickoff viewed near ground level looked like a
+  ragdoll). Observation: first ~1 s after kickoff all field players sample prone/fall anim poses
+  (GK standClip); upright by demo capture time t=1 s - sim-state, not a snapshot-layer bug.
 
 ## Known limitations
 
+- Interactive playable match (M10 `app/livematch.cpp`): the key/pad action mapping is a port convention
+  built on the ported input layer (bindings = config/src/settings.cpp defaults, pad-word assembly in
+  input/src/input.cpp); the live loop reuses the M6 scene/HUD/camera as-is - no new presentation
+  fidelity claimed.
+- Live match first-second pose: mass-prone field-player poses at the kickoff whistle moment are sim
+  data (open-play poses verified upright in late live captures); investigate with a t<1 s demo capture.
 - M6 vertical slice playable headless (`wc98-match-demo`, gate `match_demo_frames`); commentary
   integrated in the exhibition loop via `app/commentary.{hpp,cpp}` (trigger seam FUN_004893ec model ->
   SpeechQueue -> PHRS segment fetch/decode -> OpenAL Mixer, null-mixer headless; gates

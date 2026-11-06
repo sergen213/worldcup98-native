@@ -4,7 +4,7 @@ All notable changes. Versioning: `0.x.y` pre-1.0; 1.0 = full World Cup
 tournament playable natively, per the definition of success in the
 project goals.
 
-## [Unreleased]
+## [0.2.0] - 2026-11-06 — tournament playable end-to-end (native FE -> bracket -> slot save)
 
 ### Added
 

@@ -49,6 +49,11 @@ counts in `docs/asset-formats/INVENTORY.md`, `docs/reverse-engineering/EXECUTABL
   (`HIG_30`: 28 nodes, 320 tris) posed by real `ANIM.MO` clips; kit atlases `PK###A/H.FSH`
   bind 10/13 materials (harvest mode); stands 15/21, trophy PCMD 1/1 textured.
   Kit/tag map + quirks (`hjbx`↔`hjbk`, palette-only face `hifa`) in MILESTONE4.md.
+- HUD slice (2026-11-05): presentation overlay draws the match scoreboard strip, `DAT_0065F1C8` clock,
+  radar from `MISC8.FSH` rpit/rsp*/rpl* art at exe-recovered rect (float block VA `0x55a9a8` = 533,67
+  180×120), FCDB STR0 team abbreviations, `eras14bi.ffn` (IGFONTS.BIG, 209 glyphs) text and shirt-number
+  labels; scoreboard strip rect + ball marker are Hypothesis behind 15 `[gameplay] hud_*` knobs. Gate
+  `test_hud`; docs/reverse-engineering/HUD_WC98.md (5 open items).
 - WC98 deltas requiring adaptation (final, locked by port test gates —
   see REUSABILITY.md section 12): FCDB team record 68 B/17 words
   (FIFA 99: 80 B/20); roster = 20 little-endian u16 player-id slots

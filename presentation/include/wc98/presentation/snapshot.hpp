@@ -63,7 +63,7 @@ struct HudView {
     int period = 0;                       // 0/1 halves
     std::array<std::string, 2> teamNames; // short names / abbreviations (FCDB STR0)
     std::array<int, 2> controlled{-1, -1}; // player index controlled by user 1 / 2 (indicator arrows)
-    bool radar = true, scoreboard = false, names = false; // WC98 slice: HUD art not ported yet
+    bool radar = true, scoreboard = true, names = true; // HUD overlay master switches (presentation/src/hud.cpp)
 };
 
 struct MatchSnapshot {

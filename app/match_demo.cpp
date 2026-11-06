@@ -13,6 +13,7 @@
 #include "wc98/presentation/camera.hpp"
 #include "wc98/presentation/kits.hpp"
 #include "wc98/presentation/match_scene.hpp"
+#include "wc98/presentation/hud.hpp"
 #include "wc98/renderer/vulkan.hpp"
 #include "wc98/formats/fcdb.hpp"
 #include "wc98/formats/png.hpp"
@@ -170,6 +171,14 @@ int runMatchDemo(int argc, char** argv) {
     md.sheets[1] = sim::makeTeamSheet(db, std::size_t(teamIndex[1]));
     if (!sim::loadFormationTables(md, root)) { std::cerr << "skip: GEN4TBLS.VIV formation tables unreadable\n"; return 2; }
     if (md.sheets[0].squad.size() < 11 || md.sheets[1].squad.size() < 11) { std::cerr << "skip: squad under 11 players\n"; return 2; }
+    // HUD strip names: FCDB STR0 (COMMON/FCDB_ENG.DBI) rows pair 1:1 with the FCDB.DBI team order.
+    std::array<std::string, 2> abbrv{};
+    try {
+        const formats::FcdbNames nm = formats::FcdbNames::parse(data.file("COMMON/FCDB_ENG.DBI"));
+        for (int t = 0; t < 2; ++t)
+            if (std::size_t(teamIndex[std::size_t(t)]) < nm.teams.size())
+                abbrv[std::size_t(t)] = nm.teams[std::size_t(teamIndex[std::size_t(t)])].abbreviation;
+    } catch (const std::exception& e) { std::cout << "hud: no STR0 abbreviations (" << e.what() << ")\n"; }
 
     sim::Options opt{}; // halfLengthMinutes = 4 (DAT_0065EEE0 default), pitchSize 2
     if (!sim::loadMatchAnimData(md, root)) { std::cerr << "skip: ANIM.MO clips unreadable\n"; return 2; }
@@ -200,6 +209,18 @@ int runMatchDemo(int argc, char** argv) {
         for (const auto& warn : cfgFile.warnings) std::cout << "settings: " << warn << '\n';
         input::Input in(cfgFile.settings);
         in.assign(1, input::Side::Home); // keyboard device id 1 is always present (test_input.cpp l.43)
+        // HUD layout calibration: settings.ini [gameplay] hud_* passthrough keys (HUD_WC98.md).
+        HudGeometry geo;
+        const auto knob = [&](std::string_view k, float& dst) {
+            for (const auto& e : cfgFile.settings.gameplay)
+                if (e.key == k) { try { dst = std::stof(std::string(e.value)); } catch (...) {} }
+        };
+        knob("hud_sb_x", geo.sbX); knob("hud_sb_w", geo.sbW); knob("hud_sb_y", geo.sbY); knob("hud_sb_h", geo.sbH);
+        knob("hud_name_cx0", geo.nameCx[0]); knob("hud_name_cx1", geo.nameCx[1]);
+        knob("hud_score_cx", geo.scoreCx); knob("hud_clock_cy", geo.clockCy);
+        knob("hud_radar_x", geo.radarX); knob("hud_radar_y", geo.radarY); knob("hud_radar_w", geo.radarW); knob("hud_radar_h", geo.radarH);
+        knob("hud_dot_half", geo.dotHalf); knob("hud_shirt_head_px", geo.shirtHeadPx); knob("hud_shirt_size", geo.shirtSize);
+        scene.setHudGeometry(geo);
 
         auto key = [&](SDL_Scancode sc, bool down) {
             SDL_Event e{};
@@ -226,8 +247,12 @@ int runMatchDemo(int argc, char** argv) {
         std::size_t evPos = 0; // World::events is append-only (world.hpp emit)
 
         constexpr int kHz = 30;
-        int prevPhase = -1, kickIn = 0, kickDur = 0, forceIn = 0;
+        int prevPhase = -1, kickIn = 0, kickDur = 0, forceIn = 0, prevPeriod = w.match.periodIndex;
         std::string label;
+        auto hudLine = [&](int period) {
+            std::cout << "hud: period " << period + 1 << " ended " << abbrv[0] << ' ' << w.match.score[0] << '-'
+                      << w.match.score[1] << ' ' << abbrv[1] << " clock " << formatClock(int(w.match.elapsedSec)) << '\n';
+        };
         for (int tick = 1; tick <= 358 * kHz; ++tick) {
             if (tick == 58 * kHz - 2) key(SDL_SCANCODE_W, true); // sprint held from t ~58 s
             pump();
@@ -256,11 +281,14 @@ int runMatchDemo(int argc, char** argv) {
             } else {
                 evPos = w.events.size();
             }
-            const MatchSnapshot snap = snapshotFromWorld(w, md);
+            MatchSnapshot snap = snapshotFromWorld(w, md);
+            snap.hud.teamNames = abbrv; // FCDB STR0 abbreviations on the strip (scene falls back to its own)
             camera.tick(snap, w.time.simFrames != 0 ? w.time.simFrames : 2); // DAT_0065F1E0 frames/tick
 
             for (int pid = 0; pid < sim::kPlayers; ++pid)
                 if (w.players[std::size_t(pid)].ctrl == 1) controlledPid = pid;
+            snap.hud.controlled[0] = controlledPid; // user 1's player drives the shirt label + ground marker
+            if (w.match.periodIndex != prevPeriod) hudLine(prevPeriod), prevPeriod = w.match.periodIndex; // half boundary summary
             float lo = 1e9f, hi = -1e9f, sum = 0; int n = 0;
             for (int pid = 0; pid < sim::kPlayers; ++pid) {
                 const auto& p = w.players[std::size_t(pid)];
@@ -282,6 +310,7 @@ int runMatchDemo(int argc, char** argv) {
                 label.clear();
             }
         }
+        hudLine(prevPeriod); // final half summary
         SDL_Quit();
         std::cout << "commentary: " << commentary.sentencesStarted() << " sentence(s), "
                   << commentary.decodedSegments() << " segment decode(s)\n";

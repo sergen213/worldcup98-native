@@ -118,12 +118,16 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
    contents (download & diff pending).
 
 
-## Progress snapshot (2026-11-06, v0.2.0 released)
+## Progress snapshot (2026-11-06, v0.3.0 released)
+- Release: tag `v0.3.0` + GitHub release (AppImage + `.sha256`/`.version` sidecars): playable live match,
+  authentic FE fonts/language knob, FEFLOW11 team-select grid, measured percent-table scene defaults;
+  game smoke exit 0 under Xvfb, launcher offscreen self-test pass, `update.sh --check` -> "up to date";
+  CI matrix green incl. linuxdeploy job (ctest now per-test `--timeout 300` guard).
 - Release: tag `v0.2.0` + GitHub release (AppImage +`.sha256`/`.version` sidecars); AppImage game smoke
   exit 0 on RX 7900 XTX under Xvfb, launcher offscreen self-test pass, `update.sh --check` -> "up to
   date" against live endpoint. Prior `v0.1.0` flow identical (clean-clone ctest + CI matrix GCC-13/
   Clang C++23 + GCC-16 C++26 green incl. linuxdeploy job, single-entry passthrough proven).
-- Suite (tree build): 43 gates incl. M7 regression harness `test_sim_scenarios` (10 scenarios:
+- Suite (tree build): 47 gates incl. M7 regression harness `test_sim_scenarios` (10 scenarios:
   kickoff/pass/shot-goal/offside/set pieces/foul-cards/HT-FT/shootout/extra-time/golden-goal,
   seed-pinned, 0.25 s),
   commentary chain (`test_phrs` mirror equality 1290/1290, `test_speechqueue`, `test_commentary`

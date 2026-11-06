@@ -121,7 +121,9 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
 4. `.SCI` AI-script bytecode (VM unparsed, parity with FIFA 99), GEN4TBLS AT/DF. `AISEQS.TBI`
    index format decoded 2026-11-06 (`AI_SEQS_TBI.md`: stride-20 records, id==index, clip-code pool).
 5. Save/replay/presentation files: see `docs/reverse-engineering/SAVES.md` (options.sav layout,
-   `rply%04d.dat`/`FEREPLAYBUFF` replay system, `.his`/`.tri` Classics data, network.dat/dial.dat).
+   `.his`/`.tri` Classics data, network.dat/dial.dat). Replay framing decoded 2026-11-06
+   (`REPLAY_WC98.md`: 100 slots stride 0x19, snapshot records stride 0x23c = idx + 0x238 state block);
+   file bodies stay Hypothesis (no live samples).
    Wine oracle pass 2026-11-05 (`WINE_ORACLE_WC98.md`): live `USER/options.sav` dumped (96 B, magic
    `AFIFAFIF`) = runtime write confirmed; task tables `0x57fbc8/0x57fc40/0x581ac0` byte-identical to
    image at all observed states (never runtime-patched); replay/network saves still not generated

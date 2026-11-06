@@ -128,7 +128,8 @@ counts in `docs/asset-formats/INVENTORY.md`, `docs/reverse-engineering/EXECUTABL
 - Wine oracle (wine-11.21): original boots + runs under Xvfb 16bpp; live `options.sav` (AFIFAFIF)
   captured; task tables == static image (never runtime-patched); wined3d 24bpp AV documented - FE
   visuals not reached (black presentation), no fabricated captures. `WINE_ORACLE_WC98.md`.
-- Open: HUD overlay slice (in progress), tournament module spec + app mode, FE flow scenes in the
+- Open: HUD overlay slice (in progress), tournament module core implemented (`wc98::tournament`, gate
+  `test_tournament`; TOURNAMENT_MODULE_WC98.md §4-§5) + app mode, FE flow scenes in the
   windowed app, save/load app-level integration.
 
 ## Known limitations
@@ -138,7 +139,13 @@ counts in `docs/asset-formats/INVENTORY.md`, `docs/reverse-engineering/EXECUTABL
   SpeechQueue -> PHRS segment fetch/decode -> OpenAL Mixer, null-mixer headless; gates
   `test_commentary`). Event->phrase pick = Hypothesis round-robin (pick logic FUN_0048d0dc undecomposed);
   FCLG cross-map probed negative (`analysis/pass7/fclg_probe.txt`); gain calibration + autovol ramp open.
-  Front-end flow and HUD not wired yet.
+- Record queue plumbing confirmed (2026-11-05, `analysis/pass7/rec1.txt`, GhidraWc98Rec1.py on saved wc98
+  project): `FUN_004c4800` = cmn_queue push (qbottom, line 0x162), `FUN_004c4890` = pop (0x1cb),
+  `FUN_004c4ce0` = qfind with predicate callback (0x431); node +0x00 = next link, queue object fields
+  count/flags/head/tail. Phrase-record consumers of +0x04/+0x08 therefore are the linked-list slots
+  written by push (`*prev->next = node`) - hypothesis "queue links" confirmed; pick `FUN_0048d0dc` is
+  gate DAT_0063241c + qfind, drain `FUN_0048d1f8` pops all + per-item handler FUN_0048d0c0.
+- Front-end flow and HUD not wired yet.
 - Raw hexdump appendices of game files are kept out of the repo
   (copyright); research-inbox/ is gitignored.
 - Probe logs under /tmp are ephemeral; durable record = counts in docs.

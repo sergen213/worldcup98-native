@@ -151,8 +151,18 @@ usage, the within-phrase id permutation source, PHRS.INF u32@8 = 83,696.
    consumed by the per-frame pump `FUN_0048f920` (`_DAT_006326bc = *(u16*)(record + 0x12)`, then the
    item start thunk at `**(item + 0x1c)`); full SNDphrase* API ABI + the 46-caller match-event trigger
    seam (`FUN_004893ec`) documented there. Record offsets 0x04/0x08 consumers still open.
-5. Correct asset-formats/AUDIO.md + STATUS.md: sidecar counts (1 INF / 1 HDR / 0 TYPE,
-   plus TYPE.PBK), drop "cross-member references" wording (stripped mirror file, not
-   intra-archive cross-refs), PBP membership, and the declaredSize quirk; extend
-   `test_audio` gates with a cheap TYPE/PHRS prefix-equality check so BIGF leniency
-   regressions get caught.
+   **CLOSED (2026-11-05, `analysis/pass7/rec1.txt`, GhidraWc98Rec1.py on saved wc98 project)**: the
+   0x04/0x08 consumers are the cmn_queue linked-list slots (`cmn_queue.c` qbottom line 0x162 =
+   `FUN_004c4800` push, qpop 0x1cb = `FUN_004c4890`, qfind 0x431 = `FUN_004c4ce0` scan-with-predicate);
+   node+0x00 = next link, queue object = {count, flags, head, tail, critsec}. Push writes
+   `*prev->next = new`, so record +0x04/+0x08 carry the queue chain — "queue links" hypothesis CONFIRMED.
+   Pick `FUN_0048d0dc` = gate DAT_0063241c + qfind (predicate callback in param_2); drain `FUN_0048d1f8`
+   pops all items, per-item handler `FUN_0048d0c0`. Voice loader `FUN_0048fd54`: 8 records stride 0x2c,
+   buffer = ((bankSize+0x14)>>10 + 1)*0x400 bytes written to rec+0x28; item builder `FUN_00490250`
+   allocates 0x10 items + two bank handles (DAT_00632730/34).
+5. **DONE (2026-11-05, verified against committed tree; doc fixes landed in d9a1522)** AUDIO.md sidecar
+   counts corrected ("no other sidecars" + TYPE.PBK-as-archive note), PBP membership listed
+   (`AUDIO/{PHRS,CHNT,PLRS,TEAM,PBP}` audit line), declaredSize quirk documented (STATUS.md
+   INSTALL-stub bullet; REUSABILITY "declaredSize == fileSize 100%"); no "cross-member references"
+   wording remains in asset-formats/. Prefix-equality gate landed in `test_phrs` (TYPE/PHRS mirror,
+   1290/1290 byte-exact) instead of `test_audio` — same BIGF-leniency regression coverage, no duplicate.

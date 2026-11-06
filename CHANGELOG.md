@@ -6,6 +6,16 @@ project goals.
 
 ## [Unreleased]
 
+### Added
+- In-match HUD overlay (`presentation/src/hud.cpp` + `match_scene` Frame::ui seam): scoreboard strip,
+  clock (`DAT_0065F1C8`), radar from `MISC8.FSH` art at the exe-recovered rect (float block
+  `0x55a9a8` = 533,67 / 180×120), FCDB STR0 team abbreviations, `eras14bi.ffn` glyphs, shirt-number
+  labels; Hypothesis geometry behind `[gameplay] hud_*` knobs. Gate `test_hud`; HUD_WC98.md.
+- Tournament module spec (`TOURNAMENT_MODULE_WC98.md`): bracket record stride 0x300 five-slot name
+  layout, mode bytes (draw-mode has no writer; game mode from FE dispatcher), ZWCUP.RES C(40,2) pair
+  matrix bijection (131 played pairs), group standings block closure, knockout node graph, per-screen
+  implementation checklist — 61 cited claims.
+
 ## [0.1.0] - 2026-11-05 — first pre-release
 
 ### Added

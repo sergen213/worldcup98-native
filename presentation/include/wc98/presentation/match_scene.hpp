@@ -8,6 +8,7 @@
 #include "wc98/presentation/kits.hpp"
 #include "wc98/presentation/model.hpp"
 #include "wc98/presentation/snapshot.hpp"
+#include "wc98/presentation/hud.hpp"
 #include "wc98/renderer/renderer.hpp"
 
 #include <array>
@@ -46,6 +47,9 @@ public:
     [[nodiscard]] const formats::AnimClip& clip(int index) const;   // throws on bad index
     // Team FCDB ids of the two sides (for kit atlas naming by the caller's snapshot builder).
     [[nodiscard]] std::array<std::uint16_t, 2> teamIds() const;
+    // HUD overlay layout knobs (settings.ini [gameplay] hud_* passthrough; HUD_WC98.md). Call after the
+    // ctor to recalibrate the scoreboard strip / radar panel / shirt-label placement.
+    void setHudGeometry(const HudGeometry& g);
 
 private:
     struct Impl;

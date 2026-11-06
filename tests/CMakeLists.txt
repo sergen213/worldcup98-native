@@ -85,6 +85,10 @@ endif()
 wc98_test(test_presentation unit/test_presentation.cpp)
 target_link_libraries(test_presentation PRIVATE wc98_presentation)
 
+# HUD overlay layout gate (pure logic, no GPU): scoreboard/clock/radar quad lists from synthetic font+snapshot.
+wc98_test(test_hud unit/test_hud.cpp)
+target_link_libraries(test_hud PRIVATE wc98_presentation)
+
 # M8 launcher stack: settings round trip, OPTIONS.SAV codec sync, tree detect + manifest validate.
 if(TARGET wc98-launcher)
     add_test(NAME launcher_selftest COMMAND wc98-launcher --self-test)

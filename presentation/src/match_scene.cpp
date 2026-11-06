@@ -10,17 +10,20 @@
 //   * No brightness grid / SKIN.SHD .lm prelight: WC98 ships no CMAP `.lm` files for the player
 //     models (measured ls INGAME/PLAYER/MODELS), so DrawItem::lightBlend stays zero and vertex
 //     colours come from the PCMD prelit corners.
-//   * HUD not ported: the scoreboard, radar, shirt-number labels and controller ground markers are
-//     skipped entirely (f99 loadHud/drawHud). HudView fields ride in the snapshot for a later slice.
-//   * Animation comes from the simulation's loaded data: sim::loadMatchAnimData fills
+// * HUD: the scoreboard strip, clock, radar and shirt-number labels are ported (presentation/src/
+//   hud.cpp layout + drawHud below; docs/reverse-engineering/HUD_WC98.md). The controller ground
+//   markers use the MISC8 sb0* diamonds tinted by the f99 family table exe::kControllerTint.
+// * Shirt-number decal tint: skin tones ride PlayerView::skinTone, supplied from
 //     MatchData::anim with the AISEQS.TBI clip list and the HIG_30.PC rig (docs/reverse-engineering/
 //     SIM_PORT_NOTES.md section 5); this scene owns one scratch MatchData for that.
 #include "wc98/presentation/match_scene.hpp"
+#include "wc98/presentation/hud.hpp"
 
 #include "exe_tables.inc"
 
 #include "wc98/formats/big.hpp"
 #include "wc98/formats/fsh.hpp"
+#include "wc98/formats/ffn.hpp"
 #include "wc98/formats/refpack.hpp"
 #include "wc98/log.hpp"
 #include "wc98/sim/anim.hpp"
@@ -130,6 +133,8 @@ struct PlayerArt {
     PlayerRig rig;
     std::vector<std::pair<std::uint32_t, MeshId>> parts; // material index -> mesh
 };
+// Player head height above the feet, in game units (f99 sibling; shirt-label anchor).
+constexpr float kShirtHeadUnits = 70.f;
 
 } // namespace
 
@@ -169,6 +174,15 @@ struct MatchScene::Impl {
     std::vector<render::DrawItem> draws;
     std::vector<glm::mat4> joints;
     render::WorldBatch world;
+
+    // HUD overlay (presentation/src/hud.cpp layout; docs/reverse-engineering/HUD_WC98.md).
+    render::SpriteBatch ui;                       // 640x480 virtual screen, drawn last over the scene
+    formats::FfnFont hudFont;                     // match font: FE/PACK/IGFONTS.BIG "eras14bi.ffn"
+    TextureId fontTex = 0;                        // hudFont.atlas texture (0 until loaded)
+    std::map<std::string, TextureId> hudArt;      // radar/marker FSH tags -> textures
+    HudGeometry hudGeo;                           // layout knobs ([gameplay] passthrough, see HUD_WC98.md)
+    std::array<std::string, 2> hudTeamNames{};    // FCDB STR0 abbreviations (fallback for s.hud.teamNames)
+    bool hudReady = false;                        // font + radar panel resolved; graceful skip when false
     render::Frame frame;
 
     Impl(render::Renderer& rr, const GameData& d, const MatchSetup& s) : r(rr), data(d), setup(s), dims(pitchDimensions(s.pitchSize)) {}
@@ -188,6 +202,9 @@ struct MatchScene::Impl {
     void loadStadium();
     void loadGoals();
     void loadPlayers();
+    void loadHud();
+    void drawHud(const MatchSnapshot& s, const render::Camera& cam, const glm::vec2& live);
+    [[nodiscard]] TextureId hudTex(const std::string& key) const;
 
     const std::map<std::string, TextureId>& texturesFor(const std::string& fileBase, int lodSuffix, const Look& look);
     float lodMetric(const PlayerView& p, const render::Camera& cam, float focal) const;
@@ -629,8 +646,9 @@ const render::Frame& MatchScene::build(const MatchSnapshot& s, const render::Cam
     const int camYaw16 = sim::atan2i(cam.target.x - cam.eye.x, cam.target.z - cam.eye.z) * 64; // 1024 -> 65536/turn
     m.drawBall(s.ball, cam, camYaw16);
 
-    // HUD (scoreboard/radar/names/markers): NOT ported in this slice — see the file header.
-    m.frame = render::Frame{cam, m.draws, nullptr,
+    // HUD overlay (radar, scoreboard strip, shirt numbers, controller markers): hud.cpp layout.
+    m.drawHud(s, cam, live);
+    m.frame = render::Frame{cam, m.draws, s.hud.scoreboard || s.hud.radar ? &m.ui : nullptr,
                             s.time == TimeOfDay::Night ? glm::vec4(0.05f, 0.07f, 0.12f, 1.f) : glm::vec4(0.36f, 0.55f, 0.75f, 1.f),
                             m.joints, &m.world, render::Fog{}, nullptr}; // fog off: no WC98 rparms table (ponytail: add when the sky/fog path is traced)
     return m.frame;
@@ -645,6 +663,7 @@ MatchScene::MatchScene(render::Renderer& r, const GameData& data, const MatchSet
     m.loadPitch();
     m.loadGoals();
     m.loadPlayers(); // rig/clips + kits; sets up the player art and appearance tables
+    m.loadHud(); // graceful: warns and sets hudReady=false when the HUD art is absent
     if (m.setup.stadiumArt) m.loadStadium(); // last: it may flip setup.stadiumArt on load failure
 }
 
@@ -657,6 +676,81 @@ const formats::AnimClip& MatchScene::clip(int index) const {
 }
 
 std::array<std::uint16_t, 2> MatchScene::teamIds() const { return impl_->teamIds; }
+void MatchScene::setHudGeometry(const HudGeometry& g) { impl_->hudGeo = g; }
 
 
+
+// ------------------------------------------------------------------------------------------- hud
+
+TextureId MatchScene::Impl::hudTex(const std::string& key) const {
+    if (key.empty()) return white; // solid strip rects/panel fills use the white texel + vertex rgba
+    if (key == "font") return fontTex;
+    auto it = hudArt.find(key);
+    return it == hudArt.end() ? 0 : it->second;
+}
+
+void MatchScene::Impl::loadHud() {
+    // Font: the in-match text routine (f99 HUD_drawScoreClock family, docs/reverse-engineering/
+    // GHIDRA_PASS3_RENDERING.md) draws from an FFN face; WC98 ships FE/PACK/IGFONTS.BIG with the
+    // scoreboard faces (analysis/pass7/hud_probe.txt: Eras14bi.ffn 209 glyphs, lineHeight 31).
+    try {
+        const std::vector<std::uint8_t> big = data.member("FE/PACK/IGFONTS.BIG", "eras14bi.ffn");
+        hudFont = formats::FfnFont::parse(big);
+        fontTex = texture(toImage(hudFont.atlas), render::Wrap::Clamp, "hud:font");
+    } catch (const std::exception& e) {
+        log::warn("hud: font eras14bi.ffn not loaded ({})", e.what());
+    }
+    // Radar panel + markers. Measured in INGAME/MISC/MISC8.FSH (analysis/pass7/hud_probe.txt):
+    // rpit/rpi2 180x120 panels, rsp0..rsp4 8x8 selectors, sb00..sb04 32x32 controller diamonds.
+    for (std::string_view t : {"rpit", "rpi2", "rsp0", "rsp1", "rsp2", "rsp3", "rsp4",
+                               "rpl0", "rpl1", "ball", "sb00"}) {
+        const std::string tag(t);
+        if (hudArt.count(tag)) continue;
+        try {
+            FshFile f = parseFsh("INGAME/MISC/MISC8.FSH");
+            for (const auto& e : f.entries)
+                if (e.bitmap && trimTag(e.tag) == t) { hudArt[tag] = texture(toImage(*e.bitmap), render::Wrap::Clamp, "hud:" + tag); break; }
+        } catch (const std::exception&) {
+            log::warn("hud: MISC8.FSH tag {} not loaded", tag);
+        }
+    }
+    // Team abbreviations for the strip: FCDB STR0 rows pair 1:1 with FCDB.DBI team order.
+    try {
+        const std::vector<std::uint8_t> eng = data.file("COMMON/FCDB_ENG.DBI");
+        const formats::FcdbNames names = formats::FcdbNames::parse(eng);
+        for (int i = 0; i < 2 && std::size_t(setup.teamIndex[i]) < names.teams.size(); ++i)
+            hudTeamNames[i] = names.teams[std::size_t(setup.teamIndex[i])].abbreviation;
+    } catch (const std::exception& e) {
+        log::warn("hud: team abbreviations not loaded ({})", e.what());
+    }
+    hudReady = fontTex && !hudArt.empty();
+}
+
+void MatchScene::Impl::drawHud(const MatchSnapshot& s, const render::Camera& cam, const glm::vec2& live) {
+    ui.clear();
+    if (!hudReady) return;
+    HudView hud = s.hud;
+    for (int t = 0; t < 2; ++t)
+        if (hud.teamNames[t].empty()) hud.teamNames[t] = hudTeamNames[t];
+
+    const auto emit = [&](const std::vector<HudQuad>& quads) {
+        for (const HudQuad& q : quads) ui.draw(hudTex(q.texture), q.dst, q.uv, q.rgba);
+    };
+    if (hud.radar) emit(layoutRadar(s, live, hudGeo));
+    if (hud.scoreboard) emit(layoutScoreboard(hud, hudFont, hudGeo));
+
+    // Shirt-number labels above the user's side and the ball possessor: world -> screen projection.
+    const glm::mat4 vp = cam.projection(render::SpriteBatch::kWidth / render::SpriteBatch::kHeight) * cam.view();
+    for (std::size_t i = 0; i < s.players.size(); ++i) {
+        const PlayerView& p = s.players[i];
+        if (!p.visible || !p.shirtNumber) continue;
+        if (p.team != 0 && int(i) != s.possessor && hud.controlled[0] != int(i)) continue;
+        glm::vec4 c = vp * glm::vec4(p.pos.x, p.pos.y + kShirtHeadUnits, p.pos.z, 1.f);
+        if (c.w <= 1e-3f) continue;
+        const float x = (c.x / c.w * 0.5f + 0.5f) * render::SpriteBatch::kWidth;
+        const float y = (1.f - (c.y / c.w * 0.5f + 0.5f)) * render::SpriteBatch::kHeight;
+        emit(layoutTextCentered(hudFont, std::to_string(p.shirtNumber), x, y - hudGeo.shirtHeadPx,
+                                hudGeo.shirtSize, hudGeo.textColor));
+    }
+}
 } // namespace wc98::presentation

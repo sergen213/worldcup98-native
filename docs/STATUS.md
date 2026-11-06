@@ -147,6 +147,11 @@ counts in `docs/asset-formats/INVENTORY.md`, `docs/reverse-engineering/EXECUTABL
   written by push (`*prev->next = node`) - hypothesis "queue links" confirmed; pick `FUN_0048d0dc` is
   gate DAT_0063241c + qfind, drain `FUN_0048d1f8` pops all + per-item handler FUN_0048d0c0.
 - Front-end flow (FEFLOW05 nav) and in-match HUD landed; slot save/load wiring open.
+- Gamepad FE nav landed (platform `Window.poll` padButtons/padNav + canonical `PadButton`, app FE loop
+  South/Start confirm, d-pad/stick nav with 0.25 s repeat): CI gates cover mapping, throttle and virtual-pad
+  poll (`test_gamepad`) plus pad-less dummy-driver startup (`gamepad_smoke_dummy`); real-hardware path is not
+  CI-gateable — verify manually: plug a gamepad, run `wc98-native --fe --tree <tree>`, d-pad/left-stick moves
+  the FEFLOW05 selection, South (Xbox A) launches.
 - Raw hexdump appendices of game files are kept out of the repo
   (copyright); research-inbox/ is gitignored.
 - Probe logs under /tmp are ephemeral; durable record = counts in docs.

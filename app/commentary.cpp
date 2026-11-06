@@ -171,7 +171,15 @@ void Commentary::pump(int frames) {
         if (!mixer_) continue;
         const float m = gain_.frac();
         for (std::size_t s = 0; s < audio::SpeechQueue::kSlots; ++s)
-            if (sounds_[s] && slotGain_[s] > 0.f) mixer_->setGain(sounds_[s], slotGain_[s] * m);
+            if (sounds_[s] && slotGain_[s] > 0.f) {
+                // SNDvol per-frame apply + channel duck/mix table DAT_0064b9dc (+1 CC7 byte): key-on
+                // formula voiceVol * cc7 / 0x7f, and every CC7 write re-applies SNDvol to all active
+                // voices in MIDI timer cb LAB_004e3bd4 (analysis/pass7/duck3.txt). Default vol 0x7f =
+                // identity. Deviation: port has no MIDI music bus; speech slots occupy the channel
+                // window (COMMENTARY_WC98.md §pass 7d).
+                const int base = int(slotGain_[s] * SpeechGain::kMaxVol * m + 0.5f);
+                mixer_->setGain(sounds_[s], float(mix_.scaledFor(int(s), base)) / SpeechGain::kMaxVol);
+            }
     }
 }
 

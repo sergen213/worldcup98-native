@@ -131,8 +131,9 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
 - Wine oracle (wine-11.21): original boots + runs under Xvfb 16bpp; live `options.sav` (AFIFAFIF)
   captured; task tables == static image (never runtime-patched); wined3d 24bpp AV documented - FE
   visuals not reached (black presentation), no fabricated captures. `WINE_ORACLE_WC98.md`.
-- Open: FE fidelity polish (map-grid team-select art, fontID faces, lang knob), duck-table scaling,
-  percent-table scene defaults (Wine oracle). Landed: tournament module + progression demo + team pick
+- Open: FE fidelity polish (map-grid team-select art, fontID faces, lang knob), percent-table scene
+  default percentages (Wine oracle; setter runtime args). Landed: duck/mix table model +
+  scene-percent seam (`ChannelMix`, pass 7d, `analysis/pass7/duck*.txt`); tournament module + progression demo + team pick
   (`--fe-pick`), save/load, HUD, FE flow w/ drawn text, commentary pick chain closed + faithful port
   model (pass 7c); suite 43.
 
@@ -147,6 +148,7 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
   consumed in storage order, per-event tag table unmeasured (marked in code); COMMENTARY_WC98 §pick,
   evidence `analysis/pass7/pick*.txt`. FCLG cross-map probed negative (`analysis/pass7/fclg_probe.txt`);
   gain calibration + autovol ramp closed 2026-11-05 (`analysis/pass7/gain*.txt`, §gain; `SpeechGain`).
+  duck/mix table model + scene-percent seam closed 2026-11-06 (`analysis/pass7/duck*.txt`, §pass 7d; `ChannelMix`).
 - Record queue plumbing confirmed (2026-11-05, `analysis/pass7/rec1.txt`, GhidraWc98Rec1.py on saved wc98
   project): `FUN_004c4800` = cmn_queue push (qbottom, line 0x162), `FUN_004c4890` = pop (0x1cb),
   `FUN_004c4ce0` = qfind with predicate callback (0x431); node +0x00 = next link, queue object fields

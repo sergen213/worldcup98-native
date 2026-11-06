@@ -8,6 +8,7 @@
 #include "livematch.hpp" // M10 interactive playable match (runLiveLoop / --live-match-smoke)
 #include "saveload.hpp"
 #include "tournament_demo.hpp"
+#include "game_audio.hpp" // FE menu music + shared runtime-audio helpers
 
 #include "wc98/config/settings.hpp"
 #include "wc98/formats/fsh.hpp"
@@ -159,6 +160,15 @@ int run(int argc, char** argv) {
 
     std::unique_ptr<app::FeFlow> fe;
     if (feMode) fe = std::make_unique<app::FeFlow>(*renderer, tree, lang);
+    std::unique_ptr<audio::Mixer> feAudio; // owns the one OpenAL context during the FE loop
+    if (feMode) { // menu music: AUDIO/MUSC FE_*.ASF as a looping SCHl stream (AUDIO_RUNTIME.md);
+        // best-effort like the live-match mixer: headless CI has no OpenAL device.
+        try { feAudio = std::make_unique<audio::Mixer>(); } catch (const std::exception& e) { std::cout << "audio: no output device (" << e.what() << ")\n"; }
+        if (feAudio) {
+            std::string track;
+            if (app::startMenuMusic(*feAudio, tree, &track)) std::cout << "fe: menu music " << track << '\n';
+        }
+    }
     int totalShapes = 0, totalTexts = 0, totalCursors = 0, presented = 0, navRc = -1;
         if (fe && feTeam) { fe->move(1); fe->enter(); } // Tournament entry -> team-select grid
 

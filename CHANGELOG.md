@@ -8,6 +8,13 @@ project goals.
 ### Added
 - FE mouse cursor drawn from MAUS.PAK (`presentation::loadFeCursor`, 28x26 `curs` arrow, engine-hardcoded path at FIFAWC.EXE offset 1451894) over every FE composite in the window loop; gates `test_presentation` tree checks (MAUS entries + REDLEFT shipped-gap assert), `fe_render_tournament` FAIL regex `cursors=0`.
 - FE element colour state RESOLVED + implemented: hilite pane (HILITEPANE) draws HILITECOLOUR/HILITEDSHAPEID, plain panes NORMALCOLOUR (exe parse chain 0x46e0d9/0x46e10b fields +0x68/+0x6C; listbox draw FUN_00477f54 @0x477f54); no per-element blend mode exists. Gate `test_presentation` tree checks assert hilite/plain glyph rgba = pal[2]/pal[1].
+- Runtime audio wired into the shell (`app/game_audio.{hpp,cpp}`): FE flow starts a looping music
+  stream from AUDIO/MUSC `FE_*.ASF` (exe glob `FE*.ASF` @0x566b3e, queue FUN_0048ed9c + pump
+  FUN_0048eb98); live match plays CROWD.BNK slot-2 ambience loop + GAME00.BNK whistle (#81) on
+  KickOff/PeriodEnd/MatchEnd and ball-strike thud (#23) on Shot off the event seam. RE evidence
+  pass 8 (AUDIO_RUNTIME.md §6); Mixer best-effort pattern kept (headless = counters only). Gate
+  `test_gameaudio`: OpenAL loopback capture asserts music stream audible over >=1 s, whistle/kick/
+  crowd slot decodes non-silent, scripted KickOff/PeriodEnd/Shot fire SFX voices.
 
 
 ## [0.3.0] - 2026-11-06 — playable live match + authentic FE fonts, team-select grid, measured scene defaults

@@ -65,3 +65,41 @@ those VAs unmapped and unloaded (measured 2026-11-01).
   codec tag routing) — not a bit-exact clone of this runtime pump — for offline decode.
 - If streaming behavior is reproduced (voice counts, feed gating), use the table above as
   the semantic reference.
+
+## 6. Bank load + sound select (pass 8, measured 2026-11-06)
+
+Raw decompiles: `analysis/pass8/audio1_strings.txt`, `audio2_select.txt`, `audio3_play.txt`
+(byte-scan of initialized memory incl. DGROUP VAs; xrefs; targeted decompiles).
+
+**CONFIRMED — path strings (DGROUP).** `AUDIO\MUSC\` + glob `FE*.ASF` / `BE*.ASF` @0x566b3e;
+`AUDIO\SFXS\%s` + `game00.bnk`/`game01.bnk`/`plrs00.bnk`/`plrs01.bnk` @0x566b5a..0x566b9c;
+`AUDIO\CRWD\%s` + `CMIDI.BNK`/`SNDCRD`/`TRAFF.BNK`/`TRAFF.CRD`/`CROWD.BNK`/`CROWD.CRD`
+@0x566ae1..0x566b29; `AUDIO\ANTH\ANTH%04d.BNK` + `ANTHEM.EAM` @0x56735f.
+
+**CONFIRMED — music queue.** `FUN_0048ed9c` (callers: FE frame drivers `FUN_0043ccac`,
+`FUN_0047a8f4`, init `FUN_00490728`) builds the two track lists at `DAT_00632654` (FE) /
+`DAT_00632670` (BE); the active list pointer `DAT_0063268c` is chosen by mode:
+`FUN_00446624()==2` -> BE list (pause/behind-the-scenes screens), else FE list. Per-frame pump
+`FUN_0048eb98` (14 callers in the `0x439xxx`/`FUN_0047a8f4` FE driver region) pops queue entries
+(`FUN_004c4890` cmn_queue pop + stream setup), i.e. menu music = sequential .ASF streams from
+the glob list, not a fixed track. Slot ids inside the stream layer are codec-level, not per-file.
+
+**CONFIRMED — SFX bank owner.** loader `FUN_0048eff0` (xref 0x48f007) is called twice by
+`FUN_0048f1c4` (callers: init `FUN_00409ef4`, audio-init `FUN_00490728`) -> handle `DAT_006326ac`;
+user `FUN_0048f228` shuffles two bank handles (`DAT_0063269c`/`DAT_00632698`, game00/game01 pair).
+Crowd banks: loader `FUN_0048e78c` (caller init `FUN_00409ef4`) loads CROWD.BNK -> `DAT_006325c0`
+and the CROWD.CRD card -> `DAT_006325c4` (`FUN_0048e190` = AUDIO\CRWD\%s open).
+
+**CONFIRMED — whistle trigger chain.** `FUN_004bedb0` (caller `FUN_004b5290`; gates:
+`DAT_00641270==1`, scene `DAT_0064015c==9`, distance `|DAT_00646924| <= DAT_00644934`) ->
+`FUN_0051d480` (33 callers at match-event sites 0x4ae8xx/0x4b8xxx/0x505xxx): plays sound index
+byte `(&DAT_0058f3b2)[sceneId*4]` through the SNDplay pointer vector - **slot ids are table-
+driven per scene, not immediates**, so exact slot numbers stay unresolved statically.
+
+**Hypothesis (acoustic verification) — slot -> SFX.** All bank slots decoded to WAV and measured
+(length/RMS/spectral centroid/zero-cross rate): GAME00.BNK #81 = 0.17 s bright mono chirp at
+22.05 kHz (whistle), #23 = 0.24 s low-ZCR bass thud (ball strike); CROWD.BNK #2/#3 identical pair
+= 3.03 s continuous murmur (loop material). Port mapping: FE flow -> first `FE_*.ASF` looped
+stream; live match -> CROWD.BNK #2 loop + GAME00 #81 whistle on KickOff/PeriodEnd/MatchEnd, #23
+on Shot (`app/game_audio.{hpp,cpp}`, gate `test_gameaudio`). Crowd chant layering (CROWD.CRD
+cards + CMIDI.BNK MIDx streams) and proximity gain ramps remain unimplemented.

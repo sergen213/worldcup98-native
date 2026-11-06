@@ -92,6 +92,12 @@ Window::Events Window::poll() {
         for (int i = 0; i < 4; ++i)
             if (p.nav[i].fire(i + 1 == dir ? dir : 0, now)) ev.padNav.push_back(i + 1);
     }
+    // Mouse state is queried, not event-pooled: the FE cursor sprite must track the pointer
+    // between motion events (and while parked). SDL3 reports points; app maps to virtual pixels.
+    float mx = 0.f, my = 0.f;
+    SDL_GetMouseState(&mx, &my); // x/y set to ±FLT_MAX when the mouse is outside any display
+    auto q = [](float v) { return int(std::clamp(v, -2147483647.f, 2147483647.f)); };
+    ev.mouseX = q(mx), ev.mouseY = q(my);
     ev.connectedCount = int(pads_.size());
     return ev;
 }

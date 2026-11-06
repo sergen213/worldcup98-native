@@ -41,6 +41,9 @@ FeFlow::FeFlow(render::Renderer& r, fs::path tree, std::string lang) : tree_(std
         haveGrid_ = true;
     } catch (const std::exception&) { // no grid art on this tree: usability list remains
     }
+    // Mouse cursor sprite (MAUS.PAK, exe string offset 1451894): absent art => no sprite drawn.
+    if (presentation::loadFeCursor(tree_, cursor_) && !cursorTex_)
+        cursorTex_ = r.createTexture(cursor_.bmp, render::Wrap::Clamp, "fe/maus-curs");
     loadTeams();
 }
 
@@ -89,6 +92,7 @@ FeDrawStats FeFlow::drawCurrent(render::SpriteBatch& ui) const {
             ui.draw(0, {36.f, y, 1.f, 18.f}, {}, w), ui.draw(0, {53.f, y, 1.f, 18.f}, {}, w);
         }
     }
+    drawCursor(ui, st);
     return st;
 }
 
@@ -119,6 +123,7 @@ FeDrawStats FeFlow::drawTeams(render::SpriteBatch& ui) const {
     ui.draw(0, {52.f, 96.f + 32.f * (teams_.sel % rows) + 4.f, 18.f, 18.f}, {}, render::packRgba(90, 200, 255, 255));
     line("PAGE " + std::to_string(pg + 1) + "/" + std::to_string(teams_.pageCount()), 48.f, 420.f, 14.f,
          render::packRgba(200, 200, 200, 255));
+    drawCursor(ui, st); // MAUS.PAK arrow on the mouse pointer as well
     return st;
 }
 
@@ -178,7 +183,21 @@ FeDrawStats FeFlow::drawTeamsGrid(render::SpriteBatch& ui) const {
         const float y = float(sbar->y) + (track - thumb) * float(teams_.page()) / float(pages > 0 ? pages : 1);
         ui.draw(0, {float(sbar->x), y, float(sbar->width > 0 ? sbar->width : 8), thumb}, {}, render::packRgba(210, 230, 255, 255));
     }
+    drawCursor(ui, st);
     return st;
+}
+
+// MAUS.PAK cursor arrow (entry 0 = the 28x26 arrow): drawn last over each FE composite. The
+// original engine loads .\fe\pack\maus.pak in code (exe string block offset 1451894) and blits
+// it after screen composition; the decoded RGBA carries transparent pixels (measured: 250 of
+// 728 alpha=0), blended by the UI pipeline's SRC_ALPHA state. Hotspot = FSH header centerX/Y.
+void FeFlow::drawCursor(render::SpriteBatch& ui, presentation::FeDrawStats& st) const {
+    if (!cursorTex_) return;
+    const float w = float(cursor_.bmp.width), h = float(cursor_.bmp.height);
+    const float x = std::clamp(float(ptrX_ + cursor_.hotX), 0.f, render::SpriteBatch::kWidth - w);
+    const float y = std::clamp(float(ptrY_ + cursor_.hotY), 0.f, render::SpriteBatch::kHeight - h);
+    ui.draw(cursorTex_, {x, y, w, h}, {}, 0xFFFFFFFFu);
+    ++st.cursors;
 }
 
 void FeFlow::move(int delta) {

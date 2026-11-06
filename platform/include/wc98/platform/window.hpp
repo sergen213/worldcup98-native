@@ -47,6 +47,9 @@ public:
         // repeats while held (PadNavThrottle); feeds the same nav actions as the arrow keys.
         std::vector<int> padNav;
         int connectedCount = 0; // gamepads open right now
+        // Mouse position in window points (SDL_GetMouseState, every poll; -2147483648 = outside
+        // any display). The FE flow maps these to virtual 640x480 pixels for the MAUS.PAK cursor.
+        int mouseX = 0, mouseY = 0;
     };
     // Drains pending events. F11 and Alt+Enter toggle fullscreen; window close requests quit.
     Events poll();

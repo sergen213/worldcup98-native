@@ -4,6 +4,11 @@
 #include "wc98/presentation/kits.hpp"
 #include "wc98/presentation/snapshot.hpp"
 
+#include "wc98/presentation/fe_screen.hpp"
+#include "wc98/formats/fsh.hpp"
+#include "wc98/formats/refpack.hpp"
+#include "wc98/file.hpp"
+
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -152,6 +157,33 @@ void treeChecks() {
     // GameData::member on a RefPack'd BIGF archive: MODELS2.PAK carries net.pc (contract facts).
     auto bytes = data.member("INGAME/PLAYER/MODELS/MODELS2.PAK", "net.pc");
     CHECK(bytes.size() > 16);
+
+    // FE mouse cursor art (MAUS.PAK, exe string offset 1451894): two `curs` entries; entry 0 is
+    // the 28x26 arrow with real transparent pixels and hotspot straight from the FSH header.
+    if (auto pal = wc98::findCaseInsensitive(tree, "FE/PACK/PAL.PAK"); !pal.empty())
+        formats::setGlobalPalette(formats::wc98GlobalPaletteFromPalArchive(wc98::readFile(pal))); // app loadFePalette pattern
+    wc98::presentation::FeCursor cur;
+    CHECK(wc98::presentation::loadFeCursor(tree, cur));
+    CHECK(cur.entries == 2);
+    CHECK(cur.bmp.width == 28 && cur.bmp.height == 26 && !cur.bmp.rgba.empty());
+    {
+        const auto maus = formats::FshFile::parse(formats::refpack::decompressIfNeeded(
+            wc98::readFile(wc98::findCaseInsensitive(tree, "FE/PACK/MAUS.PAK"))));
+        CHECK(maus.entries.size() == 2 && maus.entries[0].tag == "curs");
+        CHECK(cur.hotX == maus.entries[0].bitmap->centerX && cur.hotY == maus.entries[0].bitmap->centerY);
+        int zeros = 0;
+        for (std::size_t k = 3; k < cur.bmp.rgba.size(); k += 4)
+            if (cur.bmp.rgba[k] == 0) ++zeros;
+        CHECK(zeros > 0); // the arrow is keyed, not an opaque rectangle (measured: 250/728)
+    }
+    // REDLEFT.PAK ships keyb/joys/gpad/grav only: CONTROL1.LAY's `mous` shape is a shipped-asset
+    // gap (the original silently skips it), not a loader bug.
+    const auto redleft = formats::FshFile::parse(formats::refpack::decompressIfNeeded(
+        wc98::readFile(wc98::findCaseInsensitive(tree, "FE/PACK/FEFLOW09/REDLEFT.PAK"))));
+    std::string rlTags;
+    for (const auto& e : redleft.entries) { CHECK(e.tag != "mous"); rlTags += e.tag + ","; }
+    for (const char* t : {"keyb", "joys", "gpad", "grav"})
+        CHECK(rlTags.find(std::string(t) + ",") != std::string::npos);
 
     std::printf("presentation tree checks done (%zu images for PK026A@30)\n", imgs.size());
 }

@@ -4,6 +4,10 @@ All notable changes. Versioning: `0.x.y` pre-1.0; 1.0 = full World Cup
 tournament playable natively, per the definition of success in the
 project goals.
 
+## [Unreleased]
+### Added
+- FE mouse cursor drawn from MAUS.PAK (`presentation::loadFeCursor`, 28x26 `curs` arrow, engine-hardcoded path at FIFAWC.EXE offset 1451894) over every FE composite in the window loop; gates `test_presentation` tree checks (MAUS entries + REDLEFT shipped-gap assert), `fe_render_tournament` FAIL regex `cursors=0`.
+
 
 ## [0.3.0] - 2026-11-06 — playable live match + authentic FE fonts, team-select grid, measured scene defaults
 

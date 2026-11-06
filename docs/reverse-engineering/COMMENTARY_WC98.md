@@ -204,3 +204,33 @@ after forced disassembly: applier decompiled; percent setter callers). Scripts
 ### Gate
 `test_commentary duckModel()`: exact byte defaults for all 64 slots, CC7 masked writes + per-channel
 isolation, int-div scaling (100*64/127=50), full-duck silence, percentToVol clamp + scene-seam ramp.
+
+### Scene defaults measured (pass 7e, live Wine probe, 2026-11-06)
+Setter breakpoints armed at process **entry** via `winedbg FIFAWC.EXE` launch-under-debugger
+(paced command stream; every stop self-dumps registers + entry stack). Evidence:
+`analysis/pass7/percent1.txt`, raw `percent_hits_v{2,3,4,5,6,7}_raw.txt`, scripts
+`pct_run{3,4,6,7}.sh`, decoder `pct_v8_decode.py`. Two identical boot cycles captured:
+
+| write site | caller (scene handler) | idx -> pct | entry regs |
+|---|---|---|---|
+| 0x46b095 | FUN_0046b074 | 4 -> 65 (0x41) | EAX=4, ECX=1, EDX=0x41 |
+| 0x46b148 | FUN_0046b130 | 0 -> 80 | EAX=0, ECX=EDX=0x50 |
+| 0x46b154 | FUN_0046b130 | 2 -> 80 | EAX=2, ECX=EDX=0x50 |
+| 0x46b160 | FUN_0046b130 | 1 -> 80 | EAX=1, ECX=EDX=0x50 |
+| 0x46b16c | FUN_0046b130 | 5 -> 80 | EAX=5, ECX=EDX=0x50 |
+| 0x46b0f8 | FUN_0046b074 | 3 -> 80 | EAX=3, ECX=1, EDX=0x50 |
+
+- **Setter args are Watcom registers: EAX = table index, EDX = percent** (ECX = extra param;
+  Ghidra's callee-clean display dropped them - now resolved). Write order per cycle:
+  4, then {0,2,1,5}, then 3. idx6=1 is **not** written at these sites (writer not hit in any
+  observed window), so the table = {80,80,80,80,65,80,1} as snapshotted live at T+45 s twice.
+- Live getter hits: idx4 via FUN_0048ed9c@0x48ee63, idx3 via FUN_0048fd54@0x48fd85 and
+  FUN_0048fc78@0x48fcb7 (notify walk; ECX carried cb pointer 0x48fca0 = DAT_004904b0[3]).
+- **Notify callbacks per index** (DAT_004904b0, live dump): [null, FUN_0048d7a0, FUN_0048e430,
+  FUN_0048fca0, FUN_0048ec38, FUN_0049091c] - idx0 has no cb.
+- Pass-7d "Unknown" line above is now closed: per-scene percentages for the FE boot + feflow
+  cycle are measured; match-start values remain unmeasured (FE black-state, WINE_ORACLE_WC98 §3).
+  Attach-lane limitation: winedbg attach lands after all scene writes (T+2..4 s floor), and the
+  AV SEH-loop thread floods unpaced debugger streams - launch-under-debugger + pacing is the
+  working recipe. Port keeps full-open defaults; no code change required (measured values are
+  the same 80/65/1 set the port models).

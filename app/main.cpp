@@ -75,6 +75,7 @@ int run(int argc, char** argv) {
 
     int saveloadSlot = -1; // --tournament-saveload N: headless save->load scenario on slot N
     int fePick = -1; // --fe-pick ID: scripted team-select pick for the tournament entry (non-interactive gate)
+    bool feTeam = false; // --fe-team: open the team-select screen (FEFLOW11 grid) before the smoke frames
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         auto next = [&]() -> std::string { if (i + 1 >= argc) throw std::invalid_argument(a + " needs a value"); return argv[++i]; };
@@ -94,6 +95,7 @@ int run(int argc, char** argv) {
         }
         else if (a == "--tournament-saveload") { saveloadSlot = std::stoi(next()); }
         else if (a == "--fe-pick") { fePick = std::stoi(next()); }
+        else if (a == "--fe-team") { feTeam = true; }
         else if (a == "--pad-smoke") { padSmoke = true; }
         else throw std::invalid_argument("unknown argument '" + a + "'");
     }
@@ -146,6 +148,7 @@ int run(int argc, char** argv) {
     std::unique_ptr<app::FeFlow> fe;
     if (feMode) fe = std::make_unique<app::FeFlow>(*renderer, tree);
     int totalShapes = 0, totalTexts = 0, presented = 0, navRc = -1;
+        if (fe && feTeam) { fe->move(1); fe->enter(); } // Tournament entry -> team-select grid
 
     while (smokeFrames == 0 || presented < smokeFrames) {
         auto ev = window->poll();
@@ -192,11 +195,11 @@ int run(int argc, char** argv) {
             continue;
         }
         if (fe && smokeFrames && presented == 0) { // gate evidence line (render_demo_lay pattern)
-            std::cout << "FEFLOW05: shapes=" << totalShapes << " texts=" << totalTexts
+            std::cout << fe->screenName() << ": shapes=" << totalShapes << " texts=" << totalTexts
                       << (fe->lastError().empty() ? std::string() : (" load-error=" + fe->lastError())) << '\n';
-            if (totalShapes <= 0) { std::cerr << "FE main menu drew no shapes\n"; return 1; }
-            // Menu labels must be visible: FC*.BIN strings through the FFN face (FeText).
-            if (totalTexts <= 0) { std::cerr << "FE main menu drew no text quads\n"; return 1; }
+            if (totalShapes <= 0) { std::cerr << "FE screen drew no shapes\n"; return 1; }
+            // Labels must be visible: FC*.BIN strings through the FFN face (FeText).
+            if (totalTexts <= 0) { std::cerr << "FE screen drew no text quads\n"; return 1; }
         }
         if (fe && smokeFrames) { // per-frame offscreen capture: the gate asserts non-trivial PNGs
             render::Frame cap{};
@@ -241,7 +244,7 @@ int main(int argc, char** argv) {
         if (std::strcmp(argv[i], "--help") == 0) {
             std::puts("usage: wc98-native [--width N] [--height N] [--fullscreen|--windowed] [--smoke N]"
                       " [--fe] [--tree DIR] [--out-prefix P] [--fe-smoke N] [--tournament-saveload N] [--fe-pick N]"
-                      " [--fe-nav exhibition|tournament|tournament-load] [--pad-smoke]");
+                      " [--fe-nav exhibition|tournament|tournament-load] [--fe-team] [--pad-smoke]");
             return 0;
         }
     }

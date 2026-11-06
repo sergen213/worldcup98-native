@@ -124,6 +124,10 @@ if(DEFINED WC98_TREE)
     set_tests_properties(fe_nav_tournament PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}")
     add_test(NAME fe_nav_exhibition COMMAND wc98-native --fe-smoke 1 --fe-nav exhibition --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/fe)
     set_tests_properties(fe_nav_exhibition PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}")
+    # Authentic team-select fidelity (FEFLOW11.LAY pick grid, LAY_COMPOSITOR_NOTES.md): render the
+    # screen via --fe-team; the shell asserts shapes/texts > 0 and this gate fails on zero-count evidence.
+    add_test(NAME fe_render_tournament COMMAND wc98-native --fe-smoke 2 --fe-team --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/feteam)
+    set_tests_properties(fe_render_tournament PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" FAIL_REGULAR_EXPRESSION "shapes=0 |texts=0 ")
     # the Load entry restores it and verifies byte-identical state (app/saveload.cpp).
     add_test(NAME fe_nav_tournament_save COMMAND wc98-native --fe-smoke 2 --fe-nav tournament --fe-pick 35 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/fe)
     set_tests_properties(fe_nav_tournament_save PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE};WC98_SAVE_SLOT=7" FIXTURES_REQUIRED slot)

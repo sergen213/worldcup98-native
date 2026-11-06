@@ -23,18 +23,23 @@ the original game under Wine (research-only use of the Windows exe).
 - The `options.sav` currently in the user's tree is an ASCII placeholder,
   not a game save — no genuine WC98 save exists on this machine yet.
 
-## Competition saves, replays — CONFIRMED path patterns
+## Competition saves, replays — container layout CONFIRMED (Ghidra pass 8)
 
 - Saved competitions/replays: FIFA 99 uses `user\game%04.4d.sav` and
   `user\replay%02.2d.sav`. WC98 exe adds its own replay container:
   `user\rplyindx.dat` (0x1604A4) + `user\rply%04d.dat` (0x1604B8),
   with `FEREPLAYBUFF` (0x1604D4) and `replayfile` (0x1604E4) symbols.
-- **The replay system is high value**: lockstep/deterministic netplay
-  in this family (FIFA 98/99 netplay = synchronized input streams)
-  implies `.dat` replays are recorded **input streams + match seed**,
-  i.e. a playable-back reference for our simulation regression harness.
-  Plan: extract WC98 replay files (Wine playthrough), diff against our
-  sim inputs; `FEREPLAYBUFF` names the in-memory record structure.
+- **CONFIRMED byte layout** (`analysis/pass8/rply_*.txt`, codec
+  `formats/src/rply.cpp`, docs/asset-formats/RPLY.md): `.dat` = u32 record
+  count + 142-dword state table (writer `FUN_00495e60`, loop bound 0x8e in
+  `FUN_00495d10`) + size-prefixed record stream at file offset 0x23c
+  (records = BE16 self-size prefix, walk `FUN_00496110`/`FUN_004963b0` over
+  the FEREPLAYBUFF chain globals DAT_0057f83c/0x63699c/0x636994).
+  `rplyindx.dat` = fixed 100 × 25-byte table (browser `FUN_0043c4f0`: slot
+  number byte at entry+4, name string at entry+5). Input-stream replay model
+  confirmed by structure; the exe's own per-record payload encoding needs a
+  real Wine-generated file to enumerate (Wine replay generation blocked —
+  wined3d GPU AV), so the native port gates on writer round-trip + constants.
 
 ## Network / modem user files — CONFIRMED strings
 
@@ -68,7 +73,9 @@ the original game under Wine (research-only use of the Windows exe).
 
 1. Exact `options.sav` copied-range set in WC98 (Ghidra).
 2. `.his`/`.tri` record formats (Classic mode data source).
-3. Replay `.dat` container: header, input frame cadence, seed fields.
+3. Replay `.dat` container — RESOLVED at container level (pass 8, header +
+   BE16 record framing + fixed index; `docs/asset-formats/RPLY.md`). Open:
+   exe per-record payload encoding, needs a genuine Wine-generated replay.
 4. Save migration: read original WC98 saves directly (native importer,
    never write back originals).
 5. mltset/network semantics for modern replacement (IPX-era data is

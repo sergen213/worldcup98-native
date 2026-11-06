@@ -55,10 +55,11 @@ void loadFePalette(const std::filesystem::path& root) {
 // interactive playable match on the shell's own window; gates (--fe-nav/strictNav) keep the
 // headless capture driver runMatchDemo for their existing evidence semantics.
 int launchEntry(app::FeEntry e, const std::filesystem::path& tree, const std::string& prefix, int userTeam = -1,
-                bool liveMatch = false, platform::Window* window = nullptr, render::Renderer* renderer = nullptr) {
+                bool liveMatch = false, platform::Window* window = nullptr, render::Renderer* renderer = nullptr,
+                bool recordReplay = false) {
     switch (e) {
     case app::FeEntry::Exhibition: {
-        if (liveMatch && window && renderer) return app::runLiveLoop(tree, prefix + "_fe_live", 0, *window, *renderer);
+        if (liveMatch && window && renderer) return app::runLiveLoop(tree, prefix + "_fe_live", 0, *window, *renderer, recordReplay);
         const std::string p = prefix + "_fe_exhibition";
         const char* argv[] = {"wc98-native", p.c_str(), "--tree", tree.string().c_str()};
         return runMatchDemo(4, const_cast<char**>(argv));
@@ -81,6 +82,7 @@ int run(int argc, char** argv) {
     int navEntry = -1; // --fe-nav target (exhibition/tournament), simulated after the smoke frames
     bool padSmoke = false; // --pad-smoke: headless gamepad startup gate (SDL dummy driver)
     int liveSmoke = 0; // --live-match-smoke N: M10 headless playable-match gate (driver owns window).
+    bool recordReplay = false; // --record-replay: live match records user/rplyNNNN.dat + rplyindx.dat
 
     int saveloadSlot = -1; // --tournament-saveload N: headless save->load scenario on slot N
     int fePick = -1; // --fe-pick ID: scripted team-select pick for the tournament entry (non-interactive gate)
@@ -109,6 +111,7 @@ int run(int argc, char** argv) {
         else if (a == "--fe-team") { feTeam = true; }
         else if (a == "--pad-smoke") { padSmoke = true; }
         else if (a == "--live-match-smoke") { liveSmoke = std::stoi(next()); }
+        else if (a == "--record-replay") { recordReplay = true; }
         else throw std::invalid_argument("unknown argument '" + a + "'");
     }
 
@@ -193,7 +196,7 @@ int run(int argc, char** argv) {
         auto launchSelected = [&] { // Enter/confirm: Tournament entry opens team-select; confirm launches with the pick.
             if (!fe->enter()) return true; // show the team-select screen (next Enter confirms pickedTeam())
             navRc = launchEntry(app::FeEntry(fe->selected()), tree, outPrefix, fe->pickedTeam(),
-                                smokeFrames == 0 && !strictNav, window.get(), renderer.get());
+                                smokeFrames == 0 && !strictNav, window.get(), renderer.get(), recordReplay);
             std::cout << "fe: entry " << fe->selected() << " returned " << navRc << '\n';
             if (strictNav && navRc != 0 && navRc != 2 && navRc != 77) return false; // gate mode propagates failures
             fe->back(); // leave team-select (no-op on the menu)
@@ -276,7 +279,7 @@ int main(int argc, char** argv) {
             std::puts("usage: wc98-native [--width N] [--height N] [--fullscreen|--windowed] [--smoke N]"
                       " [--fe] [--tree DIR] [--out-prefix P] [--fe-smoke N] [--tournament-saveload N] [--fe-pick N]"
                       " [--fe-nav exhibition|tournament|tournament-load] [--fe-team] [--pad-smoke] [--live-match-smoke N]"
-                      " [--lang eng|fre|ger|ita|spa|dut|dan|swe|jap]");
+                      " [--record-replay] [--lang eng|fre|ger|ita|spa|dut|dan|swe|jap]");
             return 0;
         }
     }

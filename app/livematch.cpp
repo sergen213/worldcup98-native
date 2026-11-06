@@ -15,6 +15,7 @@
 //   (*Esc also quits the live match at the app layer, before feeding the sim's pause bit.)
 // Controlled-player switching is inside the ported controller code (Player_transferControl sites
 // in simulation/src/input.cpp): the sim reassigns ctrl on possession/defensive-context changes.
+#include "replay.hpp" // native replay record -> user/rplyNNNN.dat (docs/asset-formats/RPLY.md)
 #include "livematch.hpp"
 #include "commentary.hpp"
 #include "game_audio.hpp"
@@ -33,6 +34,8 @@
 #include "wc98/sim/data.hpp"
 #include "wc98/sim/player.hpp"
 #include "wc98/sim/rules.hpp"
+
+#include <iomanip> // setw on the replay slot filename
 #include "wc98/sim/sim.hpp"
 
 #include <SDL3/SDL.h>
@@ -175,7 +178,7 @@ MatchSnapshot snapshotFromWorld(const sim::World& w, const sim::MatchData& md) {
 }
 
 int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames,
-                platform::Window& window, render::Renderer& renderer) {
+                platform::Window& window, render::Renderer& renderer, bool recordReplay) {
     MatchBoot boot;
     if (!boot.init(tree)) return 2;
 
@@ -207,6 +210,10 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
     input::Input in(cfgFile.settings);
     in.assign(1, input::Side::Home); // keyboard device id 1 is always present (test_input.cpp l.43)
 
+    // Native replay recording (--record-replay): every controller-0 tick streams into the recorder;
+    // sealed with the final world state hash on loop exit.
+    ReplayRecorder rec;
+    std::uint32_t recTick = 0;
     sim::SimRunner runner(boot.md, boot.opt, 0x2E7A);
     auto& w = runner.world();
     // Bind controller 0 (keyboard device 1) to the kickoff-taker side (Match_run Input_assignController
@@ -278,6 +285,7 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
                 std::cout << "live: input->sim pass bit 0x20 reached controller 0 pad word\n";
             }
             runner.setController(0, c);
+            if (recordReplay) rec.append(recTick++, c); // recorded input word for this tick
             if (!runner.tick()) { quit = true; break; } // match ended (DAT_0057c604 == 2)
             // Center-spot restarts (phase 0) wait for the taker's kick: pulse Pass (key S, bit 0x20),
             // and deliver the exe's "restart taken" event 0xb to Match_onEvent case 11 (0x470F98).
@@ -335,6 +343,14 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
         ++presented;
         if (smokeFrames && presented >= smokeFrames) break;
     }
+    if (recordReplay && rec.ticks()) { // seal + write user/rplyNNNN.dat + rplyindx.dat (exe path pattern)
+        std::error_code recEc;
+        fs::create_directories(tree / "user", recEc);
+        const std::uint64_t finalHash = sim::stateHash(w);
+        const int slot = recordToUserDir(tree / "user", rec.build(0x2E7A, finalHash));
+        std::cout << "replay: recorded " << rec.ticks() << " ticks -> user/rply" << std::setw(4) << std::setfill('0')
+                  << slot << ".dat hash=0x" << std::hex << finalHash << std::dec << '\n';
+    }
     std::cout << "live: sim advanced clock " << startClock << " -> " << elapsedSecFloat(w)
               << " events=" << w.events.size() << " commentary sentences=" << commentary.sentencesStarted()
               << " decodes=" << commentary.decodedSegments()
@@ -354,11 +370,13 @@ int runLiveMatch(int argc, char** argv) {
     if (const char* t = std::getenv("WC98_TREE"); t && *t) root = t;
     int smoke = 0;
     std::string prefix = "/tmp/wc98port-out/live";
+    bool record = false; // --record-replay (parsed by main too, consumed here in live mode)
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         if (a == "--tree" && i + 1 < argc) root = argv[++i];
         else if (a == "--live-match-smoke") smoke = std::atoi(argv[++i]);
         else if (a == "--out-prefix" && i + 1 < argc) prefix = argv[++i];
+        else if (a == "--record-replay") record = true;
         // Flags owned by other modes of the same CLI pass through untouched.
     }
     std::error_code ec;
@@ -396,7 +414,7 @@ int runLiveMatch(int argc, char** argv) {
     vcfg.drawableSize = [&] { return window->pixelSize(); };
 
     auto renderer = render::createVulkanRenderer(vcfg, settings);
-    const int rc = runLiveLoop(root, prefix, smoke, *window, *renderer);
+    const int rc = runLiveLoop(root, prefix, smoke, *window, *renderer, record);
     renderer.reset(); // drain validation messages before the verdict (render-demo pattern)
     if (*messages && rc == 0) { std::cerr << *messages << " validation message(s)\n"; return 3; }
     return rc;

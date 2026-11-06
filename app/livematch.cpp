@@ -17,6 +17,7 @@
 // in simulation/src/input.cpp): the sim reassigns ctrl on possession/defensive-context changes.
 #include "livematch.hpp"
 #include "commentary.hpp"
+#include "game_audio.hpp"
 
 #include "wc98/config/settings.hpp"
 #include "wc98/file.hpp"
@@ -223,6 +224,12 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
     const bool haveSpeech = commentary.loadTree(tree);
     if (!haveSpeech) std::cout << "commentary: AUDIO/PHRS/PHRS.PBK unavailable, queue idle\n";
     std::size_t evPos = 0; // World::events is append-only (world.hpp emit)
+    // Runtime SFX (docs/reverse-engineering/AUDIO_RUNTIME.md): crowd ambience loop for the whole
+    // match + whistle/kick one-shots off the same event seam, independent of speech availability.
+    app::MatchAudio matchAudio(tree);
+    matchAudio.setMixer(mixer.get());
+    matchAudio.startCrowd();
+    std::size_t sfxPos = 0; // SFX sweep cursor (append-only events stream)
 
     auto key = [&](SDL_Scancode sc, bool down) {
         SDL_Event e{};
@@ -306,6 +313,9 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
         } else {
             evPos = w.events.size();
         }
+        if ((presented % 2) == 0) { // SFX trigger seam: same events, own cursor; counts even with no device
+            for (; sfxPos < w.events.size(); ++sfxPos) matchAudio.trigger(w.events[sfxPos]);
+        }
 
         const render::Frame& frame = scene.build(snap, camera.camera(), /*enhanced=*/true);
 
@@ -327,7 +337,9 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
     }
     std::cout << "live: sim advanced clock " << startClock << " -> " << elapsedSecFloat(w)
               << " events=" << w.events.size() << " commentary sentences=" << commentary.sentencesStarted()
-              << " decodes=" << commentary.decodedSegments() << '\n';
+              << " decodes=" << commentary.decodedSegments()
+              << " whistle=" << matchAudio.whistles() << " kicks=" << matchAudio.kicks()
+              << " crowd=" << (matchAudio.crowdStarted() ? 1 : 0) << '\n';
     if (smokeFrames) { // gate assertions: sim moved, events fired, input reached the controller pad word
         if (!(elapsedSecFloat(w) > startClock)) { std::cerr << "live: sim clock did not advance\n"; return 1; }
         if (w.events.empty()) { std::cerr << "live: no sim events fired\n"; return 1; }

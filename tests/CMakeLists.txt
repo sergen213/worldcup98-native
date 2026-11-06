@@ -173,3 +173,12 @@ wc98_test(test_commentary unit/test_commentary.cpp)
 target_sources(test_commentary PRIVATE ${CMAKE_SOURCE_DIR}/app/commentary.cpp)
 target_link_libraries(test_commentary PRIVATE wc98_audio)
 target_include_directories(test_commentary PRIVATE ${CMAKE_SOURCE_DIR}/simulation/include)
+
+# Runtime audio slice (docs/reverse-engineering/AUDIO_RUNTIME.md): OpenAL loopback capture gates —
+# FE music SCHl stream audible over >=1 s, GAME00 whistle/kick + CROWD.BNK slot decodes non-silent,
+# scripted KickOff/PeriodEnd/Shot events fire SFX voices on the loopback mixer. app/game_audio.cpp
+# compiled in directly (test_commentary pattern).
+wc98_test(test_gameaudio unit/test_gameaudio.cpp)
+target_sources(test_gameaudio PRIVATE ${CMAKE_SOURCE_DIR}/app/game_audio.cpp)
+target_link_libraries(test_gameaudio PRIVATE wc98_audio)
+target_include_directories(test_gameaudio PRIVATE ${CMAKE_SOURCE_DIR}/simulation/include)

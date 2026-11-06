@@ -41,7 +41,7 @@ jobs:
       - name: Build
         run: cmake --build --preset ${{ matrix.preset }}
       - name: Test
-        run: ctest --test-dir build/${{ matrix.preset }} --output-on-failure
+        run: ctest --test-dir build/${{ matrix.preset }} --output-on-failure --timeout 300
 
   package:
     name: AppImage (Linux x86_64)

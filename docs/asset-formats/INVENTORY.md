@@ -357,7 +357,7 @@ Verified structure of `INGAME/STADIUM/PARI___D.BIG` (284,948 B, `BIGF`, 5 member
 | `FCDB_<LANG>.DBI/.DBM` | 20 | 39.2 KiB | 10 languages × (index, data) with `STR0` magic: DAN, DUT, ENG, FRE, GER, ITA, JAP, SPA, SWE (+ `FCDBPENG/FCDBPJAP` pair with `STR1` magic, 20,082/23,565 and 12,807/8,409 B = presentation/name strings) |
 | `FC<LANG>.BIN` | 9 | 375.8 KiB | `FCLG.V1.7` (JAP `V1.6`) commentary-language tables, 42,840 B each (JAP 44,387) — commentary phrase/word tables |
 | `AUDSFX.W`, `AUDSPC.WE/WF/WG/WI/WJ/WS` | 7 | 35.6 KiB | int32 index tables for the audio driver (552 B SFX, 5,988 B each of 6 speech variants) |
-| `AISEQS.TBI` | 1 | 20.2 KiB | AI sequence table (16-byte records; observed fields incl. `0x29c0`, `0x1ca`, `0x2b` opcodes) |
+| `AISEQS.TBI` | 1 | 20.2 KiB | anim clip sequence table: header `{count=534, pool@0x29c0}`, stride-20 records `{u16 id==idx, u16 keyA; u16 idx, u16 keyB; u32 nameOff; u32 flags 0x80008/0xa000a; u32 len}`; pool names = ANIM.MO clip codes (AI_SEQS_TBI.md) |
 
 ## 10. `AUDIO/*` — sound subsystem (EACSND)
 

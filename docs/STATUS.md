@@ -111,7 +111,8 @@ EACSND linear vol chain (domain [0,0x7f], 16.16) saturating at 0x7f + byte curve
 the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_commentary`).
 3. `.MDL` GEOM/SKEL (FE 3D titles), `.SQF` EULZ sprites, `.DCT` EA-TREM
    video frames.
-4. `.SCI/.TBI` AI scripts (unparsed in FIFA 99 too), GEN4TBLS AT/DF.
+4. `.SCI` AI-script bytecode (VM unparsed, parity with FIFA 99), GEN4TBLS AT/DF. `AISEQS.TBI`
+   index format decoded 2026-11-06 (`AI_SEQS_TBI.md`: stride-20 records, id==index, clip-code pool).
 5. Save/replay/presentation files: see `docs/reverse-engineering/SAVES.md` (options.sav layout,
    `rply%04d.dat`/`FEREPLAYBUFF` replay system, `.his`/`.tri` Classics data, network.dat/dial.dat).
    Wine oracle pass 2026-11-05 (`WINE_ORACLE_WC98.md`): live `USER/options.sav` dumped (96 B, magic

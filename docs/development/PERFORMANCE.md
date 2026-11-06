@@ -24,8 +24,9 @@ under Xvfb on the same GPU.
 
 ## Not measured / limitations
 
-- GPU utilization: not sampled (no amdgpu_top/ppu-tools gate on CI box; `ponytail`: add when a
-  VR/CI capture job wants it - read sysfs `gpu_busy_percent` around the smoke run).
+- GPU utilization: SAMPLED 2026-11-06 - sysfs `gpu_busy_percent` (card1) at 5 Hz through a release-build
+  `--live-match-smoke 300` run under Xvfb on the RX 7900 XTX: mean 12.8 %, max 61 % (n=12; the live loop
+  is sleep-paced, so GPU duty tracks present cadence, not sim). Peak RSS reconfirmed 169 MB same run.
 - Audio synchronization drift: commentary pump runs every 2 render frames against the 50 Hz sim
   clock (gate asserts phrase start at exact tick, `test_commentary`); end-to-end ALSA/PipeWire
   buffer latency not instrumented.

@@ -124,15 +124,16 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
   `packaging/update.sh --check` verified against the live endpoint (both branches). CI matrix
   GCC-13/Clang C++23 + GCC-16 C++26 green incl. linuxdeploy AppImage job (game+Qt6 launcher,
   single-entry passthrough proven: `AppImage --smoke 3` -> game exit 0).
-- Suite (tree build): 30 gates incl. M7 regression harness `test_sim_scenarios` (8 scenarios:
+- Suite (tree build): 42 gates incl. M7 regression harness `test_sim_scenarios` (8 scenarios:
   kickoff/pass/shot-goal/offside/set pieces/foul-cards/HT-FT/shootout, seed-pinned, 0.25 s),
-  commentary chain (`test_phrs` mirror equality 1290/1290, `test_speechqueue`, `test_commentary`).
+  commentary chain (`test_phrs` mirror equality 1290/1290, `test_speechqueue`, `test_commentary`
+  incl. exact-tick 16.16 gain asserts), tournament + slot save/load gates, FE render/nav gates.
 - Wine oracle (wine-11.21): original boots + runs under Xvfb 16bpp; live `options.sav` (AFIFAFIF)
   captured; task tables == static image (never runtime-patched); wined3d 24bpp AV documented - FE
   visuals not reached (black presentation), no fabricated captures. `WINE_ORACLE_WC98.md`.
-- Open: save/load app-level integration (in progress). Landed: tournament module + headless progression
-  demo (`test_tournament`, `tournament_progression`), HUD overlay (0752a4a), FE flow in the windowed
-  app (`--fe`, FEFLOW05 nav -> exhibition/tournament entry; gates `fe_flow_render`, `fe_nav_*`; suite 36).
+- Open: extra-time scenario (in progress). Landed: tournament module + progression demo, save/load
+  (`test_slot`, `tournament_saveload`, FE tournament-save/_load), HUD, FE flow w/ drawn text labels
+  (`--fe`, texts=100 gate), gamepad nav (`test_gamepad`, `gamepad_smoke_dummy`); suite 42.
 
 ## Known limitations
 

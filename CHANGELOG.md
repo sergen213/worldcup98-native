@@ -15,6 +15,12 @@ project goals.
   layout, mode bytes (draw-mode has no writer; game mode from FE dispatcher), ZWCUP.RES C(40,2) pair
   matrix bijection (131 played pairs), group standings block closure, knockout node graph, per-screen
   implementation checklist — 61 cited claims.
+- Tournament module `wc98::tournament` (`tournament/`): ZWCUP.RES parser + C(40,2) pair-matrix bijection
+  gate (780/780), group standings w/ head-to-head tiebreak, seed-pinned schedule generator, knockout
+  bracket R16→QF→SF→F + third-place playoff propagation; gates `test_tournament` + headless progression
+  demo `wc98-tournament-demo` (gate `tournament_progression`, champion recorded).
+- Speech record queue plumbing closed: pick = gate DAT_0063241c + qfind predicate, drain pops all;
+  phrase-record 0x04/0x08 = cmn_queue link slots (`analysis/pass7/rec1.txt`).
 
 ## [0.1.0] - 2026-11-05 — first pre-release
 

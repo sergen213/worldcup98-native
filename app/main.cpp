@@ -80,6 +80,7 @@ int run(int argc, char** argv) {
     std::string outPrefix = "/tmp/wc98port-out/fe"; // capture prefix for --fe-smoke PNGs
     bool feMode = false, strictNav = false;
     int navEntry = -1; // --fe-nav target (exhibition/tournament), simulated after the smoke frames
+    int presentGate = 0; // --fe-present: draw each between-round presentation screen, print stat lines
     bool padSmoke = false; // --pad-smoke: headless gamepad startup gate (SDL dummy driver)
     int liveSmoke = 0; // --live-match-smoke N: M10 headless playable-match gate (driver owns window).
     bool recordReplay = false; // --record-replay: live match records user/rplyNNNN.dat + rplyindx.dat
@@ -108,6 +109,7 @@ int run(int argc, char** argv) {
         }
         else if (a == "--tournament-saveload") { saveloadSlot = std::stoi(next()); }
         else if (a == "--fe-pick") { fePick = std::stoi(next()); }
+        else if (a == "--fe-present") { feMode = true, presentGate = 1; }
         else if (a == "--fe-team") { feTeam = true; }
         else if (a == "--pad-smoke") { padSmoke = true; }
         else if (a == "--live-match-smoke") { liveSmoke = std::stoi(next()); }
@@ -261,6 +263,19 @@ int run(int argc, char** argv) {
         if (navRc != 0 && navRc != 2 && navRc != 77) return navRc;
     }
 
+    if (presentGate && fe) { // between-round presentation gate (LAY_COMPOSITOR_NOTES "Tournament
+                             // presentation scenes"): one stat line per screen, real bracket data.
+        const int rounds = fe->tourneyPresentCount();
+        if (!rounds) return 2; // tree lacks LAYOUTS/pool: skip
+        for (int r = 0; r < rounds; ++r) {
+            render::SpriteBatch ui;
+            const auto st = fe->drawTourneyPresent(ui, r);
+            std::cout << "FE-PRESENT " << fe->tourneyPresentName(r) << ": shapes=" << st.shapes
+                      << " texts=" << st.texts << " cursors=" << st.cursors << '\n';
+            if (st.shapes <= 0 || st.texts <= 0) { std::cerr << "presentation screen drew nothing\n"; return 1; }
+        }
+    }
+
     renderer.reset(); // shutdown validation messages must count too.
     if (*messages) log::error("{} validation messages", messages->load());
     return *messages ? 3 : 0;
@@ -279,7 +294,8 @@ int main(int argc, char** argv) {
             std::puts("usage: wc98-native [--width N] [--height N] [--fullscreen|--windowed] [--smoke N]"
                       " [--fe] [--tree DIR] [--out-prefix P] [--fe-smoke N] [--tournament-saveload N] [--fe-pick N]"
                       " [--fe-nav exhibition|tournament|tournament-load] [--fe-team] [--pad-smoke] [--live-match-smoke N]"
-                      " [--record-replay] [--lang eng|fre|ger|ita|spa|dut|dan|swe|jap]");
+                      " [--record-replay] [--lang eng|fre|ger|ita|spa|dut|dan|swe|jap]"
+                      " [--fe-present]");
             return 0;
         }
     }

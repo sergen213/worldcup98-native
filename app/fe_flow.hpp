@@ -6,12 +6,13 @@
 // FC*.BIN text) is an open item in LAY_COMPOSITOR_NOTES.md; promote this table when it lands.
 #include "wc98/formats/layout.hpp"
 #include "wc98/presentation/fe_screen.hpp"
+#include "team_select.hpp"
 
 #include <filesystem>
 #include <memory>
 #include <string>
 #include <string_view>
-#include "team_select.hpp"
+#include <array>
 #include <cstdint>
 #include <vector>
 
@@ -31,6 +32,7 @@ public:
     // tree = extracted game tree (FE/PACK/LAYOUTS/LAYOUTS.BIG + art under it).
     // lang = FC*.BIN UI-string code (eng/fre/ger/ita/spa/dut/dan/swe/jap; registry Language key).
     FeFlow(render::Renderer& r, std::filesystem::path tree, std::string lang = "eng");
+    ~FeFlow(); // out-of-line: unique_ptr<TourneyModel> (defined in fe_flow.cpp)
 
     // Composites the current screen into `ui` and returns draw stats (shapes > 0 = real art drew).
     presentation::FeDrawStats drawCurrent(render::SpriteBatch& ui) const;
@@ -49,13 +51,23 @@ public:
     // Gate evidence: UI string bank in use + how many exe font-table faces the tree carries.
     [[nodiscard]] std::string_view language() const { return text_ ? text_->language() : std::string_view{}; }
     [[nodiscard]] std::size_t fontsLoaded() const { return text_ ? text_->facesLoaded() : 0; }
-    // Mouse pointer (virtual 640x480 coords) for the MAUS.PAK cursor sprite; setPointer maps it.
-    void setPointer(int x, int y) { ptrX_ = x, ptrY_ = y; }
+    // Between-round tournament presentation (LAY_COMPOSITOR_NOTES.md "Tournament presentation
+    // scenes" section): after each round the original FE shows group standings / knockout bracket
+    // screens (FEFLOW35, FEFLOW25, FEFLOW26 + wcup trophy slot, FEFLOW27 full bracket + chmp).
+    int tourneyPresentCount(); // lazy ensureTourney: pool + layouts -> kTourneyRounds, else 0
+    [[nodiscard]] const char* tourneyPresentName(int round) const; // "FEFLOW35" ... gate evidence label
+    presentation::FeDrawStats drawTourneyPresent(render::SpriteBatch& ui, int round); // builds the model lazily
 
-private:
+    static constexpr int kTourneyRounds = 4; // group stage, R16, QF, final boundaries -> 35/25/26/27
+    struct TourneyModel;                     // deterministic schedule/standings/bracket (fe_flow.cpp)
+    bool ensureTourney();                    // lazy: pool -> model + layouts FEFLOW35/25/26/27 (non-throwing)
+    presentation::FeDrawStats drawStandings(render::SpriteBatch& ui, const formats::ScreenLayout& sc) const;   // FEFLOW35 overlay
+    presentation::FeDrawStats drawBracketBoard(render::SpriteBatch& ui, int round) const;                       // 25/26/27 overlays
     void loadTeams(); // ZWCUP.RES pool + FCDB STR0 names (non-throwing; empty = no team-select)
     presentation::FeDrawStats drawTeamsGrid(render::SpriteBatch& ui) const; // FEFLOW11 composite + dynamic rows
     void drawCursor(render::SpriteBatch& ui, presentation::FeDrawStats& st) const; // MAUS.PAK arrow at the pointer
+    void setPointer(int x, int y) { ptrX_ = x; ptrY_ = y; } // MAUS arrow position (virtual 640x480)
+    std::string poolName(std::uint32_t id) const; // FCDB fullName for a pool id (""-name fallback)
     presentation::FeDrawStats drawTeams(render::SpriteBatch& ui) const; // team-select frame (flat panel + FFN rows)
     std::filesystem::path tree_;
     presentation::ScreenArt art_; // texture handles cached per FSH member
@@ -74,6 +86,9 @@ private:
     presentation::FeCursor cursor_;      // MAUS.PAK art (absent = no sprite)
     render::TextureId cursorTex_ = 0;    // 0 = not uploaded (no art on this tree)
     int ptrX_ = 0, ptrY_ = 0;            // pointer position in virtual 640x480 pixels
+    std::unique_ptr<TourneyModel> tourney_;  // built on first presentation draw (fixed seeds, no RNG drift)
+    bool haveTourney_ = false;               // model + all four presentation layouts present
+    std::array<formats::ScreenLayout, kTourneyRounds> presScreens_; // FEFLOW35/25/26/27 composites
 };
 
 } // namespace wc98::app

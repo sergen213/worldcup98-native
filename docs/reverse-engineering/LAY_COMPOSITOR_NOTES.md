@@ -119,3 +119,38 @@ state setter `FUN_0044e178`).
 `test_presentation` tree checks build a synthetic screen with `HILITEPANE=TXT` +
 `hilitecolour=2 normalcolour=1` and assert the glyph-quad rgba equals `pal[2]` vs `pal[1]`
 deterministically (NullRenderer, real FFN/FCENG/PAL.PAK on WC98_TREE).
+
+## Tournament presentation scenes (pass 8, 2026-11-06) — CONFIRMED
+
+**Scene registry.** `FUN_004479d0` (size 1918) registers the whole FE scene cluster: per entry it
+loads a Watcom p-string pointer (`MOV EAX,<name>`; string block base `0x56237c`, pointers are at
+`string-8`) and writes handler slots `[+0x1c]=init [+0x10]=tick [+0x18]=draw`. Full enumeration of
+all 49 registered `feflowNN` scenes with slot VAs: `analysis/pass8/tourney_registry_scenemaps.txt`
+(raw assembly + string block dump: `tourney_registry.txt`; name->xref blocks:
+`tourney_registry_entries.txt`). Consistency anchor: feflow11 (team-select, section above) =
+init 0x44d9c8 / tick 0x44dda0 / draw 0x44dfa8.
+
+**Screen -> scene mapping (CONFIRMED via LAY object keys + handler decompiles):**
+
+| scene | LAY objects -> screen | handlers init/tick/draw |
+|---|---|---|
+| feflow19 | groupings board (`gpnm`, group columns) - group draw before the group stage | 0x452688 / 0x452884 / 0x4528e4 |
+| feflow35 | standings rows `ssnN` name + `ssp/ssd/ssf/ssl/sst?` P/W/D/L points, `gpnm` group title -> **group standings table after the group stage** | 0x45838c / 0x458714 / 0x45889c |
+| feflow25 | `tmNN`+`tfNN` entrant names/flags, `qfNN`, `qtmN` SF slots -> **quarterfinal board (after R16)** | 0x4554ec / 0x45570c / 0x455768 |
+| feflow26 | `tm00..tm03`, `qtmN` SF pairs, **`wcup`/`wcps` trophy slots (LAY object comment: ";world cup model")** -> semifinal board + trophy presentation (after QF) | 0x455ae0 / 0x455d28 / 0x455d80 |
+| feflow27 | full bracket `qfNN/qtmN/sfNN/stmN/ftmN`, **`chmp` champion slot**, `3mat/3tm*` third-place match -> **full-bracket/champion screen (after final)** | 0x455fd0 / 0x456030 / 0x456084 |
+| feflow23 | knockout-round entry board (`sbar`) - per-pair matchup preview before each KO round | 0x4543dc / 0x4545fc / 0x454658 |
+
+Handler decompiles: `analysis/pass8/tourney_handlers_raw.txt`; LAY text of the four implemented
+screens (object name inventory): `analysis/pass8/tourney_lays.txt`. The trophy is presented with
+the `wcup`/`wcps` sprite slots on feflow26 (WCUPF.MDL geometry per MDL_GEOMETRY_NOTES.md); 3D
+trophy-model animation inside the ceremony remains unimplemented (sprite frame slot composites).
+
+**Port:** `app/fe_flow.{hpp,cpp}` builds a deterministic tournament model from the ZWCUP pool
+(fixed seeds, `TourneyModel`: groups + standings via `tournament::computeStandings`, knockout via
+`KnockoutBracket::makeTree` played with a seeded result stream) and composites each between-round
+boundary: round 0 -> FEFLOW35 (standings overlay at the LAY's own ssn/ss* slots), 1 -> FEFLOW25,
+2 -> FEFLOW26 (+ wcup frame), 3 -> FEFLOW27 (bracket + chmp) with team names/flags from the model
+(drawStandings/drawBracketBoard, row-overlay pattern of drawTeamsGrid). Gate: ctest
+`fe_render_present` (`--fe-present --tree`, stat lines `FE-PRESENT FEFLOWxx: shapes=.. texts=..`,
+FAIL on zero counts; WC98_TREE-gated, SKIP 2 when assets absent).

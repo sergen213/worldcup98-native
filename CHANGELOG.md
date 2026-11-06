@@ -24,6 +24,7 @@ project goals.
   `wc98-replay` re-drives `SimRunner` from recorded seed + inputs, determinism gate = final world
   stateHash equality (seed-pinned 0x2E7A scripted scenario). Gates: `test_rply` (byte constants +
   writer round-trip), `replay_record_play` (record to disk -> re-drive -> hash MATCH; skip-2 w/o tree).
+- Tournament presentation flow RE-confirmed + implemented (Ghidra pass 8, `analysis/pass8/tourney_*.txt`): scene registry FUN_004479d0 enumerates all 49 feflowNN scenes with handler VAs; CONFIRMED mapping = feflow19 groupings, feflow35 group standings (`ssnN` rows), feflow25 QF board, feflow26 SF board + trophy slots `wcup`/`wcps`, feflow27 full bracket + `chmp` champion + third-place `3mat`, feflow23 KO matchup preview. fe_flow composites FEFLOW35->25->26(+wcup)->27 between rounds with standings/bracket overlays at the LAY's own slot positions (`--fe-present`). Gate `fe_render_present` (stat lines shapes/texts nonzero per screen; 50 -> 51).
 
 
 ## [0.3.0] - 2026-11-06 — playable live match + authentic FE fonts, team-select grid, measured scene defaults

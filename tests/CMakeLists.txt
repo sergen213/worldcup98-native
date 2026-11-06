@@ -141,6 +141,10 @@ if(DEFINED WC98_TREE)
     # screen via --fe-team; the shell asserts shapes/texts/cursors > 0 and this gate fails on zero counts.
     add_test(NAME fe_render_tournament COMMAND wc98-native --fe-smoke 2 --fe-team --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/feteam)
     set_tests_properties(fe_render_tournament PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" FAIL_REGULAR_EXPRESSION "shapes=0 |texts=0 |cursors=0 ")
+    # Between-round tournament presentation (FEFLOW35/25/26/27, LAY_COMPOSITOR_NOTES.md "Tournament
+    # presentation scenes"): one stat line per screen; fails on zero shapes/texts/cursors.
+    add_test(NAME fe_render_present COMMAND wc98-native --fe-smoke 1 --fe-present --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/present)
+    set_tests_properties(fe_render_present PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FE-PRESENT FEFLOW35: shapes=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 |texts=0 |cursors=0 ")
     # Font fidelity (exe font table DAT_0057d2c0 -> FEFONTS/IGFONTS.BIG, fe_screen.hpp): the tree
     # carries exactly 10 faces; every FC*.BIN code must load its string bank (registry Language).
     add_test(NAME fe_text_fonts COMMAND wc98-native --fe-smoke 2 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/fefonts)

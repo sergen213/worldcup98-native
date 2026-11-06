@@ -5,6 +5,7 @@
 // docs/reverse-engineering/LAY_COMPOSITOR_NOTES.md; navigation model: app/fe_flow.hpp.
 #include "fe_flow.hpp"
 #include "match_demo.hpp"
+#include "saveload.hpp"
 #include "tournament_demo.hpp"
 
 #include "wc98/config/settings.hpp"
@@ -71,6 +72,7 @@ int run(int argc, char** argv) {
     bool feMode = false, strictNav = false;
     int navEntry = -1; // --fe-nav target (exhibition/tournament), simulated after the smoke frames
 
+    int saveloadSlot = -1; // --tournament-saveload N: headless save->load scenario on slot N
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         auto next = [&]() -> std::string { if (i + 1 >= argc) throw std::invalid_argument(a + " needs a value"); return argv[++i]; };
@@ -86,11 +88,13 @@ int run(int argc, char** argv) {
         else if (a == "--fe-nav") { // gate mode: simulate Enter on the named entry after the frames
             feMode = true, strictNav = true;
             const std::string e = next();
-            navEntry = e == "exhibition" ? int(app::FeEntry::Exhibition) : e == "tournament" ? int(app::FeEntry::Tournament) : -1;
-        } else throw std::invalid_argument("unknown argument '" + a + "'");
+            navEntry = e == "exhibition" ? int(app::FeEntry::Exhibition) : e == "tournament" ? int(app::FeEntry::Tournament) : e == "tournament-load" ? 2 : -1;
+        }
+        else if (a == "--tournament-saveload") { saveloadSlot = std::stoi(next()); }
+        else throw std::invalid_argument("unknown argument '" + a + "'");
     }
 
-    if (tree.empty()) if (const char* t = std::getenv("WC98_TREE"); t && *t) tree = t;
+    if (saveloadSlot >= 0) return app::runTournamentSaveLoad(saveloadSlot, app::defaultSlotDir());
     if (feMode) {
         if (!std::filesystem::is_directory(tree)) {
             // Gate skip pattern: no tree -> exit 2 (ctest SKIP_RETURN_CODE 2).
@@ -182,7 +186,9 @@ int run(int argc, char** argv) {
     }
 
     if (navEntry >= 0 && navRc == -1) { // no Enter key was pressed during the loop: simulate it (gate path)
-        navRc = launchEntry(app::FeEntry(navEntry), tree, outPrefix);
+        const int loadSlot = [] { const char* v = std::getenv("WC98_SAVE_SLOT"); return v && *v ? std::atoi(v) : 7; }();
+        navRc = navEntry == 2 ? app::runTournamentLoadVerify(loadSlot)
+                              : launchEntry(app::FeEntry(navEntry), tree, outPrefix);
         std::cout << "fe: entry " << navEntry << " returned " << navRc << '\n';
         if (navRc != 0 && navRc != 2 && navRc != 77) return navRc;
     }
@@ -203,7 +209,8 @@ int main(int argc, char** argv) {
         }
         if (std::strcmp(argv[i], "--help") == 0) {
             std::puts("usage: wc98-native [--width N] [--height N] [--fullscreen|--windowed] [--smoke N]"
-                      " [--fe] [--tree DIR] [--out-prefix P] [--fe-smoke N] [--fe-nav exhibition|tournament]");
+                      " [--fe] [--tree DIR] [--out-prefix P] [--fe-smoke N] [--tournament-saveload N]"
+                      " [--fe-nav exhibition|tournament|tournament-load]");
             return 0;
         }
     }

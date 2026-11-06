@@ -118,22 +118,22 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
    contents (download & diff pending).
 
 
-## Progress snapshot (2026-11-05, v0.1.0 pre-release shipped)
-- Release: tag `v0.1.0` + GitHub release with AppImage (+`.sha256`/`.version` sidecars); clean-clone
-  build -> ctest 23/23 (tree-gated skips) -> game smoke + offscreen launcher self-test exit 0;
-  `packaging/update.sh --check` verified against the live endpoint (both branches). CI matrix
-  GCC-13/Clang C++23 + GCC-16 C++26 green incl. linuxdeploy AppImage job (game+Qt6 launcher,
-  single-entry passthrough proven: `AppImage --smoke 3` -> game exit 0).
-- Suite (tree build): 42 gates incl. M7 regression harness `test_sim_scenarios` (8 scenarios:
-  kickoff/pass/shot-goal/offside/set pieces/foul-cards/HT-FT/shootout, seed-pinned, 0.25 s),
+## Progress snapshot (2026-11-06, v0.2.0 released)
+- Release: tag `v0.2.0` + GitHub release (AppImage +`.sha256`/`.version` sidecars); AppImage game smoke
+  exit 0 on RX 7900 XTX under Xvfb, launcher offscreen self-test pass, `update.sh --check` -> "up to
+  date" against live endpoint. Prior `v0.1.0` flow identical (clean-clone ctest + CI matrix GCC-13/
+  Clang C++23 + GCC-16 C++26 green incl. linuxdeploy job, single-entry passthrough proven).
+- Suite (tree build): 43 gates incl. M7 regression harness `test_sim_scenarios` (10 scenarios:
+  kickoff/pass/shot-goal/offside/set pieces/foul-cards/HT-FT/shootout/extra-time/golden-goal,
+  seed-pinned, 0.25 s),
   commentary chain (`test_phrs` mirror equality 1290/1290, `test_speechqueue`, `test_commentary`
   incl. exact-tick 16.16 gain asserts), tournament + slot save/load gates, FE render/nav gates.
 - Wine oracle (wine-11.21): original boots + runs under Xvfb 16bpp; live `options.sav` (AFIFAFIF)
   captured; task tables == static image (never runtime-patched); wined3d 24bpp AV documented - FE
   visuals not reached (black presentation), no fabricated captures. `WINE_ORACLE_WC98.md`.
-- Open: extra-time scenario (in progress). Landed: tournament module + progression demo, save/load
-  (`test_slot`, `tournament_saveload`, FE tournament-save/_load), HUD, FE flow w/ drawn text labels
-  (`--fe`, texts=100 gate), gamepad nav (`test_gamepad`, `gamepad_smoke_dummy`); suite 42.
+- Open: FE fidelity polish (map-grid team-select art, fontID faces, lang knob), commentary pick predicate +
+  duck-table scaling, percent-table scene defaults (Wine oracle). Landed: tournament module + progression
+  demo + team pick (`--fe-pick`), save/load, HUD, FE flow w/ drawn text, gamepad nav; suite 43.
 
 ## Known limitations
 

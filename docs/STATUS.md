@@ -128,9 +128,9 @@ counts in `docs/asset-formats/INVENTORY.md`, `docs/reverse-engineering/EXECUTABL
 - Wine oracle (wine-11.21): original boots + runs under Xvfb 16bpp; live `options.sav` (AFIFAFIF)
   captured; task tables == static image (never runtime-patched); wined3d 24bpp AV documented - FE
   visuals not reached (black presentation), no fabricated captures. `WINE_ORACLE_WC98.md`.
-- Open: tournament app integration in progress (core `wc98::tournament` + gate `test_tournament` shipped;
-  HUD overlay slice landed, commit 0752a4a), FE flow scenes in the windowed app, save/load
-  app-level integration.
+- Open: save/load app-level integration (in progress). Landed: tournament module + headless progression
+  demo (`test_tournament`, `tournament_progression`), HUD overlay (0752a4a), FE flow in the windowed
+  app (`--fe`, FEFLOW05 nav -> exhibition/tournament entry; gates `fe_flow_render`, `fe_nav_*`; suite 36).
 
 ## Known limitations
 

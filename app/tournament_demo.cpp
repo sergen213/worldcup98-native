@@ -6,6 +6,7 @@
 // Env gate: WC98_TREE unset / ZWCUP.RES missing -> exit 77 (CTest Skipped), like test_tournament.
 #include "tournament_demo.hpp"
 #include <array>
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -18,6 +19,7 @@
 #include "saveload.hpp"
 #include "wc98/tournament/tournament.hpp"
 #include "wc98/formats/slot.hpp"
+#include "wc98/formats/fcdb.hpp"
 
 using namespace wc98::tournament;
 
@@ -46,9 +48,24 @@ Score play(std::mt19937& rng) {
     return {goals(rng), goals(rng), (rng() & 1u) != 0};
 }
 
+// STR0 fullName of a picked team from FCDB.DBI + FCDB_ENG.DBI ("team <id>" fallback).
+std::string userTeamName(const std::filesystem::path& tree, std::uint16_t id) {
+    try {
+        const auto dbPath = wc98::findCaseInsensitive(tree, "COMMON/FCDB.DBI");
+        const auto nmPath = wc98::findCaseInsensitive(tree, "COMMON/FCDB_ENG.DBI");
+        if (dbPath.empty() || nmPath.empty()) return "team " + std::to_string(id);
+        const auto db = wc98::formats::FcdbDatabase::parse(wc98::readFile(dbPath));
+        const auto names = wc98::formats::FcdbNames::parse(wc98::readFile(nmPath));
+        const auto it = std::ranges::find(db.teams, id, &wc98::formats::FcdbTeam::id);
+        const auto idx = std::size_t(std::distance(db.teams.begin(), it));
+        if (it != db.teams.end() && idx < names.teams.size()) return names.teams[idx].fullName;
+    } catch (const std::exception&) {}
+    return "team " + std::to_string(id);
+}
 } // namespace
 
-int runTournamentDemo() {
+int runTournamentDemo(int userTeam) {
+
     const char* treeEnv = std::getenv("WC98_TREE");
     if (!treeEnv) { std::printf("wc98-tournament-demo: WC98_TREE unset, skipping\n"); return 77; }
     const auto resPath = std::filesystem::path(treeEnv) / "FE" / "TEAMHIST.ENG" / "ZWCUP.RES";
@@ -71,6 +88,15 @@ int runTournamentDemo() {
     for (std::size_t i = 0, w = 0; i < res.ids.size() && w < 32; ++i)
         if (res.ids[i] < 256) groups[w++] = res.ids[i];
 
+    // FE team-select pick (app/fe_flow): the user team participates in group standings.
+    std::uint32_t pick = kNoTeam;
+    if (userTeam >= 0) {
+        pick = static_cast<std::uint16_t>(userTeam);
+        CHECK(std::ranges::find(groups, pick) != groups.end()); // user team in group standings
+        std::printf("wc98-tournament-demo: user team = %s\n",
+                    userTeamName(std::filesystem::path(treeEnv), static_cast<std::uint16_t>(userTeam)).c_str());
+    }
+
     // --- Schedule: 48 group + 16 knockout, seed-pinned -------------------------------------
     const auto sched = generateSchedule(groups, kScheduleSeed);
     CHECK(sched.size() == 64 && sched == generateSchedule(groups, kScheduleSeed));
@@ -86,6 +112,7 @@ int runTournamentDemo() {
     wc98::app::TournamentState st;
     st.groups = groups;
     st.seed = kScheduleSeed;
+    st.userTeam = pick; // kNoTeam when no FE pick (app/saveload payload tail)
     st.koWinner.fill(kNoTeam);
     st.koLoser.fill(kNoTeam);
     std::array<std::uint32_t, 16> winners{}, losers{}; // bracket node results (propagation)
@@ -176,6 +203,13 @@ int runTournamentDemo() {
     KnockoutBracket bracket =
         KnockoutBracket::makeTree(std::vector<std::uint32_t>(seeds.begin(), seeds.end()), true);
     CHECK(bracket.nodeCount() == 16 && bracket.finalNode() == 14 && bracket.thirdPlaceNode() == 15);
+    if (userTeam >= 0) { // picked team's knockout path: R16 node membership (group standings checked at pool build)
+        const auto it = std::ranges::find(seeds, pick);
+        if (it != seeds.end()) { // qualified: the bracket path exercises the user team
+            const std::size_t n = static_cast<std::size_t>(std::distance(seeds.begin(), it)) / 2;
+            CHECK(bracket.node(n).teamA == pick || bracket.node(n).teamB == pick);
+        }
+    }
     for (int n = 0; n < 16; ++n) { // topological: R16, QF, SF, third-place, final
         const BracketNode& node = bracket.node(static_cast<std::size_t>(n));
         CHECK(node.teamA != kNoTeam && node.teamB != kNoTeam); // no orphan slots

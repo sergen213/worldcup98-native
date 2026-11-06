@@ -41,6 +41,10 @@ target_link_libraries(test_tournament PRIVATE wc98::tournament)
 # framing round-trip identity, summary header id gate, byte-exact slot round trips, scan loop.
 wc98_test(test_slot unit/test_slot.cpp)
 
+# FE team-select paging model (app/team_select.hpp): 40-team pool = 5 pages of 8, cursor wraps.
+wc98_test(test_teamselect unit/test_teamselect.cpp)
+target_include_directories(test_teamselect PRIVATE ${CMAKE_SOURCE_DIR}/app)
+
 # App-level tournament save->load scenario (no tree needed): new game -> play each round ->
 # persist SLOT%02d.SAV after the round -> restore; state identical at every boundary.
 add_test(NAME tournament_saveload COMMAND wc98-native --tournament-saveload 7)
@@ -116,12 +120,12 @@ if(DEFINED WC98_TREE)
     # Skip code 2 = no display / headless CI, like match_demo_frames.
     add_test(NAME fe_flow_render COMMAND wc98-native --fe-smoke 3 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/fe)
     set_tests_properties(fe_flow_render PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}")
-    add_test(NAME fe_nav_tournament COMMAND wc98-native --fe-smoke 2 --fe-nav tournament --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/fe)
+    add_test(NAME fe_nav_tournament COMMAND wc98-native --fe-smoke 2 --fe-nav tournament --fe-pick 35 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/fe)
     set_tests_properties(fe_nav_tournament PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}")
     add_test(NAME fe_nav_exhibition COMMAND wc98-native --fe-smoke 1 --fe-nav exhibition --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/fe)
     set_tests_properties(fe_nav_exhibition PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}")
     # the Load entry restores it and verifies byte-identical state (app/saveload.cpp).
-    add_test(NAME fe_nav_tournament_save COMMAND wc98-native --fe-smoke 2 --fe-nav tournament --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/fe)
+    add_test(NAME fe_nav_tournament_save COMMAND wc98-native --fe-smoke 2 --fe-nav tournament --fe-pick 35 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/fe)
     set_tests_properties(fe_nav_tournament_save PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE};WC98_SAVE_SLOT=7" FIXTURES_REQUIRED slot)
     add_test(NAME fe_nav_tournament_load COMMAND wc98-native --fe-smoke 2 --fe-nav tournament-load --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/fe)
     set_tests_properties(fe_nav_tournament_load PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE};WC98_SAVE_SLOT=7" FIXTURES_REQUIRED slot)

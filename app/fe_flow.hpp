@@ -10,6 +10,8 @@
 #include <filesystem>
 #include <memory>
 #include <string>
+#include "team_select.hpp"
+#include <cstdint>
 #include <vector>
 
 namespace wc98::render {
@@ -34,8 +36,16 @@ public:
 
     void move(int delta);              // arrow keys: cycle menu selection
     [[nodiscard]] int selected() const { return sel_; }
+    // Team-select screen (FE usability slice): Enter on Tournament opens the ZWCUP pool list
+    // (40 FCDB STR0 names, pages of 8); arrows/pad move the cursor, Enter confirms a pick,
+    // Esc returns. ponytail: flat text panel; FEFLOW map-grid fidelity art is a later slice.
+    bool enter(); // Enter/confirm; true = shell launches selected entry (Tournament uses pickedTeam())
+    void back();  // Esc: team-select -> main menu (no-op on the menu)
+    [[nodiscard]] int pickedTeam() const { return pick_; } // confirmed FCDB id (-1 = no pick)
 
 private:
+    void loadTeams(); // ZWCUP.RES pool + FCDB STR0 names (non-throwing; empty = no team-select)
+    presentation::FeDrawStats drawTeams(render::SpriteBatch& ui) const; // team-select frame (flat panel + FFN rows)
     std::filesystem::path tree_;
     presentation::ScreenArt art_; // texture handles cached per FSH member
     std::string lastError_; // set when LAYOUTS.BIG@FEFLOW05.LAY cannot be loaded
@@ -43,6 +53,11 @@ private:
     bool haveScreen_ = false;
     int sel_ = 0;
     std::unique_ptr<presentation::FeText> text_; // FFN face + FC*.BIN strings, loaded once (fe_screen.hpp)
+    bool teamScreen_ = false;              // true = team-select list, false = FEFLOW05 main menu
+    std::vector<std::uint16_t> poolIds_;   // ZWCUP.RES pool order (40 entries)
+    std::vector<std::string> poolNames_;   // FCDB STR0 fullName per entry ("" when the DBI is absent)
+    TeamListNav teams_;                    // paging cursor (team_select.hpp)
+    int pick_ = -1;                        // confirmed team id (-1 = none)
 };
 
 } // namespace wc98::app

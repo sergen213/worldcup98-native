@@ -20,9 +20,11 @@ struct TournamentState {
     std::vector<wc98::tournament::MatchResult> groupResults;
     std::array<std::uint32_t, 16> koWinner{}, koLoser{};  // kNoTeam = node not decided
     std::uint32_t champion = wc98::tournament::kNoTeam;
+    // FE team-select pick (FCDB id); kNoTeam when the tournament runs without a user-team pick.
+    std::uint32_t userTeam = wc98::tournament::kNoTeam;
     // MatchResult has no declared ==; the implicit aggregate one is invisible to vector== here.
     bool operator==(const TournamentState& o) const {
-        return seed == o.seed && champion == o.champion && groups == o.groups && koWinner == o.koWinner && koLoser == o.koLoser &&
+        return seed == o.seed && champion == o.champion && userTeam == o.userTeam && groups == o.groups && koWinner == o.koWinner && koLoser == o.koLoser &&
                std::ranges::equal(groupResults, o.groupResults, [](const wc98::tournament::MatchResult& a, const wc98::tournament::MatchResult& b) {
                    return a.teamA == b.teamA && a.teamB == b.teamB && a.goalsA == b.goalsA && a.goalsB == b.goalsB;
                });
@@ -30,13 +32,14 @@ struct TournamentState {
 };
 
 // Slot payload image layout (little endian): groups[32] u16, u32 seed, u32 nGroup, then nGroup *
-// {u16 teamA, u16 teamB, u8 goalsA, u8 goalsB}, koWinner[16] u32, koLoser[16] u32, u32 champion.
+// {u16 teamA, u16 teamB, u8 goalsA, u8 goalsB}, koWinner[16] u32, koLoser[16] u32, u32 champion,
+// u32 userTeam (trailing: additive field, kNoTeam = no pick).
 std::vector<std::uint8_t> encodeState(const TournamentState& st);
 TournamentState decodeState(std::span<const std::uint8_t> image);  // FormatError on size mismatch
 
 // Summary record fields (rec+0x08..0x18, six u32; Wine-oracle semantics unproven — this port's
 // documented mapping): [0]=mode (1=tournament), [1]=group matches played, [2]=knockout nodes
-// decided, [3]=champion id (kNoTeam if none), [4]=schedule seed, [5]=0.
+// decided, [3]=champion id (kNoTeam if none), [4]=schedule seed, [5]=user team pick (kNoTeam = none).
 std::array<std::uint32_t, 6> summaryFields(const TournamentState& st);
 
 std::filesystem::path defaultSlotDir();  // userDirs("wc98-native").data / "user"

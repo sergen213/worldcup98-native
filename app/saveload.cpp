@@ -17,6 +17,7 @@ namespace {
 using namespace wc98::tournament;
 constexpr std::uint32_t kScenarioSeed = 0x98D19A8u;  // fixture-order stand-in (§5.3 mt19937)
 constexpr std::uint32_t kResultSeed = 0xC0FFEE98u;   // score stream, fixed seed
+constexpr std::uint32_t kScenarioUserTeam = 7u;  // FE pick used by the headless save->load scenario (in groups 0..31)
 
 struct Score { int a, b; bool pkHome; };
 Score play(std::mt19937& rng) {
@@ -69,6 +70,7 @@ std::vector<std::uint8_t> encodeState(const TournamentState& st) {
     for (const std::uint32_t w : st.koWinner) putU32(v, w);
     for (const std::uint32_t l : st.koLoser) putU32(v, l);
     putU32(v, st.champion);
+    putU32(v, st.userTeam); // trailing additive field (see header layout note)
     return v;
 }
 
@@ -91,6 +93,7 @@ TournamentState decodeState(std::span<const std::uint8_t> image) {
     for (auto& w : st.koWinner) w = r.u32();
     for (auto& l : st.koLoser) l = r.u32();
     st.champion = r.u32();
+    st.userTeam = r.u32();
     return st;
 }
 
@@ -101,7 +104,7 @@ std::array<std::uint32_t, 6> summaryFields(const TournamentState& st) {
     s[2] = 16u - static_cast<std::uint32_t>(std::ranges::count(st.koWinner, kNoTeam));
     s[3] = st.champion;
     s[4] = st.seed;
-    s[5] = 0;
+    s[5] = st.userTeam; // FE team-select pick (kNoTeam when absent)
     return s;
 }
 
@@ -133,7 +136,7 @@ int runTournamentSaveLoad(int slot, const std::filesystem::path& dir) {
     st.seed = kScenarioSeed;
     st.koWinner.fill(kNoTeam);
     st.koLoser.fill(kNoTeam);
-
+    st.userTeam = kScenarioUserTeam; // scenario pick: flows through every round-trip identity check
     const auto sched = generateSchedule(st.groups, st.seed);
     check(sched.size() == 64, "schedule size");
 
@@ -236,10 +239,10 @@ int runTournamentLoadVerify(int slot) {
     const auto bytes = wc98::readFile(path);
     const formats::SlotSave s = formats::SlotSave::parse(bytes);
     const TournamentState st = decodeState(s.image);
-    const bool identical = decodeState(encodeState(st)) == st && (st.champion != kNoTeam);
-    std::printf("fe-load: slot %02d summary=[%u,%u,%u,%u,%u,%u] matches=%zu champion=%u identical=%d\n",
+    const bool identical = decodeState(encodeState(st)) == st && (st.champion != kNoTeam) && (st.userTeam != kNoTeam); // pick survives the slot round trip
+    std::printf("fe-load: slot %02d summary=[%u,%u,%u,%u,%u,%u] matches=%zu champion=%u userTeam=%u identical=%d\n",
                 slot, s.summary[0], s.summary[1], s.summary[2], s.summary[3], s.summary[4],
-                s.summary[5], st.groupResults.size(), st.champion, int(identical));
+                s.summary[5], st.groupResults.size(), st.champion, st.userTeam, int(identical));
     return identical ? 0 : 1;
 }
 

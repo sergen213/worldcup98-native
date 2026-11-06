@@ -8,6 +8,14 @@ project goals.
 
 ### Added
 
+- FE team-select screen (FE usability, `app/team_select.hpp` + `app/fe_flow.{hpp,cpp}`): Enter on the
+  Tournament menu entry opens a paging list of the 40 ZWCUP pool teams (FCDB STR0 fullName names from
+  FCDB.DBI + FCDB_ENG.DBI; arrows/pad cursor, Esc back). Confirming launches the tournament driver with
+  the pick: `runTournamentDemo(userTeam)` records `TournamentState.userTeam` and asserts group-standings
+  membership (+ bracket R16 node when qualified); slot payload gains a trailing additive `u32 userTeam`
+  (round-trip-safe). Gate: `test_teamselect` paging model + `fe_nav_tournament{,_save,_load}` scenarios
+  with scripted `--fe-pick <id>` (Scotland=35; load-verify asserts the pick survives slot round trip).
+
 - Speech master-gain model (`app/commentary.{hpp,cpp}`): `SpeechGain` mirrors the EACSND speech
   volume chain (SNDspeechinit vol domain [0,0x7f], SNDspeechautovol linear 16.16 ramp with
   overshoot clamp at target, state-cb per-tick apply; pass-7b RE in COMMENTARY_WC98.md §gain,

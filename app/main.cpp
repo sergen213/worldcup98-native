@@ -48,7 +48,7 @@ void loadFePalette(const std::filesystem::path& root) {
 }
 
 // Enter-key entry points. Returns the demo exit code (0 ok, 2 skip, ...).
-int launchEntry(app::FeEntry e, const std::filesystem::path& tree, const std::string& prefix) {
+int launchEntry(app::FeEntry e, const std::filesystem::path& tree, const std::string& prefix, int userTeam = -1) {
     switch (e) {
     case app::FeEntry::Exhibition: {
         const std::string p = prefix + "_fe_exhibition";
@@ -56,7 +56,7 @@ int launchEntry(app::FeEntry e, const std::filesystem::path& tree, const std::st
         return runMatchDemo(4, const_cast<char**>(argv));
     }
     case app::FeEntry::Tournament:
-        return runTournamentDemo(); // reads $WC98_TREE (set at startup)
+        return runTournamentDemo(userTeam); // reads $WC98_TREE (set at startup)
     default: return 1;
     }
 }
@@ -74,6 +74,7 @@ int run(int argc, char** argv) {
     bool padSmoke = false; // --pad-smoke: headless gamepad startup gate (SDL dummy driver)
 
     int saveloadSlot = -1; // --tournament-saveload N: headless save->load scenario on slot N
+    int fePick = -1; // --fe-pick ID: scripted team-select pick for the tournament entry (non-interactive gate)
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         auto next = [&]() -> std::string { if (i + 1 >= argc) throw std::invalid_argument(a + " needs a value"); return argv[++i]; };
@@ -92,6 +93,7 @@ int run(int argc, char** argv) {
             navEntry = e == "exhibition" ? int(app::FeEntry::Exhibition) : e == "tournament" ? int(app::FeEntry::Tournament) : e == "tournament-load" ? 2 : -1;
         }
         else if (a == "--tournament-saveload") { saveloadSlot = std::stoi(next()); }
+        else if (a == "--fe-pick") { fePick = std::stoi(next()); }
         else if (a == "--pad-smoke") { padSmoke = true; }
         else throw std::invalid_argument("unknown argument '" + a + "'");
     }
@@ -156,10 +158,12 @@ int run(int argc, char** argv) {
             totalTexts += presented == 0 ? st.texts : 0;
             frame.ui = &ui;
         }
-        auto launchSelected = [&] { // Enter/confirm: launch the selected entry, back to menu 0.
-            navRc = launchEntry(app::FeEntry(fe->selected()), tree, outPrefix);
+        auto launchSelected = [&] { // Enter/confirm: Tournament entry opens team-select; confirm launches with the pick.
+            if (!fe->enter()) return true; // show the team-select screen (next Enter confirms pickedTeam())
+            navRc = launchEntry(app::FeEntry(fe->selected()), tree, outPrefix, fe->pickedTeam());
             std::cout << "fe: entry " << fe->selected() << " returned " << navRc << '\n';
             if (strictNav && navRc != 0 && navRc != 2 && navRc != 77) return false; // gate mode propagates failures
+            fe->back(); // leave team-select (no-op on the menu)
             fe->move(-fe->selected());
             return true;
         };
@@ -167,6 +171,7 @@ int run(int argc, char** argv) {
             if (!fe) break;
             if (sc == SDL_SCANCODE_UP || sc == SDL_SCANCODE_LEFT) fe->move(-1);
             else if (sc == SDL_SCANCODE_DOWN || sc == SDL_SCANCODE_RIGHT) fe->move(+1);
+            else if (sc == SDL_SCANCODE_ESCAPE) fe->back(); // team-select -> menu (no-op on the menu)
             else if (sc == SDL_SCANCODE_RETURN || sc == SDL_SCANCODE_KP_ENTER) {
                 if (!launchSelected()) return navRc;
             }
@@ -176,11 +181,11 @@ int run(int argc, char** argv) {
             if (d == platform::Window::kPadNavUp || d == platform::Window::kPadNavLeft) fe->move(-1);
             else if (d == platform::Window::kPadNavDown || d == platform::Window::kPadNavRight) fe->move(+1);
         }
-        for (const int b : ev.padButtons) { // confirm = South/Start; East/Back = Esc parity (app-owned exit, no-op here)
+        for (const int b : ev.padButtons) { // confirm = South/Start; East/Back = Esc parity (team-select -> menu, no-op there)
             if (!fe) break;
             if (b == platform::Window::kPadSouth || b == platform::Window::kPadStart) {
                 if (!launchSelected()) return navRc;
-            }
+            } else if (b == platform::Window::kPadEast || b == platform::Window::kPadBack) fe->back();
         }
         if (window->minimized() || !renderer->present(frame)) {
             SDL_Delay(16);
@@ -214,7 +219,7 @@ int run(int argc, char** argv) {
     if (navEntry >= 0 && navRc == -1) { // no Enter key was pressed during the loop: simulate it (gate path)
         const int loadSlot = [] { const char* v = std::getenv("WC98_SAVE_SLOT"); return v && *v ? std::atoi(v) : 7; }();
         navRc = navEntry == 2 ? app::runTournamentLoadVerify(loadSlot)
-                              : launchEntry(app::FeEntry(navEntry), tree, outPrefix);
+                              : launchEntry(app::FeEntry(navEntry), tree, outPrefix, fePick); // --fe-pick: team-select pick
         std::cout << "fe: entry " << navEntry << " returned " << navRc << '\n';
         if (navRc != 0 && navRc != 2 && navRc != 77) return navRc;
     }
@@ -235,7 +240,7 @@ int main(int argc, char** argv) {
         }
         if (std::strcmp(argv[i], "--help") == 0) {
             std::puts("usage: wc98-native [--width N] [--height N] [--fullscreen|--windowed] [--smoke N]"
-                      " [--fe] [--tree DIR] [--out-prefix P] [--fe-smoke N] [--tournament-saveload N]"
+                      " [--fe] [--tree DIR] [--out-prefix P] [--fe-smoke N] [--tournament-saveload N] [--fe-pick N]"
                       " [--fe-nav exhibition|tournament|tournament-load] [--pad-smoke]");
             return 0;
         }

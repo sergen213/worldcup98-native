@@ -79,8 +79,11 @@ codec-9 members SFB ≈ 0.32 vs EA-XA chant member `CHNT/C0001800.PBK#0` SFB ≈
 (→ 37,497 samples).
 
 Open items: (1) gain calibration — decoded amplitudes run hot (RMS ≈ 9,000–11,500 int16,
-occasional saturation); (2) the absent `0x84` rate tag defaults to 22050 Hz while speech is
-likely 8 kHz (UNVERIFIED); (3) the 1,044 stub/other members — TYPE.PBK mirror headers and non-PT payloads, semantics documented in SPEECH_INDEXING_NOTES.md.
+occasional saturation); (2) RESOLVED 2026-11-06 — the absent `0x84` rate tag defaults to 22,050 Hz:
+CONFIRMED at `EACSND.DLL` file offset `0xe01`, where `mov dword ptr [0x40aa10], 0x5622` initializes
+the driver's global sample-rate variable (same function branches on 11025/44100 for the rescale
+divisor; the sole `8000` immediate in `EACSNDD.DLL@0xd4ea` is a string-blob false positive). Speech
+plays at 22,050 Hz — NOT 8 kHz. (3) the 1,044 stub/other members — TYPE.PBK mirror headers and non-PT payloads, semantics documented in SPEECH_INDEXING_NOTES.md.
 
 `.SPEECH`-style `.STR/.OFF/SPEECH.INF` indexes do not exist in WC98: phrase lookup
 uses `AUDIO/PHRS/{PHRS.PBK (BIGF, 1290 members), PHRS.HDR, PHRS.INF}` where INF is

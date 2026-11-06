@@ -17,11 +17,14 @@ public:
     Window& operator=(const Window&) = delete;
 
     struct Events {
-        bool quit = false;    // window closed or ESC pressed
+        bool quit = false;    // window closed (quit / close-request events)
         bool resized = false; // drawable pixel size changed (includes fullscreen toggles)
         int functionKey = 0;  // last F1..F10 pressed during this poll (1..10), 0 = none
+        std::vector<int> keys; // SDL_Scancode values of non-repeat key presses this poll, in order.
+                               // Escape is surfaced here, not wired to quit: the FE flow uses Esc
+                               // as "back" and owns app-level exit.
     };
-    // Drains pending events. F11 and Alt+Enter toggle fullscreen, ESC requests quit.
+    // Drains pending events. F11 and Alt+Enter toggle fullscreen; window close requests quit.
     Events poll();
 
     void toggleFullscreen();

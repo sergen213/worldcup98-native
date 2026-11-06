@@ -36,8 +36,8 @@ Window::Events Window::poll() {
         case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED: ev.resized = true; break;
         case SDL_EVENT_KEY_DOWN:
             if (e.key.repeat) break;
-            if (e.key.key == SDLK_ESCAPE) ev.quit = true;
-            else if (e.key.key == SDLK_F11 || (e.key.key == SDLK_RETURN && (e.key.mod & SDL_KMOD_ALT))) toggleFullscreen();
+            ev.keys.push_back(int(e.key.scancode)); // app-level nav (FE flow) reads this
+            if (e.key.key == SDLK_F11 || (e.key.key == SDLK_RETURN && (e.key.mod & SDL_KMOD_ALT))) toggleFullscreen();
             else if (e.key.key >= SDLK_F1 && e.key.key <= SDLK_F10) ev.functionKey = int(e.key.key - SDLK_F1) + 1;
             break;
         default: break;

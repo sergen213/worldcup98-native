@@ -4,6 +4,7 @@
 // results through computeStandings -> group qualifiers -> KnockoutBracket propagation
 // (R16 -> QF -> SF -> F + THIRDROUND_PLAYOFF) to a recorded champion.
 // Env gate: WC98_TREE unset / ZWCUP.RES missing -> exit 77 (CTest Skipped), like test_tournament.
+#include "tournament_demo.hpp"
 #include <array>
 #include <cstdio>
 #include <cstdlib>
@@ -45,7 +46,7 @@ Score play(std::mt19937& rng) {
 
 } // namespace
 
-int main() {
+int runTournamentDemo() {
     const char* treeEnv = std::getenv("WC98_TREE");
     if (!treeEnv) { std::printf("wc98-tournament-demo: WC98_TREE unset, skipping\n"); return 77; }
     const auto resPath = std::filesystem::path(treeEnv) / "FE" / "TEAMHIST.ENG" / "ZWCUP.RES";

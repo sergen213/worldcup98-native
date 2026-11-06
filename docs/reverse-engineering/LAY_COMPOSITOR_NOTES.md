@@ -23,10 +23,21 @@ the compositor lives in `tools/render-demo/main.cpp` (`--lay <spec> [--tree <dir
 - Flat panels (`fname` null/RECT): filled rect from `FILLCOLOUR/COLOUR/BOXCOLOUR`
   ARGB key (hex, `H…`/`0x…` forms); `FrameRect` type draws a 1-px outline.
   Text objects (`textid` = FC*.BIN string index, comma form `id,fontID`; measured FEFLOW05): resolved
-  via `FeText` (FFN face eras14bi.ffn + FCENG.BIN strings), drawn at the object position with
+  via `FeText`, drawn at the object position with
   `TEXTX/YOFFSET`/`TEXTXY=x,y,a` offsets, `ALIGNMENT` 1=left 2=right >=3=center-in-box; colour keys
   (`NORMALCOLOUR`, list-form `TEXTCOLOUR` first index) index the global FE palette. Unresolvable
   TEXTID (id 0 = dynamic/dummy, e.g. measured `textid=0,5`) keeps counting `noArt`.
+- FontID → face (CONFIRMED 2026-11-06): the exe ships a font pointer table at DAT_0057d2c0
+  (raw file offset 0x17b8c0) of 11 entries — `eras10, eras12, eras20, eras36, eras11i, eras8i,
+  eras11bi, eras14bi, eras9bi, NULL, eras20bi` — and its loader loop (code VA 0x46933a:
+  `mov edi,[eax+057d2c0]` → FUN_0045ca68 opens the table via "%s.ffn"; body at 0x46936f iterates
+  ids 0..10 printing "lp %2d"). The 6 FE faces live in `FE/PACK/FEFONTS.BIG` (eras10, eras11i,
+  eras12, eras20, eras36, eras8i), the 4 BI faces in `FE/PACK/IGFONTS.BIG` (Eras9bi/Eras11bi/
+  Eras14bi/Eras20bi); loose copies under `FE/*.FFN`. Header lineHeights measured: eras10=22,
+  eras8i=18, eras11i=24, eras12=26, eras20=44, eras36=79 px. `FeText::kFontNames` ports the table;
+  labels draw at their face's native line height (sizePx = lineHeight → scale 1). The font header
+  block also carries a colour array at raw 0x17b8fc (13 ARGB dwords: white, yellow, red, blue, …) —
+  per-font label colours NOT yet mapped to fontIDs; label colour stays palette-key driven.
 
 ## Measured composites (text slice 2026-11-05, RX 7900 XTX)
 | screen | objects → shapes | notes |

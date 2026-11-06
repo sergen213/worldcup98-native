@@ -127,15 +127,52 @@ ScreenArt::Shape ScreenArt::shape(const std::string& vpath, const std::string& f
 
 // ---- Text resources -------------------------------------------------------------------------
 
-FeText::FeText(render::Renderer& r, fs::path tree) : tree_(std::move(tree)) {
+FeText::FeText(render::Renderer& r, fs::path tree, std::string lang) : tree_(std::move(tree)), r_(&r) {
     const GameData data{tree_};
-    try { // HUD-proven face; the fontID -> FEFONTS.BIG family mapping is unmeasured.
+    for (char& c : lang) c = char(std::tolower((unsigned char)c)); // FC*.BIN codes are 3 letters
+    try { // default face: HUD-proven eras14bi (fontID 7 in the exe table).
         font_ = formats::FfnFont::parse(data.member("FE/PACK/IGFONTS.BIG", "eras14bi.ffn"));
         tex_ = r.createTexture(toImage(font_->atlas), render::Wrap::Clamp, "fe-ffn-face");
     } catch (const std::exception&) {} // tree without fonts: ready() stays false
-    try { strings_ = formats::FclgStrings::parse(data.file("COMMON/FCENG.BIN")).strings; } catch (const std::exception&) {}
+    faces_.resize(kFontNames.size());
+    for (std::size_t id = 0; id < kFontNames.size(); ++id) {
+        const std::string member = std::string(kFontNames[id]) + ".ffn"; // exe loader opens "%s.ffn"
+        if (kFontNames[id][0] == '\0') continue;                        // slot 9: NULL in the exe table
+        for (const char* arc : {"FE/PACK/FEFONTS.BIG", "FE/PACK/IGFONTS.BIG"}) {
+            try {
+                faces_[id] = std::make_unique<formats::FfnFont>(
+                    formats::FfnFont::parse(data.member(arc, member)));
+                ++facesCount_;
+                break;
+            } catch (const std::exception&) {} // not in this archive: try the next
+        }
+    }
+    auto loadStrings = [&](std::string_view code) {
+        std::string up = std::string(code);
+        for (char& c : up) c = char(std::toupper((unsigned char)c));
+        strings_ = formats::FclgStrings::parse(data.file("COMMON/FC" + up + ".BIN")).strings;
+    };
+    try { loadStrings(lang); lang_ = lang; }
+    catch (const std::exception&) { // unknown code: the game's own default bank
+        try { loadStrings("eng"); lang_ = "eng"; } catch (const std::exception&) {}
+    }
     if (data.exists("FE/PACK/MSGS/FEMSG.BIN")) // absent on this CD: TEXTID names then never resolve
         try { femsg_ = formats::FemsgTable::parse(data.file("FE/PACK/MSGS/FEMSG.BIN")); } catch (const std::exception&) {}
+}
+
+const formats::FfnFont* FeText::face(int fontId) const {
+    if (fontId < 0 || size_t(fontId) >= faces_.size()) return nullptr;
+    return faces_[size_t(fontId)].get();
+}
+
+render::TextureId FeText::faceTexture(int fontId) const {
+    // One texture per face id, created on first label draw (FE compositor runs single-threaded).
+    const formats::FfnFont* f = face(fontId);
+    if (!f || !r_) return 0;
+    render::TextureId& slot = faceTex_[size_t(fontId)];
+    if (!slot) slot = r_->createTexture(toImage(f->atlas), render::Wrap::Clamp,
+                                        std::string("fe-ffn-") + kFontNames[size_t(fontId)]);
+    return slot;
 }
 
 std::string FeText::label(const formats::LayoutObject& o) const {
@@ -188,18 +225,24 @@ int drawLabel(const formats::LayoutObject& o, render::SpriteBatch& ui, const FeT
         const auto& c = pal[size_t(cidx)];
         rgba = render::packRgba(c[0], c[1], c[2], 0xFF);
     }
-    // ponytail: fontID -> px is unmeasured (FEFONTS.BIG family eras8/10/12/20/36 not wired);
-    // all labels draw through the single proven face at a size-approximated cap height.
-    const int fontId = o.intProp("FONTID", 4);
-    const float sizePx = 8.f + 2.f * float(fontId > 0 ? fontId : 4);
-    const formats::FfnFont& f = *txt.font();
+    // Font selection: TEXTID "index,fontID" (measured FEFLOW05 form) with explicit FONTID key
+    // override; face from the exe font table (FeText::kFontNames), drawn at its native line height.
+    int fontId = 4; // FEFLOW05 default measured for plain-textid labels
+    if (const std::string* t = o.prop("TEXTID"); t && t->find(',') != std::string::npos)
+        fontId = int(std::strtol(t->c_str() + t->find(',') + 1, nullptr, 10));
+    fontId = o.intProp("FONTID", fontId);
+    const formats::FfnFont* sel = txt.face(fontId);
+    if (!sel) sel = txt.font(); // id absent on this tree: HUD-proven face
+    const render::TextureId tex = txt.faceTexture(fontId) ? txt.faceTexture(fontId) : txt.texture();
+    const formats::FfnFont& f = *sel;
+    const float sizePx = f.lineHeight ? float(f.lineHeight) : 16.f;
     const float w = presentation::textWidthPx(f, s, sizePx);
     float px = float(o.x) + xoff;
     if (align == 2) px -= w; // right edge at the offset anchor (measured subtitle: textXoffset=550)
     else if (align >= 3) px += (float(boxw) - w) * 0.5f;
     int n = 0;
     for (const auto& q : presentation::layoutText(f, s, px, float(o.y) + yoff, sizePx, rgba)) {
-        ui.draw(txt.texture(), q.dst, q.uv, q.rgba);
+        ui.draw(tex, q.dst, q.uv, q.rgba);
         ++n;
     }
     return n;

@@ -44,8 +44,10 @@ presentation::MatchSnapshot snapshotFromWorld(const sim::World& w, const sim::Ma
 // smokeFrames > 0 = gate mode: fixed 1/50 s steps per frame, no wall sleep, asserts the scene drew,
 // the HUD strip is present, the sim advanced and the input->sim pad-bit path fired. Returns
 // 0 ok / 1 assert failure / 2 skip (tree) / 3 validation messages.
+// recordReplay: stream every controller-0 tick through app::ReplayRecorder and, on exit, write
+// user/rplyNNNN.dat + rplyindx.dat under the tree (docs/asset-formats/RPLY.md).
 int runLiveLoop(const std::filesystem::path& tree, const std::string& prefix, int smokeFrames,
-                platform::Window& window, render::Renderer& renderer);
+                platform::Window& window, render::Renderer& renderer, bool recordReplay = false);
 
 // CLI driver: --tree DIR [--live-match-smoke N] [--out-prefix P]. Standalone wrapper that owns its
 // window + Vulkan swapchain; "skip:" exits with 2 like the other tree gates.

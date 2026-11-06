@@ -28,6 +28,10 @@ wc98_test(test_anim unit/test_anim.cpp)
 wc98_test(test_gen4tbls unit/test_gen4tbls.cpp)
 wc98_test(test_audio unit/test_audio.cpp)
 
+
+# RPLY container codec: Ghidra pass-8 byte constants (572-byte header, BE16 record framing,
+# 142-dword table, fixed 100x25 rplyindx.dat) + writer round-trip.
+wc98_test(test_rply unit/test_rply.cpp)
 # .HIS/.TRI team-history pair: synthetic round trips + tree gate over the 8 language pairs
 # (participant id invariance, TRI record/pool parses; docs/asset-formats/TEAMHIST.md).
 wc98_test(test_histtri unit/test_histtri.cpp)
@@ -115,6 +119,10 @@ if(DEFINED WC98_TREE)
     # M6 exhibition-match slice: simulate + render kickoff/midplay/sprint frames of a real match.
     add_test(NAME match_demo_frames COMMAND wc98-match-demo /tmp/wc98port-out/m6 --tree ${WC98_TREE})
     set_tests_properties(match_demo_frames PROPERTIES SKIP_RETURN_CODE 2)
+    # Native replay (docs/asset-formats/RPLY.md): record the seed-pinned scripted scenario to
+    # user-slot files, then re-drive from disk and assert final world state-hash equality.
+    add_test(NAME replay_record_play COMMAND wc98-replay --gate /tmp/wc98port-out/replay --tree ${WC98_TREE})
+    set_tests_properties(replay_record_play PROPERTIES SKIP_RETURN_CODE 2)
     # M4/M9 FE flow: windowed shell renders FEFLOW05 real art (presentation compositor),
     # captures per-frame PNGs, Enter reaches exhibition + tournament entry points.
     # Skip code 2 = no display / headless CI, like match_demo_frames.

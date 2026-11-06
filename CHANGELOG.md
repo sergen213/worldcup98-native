@@ -15,6 +15,15 @@ project goals.
   pass 8 (AUDIO_RUNTIME.md §6); Mixer best-effort pattern kept (headless = counters only). Gate
   `test_gameaudio`: OpenAL loopback capture asserts music stream audible over >=1 s, whistle/kick/
   crowd slot decodes non-silent, scripted KickOff/PeriodEnd/Shot fire SFX voices.
+- Replay system RE'd + implemented (Ghidra pass 8, `analysis/pass8/rply_*.txt`): `.dat` container =
+  u32 record count + 142-dword state table (`FUN_00495d10`/`FUN_00495e60`, loop 0x8e) + BE16
+  size-prefixed per-tick input records at file offset 0x23c (walk `FUN_00496110`/`FUN_004963b0`,
+  FEREPLAYBUFF chain DAT_0057f83c/0x63699c/0x636994); `rplyindx.dat` = fixed 100 x 25-byte slot
+  table (`FUN_0043c4f0`, slot byte entry+4, name at +5). Codec `formats/src/rply.cpp` (docs/asset-formats/RPLY.md),
+  live-match `--record-replay` hook records the controller stream to `user/rplyNNNN.dat` + index;
+  `wc98-replay` re-drives `SimRunner` from recorded seed + inputs, determinism gate = final world
+  stateHash equality (seed-pinned 0x2E7A scripted scenario). Gates: `test_rply` (byte constants +
+  writer round-trip), `replay_record_play` (record to disk -> re-drive -> hash MATCH; skip-2 w/o tree).
 
 
 ## [0.3.0] - 2026-11-06 — playable live match + authentic FE fonts, team-select grid, measured scene defaults

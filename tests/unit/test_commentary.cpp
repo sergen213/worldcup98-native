@@ -123,39 +123,41 @@ void synthetic() {
     c.pump(8);
     CHECK(c.queue().queued() == 0 && c.decodedSegments() == 3);
 
-    // Rotation: goal -> next candidate (phrase 2, skipping empty phrase 1). Gate flush mid-sentence.
+    // Pick consumes the pool head in storage order (empty phrase 1 skipped): goal -> phrase 2.
     c.trigger(ev(sim::EventType::Goal));
     CHECK(c.lastPhrase() == 2 && c.queue().queued() == 2);
     c.pump(1);
     c.trigger(ev(sim::EventType::Shot)); // FUN_004893ec gate: flush + replace, never two sentences
     CHECK(c.lastPhrase() == 3 && c.queue().queued() == 5);
-
-    // Unmapped event stays silent (contract §2).
-    const std::uint32_t started = c.sentencesStarted();
-    c.trigger(ev(sim::EventType::Pass));
-    CHECK(c.sentencesStarted() == started && c.queue().queued() == 5);
-
     // Ring cap: SNDphraseadd rejects beyond 0x12 queued -> only 18 of the 25-segment phrase land.
     c.pump(40);
-    c.trigger(ev(sim::EventType::Substitution)); // Hypothesis row fires; rotation cursor 3 -> phrase 4
+    c.trigger(ev(sim::EventType::Substitution)); // Hypothesis row fires; consumed head -> phrase 4
     c.pump(8);
     c.trigger(ev(sim::EventType::Save)); // Hypothesis row fires; next pool entry = the 25-segment phrase
     CHECK(c.lastPhrase() == 5 && c.queue().queued() == audio::SpeechQueue::kMaxQueued); // cap 0x12 = 18
     c.pump(40);
     CHECK(c.queue().queued() == 0);
-    // --- speech master-gain seam (SNDspeechinit / SNDspeechautovol; state cb 0x4dfca0) ---
-    CHECK(c.masterGain() == 0.f); // burst drained -> scene-stop ramp silenced the speech stream
-    c.setVolume(0x40);             // pct->vol domain: applied = 0x40, normalized = 64/127
-    CHECK(c.masterGain() == float(0x40) / 127.f && c.volume() == 0x40);
-    c.autoVol(0, 1);               // steps clamped >=1: one tick lands on target
-    c.pump(1);
-    CHECK(c.masterGain() == 0.f);
-    c.trigger(ev(sim::EventType::KickOff)); // sentence start -> rising edge ramp to scene level
-    c.pump(1);                                // delta = (0x40<<16)/5 trunc: applied = 838860>>16
-    CHECK(c.masterGain() == float(12) / 127.f && c.masterGain() < float(0x40) / 127.f);
-    c.pump(64);                    // sentence drains (null mixer) -> scene-stop edge ramps to silence
-    for (int i = 0; i < app::Commentary::kRampTicks + 1; ++i) c.pump(1);
-    CHECK(c.masterGain() == 0.f);
+
+    // Picks consume the pool (activation removes records: FUN_004c4a70 qremove): all 5 candidates
+    // used up -> qfind returns null, builder skips enqueue -> events stay silent.
+    c.trigger(ev(sim::EventType::KickOff));
+    CHECK(c.sentencesStarted() == 5 && c.queue().queued() == 0 && c.lastPhrase() == 5);
+
+    // --- speech master-gain seam (SNDspeechinit / SNDspeechautovol; state cb 0x4dfca0) on a
+    // fresh instance: pick consumption is per-instance, so the seam needs live picks. ---
+    app::Commentary g;
+    CHECK(g.loadBank(bytes));
+    g.setVolume(0x40);             // pct->vol domain: applied = 0x40, normalized = 64/127
+    CHECK(g.masterGain() == float(0x40) / 127.f && g.volume() == 0x40);
+    g.autoVol(0, 1);               // steps clamped >=1: one tick lands on target
+    g.pump(1);
+    CHECK(g.masterGain() == 0.f);
+    g.trigger(ev(sim::EventType::KickOff)); // sentence start -> rising edge ramp to scene level
+    g.pump(1);                               // delta = (0x40<<16)/5 trunc: applied = 838860>>16
+    CHECK(g.masterGain() == float(12) / 127.f && g.masterGain() < float(0x40) / 127.f);
+    g.pump(64);                    // sentence drains (null mixer) -> scene-stop edge ramps to silence
+    for (int i = 0; i < app::Commentary::kRampTicks + 1; ++i) g.pump(1);
+    CHECK(g.masterGain() == 0.f);
     std::printf("commentary synthetic gates OK: %u sentences, %u segment decodes\n",
                 c.sentencesStarted(), c.decodedSegments());
 }

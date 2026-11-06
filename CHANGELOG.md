@@ -4,6 +4,17 @@ All notable changes. Versioning: `0.x.y` pre-1.0; 1.0 = full World Cup
 tournament playable natively, per the definition of success in the
 project goals.
 
+
+## [Unreleased]
+
+### Changed
+- Commentary pick model is now the faithful consume-on-use predicate, not round-robin
+  (`app/commentary.cpp`): pass-7c RE closed `FUN_0048d0dc` = qfind over the class-keyed ready list
+  with slot-tag predicate `FUN_0048cf10`, activation `FUN_0048d1f8` removes each picked record;
+  null pick -> event silent. Port pool consumed in storage order (per-event tag table unmeasured,
+  marked in code). Evidence `analysis/pass7/pick{,.2,.3,.4}.txt`, doc COMMENTARY_WC98.md §pick;
+  gate: `test_commentary` consumption asserts (pool exhausted -> silent).
+
 ## [0.2.0] - 2026-11-06 — tournament playable end-to-end (native FE -> bracket -> slot save)
 
 ### Added

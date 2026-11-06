@@ -97,11 +97,16 @@ void Commentary::trigger(const sim::SimEvent& e) {
     // fan-out (FUN_004e2c60) is the mixer's job: stop live voices first (SPEECH_PHRASES.md §2).
     if (mixer_) for (auto& sid : sounds_) { if (sid) mixer_->stop(sid); sid = 0; }
     q_.sentenceStop();
-    // Pick policy is Hypothesis: the pick logic (FUN_0048d0dc -> FUN_004c4ce0) is not decompiled
-    // (COMMENTARY_WC98.md open item 2), so use a deterministic round-robin over the commentary-class
-    // phrase pool. The NOTES §1 "phraseIdx%16 announcer rotation" reading is Hypothesis too; the
-    // pool is ordered by phrase ordinal, so consecutive picks step through banks in storage order.
-    const std::uint32_t p = candidates_[rotation_++ % candidates_.size()];
+    // FUN_0048d0dc pick = qfind (FUN_004c4ce0) first-match over the class-keyed ready list; the
+    // activation path FUN_0048d1f8 removes each picked record from its queue via FUN_004c4a70
+    // qremove, so a phrase plays exactly once and an exhausted pool gives a null pick -> the
+    // builder skips enqueue (event silent). No rotation/counter exists in the original chain.
+    // Deviation: the exe's per-record slot tags (+0xC, predicate FUN_0048cf10) preload from an
+    // unmeasured table (FCLG probe negative), so seam slots share the storage-order pool;
+    // first-match over a shared list is then sequential consumption. Evidence: COMMENTARY_WC98.md
+    // §pick, analysis/pass7/pick*.txt.
+    if (head_ >= candidates_.size()) return; // qfind null: no commentary for this event
+    const std::uint32_t p = candidates_[head_++];
     lastPhrase_ = int(p);
     // Segment run: each phrase owns a contiguous id block (NOTES §1, 1022/1022 confirmed). The
     // within-phrase ordering is UNKNOWN (permutation source unmeasured) — deviation noted: play

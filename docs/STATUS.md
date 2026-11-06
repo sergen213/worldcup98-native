@@ -131,19 +131,22 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
 - Wine oracle (wine-11.21): original boots + runs under Xvfb 16bpp; live `options.sav` (AFIFAFIF)
   captured; task tables == static image (never runtime-patched); wined3d 24bpp AV documented - FE
   visuals not reached (black presentation), no fabricated captures. `WINE_ORACLE_WC98.md`.
-- Open: FE fidelity polish (map-grid team-select art, fontID faces, lang knob), commentary pick predicate +
-  duck-table scaling, percent-table scene defaults (Wine oracle). Landed: tournament module + progression
-  demo + team pick (`--fe-pick`), save/load, HUD, FE flow w/ drawn text, gamepad nav; suite 43.
+- Open: FE fidelity polish (map-grid team-select art, fontID faces, lang knob), duck-table scaling,
+  percent-table scene defaults (Wine oracle). Landed: tournament module + progression demo + team pick
+  (`--fe-pick`), save/load, HUD, FE flow w/ drawn text, commentary pick chain closed + faithful port
+  model (pass 7c); suite 43.
 
 ## Known limitations
 
 - M6 vertical slice playable headless (`wc98-match-demo`, gate `match_demo_frames`); commentary
   integrated in the exhibition loop via `app/commentary.{hpp,cpp}` (trigger seam FUN_004893ec model ->
   SpeechQueue -> PHRS segment fetch/decode -> OpenAL Mixer, null-mixer headless; gates
-  `test_commentary`). Event->phrase pick = Hypothesis round-robin (FUN_0048d0dc decomposed 2026-11-05:
-  gate DAT_0063241c + qfind with predicate callback; node-selection predicate still open);
-  FCLG cross-map probed negative (`analysis/pass7/fclg_probe.txt`); gain calibration + autovol ramp
-  closed 2026-11-05 (`analysis/pass7/gain*.txt`, COMMENTARY_WC98 §gain; `SpeechGain` model in the port).
+  `test_commentary`). Event->phrase pick chain CLOSED (pass 7c, 2026-11-06): `FUN_0048d0dc` = qfind over
+  the class-keyed ready list (`DAT_00632428 + [slot+0xC]*4`) with slot-tag predicate `FUN_0048cf10`;
+  activation `FUN_0048d1f8` removes the picked record (consume-on-use), null pick -> silent. Port pool
+  consumed in storage order, per-event tag table unmeasured (marked in code); COMMENTARY_WC98 §pick,
+  evidence `analysis/pass7/pick*.txt`. FCLG cross-map probed negative (`analysis/pass7/fclg_probe.txt`);
+  gain calibration + autovol ramp closed 2026-11-05 (`analysis/pass7/gain*.txt`, §gain; `SpeechGain`).
 - Record queue plumbing confirmed (2026-11-05, `analysis/pass7/rec1.txt`, GhidraWc98Rec1.py on saved wc98
   project): `FUN_004c4800` = cmn_queue push (qbottom, line 0x162), `FUN_004c4890` = pop (0x1cb),
   `FUN_004c4ce0` = qfind with predicate callback (0x431); node +0x00 = next link, queue object fields

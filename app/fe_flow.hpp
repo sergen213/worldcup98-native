@@ -49,10 +49,13 @@ public:
     // Gate evidence: UI string bank in use + how many exe font-table faces the tree carries.
     [[nodiscard]] std::string_view language() const { return text_ ? text_->language() : std::string_view{}; }
     [[nodiscard]] std::size_t fontsLoaded() const { return text_ ? text_->facesLoaded() : 0; }
+    // Mouse pointer (virtual 640x480 coords) for the MAUS.PAK cursor sprite; setPointer maps it.
+    void setPointer(int x, int y) { ptrX_ = x, ptrY_ = y; }
 
 private:
     void loadTeams(); // ZWCUP.RES pool + FCDB STR0 names (non-throwing; empty = no team-select)
     presentation::FeDrawStats drawTeamsGrid(render::SpriteBatch& ui) const; // FEFLOW11 composite + dynamic rows
+    void drawCursor(render::SpriteBatch& ui, presentation::FeDrawStats& st) const; // MAUS.PAK arrow at the pointer
     presentation::FeDrawStats drawTeams(render::SpriteBatch& ui) const; // team-select frame (flat panel + FFN rows)
     std::filesystem::path tree_;
     presentation::ScreenArt art_; // texture handles cached per FSH member
@@ -68,6 +71,9 @@ private:
     std::vector<std::string> poolNames_;   // FCDB STR0 fullName per entry ("" when the DBI is absent)
     TeamListNav teams_;                    // paging cursor (team_select.hpp)
     int pick_ = -1;                        // confirmed team id (-1 = none)
+    presentation::FeCursor cursor_;      // MAUS.PAK art (absent = no sprite)
+    render::TextureId cursorTex_ = 0;    // 0 = not uploaded (no art on this tree)
+    int ptrX_ = 0, ptrY_ = 0;            // pointer position in virtual 640x480 pixels
 };
 
 } // namespace wc98::app

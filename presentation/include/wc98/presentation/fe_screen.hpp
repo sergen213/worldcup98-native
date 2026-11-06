@@ -102,7 +102,21 @@ private:
 struct FeDrawStats {
     int shapes = 0, rects = 0, hidden = 0, noArt = 0, missing = 0;
     int texts = 0; // glyph quads drawn for text objects (see FeText)
+    int cursors = 0; // mouse cursor sprites drawn after the composite (see FeCursor)
 };
+
+// FE mouse cursor (MAUS.PAK/MAUS.FSH). The engine hard-loads ".\fe\pack\maus.pak" — string
+// block at FIFAWC.EXE file offset 1451894 (VPATH/FNAME/SHAPEID keys adjacent: LAY-style object,
+// no .LAY references it). SHPI carries two `curs` entries; entry 0 is the 28x26 arrow.
+struct FeCursor {
+    render::Image bmp;              // first curs bitmap RGBA (alpha channel has transparent pixels)
+    std::int16_t hotX = 0, hotY = 0; // FSH header centerX/centerY (measured: 0,0 for both entries)
+    int entries = 0;                // number of decoded `curs` entries in the file (expected: 2)
+};
+// Non-throwing: locates FE/PACK/MAUS.PAK then FE/MAUS.FSH case-insensitively, decodes through
+// RefPack. False = art absent/undecodable on this tree; `out` stays empty. Paletted bitmaps
+// resolve via the shared FE palette (formats::setGlobalPalette), as loaded by app main.cpp.
+bool loadFeCursor(const std::filesystem::path& root, FeCursor& out);
 
 // Draws the merged element list into `ui`. Textured elements are blitted at their shape's native size
 // anchored at (xposition, yposition): the layout position wins and WIDTH/HEIGHT is the interaction box

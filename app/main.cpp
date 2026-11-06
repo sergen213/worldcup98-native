@@ -19,6 +19,8 @@
 
 #include <SDL3/SDL_vulkan.h>
 #include <SDL3/SDL.h>
+
+#include <algorithm>
 #include <cstdio>
 #include <iostream>
 #include <atomic>
@@ -157,12 +159,18 @@ int run(int argc, char** argv) {
 
     std::unique_ptr<app::FeFlow> fe;
     if (feMode) fe = std::make_unique<app::FeFlow>(*renderer, tree, lang);
-    int totalShapes = 0, totalTexts = 0, presented = 0, navRc = -1;
+    int totalShapes = 0, totalTexts = 0, totalCursors = 0, presented = 0, navRc = -1;
         if (fe && feTeam) { fe->move(1); fe->enter(); } // Tournament entry -> team-select grid
 
     while (smokeFrames == 0 || presented < smokeFrames) {
         auto ev = window->poll();
         if (ev.quit) break;
+        if (fe) { // pointer -> virtual 640x480: naive full-window scale, letterbox offset ignored
+            const auto [px, py] = window->pixelSize();
+            if (px && py)
+                fe->setPointer(std::clamp(ev.mouseX * 640 / int(px), 0, 639),
+                               std::clamp(ev.mouseY * 480 / int(py), 0, 479));
+        }
         render::SpriteBatch ui;
         render::Frame frame; // empty scene by default: the shell only proves the presentation path.
         if (fe) {
@@ -170,6 +178,7 @@ int run(int argc, char** argv) {
             totalShapes += presented == 0 ? st.shapes : 0; // first-frame stats are gate evidence
             totalTexts += presented == 0 ? st.texts : 0;
             frame.ui = &ui;
+            totalCursors += presented == 0 ? st.cursors : 0;
         }
         auto launchSelected = [&] { // Enter/confirm: Tournament entry opens team-select; confirm launches with the pick.
             if (!fe->enter()) return true; // show the team-select screen (next Enter confirms pickedTeam())
@@ -207,7 +216,7 @@ int run(int argc, char** argv) {
         }
         if (fe && smokeFrames && presented == 0) { // gate evidence line (render_demo_lay pattern)
             std::cout << fe->screenName() << ": shapes=" << totalShapes << " texts=" << totalTexts
-                      << " faces=" << fe->fontsLoaded() << " lang=" << fe->language()
+                      << " cursors=" << totalCursors << " faces=" << fe->fontsLoaded() << " lang=" << fe->language()
                       << (fe->lastError().empty() ? std::string() : (" load-error=" + fe->lastError())) << '\n';
             if (totalShapes <= 0) { std::cerr << "FE screen drew no shapes\n"; return 1; }
             // Labels must be visible: FC*.BIN strings through the FFN face (FeText).

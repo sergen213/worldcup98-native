@@ -42,7 +42,11 @@ counts in `docs/asset-formats/INVENTORY.md`, `docs/reverse-engineering/EXECUTABL
   (BNK 47/47, SCHl 37/37, CRD, MIDx), OpenAL mixer — COMPATIBLE.
 - M4 rendering proven on real GPU offscreen (ctest gates green, PNGs visually verified
   2026-11-02): FEFLOW02 full-frame bitmap; `.LAY` composites of FE main menu (FEFLOW05) and
-  CONTROL1 via `.FSH`/RefPack `.PAK` art resolution (LAYOUTS.BIG/IGLAY.BIG members); original
+  CONTROL1 via `.FSH`/RefPack `.PAK` art resolution (LAYOUTS.BIG/IGLAY.BIG members); FE mouse cursor
+  RESOLVED 2026-11-06 — engine hard-loads `.\fe\pack\maus.pak` (FIFAWC.EXE file offset 1451894), the
+  28x26 `curs` arrow draws over every FE composite (gates `test_presentation`, `fe_render_tournament`);
+  CONTROL1's `redleft.fsh#mous` is a shipped-asset gap (REDLEFT.PAK = keyb/joys/gpad/grav only, the
+  original skips it), not a loader bug.
   trophy (`WCUPF.MDL`: 2 groups, 416 faces, 9 FSH textures) and stadium bowl (`BRDXF`) through
   the GEOM/SKEL parser — see reverse-engineering/{LAY_COMPOSITOR,MDL_GEOMETRY}_NOTES.md.
 - Player art end-to-end via `wc98-model-export` (2026-11-02): skinned `PCMD` players

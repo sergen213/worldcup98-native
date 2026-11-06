@@ -317,4 +317,24 @@ std::string readLayout(const std::string& spec, fs::path& dir) {
     throw std::runtime_error(spec + ": no such archive member");
 }
 
+// ---- Mouse cursor (MAUS.PAK family) ----------------------------------------------------------
+bool loadFeCursor(const fs::path& root, FeCursor& out) {
+    out = FeCursor{};
+    for (const std::string rel : {"FE/PACK/MAUS.PAK", "FE/MAUS.FSH"})
+        if (const auto p = findCaseInsensitive(root, rel); !p.empty())
+            try {
+                const auto bytes = formats::refpack::decompressIfNeeded(wc98::readFile(p));
+                for (const auto& e : formats::FshFile::parse(bytes).entries)
+                    if (iequals(e.tag, "curs") && e.bitmap)
+                        if (++out.entries == 1 && !e.bitmap->rgba.empty() && e.bitmap->width && e.bitmap->height) {
+                            out.bmp = render::Image{e.bitmap->width, e.bitmap->height, e.bitmap->rgba};
+                            out.hotX = e.bitmap->centerX; // header hotspot (measured 0,0)
+                            out.hotY = e.bitmap->centerY;
+                        }
+                if (out.bmp.width) return true;
+            } catch (const std::exception&) { /* decode failure: absent below */ }
+    return false;
+}
+
+
 } // namespace wc98::presentation

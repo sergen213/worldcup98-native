@@ -43,12 +43,13 @@ the compositor lives in `tools/render-demo/main.cpp` (`--lay <spec> [--tree <dir
 | screen | objects → shapes | notes |
 |---|---|---|
 | `LAYOUTS.BIG@FEFLOW05.LAY` | 26 → 11 shapes + 100 text quads, 1 unresolved (text landed 2026-11-05) | main menu: France98 + EA SPORTS logos, tricolour, selector arrows, blue banners, FC*.BIN labels — PNG visually authentic; background flow bitmap composites over it (blending order is a known polish item) |
-| `IGLAY.BIG@CONTROL1.LAY` | 27 → 9 (+17 text via FeText in the app compositor; render-demo passes no text, counted `noArt`) | controller setup: four 1998 gamepads + keyboards + pitch diagram; unresolved `redleft.fsh#mous` = cursor sprite (maus.pak family) |
+| `IGLAY.BIG@CONTROL1.LAY` | 27 → 9 (+17 text via FeText in the app compositor; render-demo passes no text, counted `noArt`) | controller setup: four 1998 gamepads + keyboards + pitch diagram; `redleft.fsh#mous` = shipped gap (see Open items) |
 | `LAYOUTS.BIG@FEFLOW11.LAY` | → 24 shapes + 8 text rows (`--fe-team`, gate `fe_render_tournament`) | ZWCUP team-select pick grid — see section below |
 
 ## Open items
-- Alpha/blend state per element type (hidden flags drive `shown()` only);
-  mouse cursor art; IGLAY in-game HUD needs the match scene behind it (M5).
+- Alpha/blend state per element type (hidden flags drive `shown()` only); IGLAY in-game HUD needs the match scene behind it (M5).
+- Mouse cursor art RESOLVED 2026-11-06 (`presentation::loadFeCursor` + app overlay after each FE composite; gates: `test_presentation` tree checks, `fe_render_tournament` FAIL regex `cursors=0`). The engine hard-codes `.\fe\pack\maus.pak` at FIFAWC.EXE file offset 1451894 (bytes: `$AVER$FEPCV2-0-3      \0\0\0.\fe\pack\maus.pak\0\0.\\user\\options.sav\0\0VPATH\0FNAME\0SHAPEID\0BOXWIDTH\0`). No `curs` string exists in FIFAWC.EXE; no `.LAY` references maus — the cursor is drawn by engine code with LAY-style object keys (VPATH/FNAME/SHAPEID adjacent strings). MAUS.PAK is RefPack-wrapped and decompresses byte-identical to FE/MAUS.FSH; SHPI has 2 entries, both tag `curs`: entry0 off=32 w=28 h=26 (the arrow), entry1 off=1880 w=21 h=20. Selection among the two `curs` entries is Hypothesis: draw entry 0; hotspot from FshBitmap centerX/centerY (measured 0,0).
+- Shipped gap: CONTROL1.LAY object `ls4` (`fname=redleft.fsh, sname=mous`) references a shape that does not exist on the shipped disc — FE/PACK/FEFLOW09/REDLEFT.PAK carries keyb/joys/gpad/grav only. The original silently skips it; NOT a loader bug (asserted in `test_presentation`).
 - Gate: ctest `render_demo_lay` runs FEFLOW05 with `--min-shapes 8`, skipped without a tree;
   ctest `fe_flow_render` additionally asserts text quads > 0 (menu labels visible).
 

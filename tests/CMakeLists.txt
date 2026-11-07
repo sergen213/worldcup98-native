@@ -39,6 +39,10 @@ wc98_test(test_histtri unit/test_histtri.cpp)
 # 30 tree videos, deterministic decode checksums; docs/asset-formats/VIDEO.md.
 wc98_test(test_dct unit/test_dct.cpp)
 
+# EA front-end .MDL polygon models (FE/*.MDL, 12 files): synthetic GEOM parse + tree census with
+# group/face counts and SKEL magic pin on LPOLYBF; docs/reverse-engineering/MDL_GEOMETRY_NOTES.md.
+wc98_test(test_mdl unit/test_mdl.cpp)
+
 # Tournament module slice (docs/reverse-engineering/TOURNAMENT_MODULE_WC98.md §4-§5): standings +
 # tiebreak chain, bracket propagation, schedule plan, ZWCUP/ZINTER.RES pair matrix (§2.5).
 wc98_test(test_tournament unit/test_tournament.cpp)

@@ -122,9 +122,26 @@ std::string FeFlow::flagFileForTeam(std::uint32_t id) const {
 // The composite draws every shown() object — no scene-ownership whitelist: these are reference
 // captures for visual review, not in-game scenes.
 bool FeFlow::loadCaptureScreen(std::string_view name, std::string& err) {
+    // Search order: FE/PACK/LAYOUTS/LAYOUTS.BIG member, then IGLAY.BIG (in-game popups), then the
+    // loose tree copies (FE/INGAME/*.LAY). All go through the same tolerant reader.
+    const std::string n = std::string(name) + ".LAY";
+    static constexpr std::array<const char*, 2> archives = {"LAYOUTS.BIG", "IGLAY.BIG"};
     try {
         fs::path dir;
-        const std::string text = presentation::readLayout((tree_ / "FE/PACK/LAYOUTS/LAYOUTS.BIG").string() + "@" + std::string(name) + ".LAY", dir);
+        std::string text;
+        bool found = false;
+        for (const char* arc : archives) {
+            try {
+                text = presentation::readLayout((tree_ / "FE/PACK/LAYOUTS" / arc).string() + "@" + n, dir);
+                found = true;
+                break;
+            } catch (const std::exception&) { /* member absent in this archive: try the next */ }
+        }
+        if (!found) {
+            const fs::path loose = wc98::findCaseInsensitive(tree_, "FE/INGAME/" + n);
+            if (loose.empty()) throw std::runtime_error(n + ": no such layout member/file");
+            text = presentation::readLayout(loose.string(), dir);
+        }
         captureScreen_ = formats::ScreenLayout::build(std::string(name), formats::LayoutDocument::parse(std::string_view(text)), nullptr, nullptr, "PC");
         captureName_ = name;
         useCapture_ = true;

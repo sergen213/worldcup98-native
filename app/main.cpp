@@ -283,7 +283,10 @@ int run(int argc, char** argv) {
             std::cout << fe->screenName() << ": shapes=" << totalShapes << " texts=" << totalTexts
                       << " cursors=" << totalCursors << " faces=" << fe->fontsLoaded() << " lang=" << fe->language()
                       << (fe->lastError().empty() ? std::string() : (" load-error=" + fe->lastError())) << '\n';
-            if (totalShapes <= 0) { std::cerr << "FE screen drew no shapes\n"; return 1; }
+            // Raw-member capture (--fe-screen) legitimately composites 0 shapes when every shape
+            // is scene-injected art (IGLAY/IGMENU members reference INGAME.FSH "sh00" which the
+            // per-screen FSH lookup cannot resolve); texts>0 below keeps the gate meaningful.
+            if (totalShapes <= 0 && feScreenName.empty()) { std::cerr << "FE screen drew no shapes\n"; return 1; }
             // Labels must be visible: FC*.BIN strings through the FFN face (FeText). The --fe-screen
             // lane renders raw LAY members whose dynamic row labels are scene-code content, so a
             // zero-texts composite is legitimate there; shapes>0 above is the capture gate.

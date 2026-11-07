@@ -79,14 +79,14 @@ All rows from the linear scan of `FUN_004479d0` **[C]**. Sites at 0x4481b5…0x4
 | 19 | 004482af | 0x56240c | feflow27 | — | — | — | — | (as #19) | remap site | impl |
 | 15 | 004482c8 | 0x5623dc | feflow23 | — | — | — | — | (as #15) | remap site | cap |
 | 17 | 004482cf | 0x5623f4 | feflow25 | — | — | — | — | (as #17) | remap site | impl |
-| 14 | 004482d6 | 0x5623d0 | feflow21 | — | — | — | — | (as #14) | remap site (group standings mini-board; primary row missing from this scan — see note) | cap |
+| 14 | 004482d6 | 0x5623d0 | feflow21 | — | — | — | — | (as #14) | remap site | cap |
 | 18 | 004482dd | 0x562400 | feflow26 | — | — | — | — | (as #18) | remap site | impl |
 | 51 | 0044834d | 0x56258c | feflow90 | — | — | — | — | (as #51) | remap site | cap |
 | 56 | 004483d3 | 0x5625c8 | **feflow17** | — | — | — | — | FEFLOW17.LAY | dev options list (`opt0-7`, `dop0-3`; captions "Automatic Crosses", "Audio/Visual Options" 267) — internal debug menu **[C]** authored feflow17.lay | cap |
 
-Counts: 66 rows / 56 unique scenes; second-pass sites #55–#65 (11 rows, all in the 0x4481b5-0x4483d3 block) re-register existing scenes. feflow17 appears only at remap site 0x4483d3 — no primary slot row **[C]**; its slots are not recorded by this scan. **feflow21**: the scan's primary-row set (55 rows, sites 0x4479de…0x4480bb) contains no feflow21 entry; it appears only as remap site 0x4482d6 with p-string VA 0x5623d0 — its primary registration slot row was not captured by this linear scan (primary table #14 above is the slot data recorded under feflow21's own row from pass-7 disasm; treat slots as **[H]** for that scene).
+Counts **[C]** (verified against `menu5_scenemap_windowobj.txt`): 66 SCENE rows = 55 primary registrations (#1–#55) + 11 second-pass sites in the 0x4481b5-0x4483d3 block; remap rows reuse the primary row's `#`. Unique scene names: **56** — feflow17 is registered only at site 0x4483d3 (no slot record in this scan); all other remap sites re-register scenes that carry their own primary row.
 
-Registry-internal totals: **impl** = main menu (feflow06), feflow09, feflow11, feflow25, feflow26, feflow27, feflow35, feflow50, feflow73 → 9 unique scenes interactive. **cap** = 44 unique scenes reachable/renderable only via the `--fe-screen` lane. **miss** = feflow07, 08, 10, 13*, 37, 41, 42, 56 — *feflow13 is asset-renderable (cap) but has no interactive flow.
+Registry-internal totals: **impl** = 9 unique scenes interactive — feflow06 (main menu), 09, 11, 25, 26, 27, 35, 50, 73; **miss** = 6 — feflow07, 08, 10, 37, 41, 42 (no renderable lane wired: popups/scene UIs); **cap** = 41 — everything else, renderable via the `--fe-screen` lane only (includes stub scenes feflow00/feflow56 and feflow15, whose interactive option-list logic is missing).
 
 ## 2a. LAYOUTS.BIG members (101) — screen inventory
 
@@ -260,7 +260,7 @@ Each entry: what's missing → RE blocker. Blockers reference handler slots §1;
 
 ## 5. Cross-checked counts (against source files)
 
-- SCENE registry rows: **66** (`grep -c "^SCENE "` on `menu5_scenemap_windowobj.txt`); unique scene names **56**; primary slot rows 54 + remap rows 12 incl. feflow17.
-- LAYOUTS.BIG members: **101** (file header line 1; digest regeneration counted 101 `== MEMBER` sections) — includes `fe.lst` manifest, 30 single-null-widget stubs, 3 ig\*optns popups.
+- SCENE registry rows: **66** (`grep -c "^SCENE "` on `menu5_scenemap_windowobj.txt`); unique scene names **56**; 55 primary rows + 11 second-pass sites (block 0x4481b5-0x4483d3).
+- LAYOUTS.BIG members: **101** (file header line 1; `grep -c "== MEMBER"` = 101) — includes `fe.lst` manifest, 32 single-widget stub members (`numobjects=1 [objects parsed: 1]`, grep count), 3 ig\*optns popups.
 - IGLAY.BIG members: **30** = 29 .LAY + `ingame.lst`; loose FE/INGAME tree: **29** `.LAY` files (+ LST/FSH/IGFLAGS); every member byte-identical to its loose-tree counterpart (`cmp -s`: 29+LST identical, diff=0).
 - Port interactive scenes: 9 registry scenes (`app/fe_flow.cpp` composite + label code; gates listed §3). Capture lane covers every LAYOUTS.BIG member (`--fe-screen`).

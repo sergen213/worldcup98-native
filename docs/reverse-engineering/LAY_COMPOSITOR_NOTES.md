@@ -217,3 +217,18 @@ labels at the markers, no overlap).
 - **SpriteBatch UV rule**: textured draws take normalized uv `{0,0,1,1}` - passing `{}` (all-zero)
   samples texel(0,0) and paints the whole target rect with that one colour. All app-side dynamic
   overlays use the full-rect UV; kit strips keep explicit sub-rects from `Kits::stripRect`.
+
+## Button-class interaction states + FRAMES animation (pass-12, 2026-11-07)
+
+`composite(..., const FeUiState*)` adds pointer-driven widget state for the button classes
+(objecttype 6 `ScrollBar`, 32 `Tbb`, plus 2/8/45): Press -> `PUSHEDSHAPEID/PUSHEDSHAPE`,
+Hover/screen `HILITEPANE` -> `HILITEDSHAPEID/HILITEDSHAPE`, released-key chain as static default.
+Evidence: Feflow06.lay hub buttons (`fe07` released `franim.fsh#0000`, side icons `quit` =
+`nvicons.fsh#qui1` hilited `qui5`), widget key table 0x564458, runtime switch FUN_0044e178. **[C]**
+- Hit box: `POINTS=N+,x,y,...` polygon (fe07 fan polygon) else the x/y/width/height rect.
+- `FRAMES=a,b,c,d` = two frame ranges over the shape-name family of the widget's FSH: idle a..b,
+  state c..d; ordinal maps onto the base tag digits (`qui1` + 6 -> `qui6`; `0000` + 3 -> `0003`).
+  Measured qui1 frames `6,9,6,9`, franim `1,15,1,15`. Clock: 150 ms/frame. **[H]** (pair semantics
+  from the two measured widgets; confirm against handler tick decode when MENU_NAV_WC98 lands)
+- Help pane: button `help=NNN,...` leading value = FC-bank string index painted into the
+  `helppaneid=` widget (`objecttype=14`, fontid, centered alignment=3). **[C]** Feflow06.lay.

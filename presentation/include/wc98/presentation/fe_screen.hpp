@@ -117,6 +117,20 @@ struct FeCursor {
 // RefPack. False = art absent/undecodable on this tree; `out` stays empty. Paletted bitmaps
 // resolve via the shared FE palette (formats::setGlobalPalette), as loaded by app main.cpp.
 bool loadFeCursor(const std::filesystem::path& root, FeCursor& out);
+// Pointer-driven widget state for the composite (LAY button classes objecttype 6 ScrollBar /
+// 32 Tbb, e.g. Feflow06.lay's hub buttons and side icons). The engine tracks hover/press per
+// widget and repaints with HILITEDSHAPE*/PUSHEDSHAPE* keys; FRAMES="a,b,c,d" gives two frame
+// ranges: idle animation (a..b) and state animation (c..d) over the shape-name family
+// (nvicons qui1 + frames 6,9 -> animated qui6..qui9; franim 0000 + frames 1,15 -> 0001..0015).
+enum class FeWidgetState { Normal, Hover, Press };
+struct FeUiState {
+    std::string hover;        // objectname under the pointer ("" = none)
+    std::string pressed;      // objectname held down by the mouse button
+    float mx = 0.f, my = 0.f; // pointer position in the 640x480 UI space (hit-test fallback)
+    std::uint32_t animMs = 0; // frame clock driving FRAMES= ranges (150 ms per frame)
+};
+// Hit box: POINTS= polygon when present, else the xposition/yposition/width/height rect.
+[[nodiscard]] bool widgetHit(const formats::LayoutObject& o, float x, float y);
 
 // Draws the merged element list into `ui`. Textured elements are blitted at their shape's native size
 // anchored at (xposition, yposition): the layout position wins and WIDTH/HEIGHT is the interaction box
@@ -131,7 +145,8 @@ bool loadFeCursor(const std::filesystem::path& root, FeCursor& out);
 // the whitelist of objectnames for this composite; every other object counts as hidden and is
 // not painted. nullptr = draw everything (reference compositor / render-demo gate).
 FeDrawStats composite(const formats::ScreenLayout& screen, render::SpriteBatch& ui, ScreenArt& art,
-                      FeText* text = nullptr, const std::vector<std::string>* visible = nullptr);
+                      FeText* text = nullptr, const std::vector<std::string>* visible = nullptr,
+                      const FeUiState* uiState = nullptr);
 
 // Reads a layout given as "path" or "archive.big@MEMBER.LAY"; `dir` receives the directory that
 // authored vpath references are relative to (the archive's own directory for members).

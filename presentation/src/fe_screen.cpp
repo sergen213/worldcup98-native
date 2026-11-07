@@ -252,11 +252,87 @@ int drawLabel(const formats::LayoutObject& o, render::SpriteBatch& ui, const FeT
     }
     return n;
 }
+
+// Button-class hit box: POINTS= "N+ /x,y, x,y, ..." polygon (Feflow06 buttons) else the layout rect.
+bool widgetHit(const formats::LayoutObject& o, float x, float y) {
+    const std::string* pts = o.prop("POINTS");
+    if (!pts) return x >= o.x && x < o.x + o.width && y >= o.y && y < o.y + o.height;
+    // Parse the polygon (leading "N+" token, then pairs). Polygon test: standard even-odd ray rule.
+    std::vector<std::pair<float, float>> poly;
+    const char* p = pts->c_str();
+    while (*p) {
+        while (*p == ' ' || *p == ',' || (*p >= '0' && *p <= '9' ? false : (*p == '+'))) ++p; // skip "N+" markers
+        char* e = nullptr;
+        const float x1 = std::strtof(p, &e);
+        if (!e || e == p) break;
+        p = e;
+        while (*p && *p != ',') ++p; // consume the rest of "N" tokens: first pair wins per scan
+        if (!*p) break;
+        ++p;
+        const float y1 = std::strtof(p, &e);
+        if (e == p) break;
+        p = e;
+        poly.emplace_back(x1, y1);
+    }
+    if (poly.size() < 3) return x >= o.x && x < o.x + o.width && y >= o.y && y < o.y + o.height;
+    bool in = false;
+    for (std::size_t i = 0, j = poly.size() - 1; i < poly.size(); j = i++) {
+        const auto [xi, yi] = poly[i];
+        const auto [xj, yj] = poly[j];
+        if (((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) in = !in;
+    }
+    return in;
+}
+
+namespace {
+FeWidgetState widgetStateFor(const formats::LayoutObject& o, const FeUiState* s) {
+    using T = formats::LayoutObjectType;
+    if (!s) return FeWidgetState::Normal;
+    if (!(o.type == int(T::Button) || o.type == int(T::ScrollBar) || o.type == int(T::Tbb) ||
+          o.type == int(T::AnimButton) || o.type == int(T::Btn)))
+        return FeWidgetState::Normal;
+    if (!s->pressed.empty() && iequals(o.name, s->pressed)) return FeWidgetState::Press;
+    if ((!s->hover.empty() && iequals(o.name, s->hover)) || widgetHit(o, s->mx, s->my)) return FeWidgetState::Hover;
+    return FeWidgetState::Normal;
+}
+
+// FRAMES="a,b,c,d": two frame ranges over the shape family — idle (a..b) and state (c..d).
+// Measured: nvicons qui1 frames=6,9,6,9 -> animated qui6..qui9; franim 0000 frames=1,15,1,15.
+std::pair<int, int> frameRange(const formats::LayoutObject& o, FeWidgetState ws) {
+    const std::string* f = o.prop("FRAMES");
+    if (!f) return {};
+    int v[4] = {0, 0, 0, 0};
+    int n = 0;
+    const char* p = f->c_str();
+    while (n < 4 && *p) {
+        char* e = nullptr;
+        v[n++] = int(std::strtol(p, &e, 10));
+        if (!e || e == p) break;
+        p = *e == ',' ? e + 1 : e;
+    }
+    const bool stateAnim = ws != FeWidgetState::Normal;
+    if (stateAnim && n >= 4 && v[3] > v[2]) return {v[2], v[3]};
+    if (n >= 2 && v[1] > v[0]) return {v[0], v[1]};
+    return {};
+}
+
+// Animated shape tag: base "qui1" + ordinal -> "qui6"; "0000" + ordinal -> "0006" (digit-width zero pad).
+std::string animatedTag(const std::string& base, int ordinal) {
+    const std::size_t d = base.find_last_of("0123456789");
+    if (d == std::string::npos) return {};
+    std::size_t w = 0;
+    while (d - w + 1 > 0 && d - w + 1 <= base.size() && isdigit((unsigned char)base[d - w])) ++w;
+    const std::string prefix = base.substr(0, d - w + 1);
+    char buf[16];
+    std::snprintf(buf, sizeof buf, "%0*ld", int(w), long(ordinal));
+    return prefix + buf;
+}
+} // namespace
 } // namespace
 FeDrawStats composite(const formats::ScreenLayout& screen, render::SpriteBatch& ui, ScreenArt& art,
-                      FeText* text, const std::vector<std::string>* visible) {
+                      FeText* text, const std::vector<std::string>* visible, const FeUiState* uiState) {
     // Dynamic-content rule (LAY_COMPOSITOR_NOTES.md "Widget-class visibility"): widget-class
-    // objects carrying a TEXTID key are engine-driven content — MNMSETUP's list widgets
+    // objects carrying a TEXTID key are engine-driven content - MNMSETUP's list widgets
     // objecttype=4 textid=0,5/209,4/4396,4, edit boxes objecttype=10/14 (dial/init/machine
     // name), buttons objecttype=2. The engine paints their FC-bank captions at runtime from
     // live item state; the port has no such state, so a static composite must not draw them.
@@ -269,14 +345,22 @@ FeDrawStats composite(const formats::ScreenLayout& screen, render::SpriteBatch& 
     for (const auto& o : screen.objects) {
         if (!o.shown()) { ++st.hidden; continue; }
         // Initial highlight state of the screen ([screen] HILITEPANE, parsed at layout.cpp:224):
-        // that one pane starts hilited, drawing its label in HILITECOLOUR and its art in
-        // HILITEDSHAPEID (button class key table 0x564458; runtime state switch FUN_0044e178).
         const bool hl = !screen.hilitePane.empty() && iequals(o.name, screen.hilitePane);
         if (visible && std::ranges::none_of(*visible, [&](const std::string& n) { return iequals(o.name, n); })) { ++st.hidden; continue; }
+        // Widget interaction state (button classes): Press -> PUSHEDSHAPE*, Hover/HILITEPANE ->
+        // HILITEDSHAPE*; the released-key chain is the static default (runtime state switch
+        // FUN_0044e178, key table 0x564458).
         const std::string* tag = nullptr;
-        if (hl) { if (const std::string* h = o.prop("HILITEDSHAPEID"); h && !h->empty() && !iequals(*h, "null")) tag = h; }
-        for (std::string_view k : {"SHAPEID", "SNAME", "RELEASEDSHAPEID", "RELEASEDSHAPE", "NORMALSHAPEID", "NSHAPEID", "BARSHAPEID"})
-            if (const std::string* v = o.prop(k); v && !v->empty() && !iequals(*v, "null")) { tag = v; break; }
+        const FeWidgetState ws = widgetStateFor(o, uiState);
+        if (ws == FeWidgetState::Press)
+            for (std::string_view k : {"PUSHEDSHAPEID", "PUSHEDSHAPE"})
+                if (const std::string* v = o.prop(k); v && !v->empty() && !iequals(*v, "null")) { tag = v; break; }
+        if (!tag && (ws == FeWidgetState::Hover || hl))
+            for (std::string_view k : {"HILITEDSHAPEID", "HILITEDSHAPE"})
+                if (const std::string* v = o.prop(k); v && !v->empty() && !iequals(*v, "null")) { tag = v; break; }
+        if (!tag)
+            for (std::string_view k : {"SHAPEID", "SNAME", "RELEASEDSHAPEID", "RELEASEDSHAPE", "NORMALSHAPEID", "NSHAPEID", "BARSHAPEID"})
+                if (const std::string* v = o.prop(k); v && !v->empty() && !iequals(*v, "null")) { tag = v; break; }
         const fs::path fname{slashes(o.fname)};
         if (isNullArt(fname) || lowered(fname.stem().string()) == "rect") { // flat colour panel / text label
             std::uint32_t argb = 0;
@@ -305,7 +389,18 @@ FeDrawStats composite(const formats::ScreenLayout& screen, render::SpriteBatch& 
         }
         const std::string* vpath = o.prop("VPATH");
         const int index = tag ? -1 : o.intProp("SHAPEINDEX", o.intProp("DEFAULTSHAPENO", -1));
-        const ScreenArt::Shape sh = art.shape(vpath ? *vpath : std::string(), o.fname, tag ? *tag : std::string(), index);
+        ScreenArt::Shape sh = art.shape(vpath ? *vpath : std::string(), o.fname, tag ? *tag : std::string(), index);
+        // FRAMES= animation over the shape family: idle range while Normal, second range hovered/
+        // pressed (measured nvicons qui1 -> qui6..qui9 pulse; franim 0000 + frames 1,15 -> 0001..0015).
+        if (uiState && tag) {
+            const auto [lo, hi] = frameRange(o, ws);
+            if (hi > lo) {
+                const int ordinal = lo + int((uiState->animMs / 150) % unsigned(hi - lo + 1));
+                if (const std::string at = animatedTag(*tag, ordinal); !at.empty())
+                    if (const ScreenArt::Shape a = art.shape(vpath ? *vpath : std::string(), o.fname, at, -1); a.tex)
+                        sh = a;
+            }
+        }
         if (!sh.tex) { ++st.missing; continue; }
         ui.draw(sh.tex, {float(o.x), float(o.y), float(sh.w), float(sh.h)});
         ++st.shapes;

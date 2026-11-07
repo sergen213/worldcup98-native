@@ -42,6 +42,23 @@ FeFlow::FeFlow(render::Renderer& r, fs::path tree, std::string lang) : tree_(std
         haveGrid_ = true;
     } catch (const std::exception&) { // no grid art on this tree: usability list remains
     }
+    // Friendly/practise match-setup screens (FE_MENU_SCREENS_WC98.md §5): FEFLOW09.LAY and
+    // FEFLOW50.LAY, same tolerant reader as the grid. Absent -> Enter on friendly/practise keeps
+    // launching directly (pre-slice behaviour).
+    try {
+        fs::path d;
+        const std::string t9 = presentation::readLayout((tree_ / "FE/PACK/LAYOUTS/LAYOUTS.BIG").string() + "@FEFLOW09.LAY", d);
+        setup09_ = formats::ScreenLayout::build("FEFLOW09", formats::LayoutDocument::parse(std::string_view(t9)), nullptr, nullptr, "PC");
+        haveSetup_ = true;
+    } catch (const std::exception&) { // no friendly-setup art on this tree
+    }
+    try {
+        fs::path d;
+        const std::string t50 = presentation::readLayout((tree_ / "FE/PACK/LAYOUTS/LAYOUTS.BIG").string() + "@FEFLOW50.LAY", d);
+        setup50_ = formats::ScreenLayout::build("FEFLOW50", formats::LayoutDocument::parse(std::string_view(t50)), nullptr, nullptr, "PC");
+        haveSetup_ = true;
+    } catch (const std::exception&) { // no practise-setup art on this tree
+    }
     // Mouse cursor sprite (MAUS.PAK, exe string offset 1451894): absent art => no sprite drawn.
     if (presentation::loadFeCursor(tree_, cursor_) && !cursorTex_)
         cursorTex_ = r.createTexture(cursor_.bmp, render::Wrap::Clamp, "fe/maus-curs");
@@ -67,29 +84,71 @@ void FeFlow::loadTeams() {
                 const auto idx = std::size_t(std::distance(db.teams.begin(), it));
                 poolNames_.push_back(it != db.teams.end() && idx < names.teams.size() ? names.teams[idx].fullName
                                                                                       : std::string());
+                // Flag art file: "FNNN" = record index, not the id (F030 = Argentina, F031 = Australia).
+                char ff[8];
+                std::snprintf(ff, sizeof ff, "F%03u", unsigned(idx));
+                poolFlagFile_.push_back(it != db.teams.end() ? ff : std::string{});
             }
         } else {
             poolNames_.assign(poolIds_.size(), std::string());
+            poolFlagFile_.assign(poolIds_.size(), std::string());
         }
     } catch (const std::exception&) {
         poolIds_.clear();
         poolNames_.clear();
+        poolFlagFile_.clear();
     }
     teams_.setCount(int(poolIds_.size()));
 }
 
+// Pool ids are FCDB team ids; the art file name carries the record INDEX (F030 = Argentina, id 86).
+std::string FeFlow::flagFileForTeam(std::uint32_t id) const {
+    const auto it = std::ranges::find(poolIds_, std::uint16_t(id));
+    if (it == poolIds_.end()) return {};
+    const std::size_t i = std::size_t(std::distance(poolIds_.begin(), it));
+    return i < poolFlagFile_.size() ? poolFlagFile_[i] : std::string();
+}
+
+// --fe-screen capture lane ("make all menus 1:1"): an arbitrary member of FE/PACK/LAYOUTS/
+// LAYOUTS.BIG through the same tolerant reader as the menu/grid screens (LAY_COMPOSITOR_NOTES.md).
+// The composite draws every shown() object — no scene-ownership whitelist: these are reference
+// captures for visual review, not in-game scenes.
+bool FeFlow::loadCaptureScreen(std::string_view name, std::string& err) {
+    try {
+        fs::path dir;
+        const std::string text = presentation::readLayout((tree_ / "FE/PACK/LAYOUTS/LAYOUTS.BIG").string() + "@" + std::string(name) + ".LAY", dir);
+        captureScreen_ = formats::ScreenLayout::build(std::string(name), formats::LayoutDocument::parse(std::string_view(text)), nullptr, nullptr, "PC");
+        captureName_ = name;
+        useCapture_ = true;
+        return true;
+    } catch (const std::exception& e) {
+        err = e.what(); // formats::FormatError / readLayout's "no such archive member"
+        return false;
+    }
+}
+
+FeDrawStats FeFlow::drawCaptureScreen(render::SpriteBatch& ui) const {
+    FeDrawStats st = presentation::composite(captureScreen_, ui, const_cast<ScreenArt&>(art_), text_.get());
+    drawCursor(ui, st); // MAUS.PAK arrow overlay like every other FE composite
+    return st;
+}
+
 FeDrawStats FeFlow::drawCurrent(render::SpriteBatch& ui) const {
+    if (useCapture_) return drawCaptureScreen(ui); // --fe-screen lane replaces the menu composite
     if (teamScreen_) return drawTeams(ui);
+    if (setupScreen_) return drawSetup(ui); // FEFLOW09/50 friendly/practise config screens
     FeDrawStats st;
     // Scene-ownership visibility: MNMSETUP's netplay widgets (mneb edit boxes, modem lists,
     // dial strings) belong to scenes the port never shows -> hidden. Only the FE-flow art
     // objects are painted: back collage + titl logos + flag anim (evidence in the header).
     if (haveScreen_) st = presentation::composite(screen_, ui, const_cast<ScreenArt&>(art_), text_.get(), &menuVisible_);
-    // Menu item labels: drawn by scene-handler code in the original, not by LAY widgets. The
-    // item strings are embedded in FIFAWC.EXE right after the "main menu" label string at
-    // 0x564f89: 'friendly' (0x564fb1) and 'cup competition' (0x564fcd); no shipped LAY carries
-    // kt/menu objects for them. Labels sit to the right of the selection markers.
-    static constexpr std::string_view kLabels[kFeEntryCount] = {"Friendly", "Cup Competition"};
+    // Menu item labels: drawn by scene-handler code in the original, not by LAY widgets. The four
+    // item strings are embedded in FIFAWC.EXE right after the "main menu" label string at 0x564f89:
+    // 'friendly' (0x564fb1), 'league play' (0x564fbd), 'cup competition' (0x564fcd), 'practise'
+    // (0x564fe1); no shipped LAY carries kt/menu objects for them (FE_MENU_SCREENS_WC98.md §4).
+    // Labels sit to the right of the selection markers; marker geometry is port-fixed ([H]: the
+    // original positions come from the runtime mainmenu window-object, not recoverable statically).
+    static constexpr std::string_view kLabels[kFeEntryCount] = {"Friendly", "League Play", "Cup Competition", "Practise"};
     // Plain face eras10 (fontID 0, exe font table 0x57d2c0) for menu items; the bold-italic
     // HUD face is a caption font and reads muddy over the collage. Fallback: primary face.
     const formats::FfnFont* f = text_ ? text_->face(0) : nullptr;
@@ -97,7 +156,7 @@ FeDrawStats FeFlow::drawCurrent(render::SpriteBatch& ui) const {
     if (!f || !ftex) { f = text_ ? text_->font() : nullptr; ftex = text_ ? text_->texture() : 0; }
     const bool hasText = text_ && text_->ready() && f && ftex;
     for (int i = 0; i < kFeEntryCount; ++i) {
-        const float y = 380.f + 28.f * i;
+        const float y = 356.f + 30.f * i; // four rows, bottom row fully on screen (480 px)
         if (i == sel_) ui.draw(0, {36.f, y, 18.f, 18.f}, {}, render::packRgba(90, 200, 255, 255));
         else { // 1-px outline
             const std::uint32_t w = render::packRgba(255, 255, 255, 220);
@@ -148,8 +207,9 @@ FeDrawStats FeFlow::drawTeams(render::SpriteBatch& ui) const {
 // FEFLOW11 frame: static screen (map background, big flag tmfg, scoreboard bar sbar, group cells,
 // help text) through the compositor, then per-row flag + name drawn at the LAY's own row-slot
 // positions (stfNN/ttnn objects). The layout ships exactly 8 row slots == TeamListNav::kRows;
-// pages of the 40-team pool swap the slot contents. Flags = FE/PACK/GLOBAL F<fcdbid>.FSH, single
-// shape tag "f000" (measured: every FNNN.FSH carries one entry named f000).
+// pages of the 40-team pool swap the slot contents. Flags = FE/GLOBAL FNNN.FSH where NNN is the
+// team's FCDB.DBI record index (measured: id 86 -> idx 30 -> F030 = Argentina shield), single shape
+// tag "f000" (every FNNN.FSH carries exactly one entry, named f000).
 FeDrawStats FeFlow::drawTeamsGrid(render::SpriteBatch& ui) const {
     FeDrawStats st = presentation::composite(gridScreen_, ui, const_cast<ScreenArt&>(art_), text_.get());
     const formats::FfnFont* f = text_ ? text_->font() : nullptr;
@@ -163,14 +223,17 @@ FeDrawStats FeFlow::drawTeamsGrid(render::SpriteBatch& ui) const {
     for (int i = 0; i < rows; ++i) {
         const int idx = pg * rows + i;
         if (idx >= int(poolIds_.size())) break;
-        const std::string sfx = std::format("{:02d}", i); // stfNN / ttnn row slots in the LAY
+        const std::string sfx = std::format("{:02d}", i); // ttNN name slots (zero-padded in the LAY)
         const bool cur = idx == teams_.sel;
-        char flagFile[8];
-        std::snprintf(flagFile, sizeof flagFile, "F%03u", poolIds_[std::size_t(idx)] % 1000u);
-        if (const formats::LayoutObject* stf = gridScreen_.object("stf" + sfx)) {
-            const ScreenArt::Shape sh = const_cast<ScreenArt&>(art_).shape("..\\global\\", flagFile, "f000", -1);
-            if (sh.tex) {
-                ui.draw(sh.tex, {float(stf->x), float(stf->y), float(sh.w), float(sh.h)}, {}, 0xFFFFFFFFu);
+        const std::string flagFile = std::size_t(idx) < poolFlagFile_.size() ? poolFlagFile_[std::size_t(idx)]
+                                                                           : std::string(); // FNNN = FCDB record index
+        if (const formats::LayoutObject* stf = gridScreen_.object("stf" + std::to_string(i))) { // stf0..stf7
+            if (flagFile.empty()) ++st.missing;
+            else if (const ScreenArt::Shape sh = const_cast<ScreenArt&>(art_).shape("..\\global\\", flagFile, "f000", -1);
+                     sh.tex) {
+                // Flag bitmaps are full-size shields; the LAY slot is a small icon cell -> scale into it.
+                ui.draw(sh.tex, {float(stf->x), float(stf->y), float(stf->width > 0 ? stf->width : 27),
+                                  float(stf->height > 0 ? stf->height : 21)}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu);
                 ++st.shapes;
             } else
                 ++st.missing;
@@ -184,13 +247,11 @@ FeDrawStats FeFlow::drawTeamsGrid(render::SpriteBatch& ui) const {
         ++st.texts;
     }
     // Current-team big flag over the tmfg slot (the LAY's static default is f002): same shape rule.
-    if (!poolIds_.empty()) {
-        const std::uint16_t id = poolIds_[std::size_t(teams_.sel)];
-        char flagFile[8];
-        std::snprintf(flagFile, sizeof flagFile, "F%03u", id % 1000u);
-        if (const formats::LayoutObject* tmfg = gridScreen_.object("tmfg")) {
+    if (!poolIds_.empty() && teams_.sel >= 0 && std::size_t(teams_.sel) < poolFlagFile_.size()) {
+        const std::string& flagFile = poolFlagFile_[std::size_t(teams_.sel)]; // record-index name (F030 = Argentina)
+        if (const formats::LayoutObject* tmfg = gridScreen_.object("tmfg"); tmfg && !flagFile.empty()) {
             const ScreenArt::Shape sh = const_cast<ScreenArt&>(art_).shape("..\\global\\", flagFile, "f000", -1);
-            if (sh.tex) ui.draw(sh.tex, {float(tmfg->x), float(tmfg->y), float(sh.w), float(sh.h)}, {}, 0xFFFFFFFFu);
+            if (sh.tex) ui.draw(sh.tex, {float(tmfg->x), float(tmfg->y), float(sh.w), float(sh.h)}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu);
         }
     }
     // Scrollbar thumb in the sbar track: flat quad, page-proportional.
@@ -214,22 +275,42 @@ void FeFlow::drawCursor(render::SpriteBatch& ui, presentation::FeDrawStats& st) 
     const float w = float(cursor_.bmp.width), h = float(cursor_.bmp.height);
     const float x = std::clamp(float(ptrX_ + cursor_.hotX), 0.f, render::SpriteBatch::kWidth - w);
     const float y = std::clamp(float(ptrY_ + cursor_.hotY), 0.f, render::SpriteBatch::kHeight - h);
-    ui.draw(cursorTex_, {x, y, w, h}, {}, 0xFFFFFFFFu);
+    ui.draw(cursorTex_, {x, y, w, h}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu);
     ++st.cursors;
 }
 
+// Friendly/practise config screens (FE_MENU_SCREENS_WC98.md §5): the original uses up/down to move
+// the row cursor and left/right to cycle that row's option values; Enter starts the match, Esc
+// returns. The port mirrors the navigation — row selection is drawn as a hilite outline over the
+// alp{n} pane (the LAY's HILITECOLOUR analogue), the option index is kept per row for the match
+// model to consume when the config plumbing lands.
 void FeFlow::move(int delta) {
     if (teamScreen_) teams_.move(delta);
-    else {
+    else if (setupScreen_) {
+        setupRow_ = (setupRow_ + delta) % 4;
+        if (setupRow_ < 0) setupRow_ += 4; // four config rows (ovr0..3 family)
+    } else {
         sel_ = (sel_ + delta) % kFeEntryCount;
         if (sel_ < 0) sel_ += kFeEntryCount;
     }
+}
+
+void FeFlow::adjustValue(int dir) {
+    if (!setupScreen_) return;
+    setupValue_[std::size_t(setupRow_)] = (setupValue_[std::size_t(setupRow_)] + dir + 8) % 8;
 }
 
 bool FeFlow::enter() {
     if (teamScreen_) { // confirm the highlighted team: Enter launches with pickedTeam()
         pick_ = poolIds_.empty() ? -1 : int(poolIds_[std::size_t(teams_.sel)]);
         return true;
+    }
+    if (setupScreen_) return true; // config accepted: shell starts the match from here
+    if ((sel_ == int(FeEntry::Exhibition) || sel_ == int(FeEntry::Practise)) && haveSetup_) {
+        // Friendly / practise entries open their match-setup screen first (feflow09/feflow50).
+        setupScreen_ = true;
+        setupPractise_ = sel_ == int(FeEntry::Practise);
+        return false;
     }
     if (sel_ == int(FeEntry::Tournament) && !poolIds_.empty()) { // Tournament entry: pick your country first
         teamScreen_ = true;
@@ -240,8 +321,53 @@ bool FeFlow::enter() {
 }
 
 void FeFlow::back() {
+    if (setupScreen_) { setupScreen_ = false; return; } // Esc from the config screen: straight to menu
     teamScreen_ = false;
     pick_ = -1; // no selection: default behaviour restored
+}
+
+// FEFLOW09/50 composite: art whitelist + the dynamic layer the original paints from live state —
+// the two team shields (ltfg/rtfg, same FNNN record-index flag shapes as the pick grid) and the team names in
+// the tltx/trtx slots. Row option captions (ctx{n}/grv{n}) are engine-driven strings the port has
+// no static source for: they stay blank (open item), the row hilite is drawn over alp{n}.
+FeDrawStats FeFlow::drawSetup(render::SpriteBatch& ui) const {
+    const formats::ScreenLayout* sc = setupPractise_ && haveSetup_ ? &setup50_ : haveSetup_ ? &setup09_ : nullptr;
+    if (!sc) return {};
+    FeDrawStats st = presentation::composite(*sc, ui, const_cast<ScreenArt&>(art_), text_.get(), &setupVisible_);
+    const auto drawFlag = [&](const char* objName, std::size_t poolIdx) {
+        if (poolIds_.empty() || poolIdx >= poolIds_.size() || poolIdx >= poolFlagFile_.size()) return;
+        const formats::LayoutObject* o = sc->object(objName);
+        if (!o || poolFlagFile_[poolIdx].empty()) return;
+        const ScreenArt::Shape sh = const_cast<ScreenArt&>(art_).shape("..\\global\\", poolFlagFile_[poolIdx], "f000", -1);
+        if (sh.tex) { ui.draw(sh.tex, {float(o->x), float(o->y), float(sh.w), float(sh.h)}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu); ++st.shapes; }
+        else ++st.missing;
+    };
+    const std::size_t selIdx = poolIds_.empty() ? 0 : std::size_t(teams_.sel) % poolIds_.size();
+    drawFlag("ltfg", selIdx);
+    drawFlag("rtfg", poolIds_.empty() ? 0 : (selIdx + 1) % poolIds_.size()); // CPU side: next pool entry
+    const formats::FfnFont* f = text_ ? text_->face(0) : nullptr;
+    render::TextureId ftex = text_ ? text_->faceTexture(0) : 0;
+    if (!f || !ftex) { f = text_ ? text_->font() : nullptr; ftex = text_ ? text_->texture() : 0; }
+    const auto drawName = [&](const char* objName, std::size_t poolIdx, float dx) {
+        if (!text_ || !text_->ready() || !f || !ftex || poolIds_.empty() || poolIdx >= poolIds_.size()) return;
+        const formats::LayoutObject* o = sc->object(objName);
+        if (!o) return;
+        std::string label = poolNames_[poolIdx];
+        if (label.empty()) label = "team " + std::to_string(poolIds_[poolIdx]);
+        for (const auto& q : presentation::layoutText(*f, label, float(o->x) + dx, float(o->y), 14.f, render::packRgba(235, 235, 235, 255)))
+            ui.draw(ftex, q.dst, q.uv, q.rgba);
+        ++st.texts;
+    };
+    drawName("tltx", selIdx, -30.f);   // name slots sit over the shields (measured x 166/424)
+    drawName("trtx", poolIds_.empty() ? 0 : (selIdx + 1) % poolIds_.size(), -30.f);
+    if (const formats::LayoutObject* alp = sc->object("alp" + std::to_string(setupRow_))) { // row hilite
+        const float x = float(alp->x), y = float(alp->y), w = float(alp->width > 0 ? alp->width : 217), h = float(alp->height > 0 ? alp->height : 55);
+        const std::uint32_t c = render::packRgba(255, 224, 96, 255);
+        ui.draw(0, {x, y, w, 2.f}, {}, c), ui.draw(0, {x, y + h - 2.f, w, 2.f}, {}, c);
+        ui.draw(0, {x, y, 2.f, h}, {}, c), ui.draw(0, {x + w - 2.f, y, 2.f, h}, {}, c);
+    }
+    drawCursor(ui, st);
+    return st;
 }
 
 // ---- Between-round tournament presentation -------------------------------------------------
@@ -443,11 +569,11 @@ presentation::FeDrawStats FeFlow::drawBracketBoard(render::SpriteBatch& ui, int 
         if (id == tournament::kNoTeam) return;
         const formats::LayoutObject* o = sc.object(slot);
         if (!o) return;
-        char flagFile[8];
-        std::snprintf(flagFile, sizeof flagFile, "F%03u", id % 1000u); // GLOBAL FNNN.FSH "f000" (measured)
+        const std::string flagFile = flagFileForTeam(id); // FNNN = FCDB record index (measured)
+        if (flagFile.empty()) { ++st.missing; return; }
         const ScreenArt::Shape sh = const_cast<ScreenArt&>(art_).shape("..\\global\\", flagFile, "f000", -1);
         if (sh.tex) {
-            ui.draw(sh.tex, {float(o->x), float(o->y), float(sh.w), float(sh.h)}, {}, 0xFFFFFFFFu);
+            ui.draw(sh.tex, {float(o->x), float(o->y), float(sh.w), float(sh.h)}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu);
             ++st.shapes;
         } else
             ++st.missing;
@@ -501,7 +627,7 @@ presentation::FeDrawStats FeFlow::drawBracketBoard(render::SpriteBatch& ui, int 
         for (int idx = 0; idx < 8; ++idx) {
             const ScreenArt::Shape sh = const_cast<ScreenArt&>(art_).shape("..\\global\\", "wcupf", "", idx);
             if (sh.tex) {
-                ui.draw(sh.tex, {float(wcps->x), float(wcps->y), float(sh.w), float(sh.h)}, {}, 0xFFFFFFFFu);
+                ui.draw(sh.tex, {float(wcps->x), float(wcps->y), float(sh.w), float(sh.h)}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu);
                 ++st.shapes;
                 break;
             }

@@ -140,6 +140,16 @@ if(DEFINED WC98_TREE)
     add_test(NAME fe_flow_render COMMAND wc98-native --fe-smoke 3 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/fe)
     set_tests_properties(fe_flow_render PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}"
         FAIL_REGULAR_EXPRESSION "FEFLOW05: shapes=0 |FEFLOW05: texts=0 ")
+    # Friendly/practise match-setup screens (FE_MENU_SCREENS_WC98.md §5): FEFLOW09/FEFLOW50 real
+    # art + flag shields + team names; the practise entry then reaches its match driver.
+    add_test(NAME fe_flow_setup09 COMMAND wc98-native --fe-smoke 3 --fe-setup 0 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/setup09)
+    set_tests_properties(fe_flow_setup09 PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}"
+        FAIL_REGULAR_EXPRESSION "FEFLOW09: shapes=0 |FEFLOW09: texts=0 ")
+    add_test(NAME fe_flow_setup50 COMMAND wc98-native --fe-smoke 3 --fe-setup 3 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/setup50)
+    set_tests_properties(fe_flow_setup50 PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}"
+        FAIL_REGULAR_EXPRESSION "FEFLOW50: shapes=0 |FEFLOW50: texts=0 ")
+    add_test(NAME fe_nav_practise COMMAND wc98-native --fe-smoke 1 --fe-nav practise --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/fe)
+    set_tests_properties(fe_nav_practise PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}")
     add_test(NAME fe_nav_tournament COMMAND wc98-native --fe-smoke 2 --fe-nav tournament --fe-pick 35 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/fe)
     set_tests_properties(fe_nav_tournament PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}")
     add_test(NAME fe_nav_exhibition COMMAND wc98-native --fe-smoke 1 --fe-nav exhibition --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/fe)
@@ -153,6 +163,13 @@ if(DEFINED WC98_TREE)
     # screen via --fe-team; the shell asserts shapes/texts/cursors > 0 and this gate fails on zero counts.
     add_test(NAME fe_render_tournament COMMAND wc98-native --fe-smoke 2 --fe-team --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/feteam)
     set_tests_properties(fe_render_tournament PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" FAIL_REGULAR_EXPRESSION "shapes=0 |texts=0 |cursors=0 ")
+    # Arbitrary-screen capture lane ("make all menus 1:1"): --fe-screen NAME renders + captures any
+    # LAYOUTS.BIG member through the FE compositor (app/fe_flow.cpp loadCaptureScreen). Gate on
+    # shapes>0; raw members carry no scene-code dynamic labels, so texts may legitimately be 0.
+    add_test(NAME fe_screen_capture_menu COMMAND wc98-native --fe-screen FEFLOW05 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/fescreen)
+    set_tests_properties(fe_screen_capture_menu PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" FAIL_REGULAR_EXPRESSION "FEFLOW05: shapes=0 ")
+    add_test(NAME fe_screen_capture_team COMMAND wc98-native --fe-screen FEFLOW11 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/fescreen)
+    set_tests_properties(fe_screen_capture_team PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" FAIL_REGULAR_EXPRESSION "FEFLOW11: shapes=0 ")
     # Between-round tournament presentation (FEFLOW35/25/26/27, LAY_COMPOSITOR_NOTES.md "Tournament
     # presentation scenes"): one stat line per screen; fails on zero shapes/texts/cursors.
     add_test(NAME fe_render_present COMMAND wc98-native --fe-smoke 1 --fe-present --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/present)

@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
@@ -455,5 +456,123 @@ bool loadFeCursor(const fs::path& root, FeCursor& out) {
     return false;
 }
 
+// ---- League-family widget painters (MENU_PARITY.md §4 rank 7) ---------------------------------
+namespace {
+void captionColor(const formats::LayoutObject& o, bool hilited, std::uint32_t& rgba) {
+    int cidx = hilited ? o.intProp("HILITECOLOUR", -1) : -1;
+    if (cidx < 0) cidx = o.intProp("NORMALCOLOUR", -1);
+    rgba = render::packRgba(0xFF, 0xFF, 0xFF); // palette not loaded: white
+    const auto& pal = formats::globalPalette();
+    if (cidx >= 0 && size_t(cidx) < pal.size()) {
+        const auto& c = pal[size_t(cidx)];
+        rgba = render::packRgba(c[0], c[1], c[2], 0xFF);
+    }
+}
+int drawCaption(const formats::LayoutObject& o, std::string_view s, render::SpriteBatch& ui, const FeText& txt,
+                int fontId, float xOff, std::uint32_t rgba, FeDrawStats& st) {
+    if (s.empty() || !txt.ready()) return 0;
+    const formats::FfnFont* sel = txt.face(fontId);
+    if (!sel) sel = txt.font();
+    if (!sel) return 0;
+    render::TextureId tex = txt.faceTexture(fontId) ? txt.faceTexture(fontId) : txt.texture();
+    const float sizePx = sel->lineHeight ? float(sel->lineHeight) : 16.f;
+    int n = 0;
+    for (const auto& q : presentation::layoutText(*sel, s, float(o.x) + xOff, float(o.y), sizePx, rgba)) {
+        ui.draw(tex, q.dst, q.uv, q.rgba);
+        ++n;
+    }
+    st.texts += n;
+    return n;
+}
+} // namespace
+
+std::uint32_t kitColor(int idx) {
+    // fifa98edit hslCols HSV triples (analysis/fifa98edit/__init__.py:90, community editor table):
+    // the FCDB 5-bit shirt/shorts colour indices index this 23-entry palette.
+    static constexpr int kHsv[23][3] = {
+        {0, 2, 244},   {2, 206, 170}, {5, 255, 255}, {6, 100, 180}, {12, 200, 255},
+        {21, 190, 190},{31, 200, 255},{45, 255, 255},{75, 255, 255},{126, 255, 255},
+        {158, 255, 255},{171, 255, 255},{190, 255, 255},{214, 255, 255},{235, 255, 255},
+        {255, 160, 255},{255, 78, 255},{255, 11, 255},{255, 0, 255},  {249, 0, 153},
+        {249, 0, 153}, {255, 20, 170},{164, 84, 185}};
+    if (idx < 0 || idx >= 23) return render::packRgba(0, 0, 0, 0xFF);
+    const double h = kHsv[idx][0] / 255.0, s = kHsv[idx][1] / 255.0, v = kHsv[idx][2] / 255.0;
+    // colorsys.hsv_to_rgb
+    const int i = int(h * 6.0);
+    const double f = h * 6.0 - i, p = v * (1 - s), q = v * (1 - f * s), t = v * (1 - (1 - f) * s);
+    auto ch = [&](double m) { return std::uint8_t(std::round(255.0 * m)); };
+    switch (i % 6) {
+        case 0: return render::packRgba(ch(v), ch(t), ch(p), 0xFF);
+        case 1: return render::packRgba(ch(q), ch(v), ch(p), 0xFF);
+        case 2: return render::packRgba(ch(p), ch(v), ch(t), 0xFF);
+        case 3: return render::packRgba(ch(p), ch(q), ch(v), 0xFF);
+        case 4: return render::packRgba(ch(t), ch(p), ch(v), 0xFF);
+        default: return render::packRgba(ch(v), ch(p), ch(q), 0xFF);
+    }
+}
+
+void paintRowLabel(render::SpriteBatch& ui, const formats::LayoutObject& row, std::string_view caption,
+                   const FeText& txt, int fontId, bool hilited, const formats::FcdbKit1998* kit,
+                   FeDrawStats& st) {
+    // Row background: the engine repaints the clickenable=1 row under its HILITEDSHAPE state; the
+    // port paints a filled pane (same idiom as the FEFLOW73 hilite, list_painter_notes.txt §1).
+    const float w = float(row.width > 0 ? row.width : 185), h = float(row.height > 0 ? row.height : 19);
+    if (hilited) ui.draw(0, {float(row.x) - 3.f, float(row.y) - 2.f, w + 6.f, h + 4.f}, {}, render::packRgba(255, 224, 96, 70));
+    float tx = 2.f;
+    if (kit && row.intProp("tricolour", 1)) { // tricolour kit swatch at the row start (§1)
+        const float sq = h * 0.5f, sy = float(row.y) + (h - sq) * 0.5f;
+        for (int i = 0; i < 3; ++i) {
+            const int cidx = i == 0 ? kit->shirtColor1 : i == 1 ? kit->shirtColor2 : kit->shirtColor3;
+            ui.draw(0, {float(row.x) + tx, sy, sq, sq}, {}, kitColor(cidx));
+            tx += sq + 2.f;
+        }
+        tx += 4.f;
+    }
+    std::uint32_t rgba;
+    captionColor(row, hilited, rgba);
+    drawCaption(row, caption, ui, txt, fontId, tx, hilited ? render::packRgba(16, 16, 40, 255) : rgba, st);
+}
+
+void paintSliderThumb(render::SpriteBatch& ui, const formats::LayoutObject& track, int value, int lo, int hi) {
+    // Sbar (type 11) is vertical (page indicator), KnobBar (type 19) horizontal; the thumb spans a
+    // proportional slice of the BARSHAPEID track art at the value position.
+    const std::uint32_t c = render::packRgba(210, 230, 255, 220);
+    const int span = hi > lo ? hi - lo : 0;
+    const float t = span ? std::clamp(float(value - lo) / float(span), 0.f, 1.f) : 0.f;
+    if (track.height > track.width) { // vertical: thumb height is the track/rows slice
+        const float th = std::max(6.f, float(track.height) / 8.f);
+        ui.draw(0, {float(track.x), float(track.y) + t * (float(track.height) - th), float(track.width > 0 ? track.width : 8), th}, {}, c);
+    } else {
+        const float tw = std::max(6.f, float(track.width) / 12.f);
+        ui.draw(0, {float(track.x) + t * (float(track.width) - tw), float(track.y), tw, float(track.height > 0 ? track.height : 8)}, {}, c);
+    }
+}
+
+int sliderValueAt(const formats::LayoutObject& track, float x, float y, int lo, int hi) {
+    const int span = hi > lo ? hi - lo : 0;
+    if (!span) return lo;
+    const bool vert = track.height > track.width;
+    const float pos = vert ? y - float(track.y) : x - float(track.x);
+    const float ext = vert ? float(track.height) : float(track.width);
+    if (ext <= 0.f) return lo;
+    return lo + int(std::clamp(pos / ext, 0.f, 1.f) * float(span) + 0.5f);
+}
+
+void paintListRows(render::SpriteBatch& ui, const formats::LayoutObject& box, std::span<const std::string> captions,
+                   int cursorRow, const FeText& txt, int fontId, FeDrawStats& st) {
+    // objecttype 9 listbox (widget_slice_spec.md §1): ROWHEIGHT stride rows painted inside the LAY
+    // rect; FC-bank captions via FeText::stringAt passed in `captions`; cursor row hilite pane.
+    const int rowH = box.intProp("ROWHEIGHT", 0) > 0 ? box.intProp("ROWHEIGHT", 0) : (box.height > 0 && !captions.empty() ? box.height / int(captions.size()) : 16);
+    std::uint32_t rgba;
+    captionColor(box, true, rgba);
+    for (std::size_t i = 0; i < captions.size(); ++i) {
+        const float y = float(box.y) + float(i) * float(rowH);
+        if (int(i) == cursorRow) ui.draw(0, {float(box.x), y, float(box.width), float(rowH)}, {}, render::packRgba(255, 224, 96, 70));
+        formats::LayoutObject line = box; // virtual widget: same x, row y
+        line.y = int(y);
+        line.height = rowH;
+        drawCaption(line, captions[i], ui, txt, fontId, 2.f, rgba, st);
+    }
+}
 
 } // namespace wc98::presentation

@@ -17,6 +17,7 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include <span>
 namespace wc98::presentation {
 
 // ".LAY" texture paths use Windows separators; base-name lookups are case-insensitive.
@@ -137,6 +138,33 @@ struct FeUiState {
 };
 // Hit box: POINTS= polygon when present, else the xposition/yposition/width/height rect.
 [[nodiscard]] bool widgetHit(const formats::LayoutObject& o, float x, float y);
+
+// ---- League-family widget painters (MENU_PARITY.md §4 rank 7) ---------------------------------
+// Kit colour table for the FCDB kit swatches: FcdbKit1998 shirtColor1..3 / shortsColor indices
+// (5-bit fields, 0..31). RGB values from the community editor fifa98edit hslCols HSV tuples
+// (analysis/fifa98edit/__init__.py line 90, MIT), converted hsv->rgb; indices past the table render black.
+[[nodiscard]] std::uint32_t kitColor(int idx); // packed RGBA (opaque)
+
+// Row-label painter for kt/menu row widgets (objecttype 42/44, clickenable=1 rows;
+// analysis/pass12/list_painter_notes.txt): caption centred-left inside the widget rect with the
+// screen's palette text colour, filled hilite pane under `hilited`, and — when kit is given
+// (tricolour=1) — three small kit-colour squares at the row start. Emits into `st`.
+void paintRowLabel(render::SpriteBatch& ui, const formats::LayoutObject& row, std::string_view caption,
+                   const FeText& txt, int fontId, bool hilited, const formats::FcdbKit1998* kit,
+                   FeDrawStats& st);
+
+// Slider thumb (objecttype 11 Sbar / 19 KnobBar tracks): the value position as a flat quad sized
+// proportional to the track (vertical for Sbar, horizontal for KnobBar). The engine paints the
+// thumb shape over BARSHAPEID art; the port draws the quad at the same ratio.
+void paintSliderThumb(render::SpriteBatch& ui, const formats::LayoutObject& track, int value, int lo, int hi);
+// Click/drag on a slider track: value from pointer position (analysis/pass12/widget_slice_spec.md §4).
+[[nodiscard]] int sliderValueAt(const formats::LayoutObject& track, float x, float y, int lo, int hi);
+
+// List-box painter (objecttype 9 Slider class): N row captions inside the LAY box rect at the
+// ROWHEIGHT stride (FC-bank strings via FeText), hilite pane on cursorRow. The widget_slice_spec.md
+// §1 requirement; league rows reuse paintRowLabel per-widget, this paints a whole box list.
+void paintListRows(render::SpriteBatch& ui, const formats::LayoutObject& box, std::span<const std::string> captions,
+                   int cursorRow, const FeText& txt, int fontId, FeDrawStats& st);
 
 // Draws the merged element list into `ui`. Textured elements are blitted at their shape's native size
 // anchored at (xposition, yposition): the layout position wins and WIDTH/HEIGHT is the interaction box

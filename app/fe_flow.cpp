@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <charconv>   // row-tuple parsing (parseOptionRows)
+#include <cctype>
 #include <format>
 #include <span>
 #include <array>
@@ -45,6 +46,8 @@ FeFlow::FeFlow(render::Renderer& r, fs::path tree, std::string lang) : tree_(std
         // Menu art absent: the shell still navigates; drawCurrent reports shapes == 0.
         lastError_ = e.what();
     }
+    cfgLang_ = lang; // FCDBP<lang>.DBI filename below (loadTeams)
+    for (char& c : cfgLang_) c = char(std::tolower(static_cast<unsigned char>(c)));
     // Text resources for the whole session (fe_screen.hpp FeText): FFN face, FC*.BIN strings, FEMSG.
     text_ = std::make_unique<presentation::FeText>(r, tree_, std::move(lang));
     // Team-select screen (FEFLOW11.LAY = the original ZWCUP pick grid: map, flags, group cells;
@@ -80,6 +83,58 @@ FeFlow::FeFlow(render::Renderer& r, fs::path tree, std::string lang) : tree_(std
         league73_ = formats::ScreenLayout::build("FEFLOW73", formats::LayoutDocument::parse(std::string_view(t73)), nullptr, nullptr, "PC");
         haveLeague_ = true;
     } catch (const std::exception&) { // no league-select art on this tree: League Play launches directly
+    }
+    // League configuration family (MENU_PARITY.md §4 rank 7; edges_table.txt SCENEREG cluster of the
+    // feflow73 scene): FEFLOW72 formation/players, 74 kit editor, 75 strategy slider, 76 aggression
+    // popup, 79 attack-bias, 80 player-attributes grid. Same tolerant reader; absent -> Enter on the
+    // league row keeps launching directly (pre-slice behaviour).
+    {
+        const char* kCfg[] = {"FEFLOW72", "FEFLOW74", "FEFLOW75", "FEFLOW76", "FEFLOW79", "FEFLOW80"};
+        formats::ScreenLayout* tgt[] = {&lg72_, &lg74_, &lg75_, &lg76_, &lg79_, &lg80_};
+        for (int i = 0; i < 6; ++i) {
+            try {
+                fs::path d;
+                const std::string t = presentation::readLayout((tree_ / "FE/PACK/LAYOUTS/LAYOUTS.BIG").string() + "@" + kCfg[i] + ".LAY", d);
+                *tgt[i] = formats::ScreenLayout::build(kCfg[i], formats::LayoutDocument::parse(std::string_view(t)), nullptr, nullptr, "PC");
+                haveLeagueCfg_ = true;
+            } catch (const std::exception&) { // no family art on this tree: that screen stays closed
+            }
+        }
+    }
+    if (haveLeagueCfg_) {
+        // Composite whitelists per screen (scene-ownership rule, LAY_COMPOSITOR_NOTES.md): hide the
+        // netplay chat widgets (chat/cha2/cha3), the animseq placeholder rows (pNN + ptop/pbot) and
+        // runtime surfaces (plyr portrait, tt20 edit box). kt/menu rows keep their shape art here;
+        // captions/swatches paint as overlays in drawLeagueCfg.
+        lg72Visible_ = {"back", "bnnr", "titl", "vit0", "vit1",
+                        "lb00", "lb01", "lb02", "lb03",
+                        "t100", "t101", "t102", "t110", "t111", "t112",
+                        "b000", "b001", "v000", "b002", "b003", "v001", "b004", "b005", "v002",
+                        "tmf0", "tmf1", "tmf2", "tmf3", "gobk", "gofd", "help"};
+        lg74Visible_ = {"back", "bnnr", "titl", "sbar", "vit0", "lb00", "lb01", "0000", "attb",
+                        "ab00", "ab01", "tmf0", "tmf1", "tmf2", "tmf3", "gobk", "gofd", "help"};
+        lg75Visible_ = {"back", "bnnr", "titl", "vit0", "vit1",
+                        "lb00", "lb01", "lb02", "lb03",
+                        "s001", "tt00", "tt01", "tt03",
+                        "tmf0", "tmf1", "tmf2", "tmf3", "gobk", "gofd", "help"};
+        lg76Visible_ = {"canc", "alok", "0000", "s001", "help"}; // popup: 1x1 null back widget excluded
+        lg79Visible_ = {"back", "bnnr", "titl", "sbar", "s001", "tt00", "tt01", "tt03", "0000",
+                        "attb", "ab00", "ab01", "vit0", "vit3", "lb00", "lb01", "lb02", "lb03",
+                        "oval", "tmf0", "tmf1", "tmf2", "tmf3", "gobk", "gofd", "help"};
+        lg80Visible_ = {"back", "bnnr", "titl", "cmtx", "plnm", "bpll", "bplr", "btll", "btlr",
+                        "vit0", "t005", "t006", "tt00", "tt01", "tt02", "tt03", "tt04", "tt05",
+                        "tt06", "tt07", "mt98", "mt99", "attb", "sb00", "sb01", "cb00", "cb01",
+                        "cb03", "ncml", "ncmr",
+                        "bl00", "br00", "bl01", "br01", "bl02", "br02", "bl03", "br03", "bl04",
+                        "br04", "bl05", "br05", "bl06", "br06",
+                        "al00", "ar00", "al01", "ar01", "al02", "ar02", "al03", "ar03", "al04",
+                        "ar04", "al05", "ar05", "al06", "ar06", "al07", "ar07", "al08", "ar08",
+                        "al09", "ar09", "al10", "ar10", "al11", "ar11", "al12", "ar12",
+                        "at00", "at01", "at02", "at03", "at04", "at05", "at06", "at07", "at08",
+                        "at09", "at10", "at11", "at12",
+                        "ad00", "ad01", "ad02", "ad03", "ad04", "ad05", "ad06", "ad07", "ad08",
+                        "ad09", "ad10", "ad11", "ad12",
+                        "tmf0", "tmf1", "tmf2", "tmf3", "gobk", "gofd", "help"};
     }
     // Hub screen (Phase 1): Feflow06.lay — the Windows main-menu hub (mixed-case member; MENU_NAV_
     // WC98.md §3 global-key table + analysis/pass12/edges_table.txt). When present it replaces the
@@ -148,6 +203,15 @@ void FeFlow::loadTeams() {
         if (!dbPath.empty() && !nmPath.empty()) {
             const auto db = formats::FcdbDatabase::parse(wc98::readFile(dbPath));
             const auto names = formats::FcdbNames::parse(wc98::readFile(nmPath));
+            // League-config roster rows (FEFLOW73 pnNN, 74/79 prNN, 80 pnNN): keep the full record
+            // set + STR1 player-name table (COMMON/FCDBP<LANG>.DBI, entries parallel to players).
+            fcdb_ = db;
+            std::string up = cfgLang_;
+            for (char& c : up) c = char(std::toupper(static_cast<unsigned char>(c)));
+            if (const auto pp = wc98::findCaseInsensitive(tree_, "COMMON/FCDBP" + up + ".DBI"); !pp.empty()) {
+                try { fcdbPlayerNames_ = formats::FcdbNames::parse(wc98::readFile(pp)).players; }
+                catch (const std::exception&) {} // name table absent: rows draw jersey numbers only
+            }
             for (const std::uint16_t id : poolIds_) {
                 const auto it = std::ranges::find(db.teams, id, &formats::FcdbTeam::id);
                 const auto idx = std::size_t(std::distance(db.teams.begin(), it));
@@ -493,14 +557,206 @@ void FeFlow::back() {
     pick_ = -1; // no selection: default behaviour restored
 }
 
-// League Play select (FEFLOW73.LAY): composite art whitelist + a hilite pane on the highlighted
-// pn row, matching the original's kt/menu selection feedback.
+// League Play select (FEFLOW73.LAY): composite art whitelist + the kt/menu row content the engine
+// paints from live state — pn00..pn08 rows get the active team's FCDB roster (#jersey name) with a
+// tricolour kit swatch (paintRowLabel, analysis/pass12/list_painter_notes.txt §1); the highlighted
+// row gets the filled hilite pane. Rows page through the 20-player squad via the sbar thumb.
 FeDrawStats FeFlow::drawLeague(render::SpriteBatch& ui) const {
     FeDrawStats st = presentation::composite(league73_, ui, const_cast<ScreenArt&>(art_), text_.get(), &leagueVisible_);
     // Row hilite: filled pane over the highlighted pn slot (pn00..pn08 geometry x=35 y=134+19*i).
-    const float y = 134.f + 19.f * float(leagueSel_);
+    const float y = 134.f + 19.f * float(leagueSel_ % 9);
     ui.draw(0, {32.f, y - 3.f, 230.f, 16.f}, {}, render::packRgba(255, 224, 96, 48));
+    // Roster rows (open item: league fixtures are saved-game (.WCF) state the port does not
+    // simulate; FCDB squad data is a static source and paints here). Page = pn cursor / 9.
+    const int page = leagueSel_ / 9;
+    for (int i = 0; i < 9; ++i)
+        if (const formats::LayoutObject* row = league73_.object("pn" + std::format("{:02d}", i)))
+            paintRosterRow(*row, ui, page * 9 + i, (leagueSel_ % 9) == i, st);
     return st;
+}
+
+// Paint one kt/menu row's caption + kit swatch from the active team's FCDB record. `rosterIdx` =
+// squad slot (-1 = blank row). Caption "#jersey name" (FCDBP STR1), swatch = home kit colours
+// through presentation::kitColor (fifa98edit hslCols palette table).
+void FeFlow::paintRosterRow(const formats::LayoutObject& row, render::SpriteBatch& ui, int rosterIdx,
+                            bool hilited, FeDrawStats& st) const {
+    if (!fcdb_) return; // no FCDB data on this tree: rows stay shape-only (pre-slice behaviour)
+    const formats::FcdbTeam* team = cfgTeam();
+    if (!team) return;
+    std::string cap;
+    const formats::FcdbPlayer* pl = nullptr;
+    const int pid = std::size_t(rosterIdx) < team->roster.size() ? team->roster[std::size_t(rosterIdx)] : 0;
+    if (pid != 0) { // squad slot (0 = empty; FCDB player ids are ascending, names parallel players)
+        const auto it = std::ranges::find(fcdb_->players, std::uint16_t(pid), &formats::FcdbPlayer::id);
+        if (it != fcdb_->players.end()) {
+            pl = &*it;
+            const std::size_t idx = std::size_t(std::distance(fcdb_->players.begin(), it));
+            cap = std::format("#{}", pl->shirtNumber);
+            if (idx < fcdbPlayerNames_.size() && !fcdbPlayerNames_[idx].empty())
+                cap += " " + fcdbPlayerNames_[idx];
+        }
+    }
+    presentation::paintRowLabel(ui, row, cap, *text_, 0, hilited, pl ? &team->home : nullptr, st);
+}
+
+// ---- League configuration family (MENU_PARITY.md §4 rank 7) ----------------------------------
+// Scene edges (analysis/pass12/edges_table.txt SCENEREG block of the feflow73 cluster): Enter on a
+// league row opens FEFLOW72 (formation budget), and the gofd/gobk nav icons chain through
+// 74 -> 75 -> 79 -> 80; FEFLOW76 is the aggression slider popup registered beside feflow75. Keyboard
+// parity per analysis/pass12/keyloop_notes.txt: up/down = row cursor / s001 value, left/right =
+// gofd/gobk screen chain, Enter activates (alok applies on 76), Esc backs out to FEFLOW73.
+const formats::FcdbTeam* FeFlow::cfgTeam() const {
+    if (!fcdb_ || poolIds_.empty()) return nullptr;
+    const std::size_t i = std::size_t(cfgTeamPool_) % poolIds_.size();
+    const auto it = std::ranges::find(fcdb_->teams, poolIds_[i], &formats::FcdbTeam::id);
+    return it == fcdb_->teams.end() ? nullptr : &*it;
+}
+
+bool FeFlow::openLeagueCfg(int screenId) {
+    if (!haveLeagueCfg_) return false;
+    const formats::ScreenLayout* sc = screenId == 72 ? (lg72_.object("back") ? &lg72_ : nullptr)
+                          : screenId == 74 ? (lg74_.object("titl") ? &lg74_ : nullptr)
+                          : screenId == 75 ? (lg75_.object("s001") ? &lg75_ : nullptr)
+                          : screenId == 76 ? (lg76_.object("alok") ? &lg76_ : nullptr)
+                          : screenId == 79 ? (lg79_.object("s001") ? &lg79_ : nullptr)
+                          : screenId == 80 ? (lg80_.object("pn00") ? &lg80_ : nullptr) : nullptr;
+    if (!sc) return false; // layout absent from this tree: the scene stays closed
+    leagueView_ = true;    // FEFLOW73 context (gobk/Esc back target, edges_table.txt feflow73 'gobk')
+    leagueCfg_ = screenId;
+    cfgName_ = "FEFLOW" + std::to_string(screenId);
+    cfgRow_ = 0;
+    return true;
+}
+
+void FeFlow::cycleLeagueScreen(int dir) {
+    // gofd/gobk chain (keyloop_notes.txt: every grid tick carries 'gofd'/'gobk'); the popup 76 is
+    // registered beside feflow75, so it joins the chain only when its layout is present.
+    static constexpr int kOrder[] = {72, 74, 75, 79, 80};
+    int idx = 0;
+    for (int i = 0; i < 5; ++i)
+        if (kOrder[i] == leagueCfg_) idx = i;
+    // Skip screens whose layout is absent on this tree.
+    for (int step = 0; step < 5; ++step) {
+        idx = (idx + dir + 5) % 5;
+        const int cand = kOrder[idx];
+        if ((cand == 72 && lg72_.object("bnnr")) || (cand == 74 && lg74_.object("titl")) ||
+            (cand == 75 && lg75_.object("s001")) || (cand == 79 && lg79_.object("s001")) ||
+            (cand == 80 && lg80_.object("pn00"))) break;
+    }
+    leagueCfg_ = kOrder[idx];
+    cfgName_ = "FEFLOW" + std::to_string(leagueCfg_);
+    cfgRow_ = 0;
+}
+
+FeDrawStats FeFlow::drawLeagueCfg(render::SpriteBatch& ui) const {
+    using namespace presentation;
+    const formats::ScreenLayout* sc = nullptr;
+    const std::vector<std::string>* vis = nullptr;
+    switch (leagueCfg_) {
+        case 72: sc = &lg72_; vis = &lg72Visible_; break;
+        case 74: sc = &lg74_; vis = &lg74Visible_; break;
+        case 75: sc = &lg75_; vis = &lg75Visible_; break;
+        case 76: sc = &lg76_; vis = &lg76Visible_; break;
+        case 79: sc = &lg79_; vis = &lg79Visible_; break;
+        case 80: sc = &lg80_; vis = &lg80Visible_; break;
+        default: return {};
+    }
+    FeUiState uist; // nav-icon hover/press state (widgetHit geometry, composite shape-state chain)
+    ++animTicks_;
+    uist.animMs = animTicks_ * 16u;
+    for (const auto& o : sc->objects)
+        if (o.shown() && widgetHit(o, float(ptrX_), float(ptrY_))) { uist.hover = o.name; break; }
+    if (ptrDown_) uist.pressed = uist.hover;
+    FeDrawStats st = composite(*sc, ui, const_cast<ScreenArt&>(art_), text_.get(), vis, &uist);
+
+    // FEFLOW72 continue buttons b010..b012: the engine paints shape + FC caption over the listbox
+    // widget (objecttype 4 with TEXTID is dynamic content -> skipped by composite). Caption = FC
+    // bank index 233 (measured textid=233,4 on all three buttons).
+    if (leagueCfg_ == 72) {
+        const char* kBtn[3] = {"b010", "b011", "b012"};
+        const char* kShape[3] = {"bt10", "bt20", "bt30"};
+        for (int i = 0; i < 3; ++i) {
+            const formats::LayoutObject* o = sc->object(kBtn[i]);
+            if (!o) continue;
+            const ScreenArt::Shape sh = art_.shape("..\\feflow72\\", "feflow72", kShape[i], -1);
+            if (sh.tex) {
+                ui.draw(sh.tex, {float(o->x), float(o->y), float(o->width > 0 ? o->width : sh.w),
+                                 float(o->height > 0 ? o->height : sh.h)}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu);
+                ++st.shapes;
+            } else ++st.missing;
+            if (text_ && text_->ready()) { // caption centred in the box (alignment=3 semantics)
+                const std::string_view s = text_->stringAt(233);
+                if (!s.empty()) {
+                    const formats::FfnFont* f = text_->face(4);
+                    render::TextureId ftex = text_->faceTexture(4);
+                    if (!f || !ftex) { f = text_->font(); ftex = text_->texture(); }
+                    if (f && ftex) {
+                        const float px = f->lineHeight ? float(f->lineHeight) : 16.f;
+                        const float w = textWidthPx(*f, s, px);
+                        for (const auto& q : layoutText(*f, s, float(o->x) + (float(o->width) - w) * 0.5f,
+                                                        float(o->y) + (float(o->height) - px) * 0.5f, px,
+                                                        render::packRgba(235, 235, 235, 255)))
+                            ui.draw(ftex, q.dst, q.uv, q.rgba);
+                        ++st.texts;
+                    }
+                }
+            }
+        }
+    }
+
+    // kt/menu row overlays (paintRowLabel: caption + tricolour kit swatch + hilite pane).
+    const int rowsPerPage = leagueCfg_ == 80 ? 12 : 5;
+    if (leagueCfg_ == 74 || leagueCfg_ == 79 || leagueCfg_ == 80) {
+        const char* col = leagueCfg_ == 80 ? "pn" : "pr"; // FEFLOW80: left column = squad list
+        const int rows = leagueCfg_ == 80 ? 12 : 5;
+        for (int i = 0; i < rows; ++i) {
+            const formats::LayoutObject* row = sc->object(std::string(col) + std::format("{:02d}", i));
+            if (!row) continue;
+            paintRosterRow(*row, ui, (cfgRow_ / rowsPerPage) * rowsPerPage + i,
+                           (cfgRow_ / rowsPerPage) * rowsPerPage + i == cfgRow_, st);
+        }
+    }
+    // FEFLOW74 kit picker: rows 0/1 = home/away tricolour swatches of the team (FCDB kit fields);
+    // custom saved kits are .WCF state the port does not simulate (open item, documented).
+    if (leagueCfg_ == 74 && fcdb_) {
+        const formats::FcdbTeam* team = cfgTeam();
+        for (int i = 0; i < 9; ++i) {
+            const formats::LayoutObject* row = lg74_.object("kt" + std::format("{:02d}", i));
+            if (!row) continue;
+            presentation::paintRowLabel(ui, *row, {}, *text_, 0, cfgRow_ == -1 && i == 0,
+                                        team && i < 2 ? (i == 0 ? &team->home : &team->away) : nullptr, st);
+        }
+    }
+    // Slider thumbs: sbar/sbNN vertical page indicators + s001 KnobBar value positions.
+    const auto thumb = [&](const formats::ScreenLayout& s, const char* name, int lo, int hi, bool vertPage) {
+        const formats::LayoutObject* t = s.object(name);
+        if (!t) return;
+        if (vertPage) {
+            const int pages = std::max(1, rosterSize() / rowsPerPage);
+            paintSliderThumb(ui, *t, cfgRow_ / rowsPerPage, 0, pages - 1);
+        } else {
+            const int v = leagueCfg_ == 75 ? stratVal_ : leagueCfg_ == 76 ? aggrVal_ : biasVal_;
+            paintSliderThumb(ui, *t, v, lo, hi);
+        }
+    };
+    if (leagueCfg_ == 74) thumb(lg74_, "sbar", 0, 0, true);
+    if (leagueCfg_ == 79) { thumb(lg79_, "sbar", 0, 0, true); thumb(lg79_, "s001", 0, 8, false); }
+    if (leagueCfg_ == 75) thumb(lg75_, "s001", 0, 4, false);
+    if (leagueCfg_ == 76) thumb(lg76_, "s001", 0, 15, false);
+    if (leagueCfg_ == 80) { thumb(lg80_, "sb00", 0, 0, true); thumb(lg80_, "sb01", 0, 0, true); }
+
+    drawCursor(ui, st);
+    return st;
+}
+
+// Squad rows on the active grid team (-1 when FCDB is absent): kt/menu row domain for the cursor.
+int FeFlow::rosterSize() const {
+    const formats::FcdbTeam* t = cfgTeam();
+    if (!t) return 0;
+    int n = 0;
+    for (const std::uint16_t id : t->roster)
+        if (id != 0) ++n; // 0 = empty squad slot
+    return n;
 }
 
 // FEFLOW09/50 composite: art whitelist + the dynamic layer the original paints from live state —

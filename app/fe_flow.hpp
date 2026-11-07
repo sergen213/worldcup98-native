@@ -10,6 +10,7 @@
 
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <array>
@@ -47,12 +48,13 @@ public:
     // save-load entry / "FEFLOW19" credits).
     [[nodiscard]] const char* screenName() const {
         return useCapture_          ? captureName_.c_str()
-               : teamScreen_         ? "FEFLOW11"
-               : leagueView_         ? "FEFLOW73"
-               : setupScreen_        ? (setupPractise_ ? "FEFLOW50" : "FEFLOW09")
-               : optsView_           ? "FEFLOW15"
-               : slView_             ? "FEFLOW89"
-               : credView_           ? "FEFLOW19"
+               : leagueCfg_         ? cfgName_.c_str()
+               : teamScreen_        ? "FEFLOW11"
+               : leagueView_        ? "FEFLOW73"
+               : setupScreen_       ? (setupPractise_ ? "FEFLOW50" : "FEFLOW09")
+               : optsView_          ? "FEFLOW15"
+               : slView_            ? "FEFLOW89"
+               : credView_          ? "FEFLOW19"
                : (haveHub_ && hubView_) ? "FEFLOW06"
                                         : "FEFLOW05";
     }
@@ -95,6 +97,15 @@ public:
     [[nodiscard]] int leagueSel() const { return leagueSel_; }
     void moveLeague(int dir);              // up/down through the pn00..pn08 rows
     presentation::FeDrawStats drawLeague(render::SpriteBatch& ui) const; // FEFLOW73 composite + row hilite
+    // ---- League configuration family (FEFLOW72/74/75/76/79/80; MENU_PARITY.md §4 rank 7) -----
+    // The FEFLOW73 scene cluster (analysis/pass12/edges_table.txt SCENEREG block: feflow72 @0x45a514,
+    // feflow74 @0x45df84, feflow75 @0x45ee34, feflow79 @0x45ff14, feflow80 @0x461ed0 + registered
+    // feflow76 aggression popup) opens these configs on Enter over the league list. Widget grammar:
+    // analysis/pass12/list_painter_notes.txt (kt/menu rows 44 tricolour=1, sbar/sbNN sliders,
+    // s001 KnobBar) + keyloop_notes.txt tags (gofd/gobk screen chain, ncml/ncmr pairs).
+    bool openLeagueCfg(int screenId); // Enter on FEFLOW73 / --fe-league-cfg N gate; false = layout absent
+    [[nodiscard]] bool onLeagueCfg() const { return leagueCfg_ > 0; }
+    presentation::FeDrawStats drawLeagueCfg(render::SpriteBatch& ui) const; // composite + row/slider overlays
 
     static constexpr int kTourneyRounds = 4; // group stage, R16, QF, final boundaries -> 35/25/26/27
     struct TourneyModel;                     // deterministic schedule/standings/bracket (fe_flow.cpp)
@@ -200,6 +211,21 @@ public:
                                             "ptop", "pn00", "pn01", "pn02", "pn03", "pn04",
                                             "pn05", "pn06", "pn07", "pn08", "pln0", "pln1",
                                             "pln2", "pln3", "pls0", "pls1"};
+    // League configuration family (see the public API block above). Whitelists exclude the netplay
+    // chat widgets (chat/cha2/cha3), the animseq placeholder rows (pNN + ptop/pbot) and the runtime
+    // portrait/edit-box surfaces (plyr/tt20); kt/menu row objects (pnNN/prNN/ktNN) draw their shape
+    // art in composite, captions + kit swatches paint as overlays from FCDB data.
+    formats::ScreenLayout lg72_, lg74_, lg75_, lg76_, lg79_, lg80_;
+    bool haveLeagueCfg_ = false;   // at least one family layout loaded
+    int leagueCfg_ = 0;            // active config screen id (72/74/75/76/79/80, 0 = none)
+    std::string cfgName_;          // gate evidence label "FEFLOWxx"
+    std::string cfgLang_;          // FCDBP<lang>.DBI code (lowercase)
+    int cfgRow_ = 0;               // row cursor on the grid screens (roster index, pages via sbar)
+    int stratVal_ = 2;             // FEFLOW75 s001 strategy: 5-step editor domain [+2att..+2def] [H]
+    int aggrVal_ = 7;              // FEFLOW76 s001 aggression: FCDB skill nibble scale [0,15] [H]
+    int biasVal_ = 4;              // FEFLOW79 s001 attack-bias: slider position domain [0,8] [H]
+    int cfgTeamPool_ = 0;          // pool index of the team painted on the grids (lbNN arrows)
+    std::vector<std::string> lg72Visible_, lg74Visible_, lg75Visible_, lg76Visible_, lg79Visible_, lg80Visible_;
     int sel_ = 0;
     std::unique_ptr<presentation::FeText> text_; // FFN face + FC*.BIN strings, loaded once (fe_screen.hpp)
     bool teamScreen_ = false;              // true = team-select list, false = FEFLOW05 main menu
@@ -208,6 +234,11 @@ public:
     // Flag art file per pool entry: "FNNN" = the team's record INDEX in FCDB.DBI (measured:
     // F030.FSH f000 = Argentina shield, F031.FSH = Australia; their DBI ids are 86/87).
     std::vector<std::string> poolFlagFile_;
+    // Full FCDB record set for the league-config roster rows (FEFLOW73 pnNN, 74/79 prNN, 80 pnNN);
+    // kept from loadTeams' parse. Names = FCDBP<lang>.DBI STR1 entries parallel to fcdb_->players.
+    std::optional<formats::FcdbDatabase> fcdb_;
+    std::vector<std::string> fcdbPlayerNames_;
+    [[nodiscard]] const formats::FcdbTeam* cfgTeam() const; // active grid team (null = no FCDB data)
     // "FNNN" art name for a cup-pool team id ("" when the pool has no entry). NNN = FCDB record index.
     std::string flagFileForTeam(std::uint32_t id) const;
     TeamListNav teams_;                    // paging cursor (team_select.hpp)

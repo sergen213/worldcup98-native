@@ -56,5 +56,8 @@ radar panel → ball marker → player dots → selector rings → scoreboard pa
 1. Scoreboard strip rect + text slot coordinates: exe recovery incomplete (see above) — knob-calibrated.
 2. Font face per HUD element (eras14bi assumed for strip and shirt labels).
 3. Radar dot kit recoloring (f99 ramp path absent from WC98 kits.cpp).
-4. `%02d` clock consumer routine; minutes field width.
+4. `%02d` clock consumer routine; minutes field width. Format-string leads (measured 2026-11-07):
+   `"%02d:%02d"` at VAs `0x55b540`, `0x562104`, `0x56217c`, `0x562188`; each has exactly one dword
+   xref in `.text` (raw `0x37c8c/0x3dc2f/0x3ffed/0x40285` = VA `0x437c8c/0x43dc2f/0x43ffed/0x440285`)
+   — next Ghidra pass: decompile those four sites, match against the scoreboard draw routine.
 5. `rpi2` vs `rpit` camera-mode selection rule (port always uses `rpit`).

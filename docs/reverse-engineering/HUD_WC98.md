@@ -54,6 +54,8 @@ radar panel → ball marker → player dots → selector rings → scoreboard pa
 ## Open items
 
 1. Scoreboard strip rect + text slot coordinates: exe recovery incomplete (see above) — knob-calibrated.
+   Negative probe (2026-11-07): the HUD is NOT a layout file — all 30 `IGLAY.BIG` members extracted,
+   zero hits for score/clock/time/`%02d` keys; scoreboard text is drawn procedurally from the exe.
 2. Font face per HUD element (eras14bi assumed for strip and shirt labels).
 3. Radar dot kit recoloring (f99 ramp path absent from WC98 kits.cpp).
 4. `%02d` clock consumer routine; minutes field width. Format-string leads (measured 2026-11-07):

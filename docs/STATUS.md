@@ -116,10 +116,15 @@ counts in `docs/asset-formats/INVENTORY.md`, `docs/reverse-engineering/EXECUTABL
 Gain calibration resolved 2026-11-05 (`analysis/pass7/gain*.txt`, `COMMENTARY_WC98.md` §gain):
 EACSND linear vol chain (domain [0,0x7f], 16.16) saturating at 0x7f + byte curve table explains
 the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_commentary`).
-3. `.MDL` GEOM/SKEL (FE 3D titles), `.SQF` EULZ sprites. `.DCT` EA SRE video RESOLVED
+3. `.SQF` EULZ sprites **BLOCKED** (pass-9eulz 2026-11-07): slot `0x593e94` has zero write sites in the
+   whole image, no setter in any shipped DLL, stays NULL through all SQF loads under Wine; winedbg has
+   no data-watch capability — expander is installed by a runtime mechanism absent from shipped binaries.
+   Only remaining route: Win9x-era env (DOSBox-X debugger). `test_sqf` pins raw-payload FNV hashes.
+   `.MDL` GEOM/SKEL gated (`test_mdl`: 12 FE models / 113 groups / 4,886 faces); `.DCT` EA SRE video RESOLVED
    2026-11-06 (`VIDEO_DCT_NOTES.md`, `docs/asset-formats/VIDEO.md`); inter-cell motion compensation = Hypothesis.
 4. `.SCI` AI-script bytecode (VM unparsed, parity with FIFA 99), GEN4TBLS AT/DF. `AISEQS.TBI`
-   index format decoded 2026-11-06 (`AI_SEQS_TBI.md`: stride-20 records, id==index, clip-code pool).
+   index refined 2026-11-07: clip pool = stride-24 tagged records `[fourcc pair][seq<<16][TBA keyframe
+   offset]`, 417 entries (`AI_SEQS_TBI.md`).
 5. Save/replay/presentation files: see `docs/reverse-engineering/SAVES.md` (options.sav layout,
    `.his`/`.tri` Classics data, network.dat/dial.dat). Replay framing decoded 2026-11-06
    (`REPLAY_WC98.md`: 100 slots stride 0x19, snapshot records stride 0x23c = idx + 0x238 state block);

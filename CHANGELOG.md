@@ -10,6 +10,13 @@ project goals.
   shown scene (`FeFlow::menuVisible_` = back/titl/flag on FEFLOW05, which is MNMSETUP.LAY's netplay-setup
   layout); hidden edit/list widgets no longer paint their FC-bank soup. Gate `fe_flow_render` asserts
   the menu composite stats line (LAY_COMPOSITOR_NOTES.md "Main-menu scene").
+
+- Team-select fidelity (pass-11): pool pages from FCDB `teamdb` records (pool 3 = Europe B, 56 teams),
+  names + flag file ids from the record fields; row flags drawn into the LAY icon slots (`stf0..stf7`,
+  mixed zero-padding with `tt00..tt07` measured in FEFLOW11.LAY), current-team big shield over `tmfg`.
+  Root cause of the black flag quads fixed: textured menu draws passed a degenerate UV rect `{}`
+  (0,0,0,0) to `SpriteBatch::draw`, so each quad sampled texel(0,0) and painted a full-size dark-navy
+  rectangle; app-side textured draws now use the full-rect UV, row icons scale into their LAY cell.
 - FFN font atlas decode FIXED: FNTF glyph atlases are 4-bit INTENSITY maps (index = coverage), not palette
   lookups - they carry the shared FE palette, whose opaque entries made every texel alpha=255, so tinted
   label quads painted solid blocks. `decodeFshBitmap(..., intensityRamp=true)` decodes them as a white

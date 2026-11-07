@@ -87,11 +87,12 @@ Row slots: `stfNN` flag cells (27×21, x=49, y=172+32·i), `ttNN` name column (x
 `tmNN` row text boxes (x=52, w223 h26) — exactly 8 rows = our page size.
 
 **Team → cell mapping:** the ZWCUP.RES pool order (40 ids, `tournament::parseZwcupRes`) fills rows
-page-first: row i = pool index page·8+i. Row flags are dynamic shapes from `FE/PACK/GLOBAL F<fcdbid>.FSH`;
+page-first: row i = pool index page·8+i. Row flags are dynamic shapes from `FE/GLOBAL/FNNN.FSH`;
 measured (SHPI directory probe 2026-11-06): every FNNN.FSH carries exactly one shape, tag `f000`.
-The selected row's flag is also blitted over the `tmfg` slot. **Confirmed** = LAY objects, flag files/tags,
-render output; **Hypothesis** = runtime per-row fname assignment by FCDB id (consistent with tmfg default
-f002 and gate pick 35 → F035.FSH present).
+The selected row's flag is also blitted over the `tmfg` slot. **RESOLVED (2026-11-07)** = file index NNN
+= the team's record INDEX in FCDB.DBI, not its id: pool ids 86/87 sit at DBI records 30/31 and F030.FSH
+f000 decodes to the Argentina shield, F031.FSH to Australia (render-demo dumps). Cup-pool ids (>46) have
+no FNNN file by id — files span F000..F046 = the 56-record DBI's national-team records.
 
 Port: `app/fe_flow.cpp drawTeamsGrid` composites the LAY (`presentation::composite`) then overlays
 row flags + FCDB STR0 names at the LAY's own slot positions, scrollbar thumb page-proportional in
@@ -204,3 +205,15 @@ labels (exe strings above), mirroring that handler-code semantics.
 Gate evidence: ctest `fe_flow_render` FAIL regex asserts `FEFLOW05: shapes=`/`texts=` non-zero;
 capture /tmp/wc98port-out/menufix2_fe00.png (background collage + logos, two readable item
 labels at the markers, no overlap).
+
+## Team-select grid (pass-11, 2026-11-07)
+- Pool pages from FCDB `teamdb` records (record fields: id, pool byte, flag file index -> FNNN loose
+  `FE/GLOBAL/FNNN.FSH`, name offset). Pool 3 = Europe B (Argentina..Canada page 1); 56 teams total.
+- FEFLOW11.LAY row slots: flags `stf0..stf7` (**single digit**, objecttype=3, cell 27x21 at x=49),
+  name slots `tt00..tt07` (zero-padded) - mixed naming measured in the member text. Big current-team
+  shield slot = `tmfg` (LAY default art f002); blit draws the selected team's FNNN over it at native
+  bitmap size; row icons scale into the cell rect. Scrollbar thumb = flat quad in `sbar` track,
+  page-proportional.
+- **SpriteBatch UV rule**: textured draws take normalized uv `{0,0,1,1}` - passing `{}` (all-zero)
+  samples texel(0,0) and paints the whole target rect with that one colour. All app-side dynamic
+  overlays use the full-rect UV; kit strips keep explicit sub-rects from `Kits::stripRect`.

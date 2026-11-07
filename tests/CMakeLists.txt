@@ -170,6 +170,10 @@ if(DEFINED WC98_TREE)
     set_tests_properties(fe_screen_capture_menu PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" FAIL_REGULAR_EXPRESSION "FEFLOW05: shapes=0 ")
     add_test(NAME fe_screen_capture_team COMMAND wc98-native --fe-screen FEFLOW11 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/fescreen)
     set_tests_properties(fe_screen_capture_team PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" FAIL_REGULAR_EXPRESSION "FEFLOW11: shapes=0 ")
+    # League Play select (FE_MENU_SCREENS_WC98.md §4): --fe-league opens FEFLOW73.LAY, the pn00..pn08
+    # league list; row labels are scene-code content at runtime, so shapes>0 is the gate.
+    add_test(NAME fe_league_select COMMAND wc98-native --fe-league --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/league73)
+    set_tests_properties(fe_league_select PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW73: shapes=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 ")
     # Between-round tournament presentation (FEFLOW35/25/26/27, LAY_COMPOSITOR_NOTES.md "Tournament
     # presentation scenes"): one stat line per screen; fails on zero shapes/texts/cursors.
     add_test(NAME fe_render_present COMMAND wc98-native --fe-smoke 1 --fe-present --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/present)

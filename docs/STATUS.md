@@ -108,8 +108,11 @@ counts in `docs/asset-formats/INVENTORY.md`, `docs/reverse-engineering/EXECUTABL
 
 ## Unverified / Unknowns (next RE targets, ranked)
 
-1. FE typed UI layer: LAY object-type vocabulary (15/80 keys shared,
-   7 unknown types) + FE art pipeline (SQF/MDL/palettes).
+1. FE typed UI layer: LAY object-type vocabulary RESOLVED 2026-11-07 (pass-10, commit da2e4a7) —
+ registry driver FUN_00447910 -> registerClass FUN_00472fd8 with EAX imm32 = objecttype; all 10 former
+ unknown ids proven (animseq 3, sbar 11, knobbar 19, tbb 32, flg 37, menu 42, box 43, kt 44, btn 45,
+ sliderbtn 47; cited sites in docs/formats/LAYOUT.md), gaps 13/25-29/38/40/41 = no class (empty name,
+ asserted). Remaining FE art pipeline: SQF EULZ sprites BLOCKED (pass-9eulz); MDL gated.
 2. Speech/commentary indexing (decoder itself is COMPLETE: 6,964/6,964 `.PBK`
    members decode via PT-tag routing, measured 2026-11-01): PHRS.INF index semantics RESOLVED
    2026-11-06 — `PHRS.HDR` == byte-exact first 0x2d6c bytes of `PHRS.PBK` (the full BIGF TOC = 1,290 LE {u32 offset,u32 size} pairs at 12+8*i; member sizes == decompressed sizes, no RefPack), INF = {u32@4 count=1290, u32@8 0x146f0 value-unexplained, "V8-7-4"}; rate default when tag `0x84` is absent RESOLVED 2026-11-06 — 22,050 Hz confirmed

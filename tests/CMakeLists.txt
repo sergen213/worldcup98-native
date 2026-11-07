@@ -172,6 +172,12 @@ if(DEFINED WC98_TREE)
     set_tests_properties(fe_screen_capture_menu PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" FAIL_REGULAR_EXPRESSION "FEFLOW05: shapes=0 ")
     add_test(NAME fe_screen_capture_team COMMAND wc98-native --fe-screen FEFLOW11 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/fescreen)
     set_tests_properties(fe_screen_capture_team PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" FAIL_REGULAR_EXPRESSION "FEFLOW11: shapes=0 ")
+    # Full-layout capture sweep (MENU_PARITY.md §6): every LAYOUTS.BIG + IGLAY.BIG member and the
+    # loose FE/INGAME .LAY files through --fe-screen; each frame must be a real PNG. Extract tool
+    # enumerates archive members by dumping to a temp dir (tests/scripts/fe_screen_sweep.sh).
+    add_test(NAME fe_screen_sweep COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/scripts/fe_screen_sweep.sh
+        $<TARGET_FILE:wc98-native> ${WC98_TREE} $<TARGET_FILE:wc98-extract>)
+    set_tests_properties(fe_screen_sweep PROPERTIES ENVIRONMENT "WC98_TREE=${WC98_TREE}" TIMEOUT 1200)
     # League Play select (FE_MENU_SCREENS_WC98.md §4): --fe-league opens FEFLOW73.LAY, the pn00..pn08
     # league list; row labels are scene-code content at runtime, so shapes>0 is the gate.
     add_test(NAME fe_league_select COMMAND wc98-native --fe-league --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/league73)

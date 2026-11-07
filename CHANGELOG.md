@@ -6,6 +6,11 @@ project goals.
 
 ## [Unreleased]
 ### Added
+
+- HUD fidelity (pass-10): scoreboard strip face = `FE/ERAS10.FFN` (font-table slot 0 via
+  FUN_00438670@0x4386de -> FUN_0046a2a8 copies `DAT_0060b704[0]`; eras14bi REFUTED for the strip,
+  kept as fallback) and clock format `"%02d:%02d"` zero-padded minutes (@0x43888c sprintf,
+  value via FUN_00438b48); gate `test_hud` updated. HUD_WC98.md items 2/4/5 RESOLVED.
 - MDL geometry gate `test_mdl`: synthetic GEOM parse + FE/*.MDL tree census (12 files, 113 groups,
   4886 faces, 478 texture names; SKEL magic pinned on LPOLYBF.MDL).
 - Community patch lineage fully closed: the moddb "FIFAWC.EXE 3rd-Party Loader" = gold master +

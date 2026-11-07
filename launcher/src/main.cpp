@@ -159,6 +159,23 @@ int main(int argc, char** argv) {
             return 2;
         }
     }
+    // Qt reads qt.conf relative to the *invoked* binary; an AppImage starts through a root-level
+    // `AppRun` symlink, so usr/bin/qt.conf is invisible and the platform-plugin search path comes
+    // out empty -> "Could not find the Qt platform plugin "xcb" in """. Seed the path from the
+    // symlink-resolved /proc/self/exe before QApplication reads it.
+    {
+        std::error_code ec;
+        auto exeDir = fs::read_symlink("/proc/self/exe", ec).parent_path();
+        for (const auto& candidate: {exeDir / "plugins", exeDir.parent_path() / "plugins"}) {
+            if (!fs::is_directory(candidate, ec)) continue;
+            const std::string dir = candidate.string();
+            QByteArray joined = qgetenv("QT_PLUGIN_PATH");
+            if (!joined.isEmpty()) joined += ':';
+            joined += QByteArray::fromStdString(dir);
+            qputenv("QT_PLUGIN_PATH", joined);
+            break;
+        }
+    }
     QApplication app(argc, argv); // consumes Qt's own options (-platform/-style pairs), shrinking argc
     if (argc > 1) {              // AppRun path: linuxdeploy's AppRun pre-consumes -s/-style pairs,
         auto game = launcher::findGame();  // e.g. `AppImage --smoke 3` arrives as Qt-stripped argv.

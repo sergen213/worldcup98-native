@@ -102,6 +102,10 @@ for plugin in platforms/libqxcb.so platforms/libqwayland.so platforms/libqoffscr
 done
 [ -f "$APPDIR/usr/plugins/platforms/libqxcb.so" ] || { echo "deploy: Qt xcb plugin not in $qtplugins" >&2; exit 1; }
 printf '[Paths]\nPrefix = ..\nPlugins = plugins\n' > "$APPDIR/usr/bin/qt.conf"
+# Root-level copy: Qt resolves qt.conf relative to the *invoked* binary, and an AppImage starts
+# through the root AppRun symlink (applicationDirPath = mount root), where usr/bin/qt.conf is not
+# visible. Same content, prefix-relative from the image root.
+printf '[Paths]\nPrefix = usr\nPlugins = plugins\n' > "$APPDIR/qt.conf"
 
 # Run pinned tools extracted (no FUSE). linuxdeploy's AppRun is an ELF symlink; appimagetool's is a script.
 # NO_STRIP=1: linuxdeploy's bundled binutils cannot read current .relr.dyn sections.

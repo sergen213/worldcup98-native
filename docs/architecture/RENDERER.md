@@ -5,6 +5,10 @@ Design derived from confirmed evidence — `docs/reverse-engineering/EXECUTABLE.
 experience (validated against WC98 assets: skinning, stadiums, pitch
 lines, cameras, HUD — `docs/asset-formats/REUSABILITY.md`).
 
+Scope decision (goal §1 "optional OpenGL renderer"): no GL backend — Vulkan is proven on the
+target GPU (RX 7900 XTX, RADV) and every supported path; a GL fallback would be speculative
+code with no tested consumer. Revisit only for a software-driver target (lavapipe-class).
+
 ## The original renderer as reference semantics
 
 The exe talks to GPU back-ends through the **THRASH driver ABI**

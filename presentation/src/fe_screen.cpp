@@ -253,36 +253,6 @@ int drawLabel(const formats::LayoutObject& o, render::SpriteBatch& ui, const FeT
     return n;
 }
 
-// Button-class hit box: POINTS= "N+ /x,y, x,y, ..." polygon (Feflow06 buttons) else the layout rect.
-bool widgetHit(const formats::LayoutObject& o, float x, float y) {
-    const std::string* pts = o.prop("POINTS");
-    if (!pts) return x >= o.x && x < o.x + o.width && y >= o.y && y < o.y + o.height;
-    // Parse the polygon (leading "N+" token, then pairs). Polygon test: standard even-odd ray rule.
-    std::vector<std::pair<float, float>> poly;
-    const char* p = pts->c_str();
-    while (*p) {
-        while (*p == ' ' || *p == ',' || (*p >= '0' && *p <= '9' ? false : (*p == '+'))) ++p; // skip "N+" markers
-        char* e = nullptr;
-        const float x1 = std::strtof(p, &e);
-        if (!e || e == p) break;
-        p = e;
-        while (*p && *p != ',') ++p; // consume the rest of "N" tokens: first pair wins per scan
-        if (!*p) break;
-        ++p;
-        const float y1 = std::strtof(p, &e);
-        if (e == p) break;
-        p = e;
-        poly.emplace_back(x1, y1);
-    }
-    if (poly.size() < 3) return x >= o.x && x < o.x + o.width && y >= o.y && y < o.y + o.height;
-    bool in = false;
-    for (std::size_t i = 0, j = poly.size() - 1; i < poly.size(); j = i++) {
-        const auto [xi, yi] = poly[i];
-        const auto [xj, yj] = poly[j];
-        if (((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) in = !in;
-    }
-    return in;
-}
 
 namespace {
 FeWidgetState widgetStateFor(const formats::LayoutObject& o, const FeUiState* s) {
@@ -329,6 +299,32 @@ std::string animatedTag(const std::string& base, int ordinal) {
 }
 } // namespace
 } // namespace
+// Button-class hit box: POINTS= polygon (Feflow06 fe07 fan) else the layout rect. Public: app-side
+// pointer routing hits the same geometry the composite uses for hover/press state switching.
+bool widgetHit(const formats::LayoutObject& o, float x, float y) {
+    const std::string* pts = o.prop("POINTS");
+    if (!pts) return x >= o.x && x < o.x + o.width && y >= o.y && y < o.y + o.height;
+    // "N+\n,x,y, x,y, ...": scan every number in order; a leading odd token is the "N+" marker.
+    std::vector<float> nums;
+    const char* p = pts->c_str();
+    while (*p) {
+        if (!(isdigit((unsigned char)*p) || *p == '-' || (*p == '.' && isdigit((unsigned char)p[1])))) { ++p; continue; }
+        char* e = nullptr;
+        nums.push_back(std::strtof(p, &e));
+        p = e;
+    }
+    if (nums.size() >= 3 && nums.size() % 2 == 1) nums.erase(nums.begin()); // "7+" count marker
+    std::vector<std::pair<float, float>> poly;
+    for (std::size_t i = 0; i + 1 < nums.size(); i += 2) poly.emplace_back(nums[i], nums[i + 1]);
+    if (poly.size() < 3) return x >= o.x && x < o.x + o.width && y >= o.y && y < o.y + o.height;
+    bool in = false; // even-odd ray rule
+    for (std::size_t i = 0, j = poly.size() - 1; i < poly.size(); j = i++) {
+        const auto [xi, yi] = poly[i];
+        const auto [xj, yj] = poly[j];
+        if (((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) in = !in;
+    }
+    return in;
+}
 FeDrawStats composite(const formats::ScreenLayout& screen, render::SpriteBatch& ui, ScreenArt& art,
                       FeText* text, const std::vector<std::string>* visible, const FeUiState* uiState) {
     // Dynamic-content rule (LAY_COMPOSITOR_NOTES.md "Widget-class visibility"): widget-class

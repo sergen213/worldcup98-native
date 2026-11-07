@@ -246,6 +246,28 @@ void treeChecks() {
         auto wd = formats::ScreenLayout::build("LSTTEST", formats::LayoutDocument::parse(std::string_view(wlay)), nullptr, nullptr);
         render::SpriteBatch uiW;
         CHECK(composite(wd, uiW, art, &txt).texts == 0);
+        // Button-class interaction states (Feflow06 side icons, nvicons.fsh qui1/qui5 measured):
+        // hover/press swap the shape keys; the released key is absent on this tree -> Normal misses.
+        const std::string blay = "[screen]\nnumobjects=1\n[object 1]\nobjecttype=32\nobjectname=BTN\n"
+            "xposition=0\nyposition=0\nwidth=55\nheight=50\nvpath=.\\global\\\nfname=nvicons.fsh\n"
+            "releasedshapeid=zzz9\nhilitedshapeid=qui5\npushedshapeid=qui1\n";
+        auto bd = formats::ScreenLayout::build("BTNTST", formats::LayoutDocument::parse(std::string_view(blay)), nullptr, nullptr);
+        render::SpriteBatch uiBN, uiBH, uiBP;
+        const auto stN = composite(bd, uiBN, art, nullptr, nullptr, nullptr);
+        CHECK(stN.missing >= 1 && stN.shapes == 0);
+        wc98::presentation::FeUiState hs; hs.hover = "BTN"; hs.mx = -1.f; hs.my = -1.f;
+        const auto stH = composite(bd, uiBH, art, nullptr, nullptr, &hs);
+        CHECK(stH.shapes >= 1 && stH.missing == 0); // HILITEDSHAPEID qui5 paints
+        wc98::presentation::FeUiState ps; ps.pressed = "BTN"; ps.mx = -1.f; ps.my = -1.f;
+        const auto stP = composite(bd, uiBP, art, nullptr, nullptr, &ps);
+        CHECK(stP.shapes >= 1 && stP.missing == 0); // PUSHEDSHAPEID qui1 paints
+        // POINTS= polygon hit box (fe07 modem quad): centroid inside, corner far outside.
+        formats::LayoutObject po;
+        po.type = int(formats::LayoutObjectType::Tbb); po.name = "P";
+        po.x = 266; po.y = 236; po.width = 65; po.height = 78;
+        po.props["POINTS"] = "4+\n,268,269, 290,240, 330,240, 284,313";
+        CHECK(widgetHit(po, 300.f, 270.f));
+        CHECK(!widgetHit(po, 267.f, 315.f));
     }
     // Language knob (--lang): every shipped FC*.BIN bank loads through FeText and the same
     // label index resolves per-language (FCFRE 220 "Are you sure?" differs from FCENG).

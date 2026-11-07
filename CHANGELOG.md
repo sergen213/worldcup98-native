@@ -6,6 +6,15 @@ project goals.
 
 ## [Unreleased]
 ### Added
+- Main-menu composite scene-ownership whitelist (pass-10): `composite()` draws only objects owned by the
+  shown scene (`FeFlow::menuVisible_` = back/titl/flag on FEFLOW05, which is MNMSETUP.LAY's netplay-setup
+  layout); hidden edit/list widgets no longer paint their FC-bank soup. Gate `fe_flow_render` asserts
+  the menu composite stats line (LAY_COMPOSITOR_NOTES.md "Main-menu scene").
+- FFN font atlas decode FIXED: FNTF glyph atlases are 4-bit INTENSITY maps (index = coverage), not palette
+  lookups - they carry the shared FE palette, whose opaque entries made every texel alpha=255, so tinted
+  label quads painted solid blocks. `decodeFshBitmap(..., intensityRamp=true)` decodes them as a white
+  luminance ramp (alpha = index * 17); all FE/HUD text is legible again (eras10/11i/12/8i/11bi/9bi/14bi/
+  20/36/20bi verified: transparent + mid alpha coverage present).
 
 - HUD fidelity (pass-10): scoreboard strip face = `FE/ERAS10.FFN` (font-table slot 0 via
   FUN_00438670@0x4386de -> FUN_0046a2a8 copies `DAT_0060b704[0]`; eras14bi REFUTED for the strip,

@@ -168,3 +168,39 @@ boundary: round 0 -> FEFLOW35 (standings overlay at the LAY's own ssn/ss* slots)
 (drawStandings/drawBracketBoard, row-overlay pattern of drawTeamsGrid). Gate: ctest
 `fe_render_present` (`--fe-present --tree`, stat lines `FE-PRESENT FEFLOWxx: shapes=.. texts=..`,
 FAIL on zero counts; WC98_TREE-gated, SKIP 2 when assets absent).
+
+## Main-menu scene mapping + visibility semantics (2026-11-06, FeMenuFix)
+
+**FEFLOW05.LAY is NOT the main menu.** Its header source name is
+`D:\FIFA98.PC\SOURCE\FE.OLD\LAYOUTS\MNMSETUP.LAY` and its object inventory is modem/netplay
+setup: `mneb` ";machine name edit box" (objecttype=10), two more string edit boxes
+(objecttype=10/14, dial/init strings), five list widgets (objecttype=4, textid=0,5 / 209,4 /
+4396,4 = FC-bank captions), seven slider objects, `help`, `rset`. The 26-object soup the port
+rendered was this layout's netplay content painted all at once.
+
+**True main-menu scene.** The FE scene registry (registrar FUN_004479d0; cluster string block
+0x56237c) keys scenes by logical name: a sorted 47-entry name table (lookup code FUN_0047aeb0,
+case-insensitive compare loop at 0x47aeb0..; index finder FUN_0047af2c) maps "mainmenu"
+(string VA 0x564dd0) to a runtime window object in a struct array at DAT_0060e308 (stride 0x38,
+count 0x32; per-slot creation code at 0x47afd4: `shl idx*56 + 0x60e308 -> FUN_0042be70`). No
+feflowNN LAY carries menu item widgets (kt/menu objecttypes only appear in feflow73/74/79/80/82,
+league-mode screens) — the original main-menu **item labels are drawn by scene-handler code from
+strings embedded in FIFAWC.EXE**: "main menu" at 0x564f89 followed by item strings 'friendly'
+(0x564fb1), 'league play' (0x564fbd), 'cup competition' (0x564fcd), 'practise' (0x564fe1)... The
+port's menu composites the FE-flow art objects of FEFLOW05 (back collage + titl France98/EA logos
++ flag anim, all authentic FE background art) and draws "Friendly" / "Cup Competition" as app-side
+labels (exe strings above), mirroring that handler-code semantics.
+
+**Visibility semantics implemented in `presentation::composite`:**
+1. *Scene ownership*: new `visible` whitelist parameter (objectnames). Objects of scenes the port
+   never shows (MNMSETUP's netplay widgets on the menu screen) count as hidden and are not
+   painted; stats keep counting them (`hidden`). App: `FeFlow::menuVisible_ = {back, titl, flag}`.
+2. *Widget-class dynamic content*: List(4)/Edit(14)/CheckBox(10)/Button(2) objects carrying a
+   TEXTID key are engine-driven list/edit captions painted from live item state; the port has no
+   runtime item state, so static composites skip their label draws (the FC-bank "texts=100" soup).
+3. SHOW flags and null-art boxes keep the pre-existing rules (`shown()`, FILLCOLOUR-gated boxes:
+   a null.fsh placeholder with no fill colour paints nothing).
+
+Gate evidence: ctest `fe_flow_render` FAIL regex asserts `FEFLOW05: shapes=`/`texts=` non-zero;
+capture /tmp/wc98port-out/menufix2_fe00.png (background collage + logos, two readable item
+labels at the markers, no overlap).

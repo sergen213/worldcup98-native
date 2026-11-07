@@ -231,6 +231,21 @@ void treeChecks() {
         const auto firstRgba = [](const render::SpriteBatch& u) { return u.vertices().empty() ? 0u : u.vertices()[0].rgba; };
         CHECK(firstRgba(uiN) == wantN);   // plain pane -> NORMALCOLOUR index 1
         CHECK(firstRgba(uiH) == wantH);   // hilitePane=TXT -> HILITECOLOUR index 2
+        // Scene-ownership visibility (FE main-menu composite): objectname whitelist; foreign-scene
+        // objects count as hidden and are never painted.
+        const std::vector<std::string> visTxt{"TXT"}, visNone{};
+        render::SpriteBatch uiV, uiX;
+        CHECK(composite(mk(nullptr), uiV, art, &txt, &visTxt).texts > 0);
+        const auto hid = composite(mk(nullptr), uiX, art, &txt, &visNone);
+        CHECK(hid.texts == 0 && hid.hidden == 1);
+        // Widget-class dynamic content: a list widget carrying TEXTID (MNMSETUP's modem lists,
+        // objecttype=4) is engine-driven; a static composite must not draw the bank caption.
+        const std::string wlay = "[screen]\nnumobjects=1\n[object 1]\nobjecttype=4\nobjectname=LST\n"
+            "xposition=10\nyposition=10\nwidth=40\nheight=12\nvpath=.\\global\\\nfname=null.fsh\nshapeid=null\ntextid="
+            + std::to_string(textId) + "\nfontid=4\nnormalcolour=1\n";
+        auto wd = formats::ScreenLayout::build("LSTTEST", formats::LayoutDocument::parse(std::string_view(wlay)), nullptr, nullptr);
+        render::SpriteBatch uiW;
+        CHECK(composite(wd, uiW, art, &txt).texts == 0);
     }
     // Language knob (--lang): every shipped FC*.BIN bank loads through FeText and the same
     // label index resolves per-language (FCFRE 220 "Are you sure?" differs from FCENG).

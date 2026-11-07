@@ -81,9 +81,21 @@ void FeFlow::loadTeams() {
 FeDrawStats FeFlow::drawCurrent(render::SpriteBatch& ui) const {
     if (teamScreen_) return drawTeams(ui);
     FeDrawStats st;
-    if (haveScreen_) st = presentation::composite(screen_, ui, const_cast<ScreenArt&>(art_), text_.get());
-    // Selection marker: two flat panels per entry, filled when selected. The LAY objects themselves
-    // draw their FC*.BIN labels through FeText above.
+    // Scene-ownership visibility: MNMSETUP's netplay widgets (mneb edit boxes, modem lists,
+    // dial strings) belong to scenes the port never shows -> hidden. Only the FE-flow art
+    // objects are painted: back collage + titl logos + flag anim (evidence in the header).
+    if (haveScreen_) st = presentation::composite(screen_, ui, const_cast<ScreenArt&>(art_), text_.get(), &menuVisible_);
+    // Menu item labels: drawn by scene-handler code in the original, not by LAY widgets. The
+    // item strings are embedded in FIFAWC.EXE right after the "main menu" label string at
+    // 0x564f89: 'friendly' (0x564fb1) and 'cup competition' (0x564fcd); no shipped LAY carries
+    // kt/menu objects for them. Labels sit to the right of the selection markers.
+    static constexpr std::string_view kLabels[kFeEntryCount] = {"Friendly", "Cup Competition"};
+    // Plain face eras10 (fontID 0, exe font table 0x57d2c0) for menu items; the bold-italic
+    // HUD face is a caption font and reads muddy over the collage. Fallback: primary face.
+    const formats::FfnFont* f = text_ ? text_->face(0) : nullptr;
+    render::TextureId ftex = text_ ? text_->faceTexture(0) : 0;
+    if (!f || !ftex) { f = text_ ? text_->font() : nullptr; ftex = text_ ? text_->texture() : 0; }
+    const bool hasText = text_ && text_->ready() && f && ftex;
     for (int i = 0; i < kFeEntryCount; ++i) {
         const float y = 380.f + 28.f * i;
         if (i == sel_) ui.draw(0, {36.f, y, 18.f, 18.f}, {}, render::packRgba(90, 200, 255, 255));
@@ -92,6 +104,11 @@ FeDrawStats FeFlow::drawCurrent(render::SpriteBatch& ui) const {
             ui.draw(0, {36.f, y, 18.f, 1}, {}, w), ui.draw(0, {36.f, y + 17.f, 18.f, 1}, {}, w);
             ui.draw(0, {36.f, y, 1.f, 18.f}, {}, w), ui.draw(0, {53.f, y, 1.f, 18.f}, {}, w);
         }
+        if (!hasText) continue;
+        const std::uint32_t rgba = i == sel_ ? render::packRgba(255, 224, 96, 255) : render::packRgba(235, 235, 235, 255);
+        for (const auto& q : presentation::layoutText(*f, kLabels[std::size_t(i)], 90.f, y + 2.f, 16.f, rgba))
+            ui.draw(ftex, q.dst, q.uv, q.rgba);
+        ++st.texts;
     }
     drawCursor(ui, st);
     return st;

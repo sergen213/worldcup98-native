@@ -76,6 +76,11 @@ public:
     formats::ScreenLayout gridScreen_;     // team-select layout (FEFLOW11.LAY, world-cup pick grid)
     bool haveGrid_ = false;
     bool haveScreen_ = false;
+    // Scene-ownership visibility for the menu composite (composite() `visible`): FEFLOW05.LAY is
+    // MNMSETUP.LAY — a netplay-setup layout whose 26 objects belong to scenes the port never
+    // shows. Only its FE-flow art objects (back collage, titl logos, flag anim) are painted on
+    // the menu screen; the rest count as hidden (LAY_COMPOSITOR_NOTES.md "Main-menu scene").
+    std::vector<std::string> menuVisible_{"back", "titl", "flag"};
     int sel_ = 0;
     std::unique_ptr<presentation::FeText> text_; // FFN face + FC*.BIN strings, loaded once (fe_screen.hpp)
     bool teamScreen_ = false;              // true = team-select list, false = FEFLOW05 main menu

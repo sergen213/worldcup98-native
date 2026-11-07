@@ -154,6 +154,8 @@ if(DEFINED WC98_TREE)
     set_tests_properties(fe_nav_tournament PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}")
     add_test(NAME fe_nav_exhibition COMMAND wc98-native --fe-smoke 1 --fe-nav exhibition --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/fe)
     set_tests_properties(fe_nav_exhibition PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}")
+    add_test(NAME fe_nav_league COMMAND wc98-native --fe-smoke 1 --fe-nav league --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/fe)
+    set_tests_properties(fe_nav_league PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "entry 1 returned 0")
     # M10 interactive playable match (app/livematch.cpp): real-time window loop - sim fixed 1/50 s
     # cadence, scene + HUD drawn each frame with camera follow, commentary pump; synthesized keyboard
     # input drives the ported pad path (FUN_0047836c bit writes) proving the input->sim chain.

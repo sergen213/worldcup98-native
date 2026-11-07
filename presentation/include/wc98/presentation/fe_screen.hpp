@@ -126,8 +126,12 @@ bool loadFeCursor(const std::filesystem::path& root, FeCursor& out);
 // Text labels: when `text` is ready, objects with a resolvable TEXTID key draw glyph quads at
 // their position (see LAY_COMPOSITOR_NOTES.md "Text objects"); unresolvable ones keep counting
 // as noArt. nullptr keeps the pre-text behaviour exactly (reference compositor).
+// Scene-ownership visibility: the engine paints a LAY object only in the scene that owns it
+// (MNMSETUP's netplay widgets are absent from the main-menu screen). `visible`, when given, is
+// the whitelist of objectnames for this composite; every other object counts as hidden and is
+// not painted. nullptr = draw everything (reference compositor / render-demo gate).
 FeDrawStats composite(const formats::ScreenLayout& screen, render::SpriteBatch& ui, ScreenArt& art,
-                      FeText* text = nullptr);
+                      FeText* text = nullptr, const std::vector<std::string>* visible = nullptr);
 
 // Reads a layout given as "path" or "archive.big@MEMBER.LAY"; `dir` receives the directory that
 // authored vpath references are relative to (the archive's own directory for members).

@@ -138,7 +138,8 @@ if(DEFINED WC98_TREE)
     # captures per-frame PNGs, Enter reaches exhibition + tournament entry points.
     # Skip code 2 = no display / headless CI, like match_demo_frames.
     add_test(NAME fe_flow_render COMMAND wc98-native --fe-smoke 3 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/fe)
-    set_tests_properties(fe_flow_render PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}")
+    set_tests_properties(fe_flow_render PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}"
+        FAIL_REGULAR_EXPRESSION "FEFLOW05: shapes=0 |FEFLOW05: texts=0 ")
     add_test(NAME fe_nav_tournament COMMAND wc98-native --fe-smoke 2 --fe-nav tournament --fe-pick 35 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/fe)
     set_tests_properties(fe_nav_tournament PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}")
     add_test(NAME fe_nav_exhibition COMMAND wc98-native --fe-smoke 1 --fe-nav exhibition --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/fe)

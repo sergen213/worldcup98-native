@@ -253,7 +253,18 @@ int drawLabel(const formats::LayoutObject& o, render::SpriteBatch& ui, const FeT
     return n;
 }
 } // namespace
-FeDrawStats composite(const formats::ScreenLayout& screen, render::SpriteBatch& ui, ScreenArt& art, FeText* text) {
+FeDrawStats composite(const formats::ScreenLayout& screen, render::SpriteBatch& ui, ScreenArt& art,
+                      FeText* text, const std::vector<std::string>* visible) {
+    // Dynamic-content rule (LAY_COMPOSITOR_NOTES.md "Widget-class visibility"): widget-class
+    // objects carrying a TEXTID key are engine-driven content — MNMSETUP's list widgets
+    // objecttype=4 textid=0,5/209,4/4396,4, edit boxes objecttype=10/14 (dial/init/machine
+    // name), buttons objecttype=2. The engine paints their FC-bank captions at runtime from
+    // live item state; the port has no such state, so a static composite must not draw them.
+    const auto dynamicWidget = [](const formats::LayoutObject& o) {
+        using T = formats::LayoutObjectType;
+        return (o.type == int(T::List) || o.type == int(T::Edit) || o.type == int(T::CheckBox) ||
+                o.type == int(T::Button)) && o.prop("TEXTID") != nullptr;
+    };
     FeDrawStats st;
     for (const auto& o : screen.objects) {
         if (!o.shown()) { ++st.hidden; continue; }
@@ -261,6 +272,7 @@ FeDrawStats composite(const formats::ScreenLayout& screen, render::SpriteBatch& 
         // that one pane starts hilited, drawing its label in HILITECOLOUR and its art in
         // HILITEDSHAPEID (button class key table 0x564458; runtime state switch FUN_0044e178).
         const bool hl = !screen.hilitePane.empty() && iequals(o.name, screen.hilitePane);
+        if (visible && std::ranges::none_of(*visible, [&](const std::string& n) { return iequals(o.name, n); })) { ++st.hidden; continue; }
         const std::string* tag = nullptr;
         if (hl) { if (const std::string* h = o.prop("HILITEDSHAPEID"); h && !h->empty() && !iequals(*h, "null")) tag = h; }
         for (std::string_view k : {"SHAPEID", "SNAME", "RELEASEDSHAPEID", "RELEASEDSHAPE", "NORMALSHAPEID", "NSHAPEID", "BARSHAPEID"})
@@ -286,7 +298,7 @@ FeDrawStats composite(const formats::ScreenLayout& screen, render::SpriteBatch& 
                 ++st.rects;
                 boxDrawn = true;
             }
-            const int t = text ? drawLabel(o, ui, *text, hl) : 0;
+            const int t = (text && !dynamicWidget(o)) ? drawLabel(o, ui, *text, hl) : 0;
             st.texts += t;
             if (!boxDrawn && !t) ++st.noArt; // unresolvable label: keep the pre-text count exactly
             continue;
@@ -297,7 +309,7 @@ FeDrawStats composite(const formats::ScreenLayout& screen, render::SpriteBatch& 
         if (!sh.tex) { ++st.missing; continue; }
         ui.draw(sh.tex, {float(o.x), float(o.y), float(sh.w), float(sh.h)});
         ++st.shapes;
-        if (text) st.texts += drawLabel(o, ui, *text, hl); // list/button entries carry their label on the art
+        if (text && !dynamicWidget(o)) st.texts += drawLabel(o, ui, *text, hl); // static labels on the art
     }
     return st;
 }

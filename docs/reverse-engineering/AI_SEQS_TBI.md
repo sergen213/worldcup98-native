@@ -17,10 +17,13 @@ Record array: stride **20** bytes at `0x8`, 534 records (region size 10680 = 534
 | 12 | u32 flags   | observed pattern `0x00080008`, tail rows `0x000a000a`; STATUS anim-clip note: byte +0xD drives clip load flags |
 | 16 | u32 len/flags | e.g. `0x40`, last row `0x03020047` (low = name-ish length) |
 
-String pool at `0x29c0`: 441 printable names, 6–8 char clip codes with digit suffix
-(`aaaaaa, cqckea4, sspecz6, ctchfa1, bsppob1 …`) — animation **clip code** names (pitch/keeper/set-piece
-action families), matching the exe anim-clip use recorded in STATUS (`id==index` -> clip 278 `bsppob1`).
-Decoded dump: 534 records, keys = per-record event/anim key pair (semantics open).
+Pool at `0x29c0` — refined (2026-11-07): stride **24** records, `(20696-0x29c0)/24 = 417`:
+`[+0 fourcc A][+4 fourcc B]` (the printable clip-code names read as ASCII pairs: `aaaa`,
+`cqck`/`ea4`, `sspe`, `ctch`, `cbst`, `ciel`, `sfsh`, `sfrh`, …), `[+8 u32 = seqIndex << 16 |
+flags]` (entry i carries its own seq index in the high half: 0, 1<<16, 2<<16, 3<<16 …),
+`[+12 zero]`, `[+16 u32 byte offset into the .TBA animation data block]` (e.g. `0x0080b9e4`).
+The 534 record nameOff fields point at these tagged entries, i.e. seq -> clip-tag mapping;
+the engine walks entries + 0x18 to fetch keyframe offsets (`FUN_004c3630` reads entry+0x18).
 
 ## .SCI script files
 

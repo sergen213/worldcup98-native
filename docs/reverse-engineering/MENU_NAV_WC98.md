@@ -252,3 +252,18 @@ Composing pattern per screen:
 ## 9. Widget-hit wedge dispatcher (0x485d00 block) [C]
 
 Raw disasm of the shared FE widget-hit handler at VA 0x485e28–0x486110 (`raw = VA-0x400c00`): a compare chain over the clicked widget's fourcc — `cmp $'fe33',EDX @0x485e35`, `'fe11' @0x485e4c`, `'fe90' @0x485e63`, `'fe32' @0x485e75`, `'fe07' @0x485e88` — each paired with `cmp DAT_0057e364,reg` (runtime current-widget tag global). On match the branch calls FUN_004b3ce0 / builds a target via FUN_00479f30 under mode switches (`cmp $0x2,%dl`, `%dh in {3,5}`) = mouse click on a hub wedge performs the same scene switch as the keyboard path (§3). Confirms: mouse and keyboard converge on tag-bound per-wedge branches.
+
+## 10. Per-scene fourcc key inventories (tick-body scan, raw objdump + reversed-ASCII immediates) [C]
+
+Method: disassemble each scene tick window (`raw = VA-0x400c00`), collect `cmp $imm32,{edx,eax,...}` immediates that decode as printable fourcc (stored byte-swapped). Window bounds per §1 registry slots.
+
+| scene | window | tags |
+|---|---|---|
+| feflow13 (WC config) | 0x44e440..0x44e578 | `fe06 fe08 fe15 quit` |
+| feflow16 (lineups) | 0x4519c0..0x452328 (init+tick+draw, full window) | — (cursor-only: row-cursor `INC EDX` at 0x451b76/0x451e6c; no fourcc compares; keys arrive as global payload codes) |
+| feflow18 (zones) | 0x452328..0x4524f8 | `fe06 fe11 fe15 fe19 fe41 fe42 fe89 quit rand` |
+| feflow23/24 (brackets) | 0x4543dc.. / 0x454e0c.. | `fe06 fe15 fe41 fe42 fe89 frwd quit strk stsc` |
+| feflow35 (standings) | 0x45838c..0x458714 | + `nglt ngrt` (group left/right nav) |
+| feflow87/91 (controller grids) | 0x467970../0x468b50.. | anchors only (`fe06 fe08? fe15 quit`) — grid interaction via generic row cursor |
+
+Semantics: `rand` = randomize zones; `strk` = start/launch tournament path; `stsc` = standings/stats view (FEFLOW20/35 grammar); `frwd` = forward anchor; `nglt/ngrt` = group page nav. Full sweep data files: `/mnt/1st4TB/WorldCup98/analysis/pass12/{wcfamily,rank2,keyloop}_tags.txt`.

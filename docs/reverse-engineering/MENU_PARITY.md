@@ -234,13 +234,13 @@ Columns: **ref** = reference captured (asset-level evidence, see rule above — 
 | FEFLOW11 team grid | [C] LAY | ✓ flags/kit/shield fidelity | ✓ | ✓ shapes/texts/cursors>0 shell assert | ✗ | ✗ | `fe_render_tournament`, `fe_screen_capture_team` |
 | Tournament presentation (Feflow35/25/26/27) | [C] LAY + pass8 slot inventory | ✓ 35/25/26/27 overlays | ✓ tournament flow | ✓ "FE-PRESENT FEFLOW35: shapes=[1-9]" | ✗ | ✗ | `fe_render_present`, `fe_nav_tournament --fe-pick 35` |
 | Font/text layer (all screens) | [C] exe font table DAT_0057d2c0 | ✓ faces=10 | n/a | ✓ PASS_REGULAR_EXPRESSION "faces=10 lang=" + ger locale | n/a | ✗ | `fe_text_fonts`, `fe_text_lang_ger` |
-| Arbitrary-member capture lane (all 101 LAYOUTS.BIG members) | [C] member dumps pass11/lays | ✓ compositor | ✗ static frame only | ✓ shapes>0 FAIL regexes (FEFLOW05/FEFLOW11; raw stubs legitimately texts=0 — gate exemption `feScreenName`) | n/a | ✗ | `fe_screen_capture_menu`, `fe_screen_capture_team` |
+| Arbitrary-member capture lane (all 156 layouts = LAYOUTS.BIG + IGLAY.BIG members + loose FE/INGAME .LAY) | [C] member dumps pass11/lays, sweep extract | ✓ compositor (+button states, FRAMES anim) | ✗ static frame only | ✓ `fe_screen_sweep` (every layout renders a real PNG; raw stubs legitimately texts=0 — gate exemption `feScreenName`) + shapes>0 FAIL regexes (FEFLOW05/FEFLOW11) | n/a | ✗ | `fe_screen_sweep`, `fe_screen_capture_menu`, `fe_screen_capture_team` |
 | Tournament save/load slots | [C] SAVESLOT_WC98.md | ✓ WCT1 codec | ✓ tournament-load nav | ✓ fixture gates | n/a | ✗ | `fe_nav_tournament_save`, `fe_nav_tournament_load` (WC98_SAVE_SLOT=7) |
 | Intro movies (.DCT INT_EASP/INT_FIFA) | [C] VIDEO_DCT_NOTES.md | ✓ | ✓ Esc skip | ✓ video_play lane | ✓ audio track | ✗ | app/video.cpp gates; `--no-intro` |
 | Options (feflow15 + IGOPTN2) | [C] LAYs | ✗ | ✗ | ✗ | ✗ | ✗ | — missing, §4 rank 1 |
 | In-game pause menu (IGMENU/INGAME.LAY) | [C] §2b dump | ✗ | ✗ (Esc quits match) | ✗ | ✗ | ✗ | §4 rank 8 |
 | Save/load scene UI (feflow41/42, Feflow89) | [C] LAYs | ✗ | ✗ | ✗ | ✗ | ✗ | §4 rank 6 |
-Honest summary: **impl** = 9 registry scenes + menu composite; **cap** = all remaining LAYOUTS.BIG members via the capture lane (visual only, no gate asserts pixel parity with Windows — cmp column is empty by design); in-game pack = 0/29.
+Honest summary: **impl** = 9 registry scenes + menu composite; **cap** = all 156 layouts via the capture lane, every one asserted to render a real frame by `fe_screen_sweep` (visual only, no gate asserts pixel parity with Windows — cmp column is empty by design); in-game pack interactive = 0/29.
 
 ## 4. Missing features, ranked (user-reachable in the original main flow first)
 

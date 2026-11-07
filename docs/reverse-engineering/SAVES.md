@@ -49,6 +49,11 @@ the original game under Wine (research-only use of the Windows exe).
   exe RE). `user\dial.dat` (0x161030): modem dial directory (TAPI play
   confirmed in `docs/reverse-engineering/EXECUTABLE.md` §2).
 
+Measured shipped files (2026-11-06): `SETUP/EXTRA/{NETWORK,DIAL,INSTALL}.DAT` are 11-byte ASCII
+pointer stubs — NETWORK/DIAL content "install.dat", INSTALL.DAT self-references "install.dat"; no
+binary layout. The real `user\network.dat`/`dial.dat` are runtime-generated (no live sample:
+modem/netplay never exercised under Wine).
+
 ## Team history / tournament presentation — CONFIRMED loader pattern
 
 - `fe\teamhist.<lang>\{du,en,fr,ge,it,da,sp,sw}.his` (0x89290-0x8933F)

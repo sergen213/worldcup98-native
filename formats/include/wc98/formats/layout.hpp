@@ -61,11 +61,12 @@ struct FemsgTable {
 
 // ---- Typed screen model ---------------------------------------------------------------------
 
-// objecttype values, from the class registrations at EXE 0x488000 (see LAYOUT.md for addresses).
+// objecttype values, from the class registry: driver FUN_00447910 calls registration thunks that load
+// EBX = parse fn, EDX = vftbl, EAX = type id and tail-jmp registerClass FUN_00472fd8 (see LAYOUT.md).
 enum class LayoutObjectType : int {
-    Image = 0, Text = 1, Button = 2, Type3 = 3, List = 4, Bar = 5, ScrollBar = 6, Animation = 7, AnimButton = 8,
-    Slider = 9, CheckBox = 10, FilledRect = 12, FrameRect = 13, Edit = 14, Formation = 15, Bracket = 17, Video = 18,
-    Type19 = 19, Type20 = 20, Chat = 21, FadeText = 22,
+ Image = 0, Text = 1, Button = 2, AnimSeq = 3, List = 4, Bar = 5, ScrollBar = 6, Animation = 7, AnimButton = 8,
+ Slider = 9, CheckBox = 10, Sbar = 11, FilledRect = 12, FrameRect = 13, Edit = 14, Formation = 15, Bracket = 17, Video = 18,
+ KnobBar = 19, Type20 = 20, Chat = 21, FadeText = 22, Tbb = 32, Flg = 37, Menu = 42, Box = 43, Kt = 44, Btn = 45, SliderBtn = 47,
 };
 [[nodiscard]] const char* layoutObjectTypeName(int type); // "" when the EXE registers no class for it
 

@@ -58,6 +58,13 @@ static void synthetic() {
     CHECK(dj.sections.size() == 1 && dj.warnings.size() == 5);
     CHECK(LayoutDocument::parse(std::string_view("")).sections.empty());
     CHECK(!parseLayoutMessage("a,b,c,d,e,f").has_value() && parseLayoutMessage("a,b,c,d,e,f,g,").has_value());
+    // Registry names (pass 10): ids bound by MOV EAX imm at thunks in FUN_00447910 -> registerClass.
+    CHECK(std::strcmp(layoutObjectTypeName(3), "animseq") == 0 && std::strcmp(layoutObjectTypeName(11), "sbar") == 0 &&
+          std::strcmp(layoutObjectTypeName(19), "knobbar") == 0 && std::strcmp(layoutObjectTypeName(32), "tbb") == 0 &&
+          std::strcmp(layoutObjectTypeName(37), "flg") == 0 && std::strcmp(layoutObjectTypeName(42), "menu") == 0 &&
+          std::strcmp(layoutObjectTypeName(43), "box") == 0 && std::strcmp(layoutObjectTypeName(44), "kt") == 0 &&
+          std::strcmp(layoutObjectTypeName(45), "btn") == 0 && std::strcmp(layoutObjectTypeName(47), "sliderbtn") == 0);
+    CHECK(*layoutObjectTypeName(25) == 0 && *layoutObjectTypeName(40) == 0);
 
     // FEMSG: two records + CD trailer; wrong size / kind throw.
     std::vector<std::uint8_t> fm(72 * 2, 0);

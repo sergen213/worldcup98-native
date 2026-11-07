@@ -6,6 +6,11 @@ project goals.
 
 ## [Unreleased]
 ### Added
+- League configuration family (FEFLOW72/74/75/76/78/79/80): list-box (type=9) + slider (type=11) painters render
+  `s001` rows with FC-bank captions, kit swatches from the fifa98edit hslCols palette, row cursor navigation and
+  gofd/gobk screen-chain keys per decoded key loops. Gates `fe_league_cfg{72,74,75,76,78,79,80}` (--fe-league-cfg N).
+  Scene-ownership whitelists keep engine textID soup slots (0000*, tt*/ad*, mt9x) out of the composite — captions
+  collide otherwise; kitColor() palette now matches analysis/fifa98edit/__init__.py hslCols verbatim.
 - Hub screen (Feflow06.lay) as the interactive main menu when present on the tree: 13 button wedges with hover/push/disabled
   shape states, FRAMES animation clock, help pane FC captions and keyboard + mouse (widgetHit) cursor; wedge edges fe07/fe11/fe32
   reach the existing setup/team flows, `quit` exits the app cleanly, and fe33/fe90/fe04/fe02 render DISABLEDSHAPE* with documented

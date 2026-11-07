@@ -38,8 +38,9 @@ FfnFont FfnFont::parse(std::span<const std::uint8_t> data) {
         f.glyphs.push_back(g);
     }
     // The declared size can be a few bytes short of the 4-bit atlas (ERAS*BI, HJNUM, MJNUM); the
-    // remaining bytes are present in the file, so bound by the data instead.
-    f.atlas = decodeFshBitmap(data, atlasOffset, data.size());
+    // remaining bytes are present in the file, so bound by the data instead. The atlas is a 4-bit
+    // INTENSITY map (index = coverage), not a palette lookup: decode it through the luminance ramp.
+    f.atlas = decodeFshBitmap(data, atlasOffset, data.size(), /*intensityRamp=*/true);
     for (const auto& g : f.glyphs)
         if (g.x + g.width > f.atlas.width || g.y + g.height > f.atlas.height)
             throw FormatError(std::format("FNTF glyph {} outside {}x{} atlas", g.code, f.atlas.width, f.atlas.height));

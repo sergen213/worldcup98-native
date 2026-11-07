@@ -71,7 +71,10 @@ struct FshFile {
 // Decodes the record chain starting at `offset` (a 16-byte bitmap header followed by attached
 // palette/comment records). `end` bounds the chain. Used by FshFile and by FNTF fonts, whose
 // glyph atlas is a bare bitmap record without a SHPI wrapper. Throws FormatError.
-FshBitmap decodeFshBitmap(std::span<const std::uint8_t> data, std::size_t offset, std::size_t end);
+// `intensityRamp` decodes a 4-bit (0x7A) bitmap as a white luminance ramp with alpha = index * 17,
+// ignoring any attached palette: FNTF font atlases carry the shared FE palette, but their coverage
+// is the 4-bit intensity value itself.
+FshBitmap decodeFshBitmap(std::span<const std::uint8_t> data, std::size_t offset, std::size_t end, bool intensityRamp = false);
 
 // WC98 (matrix section 4): palette records attached to a record chain at `offset` (0x01/0x1F/0x21/
 // 0x22/0x24/0x27/0x29/0x2A/0x2D/0x2E), as RGBA. FE/PACK/PAL.PAK is a bare SHPI archive whose

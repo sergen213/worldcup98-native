@@ -126,7 +126,7 @@ struct Chain {
     std::vector<std::string> comments;
 };
 
-Chain walk(std::span<const std::uint8_t> data, std::size_t offset, std::size_t end) {
+Chain walk(std::span<const std::uint8_t> data, std::size_t offset, std::size_t end, bool intensityRamp = false) {
     if (end > data.size() || offset >= end) throw FormatError(std::format("FSH record at {} out of range", offset));
     Chain c;
     std::optional<Palette> pal;
@@ -205,17 +205,18 @@ Chain walk(std::span<const std::uint8_t> data, std::size_t offset, std::size_t e
             const auto& gp = globalPaletteStore();
             std::uint8_t maxIndex = 0;
             for (auto v : c.bitmap.indices) maxIndex = std::max(maxIndex, v);
-            if (!gp.empty() && (!pal || maxIndex >= pal->rgba.size()) && std::size_t(maxIndex) < gp.size()) {
+            if (!intensityRamp && !gp.empty() && (!pal || maxIndex >= pal->rgba.size()) && std::size_t(maxIndex) < gp.size()) {
                 pal = Palette{0xFE, gp};
                 c.bitmap.usedGlobalPalette = true;
             }
         }
-        if (indexed && pal) c.bitmap.paletteType = pal->type, c.bitmap.palette = pal->rgba;
-        if (indexed && !pal && c.bitmap.type == 0x7A) { // 4-bit without palette: intensity ramp (FNTF fonts)
-            Palette ramp{0, {}};
-            for (unsigned i = 0; i < 16; ++i) ramp.rgba.push_back({255, 255, 255, std::uint8_t(i * 17)});
-            c.bitmap.rgba = toRgba(c.bitmap.type, c.bitmap.width, c.bitmap.height, pixels, &ramp);
+        const bool ramp = intensityRamp && indexed && c.bitmap.type == 0x7A; // FNTF font atlas: coverage is the index itself
+        if (ramp) {
+            Palette r{0, {}};
+            for (unsigned i = 0; i < 16; ++i) r.rgba.push_back({255, 255, 255, std::uint8_t(i * 17)});
+            c.bitmap.rgba = toRgba(c.bitmap.type, c.bitmap.width, c.bitmap.height, pixels, &r);
         } else {
+            if (indexed && pal) c.bitmap.paletteType = pal->type, c.bitmap.palette = pal->rgba;
             c.bitmap.rgba = toRgba(c.bitmap.type, c.bitmap.width, c.bitmap.height, pixels, pal ? &*pal : nullptr);
         }
     }
@@ -237,8 +238,8 @@ const char* fshTypeName(std::uint8_t t) {
     }
 }
 
-FshBitmap decodeFshBitmap(std::span<const std::uint8_t> data, std::size_t offset, std::size_t end) {
-    auto c = walk(data, offset, end);
+FshBitmap decodeFshBitmap(std::span<const std::uint8_t> data, std::size_t offset, std::size_t end, bool intensityRamp) {
+    auto c = walk(data, offset, end, intensityRamp);
     if (!c.hasBitmap) throw FormatError(std::format("FSH record at {} is not a bitmap (type 0x{:02X})", offset, c.firstType));
     return std::move(c.bitmap);
 }

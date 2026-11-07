@@ -4,6 +4,17 @@ All notable changes. Versioning: `0.x.y` pre-1.0; 1.0 = full World Cup
 tournament playable natively, per the definition of success in the
 project goals.
 
+## [Unreleased]
+### Added
+- Startup movies on the interactive FE path: `INT_EASP.DCT` (EA Sports logo) then `INT_FIFA.DCT`, played
+  through the .DCT player in Windows-original order before the front-end opens; Esc skips one movie.
+  `--no-intro` skips both, and headless gates (`--fe-smoke`, `--fe-nav`, `--fe-present`) never open a
+  movie window. Verified on the real display: movies present, menu composite reached afterwards (intro
+  log lines + desktop captures).
+- Launcher Play button now passes explicit startup flags: `--fe --tree <first configured game folder>`.
+  Bare `wc98-native` used to render an empty frame loop (the black screen from the desktop bug report);
+  the shell now reaches the front-end with music, intro chain and menu.
+
 ## [0.3.2] - 2026-11-07 — AppImage launcher starts on desktop sessions
 ### Fixed
 - AppImage launcher startup on desktop sessions: Qt resolved `qt.conf` relative to the *invoked*

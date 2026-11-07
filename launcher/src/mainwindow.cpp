@@ -151,7 +151,12 @@ void MainWindow::play() {
     });
     connect(game_, &QProcess::errorOccurred, this,
             [this](QProcess::ProcessError) { status_->setText("Cannot start wc98-native: " + game_->errorString()); });
-    game_->start(QString::fromStdString(exe.string()), {});
+    // The shell needs explicit startup flags; bare `wc98-native` renders an empty frame loop (the
+    // black screen this used to be). --fe = front-end flow, --tree = first configured game folder.
+    QStringList args{QStringLiteral("--fe")};
+    for (auto& d : ctx_.settings.game.data)
+        if (fs::is_directory(d)) { args << QStringLiteral("--tree") << QString::fromStdString(d.string()); break; }
+    game_->start(QString::fromStdString(exe.string()), args);
     status_->setText("Running " + QString::fromStdString(exe.string()) + " — log: " + log);
 }
 

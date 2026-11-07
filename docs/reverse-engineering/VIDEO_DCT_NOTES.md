@@ -45,3 +45,12 @@ renders at frames 0/400 of INT_FIFA and SEQ_OPEN show coherent video
   sequences; flyover P-cells may drift without MC.
 - The +18 BE-u16 delay (56 ms = 17.9 fps) is inferred from value agreement
   across all sampled records, not from a playback-code constant.
+
+## Startup chain (port)
+
+- The exe's `.rdata` string table carries the movie names in order
+  `INT_EASP.DCT`, `SEQ_OPEN.DCT`, `INT_FIFA.DCT`; the intro scene plays EA logo then FIFA.
+  SEQ_OPEN/SEQ_CLOS/SEQ_CLAS/SEQ_QUAL are tournament-sequence movies (league/cup flow), not startup.
+- Port: interactive `--fe` runs play both startup movies through `runVideoPlay` before the front-end
+  opens (`app/main.cpp`, "intro:" log lines); Esc skips a movie, `--no-intro` skips the chain, and all
+  headless gate modes never open a movie window.

@@ -104,6 +104,7 @@ int run(int argc, char** argv) {
     std::string feScreenName; // --fe-screen NAME: arbitrary LAYOUTS.BIG member capture lane ("make all menus 1:1")
     std::string lang = "eng"; // --lang CODE: FC*.BIN UI-string bank (registry Language key)
     std::string videoPlay; // --video-play FILE.DCT: movie playback through the Vulkan renderer (VIDEO.md)
+    bool noIntro = false; // --no-intro: skip the startup .DCT movies (headless gates never play them)
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         auto next = [&]() -> std::string { if (i + 1 >= argc) throw std::invalid_argument(a + " needs a value"); return argv[++i]; };
@@ -134,6 +135,7 @@ int run(int argc, char** argv) {
         else if (a == "--live-match-smoke") { liveSmoke = std::stoi(next()); }
         else if (a == "--record-replay") { recordReplay = true; }
         else if (a == "--video-play") { videoPlay = next(); }
+        else if (a == "--no-intro") { noIntro = true; }
         else throw std::invalid_argument("unknown argument '" + a + "'");
     }
 
@@ -154,6 +156,18 @@ int run(int argc, char** argv) {
         }
         setenv("WC98_TREE", tree.string().c_str(), 1); // runTournamentDemo env gate
         loadFePalette(tree);
+    }
+
+    // Startup movies, Windows-original order: EA Sports logo then the FIFA intro, each through the
+    // .DCT player (Esc skips one, docs/asset-formats/VIDEO.md), then the front-end. Interactive FE
+    // runs only; headless gates (--fe-smoke/--fe-nav) never open a movie window.
+    if (feMode && !noIntro && smokeFrames == 0 && !strictNav && presentGate == 0 && videoPlay.empty()) {
+        for (const char* m : {"VIDEO/INT_EASP.DCT", "VIDEO/INT_FIFA.DCT"}) {
+            const auto p = tree / m;
+            if (!std::filesystem::exists(p)) continue;
+            std::cout << "intro: playing " << m << '\n';
+            app::runVideoPlay(p.string(), 0, width, height, fullscreen);
+        }
     }
 
     std::unique_ptr<platform::Window> window;

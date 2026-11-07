@@ -128,8 +128,8 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
    `AFIFAFIF`) = runtime write confirmed; task tables `0x57fbc8/0x57fc40/0x581ac0` byte-identical to
    image at all observed states (never runtime-patched); replay/network saves still not generated
    (FE/match presentation never entered under wined3d - GPU path AV documented).
-6. Official patch lineage: `fifawc98_patch.zip` + moddb Ultimate Patch
-   contents (download & diff pending).
+6. Official patch lineage: **RESOLVED 2026-11-06** - `fifawc98_patch.zip`, Ultimate Patch and the
+   3rd-party Loader all fetched + diffed (EXTERNAL.md §4/§5; details under Known limitations).
 
 
 ## Progress snapshot (2026-11-06, v0.3.0 released)

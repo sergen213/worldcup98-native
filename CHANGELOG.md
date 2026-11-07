@@ -4,7 +4,7 @@ All notable changes. Versioning: `0.x.y` pre-1.0; 1.0 = full World Cup
 tournament playable natively, per the definition of success in the
 project goals.
 
-## [Unreleased]
+## [0.3.1] - 2026-11-07 — authentic FE menus 1:1 (main-menu graph, friendly/practise setup screens, league select FEFLOW73)
 ### Added
 - Main-menu composite scene-ownership whitelist (pass-10): `composite()` draws only objects owned by the
   shown scene (`FeFlow::menuVisible_` = back/titl/flag on FEFLOW05, which is MNMSETUP.LAY's netplay-setup

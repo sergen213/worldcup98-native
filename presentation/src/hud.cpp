@@ -68,7 +68,7 @@ float textWidthPx(const formats::FfnFont& font, std::string_view text, float siz
 
 std::string formatClock(int clockSeconds) {
     const int s = std::max(0, clockSeconds);
-    return std::format("{:d}:{:02d}", s / 60, s % 60); // DAT_0065F1C8 seconds-in-period; f99 "%d:%02d" family
+    return std::format("{:02d}:{:02d}", s / 60, s % 60); // HUD strip draw FUN_00438670@0x43888c sprintf("%02d:%02d", v/60, v%60) — minutes zero-padded (pass10/hud)
 }
 
 std::vector<HudQuad> layoutScoreboard(const HudView& hud, const formats::FfnFont& font, const HudGeometry& g) {

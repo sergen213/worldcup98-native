@@ -46,12 +46,13 @@ std::vector<HudQuad> textQuads(const std::vector<HudQuad>& q) {
 }
 
 void clockFormat() {
-    CHECK(formatClock(0) == "0:00");
-    CHECK(formatClock(59) == "0:59");
-    CHECK(formatClock(60) == "1:00");
+    // Original strip sprintf is "%02d:%02d" (FUN_00438670@0x43888c, pass10/hud): zero-padded minutes.
+    CHECK(formatClock(0) == "00:00");
+    CHECK(formatClock(59) == "00:59");
+    CHECK(formatClock(60) == "01:00");
     CHECK(formatClock(600) == "10:00");
     CHECK(formatClock(5399) == "89:59"); // DAT_0065F1C8 is seconds in this period, not match time
-    CHECK(formatClock(-5) == "0:00");
+    CHECK(formatClock(-5) == "00:00");
 }
 
 void textLayout() {
@@ -100,9 +101,9 @@ void scoreboardLayout() {
     const float w = sq[2].dst.x + sq[2].dst.z - sq[0].dst.x;
     CHECK(std::abs((sq[0].dst.x + w / 2) - g.scoreCx) < 1.5f);
 
-    // Clock text "1:35": four glyphs, no leading zero on the minutes.
+    // Clock text "01:35": five glyphs, minutes zero-padded per FUN_00438670 "%02d:%02d".
     auto cq = layoutText(f, formatClock(95), 0.f, 0.f, 14.f, 0xFFFFFFFFu);
-    CHECK(cq.size() == 4);
+    CHECK(cq.size() == 5);
 
     // Lowercase names render as the uppercase glyph cells (strip uppercases them).
     HudView lower = hud;

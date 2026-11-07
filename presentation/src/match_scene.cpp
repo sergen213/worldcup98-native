@@ -690,16 +690,16 @@ TextureId MatchScene::Impl::hudTex(const std::string& key) const {
 }
 
 void MatchScene::Impl::loadHud() {
-    // Font: the in-match text routine (f99 HUD_drawScoreClock family, docs/reverse-engineering/
-    // GHIDRA_PASS3_RENDERING.md) draws from an FFN face; WC98 ships FE/PACK/IGFONTS.BIG with the
-    // scoreboard faces (analysis/pass7/hud_probe.txt: Eras14bi.ffn 209 glyphs, lineHeight 31).
+    // Font: the strip draw routine picks font-table slot 0 (FUN_00438670@0x4386de MOV EAX,0 ->
+    // FUN_0046a2a8 copies record[0] of DAT_0060b704; name table @0x57d2c0 = eras10 first) =>
+    // FE/ERAS10.FFN (pass10/hud). Shirt-label face untraced: IGFONTS Eras14bi kept as fallback.
     try {
-        const std::vector<std::uint8_t> big = data.member("FE/PACK/IGFONTS.BIG", "eras14bi.ffn");
-        hudFont = formats::FfnFont::parse(big);
-        fontTex = texture(toImage(hudFont.atlas), render::Wrap::Clamp, "hud:font");
+        hudFont = formats::FfnFont::parse(data.file("FE/ERAS10.FFN"));
     } catch (const std::exception& e) {
-        log::warn("hud: font eras14bi.ffn not loaded ({})", e.what());
+        log::warn("hud: FE/ERAS10.FFN not loaded ({}) -> IGFONTS eras14bi.ffn", e.what());
+        hudFont = formats::FfnFont::parse(data.member("FE/PACK/IGFONTS.BIG", "eras14bi.ffn"));
     }
+    fontTex = texture(toImage(hudFont.atlas), render::Wrap::Clamp, "hud:font");
     // Radar panel + markers. Measured in INGAME/MISC/MISC8.FSH (analysis/pass7/hud_probe.txt):
     // rpit/rpi2 180x120 panels, rsp0..rsp4 8x8 selectors, sb00..sb04 32x32 controller diamonds.
     for (std::string_view t : {"rpit", "rpi2", "rsp0", "rsp1", "rsp2", "rsp3", "rsp4",

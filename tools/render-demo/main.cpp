@@ -9,6 +9,12 @@
 //                                         it the largest bitmap wins. The shared FE palette is loaded from
 //                                         --tree (default $WC98_TREE) so global-palette FE art colours right.
 //   wc98-render-demo out.png --lay <spec> [--tree <dir>]
+//   wc98-render-demo out.png --lay <spec> [--tree <dir>] [--lang eng]
+//                                   — same composite with `--lay-text`: the shipped text resources (FFN
+//                                         faces + FC<LANG>.BIN labels) load and every object's TEXTID label
+//                                         is drawn. Reference captures of the Windows FE menus are produced
+//                                         this way; without the flag the composite keeps its old behaviour
+//                                         (labels keep counting as noArt).
 //                                   — front-end screen composite: parse a WC98 .LAY layout, resolve
 //                                         each element's FSH shape in the user's tree and draw the
 //                                         element list through the SpriteBatch (M4 slice 2). <spec> is
@@ -81,15 +87,18 @@ using presentation::ScreenArt;
 } // namespace
 
 int main(int argc, char** argv) {
+    std::string laySpec, treeArg, fshSpec, lang = "eng";
     const std::string outPath = argc > 1 ? argv[1] : "wc98-render-demo.png";
-    std::string laySpec, treeArg, fshSpec;
     int minShapes = 0;
+    bool layText = false;
     for (int i = 2; i < argc; ++i) {
         const std::string a = argv[i];
         if (a == "--lay" && i + 1 < argc) laySpec = argv[++i];
         else if (a == "--fsh" && i + 1 < argc) fshSpec = argv[++i];
         else if (a == "--tree" && i + 1 < argc) treeArg = argv[++i];
+        else if (a == "--lay-text") layText = true;
         else if (a == "--min-shapes" && i + 1 < argc) minShapes = std::atoi(argv[++i]);
+        else if (a == "--lang" && i + 1 < argc) lang = argv[++i];
         else if (!a.empty() && a[0] == '-') { std::cerr << "unknown option: " << a << '\n'; return 2; }
         else treeArg = a; // legacy positional: <tree-dir> presents the FEFLOW02 bitmap
     }
@@ -178,11 +187,16 @@ int main(int argc, char** argv) {
             const std::string name = fs::path(laySpec.substr(laySpec.find('@') + 1)).stem().string();
             const formats::ScreenLayout screen = formats::ScreenLayout::build(name, doc, nullptr, nullptr, "PC");
             ScreenArt art(*r, root, layDir);
-            const FeDrawStats st = composite(screen, ui, art);
+            // --lay-text: the shipped faces + FC<LANG>.BIN bank load, so every object's TEXTID label
+            // draws. Reference captures of the Windows FE menus run through this path; without the flag
+            // `fe` stays null and the composite keeps its pre-text behaviour exactly (labels = noArt).
+            std::unique_ptr<presentation::FeText> fe;
+            if (layText) fe = std::make_unique<presentation::FeText>(*r, root, lang);
+            const FeDrawStats st = composite(screen, ui, art, fe.get());
             clearColor = {0, 0, 0, 1};
             std::cout << name << ": " << screen.objects.size() << " objects -> " << st.shapes << " shapes, " << st.rects
-                      << " colour boxes; skipped hidden " << st.hidden << ", no art " << st.noArt << ", unresolved " << st.missing
-                      << "; parser warnings " << screen.warnings.size() << '\n';
+                      << " colour boxes, " << st.texts << " texts; skipped hidden " << st.hidden << ", no art " << st.noArt
+                      << ", unresolved " << st.missing << "; parser warnings " << screen.warnings.size() << '\n';
             for (std::size_t i = 0; i < std::min<std::size_t>(art.missing().size(), 12); ++i)
                 std::cerr << "  unresolved: " << art.missing()[i] << '\n';
             if (st.shapes < minShapes) {

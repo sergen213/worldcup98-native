@@ -131,6 +131,9 @@ struct FeUiState {
     std::string pressed;      // objectname held down by the mouse button
     float mx = 0.f, my = 0.f; // pointer position in the 640x480 UI space (hit-test fallback)
     std::uint32_t animMs = 0; // frame clock driving FRAMES= ranges (150 ms per frame)
+    // Modes the port does not simulate render with DISABLEDSHAPEID/DISABLEDSHAPE (Feflow06.lay
+    // fe04/fe02 netplay icons, fe33 shootout, fe90 classic); input on them is a documented no-op.
+    std::vector<std::string> disabled; // objectnames painting the disabled shape
 };
 // Hit box: POINTS= polygon when present, else the xposition/yposition/width/height rect.
 [[nodiscard]] bool widgetHit(const formats::LayoutObject& o, float x, float y);

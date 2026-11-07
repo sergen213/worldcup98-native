@@ -109,6 +109,13 @@ public:
     void clear() { vertices_.clear(), runs_.clear(); }
     // dst = {x, y, w, h} in virtual pixels; uv = {u0, v0, u1, v1}.
     void draw(TextureId tex, glm::vec4 dst, glm::vec4 uv = {0, 0, 1, 1}, std::uint32_t rgba = 0xFFFFFFFFu);
+    // Concatenate another batch's quads after this one (FE pause-menu overlay over the live-match
+    // HUD strip, app/livematch.cpp; run indices are remapped onto the appended vertices).
+    void append(const SpriteBatch& other) {
+        const std::size_t base = vertices_.size();
+        vertices_.insert(vertices_.end(), other.vertices_.begin(), other.vertices_.end());
+        for (const Run& r : other.runs_) runs_.push_back({r.texture, static_cast<std::uint32_t>(base + r.firstVertex), r.vertexCount});
+    }
     [[nodiscard]] std::span<const Vertex> vertices() const { return vertices_; }
     [[nodiscard]] std::span<const Run> runs() const { return runs_; }
 

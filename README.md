@@ -6,22 +6,21 @@ Proton or Windows runtime.
 
 ## Status
 
-Early development. Nothing in the gameplay pipeline works yet. What exists
-today:
+Playable pre-release. The front-end menu flow (hub, match setup, league list, team-select grid, world-cup screens), the live match (arrow keys move, S pass, D shoot, W sprint, Esc quits), music/commentary/crowd audio and startup `.DCT` video all run from your original game files.
+Today:
 
 - Parsers and tools for the original asset formats (`BIGF` archives, RefPack,
   `FSH` textures, `FFN` fonts, `FCDB` team/player database, `BNK`/`SCHl`/`CRD`
   audio, `.LAY` front-end layouts, `.MDL` models, animations).
 - An engine foundation: SDL3 window, Vulkan renderer, INI settings and an
   OpenAL mixer.
-- `wc98-native`, a window that presents an empty Vulkan frame. It proves the
-  presentation path; no game scenes are ported yet.
-- Offscreen demos that render real front-end screens, the trophy and the
-  stadium from the original data.
+- `wc98-native --fe`: the interactive front-end; offscreen demos render real
+  front-end screens, the trophy and the stadium from the original data.
 
 Features are only marked done when a test has exercised them. See
 [docs/STATUS.md](docs/STATUS.md) for confirmed findings and open questions, and
-[CHANGELOG.md](CHANGELOG.md) for what changed.
+[CHANGELOG.md](CHANGELOG.md) for what changed. Menu-parity evidence:
+[docs/reverse-engineering/MENU_NAV_WC98.md](docs/reverse-engineering/MENU_NAV_WC98.md).
 
 ## You need the original game
 
@@ -37,7 +36,7 @@ is cited.
 
 ## Download
 
-The current pre-release is [v0.1.0](https://github.com/sergen213/worldcup98-native/releases/tag/v0.1.0):
+The current pre-release is [v0.3.2](https://github.com/sergen213/worldcup98-native/releases/tag/v0.3.2):
 a self-contained x86_64 AppImage `wc98-native-linux-x86_64-<version>.AppImage` with a `.sha256`
 sidecar, shipping the game **and** the Qt6 launcher (the launcher is the default entry; unknown
 flags pass through to the game). It needs only a Vulkan-capable driver on the host — the loader and
@@ -54,13 +53,13 @@ smoke-tests the new build, swaps it in atomically and keeps the previous file as
 rollback; it never touches game files, saves or `~/.config/wc98-native`:
 
 ```sh
-packaging/update.sh --check ~/apps/wc98-native-linux-x86_64-0.1.0.AppImage
-packaging/update.sh         ~/apps/wc98-native-linux-x86_64-0.1.0.AppImage
+packaging/update.sh --check ~/apps/wc98-native-linux-x86_64-0.3.2.AppImage
+packaging/update.sh         ~/apps/wc98-native-linux-x86_64-0.3.2.AppImage
 ```
 
 Repackage locally after a build with `packaging/linux/build-appimage.sh` (downloads pinned
 appimagetool 1.9.1 and verifies its SHA-256; release AppImages are built on Ubuntu 24.04 for
-distribution reach). Until the first release exists, build from source below.
+distribution reach). Build from source as described below.
 
 ## Requirements
 

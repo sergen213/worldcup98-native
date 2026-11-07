@@ -6,6 +6,14 @@ project goals.
 
 ## [Unreleased]
 ### Added
+- Hub screen (Feflow06.lay) as the interactive main menu when present on the tree: 13 button wedges with hover/push/disabled
+  shape states, FRAMES animation clock, help pane FC captions and keyboard + mouse (widgetHit) cursor; wedge edges fe07/fe11/fe32
+  reach the existing setup/team flows, `quit` exits the app cleanly, and fe33/fe90/fe04/fe02 render DISABLEDSHAPE* with documented
+  no-op Enter (modes without port simulation). FEFLOW05 fallback kept for trees without the layout.
+- Scene-graph views from the hub: options (FEFLOW15 composite, tab pages tbb1..4, row cursor; music/menu-sfx volumes wired to
+  settings.ini + live mixer gain), save/load entry (Feflow89 slot list -> WCT1 load when a file exists), credits roll (feflow19).
+- In-game pause menu: Esc opens the IGMENU.LAY composite over the live match (INGAME.FSH bt*n/bt*d button art), {Resume,Quit}
+  rows, Enter on quit opens the IGQUESHN confirm box; simulation frozen while open. `--ig-pause-smoke N` gate (`fe_igmenu`).
 - Startup movies on the interactive FE path: `INT_EASP.DCT` (EA Sports logo) then `INT_FIFA.DCT`, played
   through the .DCT player in Windows-original order before the front-end opens; Esc skips one movie.
   `--no-intro` skips both, and headless gates (`--fe-smoke`, `--fe-nav`, `--fe-present`) never open a

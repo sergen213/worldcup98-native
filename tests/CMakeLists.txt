@@ -55,6 +55,11 @@ wc98_test(test_slot unit/test_slot.cpp)
 # FE team-select paging model (app/team_select.hpp): 40-team pool = 5 pages of 8, cursor wraps.
 wc98_test(test_teamselect unit/test_teamselect.cpp)
 target_include_directories(test_teamselect PRIVATE ${CMAKE_SOURCE_DIR}/app)
+# Hub wedge -> launch-entry mapping table (FeFlow::hubButtonEntry): pins the Feflow06 cursor-domain
+# edges so a table edit that swaps modes is caught without a tree.
+wc98_test(test_fescenes unit/test_fescenes.cpp)
+target_include_directories(test_fescenes PRIVATE ${CMAKE_SOURCE_DIR}/app)
+target_link_libraries(test_fescenes PRIVATE wc98_formats wc98_renderer wc98_presentation)
 
 # App-level tournament save->load scenario (no tree needed): new game -> play each round ->
 # persist SLOT%02d.SAV after the round -> restore; state identical at every boundary.
@@ -182,6 +187,24 @@ if(DEFINED WC98_TREE)
     # league list; row labels are scene-code content at runtime, so shapes>0 is the gate.
     add_test(NAME fe_league_select COMMAND wc98-native --fe-league --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/league73)
     set_tests_properties(fe_league_select PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW73: shapes=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 ")
+    # Hub screen (Feflow06.lay, MENU_NAV_WC98.md §3 global-key table): the 13-wedge menu hub becomes
+    # the main-menu composite when present; help pane paints FC captions -> texts>0.
+    add_test(NAME fe_hub COMMAND wc98-native --fe-smoke 1 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/hub)
+    set_tests_properties(fe_hub PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW06: shapes=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 ")
+    # Options screen (feflow15.lay, MENU_PARITY.md §4 rank 1): feflow15 key handler 0x44f22c; --fe-options
+    # opens the FEFLOW15 composite over the hub.
+    add_test(NAME fe_flow_options COMMAND wc98-native --fe-options --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/opts)
+    set_tests_properties(fe_flow_options PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW15: shapes=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 ")
+    # Save/load entry (Feflow89.lay slot list b000..b005, MENU_PARITY.md §4 rank 6): --fe-saveload opens it.
+    add_test(NAME fe_flow_saveload COMMAND wc98-native --fe-saveload --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/sl)
+    set_tests_properties(fe_flow_saveload PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW89: shapes=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 ")
+    # Credits roll (feflow19 behind the hub cred wedge, MENU_PARITY.md §4 rank 10): --fe-credits opens it.
+    add_test(NAME fe_credits COMMAND wc98-native --fe-credits --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/cred)
+    set_tests_properties(fe_credits PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW19: shapes=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 ")
+    # In-game pause menu (IGMENU.LAY + IGQUESHN.LAY over the live match, MENU_PARITY.md §4 rank 8):
+    # scripted Esc opens the composite, Enter on the quit row opens the confirm box (evidence lines).
+    add_test(NAME fe_igmenu COMMAND wc98-native --ig-pause-smoke 200 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/igmenu)
+    set_tests_properties(fe_igmenu PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "IGMENU: shapes=[1-9]" FAIL_REGULAR_EXPRESSION "IGMENU: shapes=0 ")
     # Between-round tournament presentation (FEFLOW35/25/26/27, LAY_COMPOSITOR_NOTES.md "Tournament
     # presentation scenes"): one stat line per screen; fails on zero shapes/texts/cursors.
     add_test(NAME fe_render_present COMMAND wc98-native --fe-smoke 1 --fe-present --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/present)

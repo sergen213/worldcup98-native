@@ -50,6 +50,9 @@ public:
     // HUD overlay layout knobs (settings.ini [gameplay] hud_* passthrough; HUD_WC98.md). Call after the
     // ctor to recalibrate the scoreboard strip / radar panel / shirt-label placement.
     void setHudGeometry(const HudGeometry& g);
+    // Appends extra 640x480 UI quads after the HUD strip (FE pause-menu overlay over the live
+    // match; app/livematch.cpp). Call right after build(); Frame::ui covers the merged batch.
+    void pushOverlay(const render::SpriteBatch& overlay);
 
 private:
     struct Impl;

@@ -20,6 +20,8 @@ namespace wc98::render {
 class Renderer;
 class SpriteBatch;
 } // namespace wc98::render
+namespace wc98::config { struct Settings; }   // settings.ini model (config/include/wc98/config/settings.hpp)
+namespace wc98::audio  { class Mixer; }       // audio mixer for live volume updates (audio/include/wc98/audio/mixer.hpp)
 
 namespace wc98::app {
 
@@ -40,10 +42,19 @@ public:
     // Composites the current screen into `ui` and returns draw stats (shapes > 0 = real art drew).
     presentation::FeDrawStats drawCurrent(render::SpriteBatch& ui) const;
     [[nodiscard]] const std::string& lastError() const { return lastError_; } // menu load failure reason ("" = ok)
-    // Active screen layout name for the gate evidence line ("FEFLOW05" menu / "FEFLOW11" team-select /
-    // "FEFLOW09"/"FEFLOW50" friendly & practise setup screens).
+    // Active screen layout name for the gate evidence line ("FEFLOW06" hub / "FEFLOW11" team-select /
+    // "FEFLOW09"/"FEFLOW50" friendly & practise setup screens / "FEFLOW15" options / "FEFLOW89"
+    // save-load entry / "FEFLOW19" credits).
     [[nodiscard]] const char* screenName() const {
-        return useCapture_ ? captureName_.c_str() : teamScreen_ ? "FEFLOW11" : leagueView_ ? "FEFLOW73" : setupScreen_ ? (setupPractise_ ? "FEFLOW50" : "FEFLOW09") : "FEFLOW05";
+        return useCapture_          ? captureName_.c_str()
+               : teamScreen_         ? "FEFLOW11"
+               : leagueView_         ? "FEFLOW73"
+               : setupScreen_        ? (setupPractise_ ? "FEFLOW50" : "FEFLOW09")
+               : optsView_           ? "FEFLOW15"
+               : slView_             ? "FEFLOW89"
+               : credView_           ? "FEFLOW19"
+               : (haveHub_ && hubView_) ? "FEFLOW06"
+                                        : "FEFLOW05";
     }
 
     // Arbitrary-screen capture lane (--fe-screen NAME; "make all menus 1:1"): loads a chosen
@@ -58,7 +69,9 @@ public:
     [[nodiscard]] bool onSetup() const { return setupScreen_; } // friendly/practise config screen shown
     [[nodiscard]] bool onLeague() const { return leagueView_; } // FEFLOW73 league-select list shown
     void adjustValue(int dir);         // left/right on the setup screen: cycle one option per row
-    [[nodiscard]] int selected() const { return sel_; }
+    // Launch entry for the shell (FeEntry index): the fallback menu cursor, or the hub button
+    // mapping (fe07->Exhibition, fe11->Tournament, fe32->Practise; -1 = no-launch action).
+    [[nodiscard]] int selected() const { return onHub() ? hubButtonEntry(hubButtonName(hubSel_)) : sel_; }
     // Team-select screen = the authentic FEFLOW11.LAY grid (LAY_COMPOSITOR_NOTES.md): Enter on
     // Tournament opens it; arrows/pad move the cursor through the ZWCUP pool (pages of 8 rows,
     // matching the LAY's 8 row slots), Enter confirms a pick, Esc returns.
@@ -93,6 +106,52 @@ public:
     presentation::FeDrawStats drawSetup(render::SpriteBatch& ui) const; // FEFLOW09/50 composite + flags, names, row hilite
     void drawCursor(render::SpriteBatch& ui, presentation::FeDrawStats& st) const; // MAUS.PAK arrow at the pointer
     void setPointer(int x, int y) { ptrX_ = x; ptrY_ = y; } // MAUS arrow position (virtual 640x480)
+    // ---- Hub screen (Feflow06.lay) -------------------------------------------------------
+    // The Windows hub layout (FE/PACK/LAYOUTS/LAYOUTS.BIG@Feflow06.lay, mixed-case member) is the
+    // main-menu scene once present. 13 button widgets in LAY order: fe33,fe90,fe32,fe11,fe07,
+    // fe04,fe02 (objecttype 32 Tbb) + quit,fe15,fe89,fe41,repl,cred (objecttype 6 nvicons). Each
+    // carries released/hilited/pushed/disabled shape keys, FRAMES=a,b,c,d animation ranges and a
+    // help=FC-index caption painted in the "help" pane (objecttype 14, x=160 y=444 w=300 h=40,
+    // fontid=4, alignment=3). Button->scene edges: MENU_NAV_WC98.md §3/§7 + analysis/pass12/
+    // edges_table.txt (fe07 -> feflow09 friendly setup, fe11 -> world-cup grid, fe32 -> feflow50);
+    // the global-key hub table (FUN_00445664 EDX 2..0x1E) covers the same targets. Modes without a
+    // port simulation (fe33 shootout, fe90 classic, fe04 modem, fe02 network, repl highlights,
+    // fe89 team management) paint their DISABLEDSHAPE* and Enter is a documented no-op.
+    [[nodiscard]] static std::string_view hubButtonName(int index);           // LAY order; "" = out of range
+    [[nodiscard]] static int hubButtonIndex(std::string_view name);           // -1 when not a button
+    // Hub button -> launch entry (FeEntry index): the edges feflow07/feflow11/feflow50 carry in the
+    // scene registry; every other hub target is an in-place view change, not a shell launch.
+    [[nodiscard]] static constexpr int hubButtonEntry(std::string_view name) { // FeEntry idx / -1 (unit-tested)
+        if (formats::iequals(name, "fe07")) return 0; // Exhibition (friendly -> feflow09 setup)
+        if (formats::iequals(name, "fe11")) return 2; // Tournament (world-cup grid / ZWCUP pool)
+        if (formats::iequals(name, "fe32")) return 3; // Practise (feflow50 setup)
+        return -1;                                    // quit/options/saveload/credits + disabled modes
+    }
+    [[nodiscard]] bool onHub() const { return haveHub_ && hubView_ && !optsView_ && !slView_ && !credView_; }
+    [[nodiscard]] int hubCursor() const { return hubSel_; }
+    [[nodiscard]] bool quitRequested() const { return quitRequested_; }
+    void setPointerDown(bool down) { ptrDown_ = down; } // mouse button -> PUSHEDSHAPE* painting
+    // Nav-axis mapping for the gate pre-actions (keeps fe_nav_* / fe_league gates valid on both
+    // hub and FEFLOW05 fallback): 0 fe07, 1 FEFLOW73 list direct, 2 fe11, 3 fe32.
+    void selectNav(int entry);
+    // Mouse click on the active screen (main.cpp edge-detects SDL_BUTTON_LMASK): hit-tests the
+    // button widgets under the pointer and performs Enter's action; returns the FeEntry index on
+    // a match launch, -1 for no-launch actions.
+    int pointerActivate();
+    // ---- Phase 2 options (FEFLOW15.LAY) / 3 save-load (Feflow89.LAY) / 4 credits (FEFLOW19) ----
+    bool openOptions();  // Enter on fe15 / --fe-options; false when the layout is absent from the tree
+    bool openSaveLoad(); // Enter on fe41 / --fe-saveload
+    bool openCredits();  // Enter on cred / --fe-credits (FEFLOW19 auto-returns after its frames)
+    [[nodiscard]] bool onOptions() const { return optsView_; }
+    [[nodiscard]] bool onSaveLoad() const { return slView_; }
+    [[nodiscard]] int saveSlot() const { return slSlot_; }
+    [[nodiscard]] int optionTab() const { return optTab_; }
+    void resetCursor();     // restore the menu-level cursor after a launch returns (hub fe07 / entry 0)
+    void cycleTab(int dir); // options tab pages tbb1..4 ('ops2' event family; TAB key)
+    [[nodiscard]] int optionRow() const { return optRow_; }
+    // settings.ini [audio] master <-> audio::Mixer gain wiring (options volume row).
+    void setAudioContext(config::Settings* settings, audio::Mixer* mixer) { settings_ = settings; mixer_ = mixer; }
+    [[nodiscard]] bool audioDirty() const { return audioDirty_; }
     std::string poolName(std::uint32_t id) const; // FCDB fullName for a pool id (""-name fallback)
     presentation::FeDrawStats drawTeams(render::SpriteBatch& ui) const; // team-select frame (flat panel + FFN rows)
     std::filesystem::path tree_;
@@ -159,6 +218,61 @@ public:
     std::unique_ptr<TourneyModel> tourney_;  // built on first presentation draw (fixed seeds, no RNG drift)
     bool haveTourney_ = false;               // model + all four presentation layouts present
     std::array<formats::ScreenLayout, kTourneyRounds> presScreens_; // FEFLOW35/25/26/27 composites
+    // ---- Hub (Feflow06.lay) state --------------------------------------------------------
+    // Cursor domain = the 13 button objectnames in LAY order (object 6..19). Default cursor is
+    // fe07 so the help pane paints its caption (help=1533) at startup -> texts>0 gate evidence.
+    formats::ScreenLayout hubScreen_;
+    bool haveHub_ = false;
+    bool hubView_ = true;               // hub is the menu-level screen whenever present
+    int hubSel_ = 4;                    // fe07 (LAY order index)
+    std::vector<std::string> hubVisible_{"back", "flag", "titl", "masc", "help",
+                                         "fe33", "fe90", "fe32", "fe11", "fe07", "fe04", "fe02",
+                                         "quit", "fe15", "fe89", "fe41", "repl", "cred"};
+    // chat*/ftxt widgets belong to netplay/chat scenes the port never shows (hidden).
+    mutable std::uint32_t animTicks_ = 0; // FRAMES clock (one tick per presented frame)
+    bool ptrDown_ = false;                // mouse button state for PUSHEDSHAPE* painting
+    bool quitRequested_ = false;          // Enter/click on the hub "quit" button -> app exit
+    // ---- Options (FEFLOW15.LAY) ----------------------------------------------------------
+    // Four tab pages (tbb1..4 objecttype 32; lst1..4 objecttype 17 list rows). Row tuples are the
+    // `rows=N+` continuation lines "label,mode,count, FC-indices..." (widget TEXTID = leading index);
+    // captions via FeText::stringAt. The Music Volume row (FC label 1186) maps to settings audio.
+    struct OptRow { int label = 0; int mode = 0; std::vector<int> values; };
+    formats::ScreenLayout optsScreen_;
+    bool haveOpts_ = false;
+    std::string optsRaw_;               // member text (rows=N+ tuples live in the raw LAY)
+    bool optsView_ = false;
+    int optTab_ = 0, optRow_ = 0;       // active tab page + row cursor
+    std::array<std::vector<OptRow>, 4> optRows_;
+    std::array<std::vector<int>, 4> optVals_;   // current value index per row
+    bool audioDirty_ = false;           // volume changed -> main.cpp saves settings.ini
+    config::Settings* settings_ = nullptr;
+    audio::Mixer* mixer_ = nullptr;
+    // ---- Save/Load entry (Feflow89.LAY) ---------------------------------------------------
+    // Six slot buttons b000..b005 (textID 4640 -> FC bank out of range, dynamic per engine); the
+    // port paints "Slot n" + WCT1 file state rows on the button geometry. Selecting a row with an
+    // existing wc98-slotN.wct file triggers the existing saveload verify path (app/saveload.cpp).
+    formats::ScreenLayout slScreen_;
+    bool haveSl_ = false;
+    bool slView_ = false;
+    int slSlot_ = 0;
+    static constexpr int kSaveSlots = 6; // Feflow89.LAY buttons b000..b005
+    // ---- Credits (FEFLOW19) ----------------------------------------------------------------
+    formats::ScreenLayout credScreen_;
+    bool haveCred_ = false;
+    mutable bool credView_ = false;         // toggled by drawCurrent's auto-return (const method)
+    mutable int credFrames_ = 0;             // auto-return after the presentation duration (drawCurrent is const)
+    static constexpr int kCredDurationFrames = 540; // ~9 s at 60 fps before the roll returns to the hub
+    // Composite helpers for each view (help pane caption included where the layout has one).
+    presentation::FeDrawStats drawHub(render::SpriteBatch& ui) const;
+    presentation::FeDrawStats drawOptions(render::SpriteBatch& ui) const;
+    presentation::FeDrawStats drawSaveLoad(render::SpriteBatch& ui) const;
+    presentation::FeDrawStats drawCredits(render::SpriteBatch& ui) const;
+    void hubUiState(presentation::FeUiState& st) const; // hover/pressed/disabled + frame clock
+    [[nodiscard]] const formats::LayoutObject* pointerHitHub() const; // hub button under the mouse pointer (null = none)
+    void drawHelpPane(const formats::ScreenLayout& sc, render::SpriteBatch& ui,
+                      presentation::FeDrawStats& st, std::string_view widgetName) const;
+    int hubActivate(int index);          // Enter/click on button: returns FeEntry launch idx / -1
+    static std::vector<OptRow> parseOptionRows(std::string_view layText, int tab);
 };
 
 } // namespace wc98::app

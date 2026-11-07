@@ -29,6 +29,7 @@
 #include "wc98/presentation/camera.hpp"
 #include "wc98/presentation/hud.hpp"
 #include "wc98/presentation/match_scene.hpp"
+#include "wc98/presentation/fe_screen.hpp" // IGMENU/IGQUESHN pause composite (ScreenArt, FeText, composite)
 #include "wc98/renderer/vulkan.hpp"
 #include "wc98/sim/ball.hpp"
 #include "wc98/sim/data.hpp"
@@ -43,6 +44,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <optional>
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
@@ -178,7 +180,7 @@ MatchSnapshot snapshotFromWorld(const sim::World& w, const sim::MatchData& md) {
 }
 
 int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames,
-                platform::Window& window, render::Renderer& renderer, bool recordReplay) {
+                platform::Window& window, render::Renderer& renderer, bool recordReplay, bool igPauseSmoke) {
     MatchBoot boot;
     if (!boot.init(tree)) return 2;
 
@@ -252,6 +254,29 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
     int presented = 0, kickIn = 0, kickDur = 0, forceIn = 0, prevPhase = -1;
     bool quit = false, sawPassBit = false;
     const double startClock = elapsedSecFloat(w); // DAT_0065F1C8 via fixed->seconds helper
+    // In-game pause menu (MENU_PARITY.md §4 rank 8): FE/INGAME/IGMENU.LAY composited over the live
+    // frame on Esc. The original draws its 11 runtime item captions from FC-bank indices the scene
+    // handler sets at init (0x4401A4, tags 'gmnc'/'okay'); that caption source is undecoded, so the
+    // port's menu domain is {Resume, Quit} (list rows 0..1) and Enter on the quit row opens the
+    // IGQUESHN.LAY "are you sure" confirm box ('quit'-tag path). Absent layouts keep Esc = direct exit.
+    std::optional<formats::ScreenLayout> igMenu, igQues;
+    bool haveIgm = false, haveIq = false;
+    try {
+        std::filesystem::path igDir;
+        const std::string t = presentation::readLayout((tree / "FE/INGAME/IGMENU.LAY").string(), igDir);
+        if (!t.empty()) { igMenu = formats::ScreenLayout::build("IGMENU", formats::LayoutDocument::parse(std::string_view{t}), nullptr, nullptr, "PC"); haveIgm = true; }
+    } catch (const std::exception&) {}
+    try {
+        std::filesystem::path igDir;
+        const std::string t = presentation::readLayout((tree / "FE/INGAME/IGQUESHN.LAY").string(), igDir);
+        if (!t.empty()) { igQues = formats::ScreenLayout::build("IGQUESHN", formats::LayoutDocument::parse(std::string_view{t}), nullptr, nullptr, "PC"); haveIq = true; }
+    } catch (const std::exception&) {}
+    presentation::ScreenArt igArt(renderer, tree, tree / "FE/INGAME");
+    auto igText = std::make_unique<presentation::FeText>(renderer, tree); // FC*.BIN captions for the LAY textid slots
+    enum class IgPause { Off, Menu, QuitAsk };
+    IgPause pause = IgPause::Off;
+    int igSel = 0;                       // menu rows: 0 Resume, 1 Quit
+    bool igReported = false, iqReported = false, iqShot = false;
     std::int64_t prevSim = int(w.time.simFrames); // camera delta source (DAT_0065F1E0 frames/tick)
 
     { // Snap the camera to its tele target once (demo passes a huge frame count per capture; live
@@ -265,38 +290,64 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
         // pad word -> controller 0 (proves the whole input->sim command path in --live-match-smoke).
         if (smokeFrames && presented == 20) key(SDL_SCANCODE_S, true);
         if (smokeFrames && presented == 34) key(SDL_SCANCODE_S, false);
+        if (igPauseSmoke && presented == 100) key(SDL_SCANCODE_ESCAPE, true); // gate script: Esc opens IGMENU (after the forced kickoff kick ~frame 90)
+        if (igPauseSmoke && presented == 130) { key(SDL_SCANCODE_DOWN, true); }   // cursor -> 'quit' row
+        if (igPauseSmoke && presented == 131) key(SDL_SCANCODE_DOWN, false);
+        if (igPauseSmoke && presented == 135) key(SDL_SCANCODE_RETURN, true);   // Enter -> IGQUESHN confirm
+        if (igPauseSmoke && presented == 136) key(SDL_SCANCODE_RETURN, false);
+        if (igPauseSmoke && presented == 145) key(SDL_SCANCODE_ESCAPE, true);   // Esc: QuitAsk back to Menu
+        if (igPauseSmoke && presented == 160) key(SDL_SCANCODE_ESCAPE, true);   // Esc closes the menu: match resumes
 
         for (SDL_Event e; SDL_PollEvent(&e);) { // keyboard + gamepad transitions into the ported layer
             if (e.type == SDL_EVENT_QUIT) quit = true;
-            else if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat && e.key.scancode == SDL_SCANCODE_ESCAPE) quit = true;
-            in.handle(e);
+            else if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat && e.key.scancode == SDL_SCANCODE_ESCAPE) {
+                // Esc opens/leaves IGMENU (global-key hub parity); no IG art on this tree -> direct exit.
+                if (!haveIgm) quit = true;
+                else pause = pause == IgPause::Off ? IgPause::Menu : pause == IgPause::QuitAsk ? IgPause::Menu : IgPause::Off;
+            } else if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat && pause != IgPause::Off) {
+                switch (e.key.scancode) { // list cursor INC EDX @0x43FCD0: two-row port domain {Resume, Quit}
+                    case SDL_SCANCODE_UP: igSel = igSel > 0 ? igSel - 1 : 1; break;
+                    case SDL_SCANCODE_DOWN: igSel = igSel < 1 ? igSel + 1 : 0; break;
+                    case SDL_SCANCODE_RETURN: case SDL_SCANCODE_KP_ENTER: case SDL_SCANCODE_SPACE:
+                        if (pause == IgPause::Menu && igSel == 1) { if (haveIq) pause = IgPause::QuitAsk; else quit = true; } // 'quit' row: IGQUESHN box, no box -> exit
+                        else pause = IgPause::Off;                                          // resume / canc
+                        break;
+                    default: break;
+                }
+            }
+            if (pause == IgPause::Off) in.handle(e); // gameplay inputs never feed the sim while paused
         }
         if (quit) break;
 
+        // The pause menu freezes the simulation while open (the original halts the match loop).
         const std::uint64_t now = SDL_GetTicks();
-        acc += smokeFrames ? kStepMs : double(std::min<std::uint64_t>(now - last, 100)); // spiral guard
-        last = now;
-        while (acc >= kStepMs) {
-            acc -= kStepMs;
-            sim::ControllerState c{};
-            in.fill(1, c); // pad word of device 1 into ControllerState::padBits
-            if (!sawPassBit && (c.padBits & input::actionBit(config::Action::Pass))) {
-                sawPassBit = true;
-                std::cout << "live: input->sim pass bit 0x20 reached controller 0 pad word\n";
+        if (pause == IgPause::Off) {
+            acc += smokeFrames ? kStepMs : double(std::min<std::uint64_t>(now - last, 100)); // spiral guard
+            last = now;
+            while (acc >= kStepMs) {
+                acc -= kStepMs;
+                sim::ControllerState c{};
+                in.fill(1, c); // pad word of device 1 into ControllerState::pad words
+                if (!sawPassBit && (c.padBits & input::actionBit(config::Action::Pass))) {
+                    sawPassBit = true;
+                    std::cout << "live: input->sim pass bit 0x20 reached controller 0 pad word\n";
+                }
+                runner.setController(0, c);
+                if (recordReplay) rec.append(recTick++, c); // recorded input word for this tick
+                if (!runner.tick()) { quit = true; break; } // match ended (DAT_0057c604 == 2)
+                // Center-spot restarts (phase 0) wait for the taker's kick: pulse Pass (key S, bit 0x20),
+                // and deliver the exe's "restart taken" event 0xb to Match_onEvent case 11 (0x470F98).
+                if (w.match.phase == 0 && prevPhase != 0) { kickIn = smokeFrames ? 40 : 90; forceIn = smokeFrames ? 90 : 150; }
+                prevPhase = w.match.phase;
+                if (kickIn > 0 && --kickIn == 0) { key(SDL_SCANCODE_S, true); kickDur = 8; }
+                if (kickDur > 0 && --kickDur == 0) key(SDL_SCANCODE_S, false);
+                if (forceIn > 0 && --forceIn == 0 && w.match.phase == 0) {
+                    std::cout << "live: restart forced via Match_dispatchEvent(0xb)\n";
+                    sim::Match_dispatchEvent(w, 0xb, w.match.phaseTeam);
+                }
             }
-            runner.setController(0, c);
-            if (recordReplay) rec.append(recTick++, c); // recorded input word for this tick
-            if (!runner.tick()) { quit = true; break; } // match ended (DAT_0057c604 == 2)
-            // Center-spot restarts (phase 0) wait for the taker's kick: pulse Pass (key S, bit 0x20),
-            // and deliver the exe's "restart taken" event 0xb to Match_onEvent case 11 (0x470F98).
-            if (w.match.phase == 0 && prevPhase != 0) { kickIn = smokeFrames ? 40 : 90; forceIn = smokeFrames ? 90 : 150; }
-            prevPhase = w.match.phase;
-            if (kickIn > 0 && --kickIn == 0) { key(SDL_SCANCODE_S, true); kickDur = 8; }
-            if (kickDur > 0 && --kickDur == 0) key(SDL_SCANCODE_S, false);
-            if (forceIn > 0 && --forceIn == 0 && w.match.phase == 0) {
-                std::cout << "live: restart forced via Match_dispatchEvent(0xb)\n";
-                sim::Match_dispatchEvent(w, 0xb, w.match.phaseTeam);
-            }
+        } else {
+            last = now; acc = 0.0; // keep the clock honest so resuming does not burst-tick
         }
 
         MatchSnapshot snap = snapshotFromWorld(w, boot.md);
@@ -325,7 +376,33 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
             for (; sfxPos < w.events.size(); ++sfxPos) matchAudio.trigger(w.events[sfxPos]);
         }
 
+        // In-game pause menu composite over the live frame (IGMENU scene tick=0x43FC40; list widget
+        // 'menu' x=176 y=138 w=286 h=211 -> 19 px rows, FEFLOW73 pattern). The LAY objects carry
+        // fname=null.fsh: the scene init installs button art from FE/INGAME/INGAME.FSH (tags
+        // bt0n/bt0d..btnN/btnd; RELEASED->*n, HILITED/PRESSED->*d). QuitAsk = the IGQUESHN box
+        // ("are you sure" ok/canc pair; 'quit'-tag path of IGMENU init 0x4401A4).
+        bool igShotPending = false;
+        render::SpriteBatch ov; // outlives scene.build(): pushOverlay stores a pointer consumed there
+        if (pause != IgPause::Off) {
+            FeDrawStats ig = pause == IgPause::Menu ? composite(*igMenu, ov, igArt, igText.get())
+                                                     : composite(*igQues, ov, igArt, igText.get());
+            if (pause == IgPause::Menu) {
+                for (int row = 0; row <= 1; ++row) { // the port's two-row domain {Resume, Quit}
+                    std::string tag = "bt"; tag += char('0' + row); tag += row == igSel ? 'd' : 'n';
+                    const ScreenArt::Shape sh = igArt.shape("..\\global\\", "INGAME.FSH", tag, -1);
+                    if (sh.tex) { ov.draw(sh.tex, {176.f, 138.f + 24.f * float(row), float(sh.w), float(sh.h)}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu); ++ig.shapes; }
+                }
+                if (!igReported) { std::cout << "IGMENU: shapes=" << ig.shapes << " texts=" << ig.texts << '\n'; igReported = true; }
+            } else if (!iqReported) {
+                std::cout << "IGQUESHN: shapes=" << ig.shapes << " texts=" << ig.texts << '\n'; iqReported = true;
+            }
+            scene.pushOverlay(ov); // consumed by the build() below (SpriteBatch::append after the HUD strip)
+            if (igPauseSmoke && presented == 110) igShotPending = true; // visual evidence of the composite
+        }
+
         const render::Frame& frame = scene.build(snap, camera.camera(), /*enhanced=*/true);
+        if (igShotPending) savePng(renderer, frame, prefix + "_igmenu.png");
+        if (igPauseSmoke && pause == IgPause::QuitAsk && !iqShot) { savePng(renderer, frame, prefix + "_igquesn.png"); iqShot = true; }
 
         if (smokeFrames && presented == 0) { // gate evidence: the scene drew geometry and the HUD strip
             std::cout << "live: shapes=" << frame.draws.size()
@@ -371,11 +448,13 @@ int runLiveMatch(int argc, char** argv) {
     int smoke = 0;
     std::string prefix = "/tmp/wc98port-out/live";
     bool record = false; // --record-replay (parsed by main too, consumed here in live mode)
+    bool igScript = false; // --ig-pause-smoke N: scripted Esc/Enter pause tour (gate fe_igmenu)
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         if (a == "--tree" && i + 1 < argc) root = argv[++i];
         else if (a == "--live-match-smoke") smoke = std::atoi(argv[++i]);
         else if (a == "--out-prefix" && i + 1 < argc) prefix = argv[++i];
+        else if (a == "--ig-pause-smoke") { smoke = std::atoi(argv[++i]); igScript = true; } // gate fe_igmenu
         else if (a == "--record-replay") record = true;
         // Flags owned by other modes of the same CLI pass through untouched.
     }
@@ -414,7 +493,7 @@ int runLiveMatch(int argc, char** argv) {
     vcfg.drawableSize = [&] { return window->pixelSize(); };
 
     auto renderer = render::createVulkanRenderer(vcfg, settings);
-    const int rc = runLiveLoop(root, prefix, smoke, *window, *renderer, record);
+    const int rc = runLiveLoop(root, prefix, smoke, *window, *renderer, record, igScript);
     renderer.reset(); // drain validation messages before the verdict (render-demo pattern)
     if (*messages && rc == 0) { std::cerr << *messages << " validation message(s)\n"; return 3; }
     return rc;

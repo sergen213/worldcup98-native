@@ -47,7 +47,8 @@ presentation::MatchSnapshot snapshotFromWorld(const sim::World& w, const sim::Ma
 // recordReplay: stream every controller-0 tick through app::ReplayRecorder and, on exit, write
 // user/rplyNNNN.dat + rplyindx.dat under the tree (docs/asset-formats/RPLY.md).
 int runLiveLoop(const std::filesystem::path& tree, const std::string& prefix, int smokeFrames,
-                platform::Window& window, render::Renderer& renderer, bool recordReplay = false);
+                platform::Window& window, render::Renderer& renderer, bool recordReplay = false,
+                bool igPauseSmoke = false); // --ig-pause-smoke N: scripted Esc/Enter pause tour (gate fe_igmenu)
 
 // CLI driver: --tree DIR [--live-match-smoke N] [--out-prefix P]. Standalone wrapper that owns its
 // window + Vulkan swapchain; "skip:" exits with 2 like the other tree gates.

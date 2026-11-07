@@ -354,6 +354,12 @@ FeDrawStats composite(const formats::ScreenLayout& screen, render::SpriteBatch& 
         if (!tag && (ws == FeWidgetState::Hover || hl))
             for (std::string_view k : {"HILITEDSHAPEID", "HILITEDSHAPE"})
                 if (const std::string* v = o.prop(k); v && !v->empty() && !iequals(*v, "null")) { tag = v; break; }
+        // Disabled modes (port-side): the engine paints DISABLEDSHAPE* while the widget is inert;
+        // hover/press states are suppressed for these names by the caller.
+        if (!tag && ws == FeWidgetState::Normal && uiState &&
+            std::ranges::any_of(uiState->disabled, [&](const std::string& n) { return iequals(o.name, n); }))
+            for (std::string_view k : {"DISABLEDSHAPEID", "DISABLEDSHAPE"})
+                if (const std::string* v = o.prop(k); v && !v->empty() && !iequals(*v, "null")) { tag = v; break; }
         if (!tag)
             for (std::string_view k : {"SHAPEID", "SNAME", "RELEASEDSHAPEID", "RELEASEDSHAPE", "NORMALSHAPEID", "NSHAPEID", "BARSHAPEID"})
                 if (const std::string* v = o.prop(k); v && !v->empty() && !iequals(*v, "null")) { tag = v; break; }

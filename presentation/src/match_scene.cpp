@@ -177,6 +177,7 @@ struct MatchScene::Impl {
 
     // HUD overlay (presentation/src/hud.cpp layout; docs/reverse-engineering/HUD_WC98.md).
     render::SpriteBatch ui;                       // 640x480 virtual screen, drawn last over the scene
+    const render::SpriteBatch* overlay = nullptr; // app/livematch.cpp pause batch, consumed by build()
     formats::FfnFont hudFont;                     // match font: FE/PACK/IGFONTS.BIG "eras14bi.ffn"
     TextureId fontTex = 0;                        // hudFont.atlas texture (0 until loaded)
     std::map<std::string, TextureId> hudArt;      // radar/marker FSH tags -> textures
@@ -648,6 +649,7 @@ const render::Frame& MatchScene::build(const MatchSnapshot& s, const render::Cam
 
     // HUD overlay (radar, scoreboard strip, shirt numbers, controller markers): hud.cpp layout.
     m.drawHud(s, cam, live);
+    if (m.overlay) { m.ui.append(*m.overlay); m.overlay = nullptr; } // FE pause menu after the HUD strip (same 640x480 space)
     m.frame = render::Frame{cam, m.draws, s.hud.scoreboard || s.hud.radar ? &m.ui : nullptr,
                             s.time == TimeOfDay::Night ? glm::vec4(0.05f, 0.07f, 0.12f, 1.f) : glm::vec4(0.36f, 0.55f, 0.75f, 1.f),
                             m.joints, &m.world, render::Fog{}, nullptr}; // fog off: no WC98 rparms table (ponytail: add when the sky/fog path is traced)
@@ -677,6 +679,8 @@ const formats::AnimClip& MatchScene::clip(int index) const {
 
 std::array<std::uint16_t, 2> MatchScene::teamIds() const { return impl_->teamIds; }
 void MatchScene::setHudGeometry(const HudGeometry& g) { impl_->hudGeo = g; }
+// App/livematch.cpp keeps the composite batch alive across its scene.build() call.
+void MatchScene::pushOverlay(const render::SpriteBatch& overlay) { impl_->overlay = &overlay; }
 
 
 

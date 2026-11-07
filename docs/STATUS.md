@@ -183,6 +183,12 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
   +/-frames/tick; from 0 it crawls for seconds - kickoff viewed near ground level looked like a
   ragdoll). Observation: first ~1 s after kickoff all field players sample prone/fall anim poses
   (GK standClip); upright by demo capture time t=1 s - sim-state, not a snapshot-layer bug.
+- Landed (2026-11-07): hub screen (`Feflow06.lay`) as the interactive main menu when present - 13 wedges with hover/push/disabled
+  shape states, FRAMES anim, help pane FC captions, keyboard + mouse widgetHit; edges fe07/fe11/fe32 to existing flows, `quit`
+  exits, fe33/fe90/fe04/fe02 documented no-ops. Hub scene graph: options (FEFLOW15 tabs tbb1..4 + row cursor, audio volumes ->
+  settings.ini/mixer), save/load entry (Feflow89 -> WCT1 load), credits roll (feflow19). In-game pause: Esc opens the IGMENU.LAY
+  composite over the live match (INGAME.FSH bt*n/bt*d art, {Resume,Quit}, IGQUESHN confirm; sim frozen). Gates `fe_hub`,
+  `fe_flow_options`, `fe_flow_saveload`, `fe_credits`, `fe_igmenu` (`--ig-pause-smoke N`).
 
 ## Known limitations
 

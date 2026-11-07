@@ -102,6 +102,7 @@ int run(int argc, char** argv) {
     int feSetup = -1; // --fe-setup N: open the friendly (0) / practise (3) match-setup screen before the smoke frames
     bool feLeague = false; // --fe-league: open the FEFLOW73 league-select list before the smoke frames
     std::string feScreenName; // --fe-screen NAME: arbitrary LAYOUTS.BIG member capture lane ("make all menus 1:1")
+    bool feOptions = false, feSaveLoad = false, feCredits = false; // --fe-options/--fe-saveload/--fe-credits: open the hub scene-graph views (Phase 2/3/4 gates)
     std::string lang = "eng"; // --lang CODE: FC*.BIN UI-string bank (registry Language key)
     std::string videoPlay; // --video-play FILE.DCT: movie playback through the Vulkan renderer (VIDEO.md)
     bool noIntro = false; // --no-intro: skip the startup .DCT movies (headless gates never play them)
@@ -131,8 +132,12 @@ int run(int argc, char** argv) {
         else if (a == "--fe-setup") { feMode = true, feSetup = std::stoi(next()); }
         else if (a == "--fe-league") { feMode = true, smokeFrames = 1, feLeague = true; } // FEFLOW73 list capture (1 frame; --fe-smoke N overrides)
         else if (a == "--fe-screen") { feMode = true, smokeFrames = 1, feScreenName = next(); } // default capture 1 frame; --fe-smoke N overrides
+        else if (a == "--fe-options")  { feMode = true, smokeFrames = 1, feOptions = true; }  // FEFLOW15 options view capture gate
+        else if (a == "--fe-saveload") { feMode = true, smokeFrames = 1, feSaveLoad = true; } // Feflow89 slot-list capture gate
+        else if (a == "--fe-credits")  { feMode = true, smokeFrames = 1, feCredits = true; }  // FEFLOW19 credits view capture gate
         else if (a == "--pad-smoke") { padSmoke = true; }
         else if (a == "--live-match-smoke") { liveSmoke = std::stoi(next()); }
+        else if (a == "--ig-pause-smoke") { liveSmoke = std::stoi(next()); } // gate fe_igmenu: scripted pause tour (driver parses the flag itself)
         else if (a == "--record-replay") { recordReplay = true; }
         else if (a == "--video-play") { videoPlay = next(); }
         else if (a == "--no-intro") { noIntro = true; }
@@ -214,10 +219,15 @@ int run(int argc, char** argv) {
             if (app::startMenuMusic(*feAudio, tree, &track)) std::cout << "fe: menu music " << track << '\n';
         }
     }
+    if (fe) fe->setAudioContext(&cfg, feAudio.get()); // options volume rows drive settings.ini + live mixer gain
     int totalShapes = 0, totalTexts = 0, totalCursors = 0, presented = 0, navRc = -1;
-        if (fe && feTeam) { fe->move(int(app::FeEntry::Tournament)); fe->enter(); } // Tournament entry -> team-select grid
-        if (fe && feSetup >= 0) { fe->move(feSetup); fe->enter(); } // friendly/practise -> FEFLOW09/50 config screen
-        if (fe && feLeague) { fe->move(int(app::FeEntry::LeaguePlay)); fe->enter(); } // League Play -> FEFLOW73 list
+    bool prevLmb = false; // mouse button edge state for widgetHit activation (Phase 1)
+        if (fe && feTeam) { fe->selectNav(int(app::FeEntry::Tournament)); fe->enter(); } // hub wedge fe11 -> team-select grid (FEFLOW11)
+        if (fe && feSetup >= 0) { fe->selectNav(feSetup); fe->enter(); } // friendly/practise -> FEFLOW09/50 config screen
+        if (fe && feLeague) { fe->selectNav(int(app::FeEntry::LeaguePlay)); fe->enter(); } // League Play -> FEFLOW73 list (hub wedge direct)
+        if (fe && feOptions) fe->openOptions();   // --fe-options gate frame: FEFLOW15 composite
+        if (fe && feSaveLoad) fe->openSaveLoad(); // --fe-saveload gate frame: Feflow89 slot list
+        if (fe && feCredits) fe->openCredits();   // --fe-credits gate frame: FEFLOW19 roll
 
     while (smokeFrames == 0 || presented < smokeFrames) {
         auto ev = window->poll();
@@ -227,6 +237,21 @@ int run(int argc, char** argv) {
             if (px && py)
                 fe->setPointer(std::clamp(ev.mouseX * 640 / int(px), 0, 639),
                                std::clamp(ev.mouseY * 480 / int(py), 0, 479));
+        }
+        if (fe) { // click edge: widgetHit hit-test -> hub/view scene action (LAY_COMPOSITOR_NOTES.md POINTS polygons)
+            float bmX = 0, bmY = 0;
+            const bool lmb = (SDL_GetMouseState(&bmX, &bmY) & SDL_BUTTON_LMASK) != 0;
+            if (lmb && !prevLmb) {
+                const int act = fe->pointerActivate();
+                if (act >= 0) { // launches a mode: same path as Enter on that hub wedge
+                    navRc = launchEntry(app::FeEntry(act), tree, outPrefix, fe->pickedTeam(),
+                                        smokeFrames == 0 && !strictNav, window.get(), renderer.get(), recordReplay);
+                    std::cout << "fe: entry " << act << " returned " << navRc << '\n';
+                    if (strictNav && navRc != 0 && navRc != 2 && navRc != 77) return navRc;
+                }
+            }
+            prevLmb = lmb;
+            fe->setPointerDown(lmb);
         }
         render::SpriteBatch ui;
         render::Frame frame; // empty scene by default: the shell only proves the presentation path.
@@ -238,32 +263,36 @@ int run(int argc, char** argv) {
             totalCursors += presented == 0 ? st.cursors : 0;
         }
         auto launchSelected = [&] { // Enter/confirm: Tournament entry opens team-select; confirm launches with the pick.
-            if (!fe->enter()) return true; // show the team-select screen (next Enter confirms pickedTeam())
+            const bool launched = fe->enter();
+            if (fe->quitRequested()) { navRc = 0; return false; } // hub 'quit' wedge -> clean app exit
+            if (!launched) return true; // show the team-select screen (next Enter confirms pickedTeam())
             navRc = launchEntry(app::FeEntry(fe->selected()), tree, outPrefix, fe->pickedTeam(),
                                 smokeFrames == 0 && !strictNav, window.get(), renderer.get(), recordReplay);
             std::cout << "fe: entry " << fe->selected() << " returned " << navRc << '\n';
             if (strictNav && navRc != 0 && navRc != 2 && navRc != 77) return false; // gate mode propagates failures
             fe->back(); // leave team-select (no-op on the menu)
-            fe->move(-fe->selected());
+            fe->resetCursor(); // hub cursor back to fe07 / fallback menu to entry 0
             return true;
         };
         for (const int sc : ev.keys) { // FE navigation: arrows select, Enter launches, Esc quits to menu.
             if (!fe) break;
-            // Setup screen (FEFLOW09/50): up/down move the config row, left/right cycle its value
-            // (the original's two-axis scheme); on the other screens arrows cycle entries/pick rows.
-            const bool setup = fe->onSetup();
+            // Setup (FEFLOW09/50) + options (feflow15 lst rows): up/down move the row cursor,
+            // left/right cycle its value (the original's two-axis scheme); TAB switches feflow15
+            // tab pages ('ops2' event family). On the other screens arrows cycle entries/pick rows.
+            const bool setup = fe->onSetup() || fe->onOptions();
             if (sc == SDL_SCANCODE_UP) fe->move(-1);
             else if (sc == SDL_SCANCODE_DOWN) fe->move(+1);
             else if (sc == SDL_SCANCODE_LEFT) { if (setup) fe->adjustValue(-1); else fe->move(-1); }
             else if (sc == SDL_SCANCODE_RIGHT) { if (setup) fe->adjustValue(+1); else fe->move(+1); }
-            else if (sc == SDL_SCANCODE_ESCAPE) fe->back(); // setup/team-select -> menu (no-op on the menu)
+            else if (sc == SDL_SCANCODE_TAB) fe->cycleTab(+1); // options tab pages tbb1..4
+            else if (sc == SDL_SCANCODE_ESCAPE) fe->back(); // view -> parent; hub Esc no-op ('quit' wedge exits)
             else if (sc == SDL_SCANCODE_RETURN || sc == SDL_SCANCODE_KP_ENTER) {
                 if (!launchSelected()) return navRc;
             }
         }
         for (const int d : ev.padNav) { // gamepad nav: same actions as the arrow keys
             if (!fe) break;
-            const bool setup = fe->onSetup();
+            const bool setup = fe->onSetup() || fe->onOptions();
             if (d == platform::Window::kPadNavUp) fe->move(-1);
             else if (d == platform::Window::kPadNavDown) fe->move(+1);
             else if (d == platform::Window::kPadNavLeft) { if (setup) fe->adjustValue(-1); else fe->move(-1); }
@@ -275,6 +304,7 @@ int run(int argc, char** argv) {
                 if (!launchSelected()) return navRc;
             } else if (b == platform::Window::kPadEast || b == platform::Window::kPadBack) fe->back();
         }
+        if (fe && fe->quitRequested()) break; // hub 'quit' wedge: clean app exit after event handling
         if (window->minimized() || !renderer->present(frame)) {
             SDL_Delay(16);
             continue;
@@ -310,6 +340,7 @@ int run(int argc, char** argv) {
         ++presented;
     }
 
+    if (fe && fe->audioDirty()) config::save(config::defaultPath(), cfg); // options volume rows persist to settings.ini
     if (navEntry >= 0 && navRc == -1) { // no Enter key was pressed during the loop: simulate it (gate path)
         const int loadSlot = [] { const char* v = std::getenv("WC98_SAVE_SLOT"); return v && *v ? std::atoi(v) : 7; }();
         navRc = navEntry == 2 ? app::runTournamentLoadVerify(loadSlot)
@@ -349,6 +380,7 @@ int main(int argc, char** argv) {
             std::puts("usage: wc98-native [--width N] [--height N] [--fullscreen|--windowed] [--smoke N]"
                       " [--fe] [--tree DIR] [--out-prefix P] [--fe-smoke N] [--tournament-saveload N] [--fe-pick N]"
                       " [--fe-nav exhibition|league|tournament|tournament-load|practise] [--fe-team] [--fe-setup N] [--fe-league] [--fe-screen NAME]"
+                      " [--fe-options|--fe-saveload|--fe-credits]"
                       " [--record-replay] [--lang eng|fre|ger|ita|spa|dut|dan|swe|jap]"
                       " [--fe-present]");
             return 0;

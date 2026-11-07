@@ -215,7 +215,7 @@ public:
     // chat widgets (chat/cha2/cha3), the animseq placeholder rows (pNN + ptop/pbot) and the runtime
     // portrait/edit-box surfaces (plyr/tt20); kt/menu row objects (pnNN/prNN/ktNN) draw their shape
     // art in composite, captions + kit swatches paint as overlays from FCDB data.
-    formats::ScreenLayout lg72_, lg74_, lg75_, lg76_, lg79_, lg80_;
+    formats::ScreenLayout lg72_, lg74_, lg75_, lg76_, lg78_, lg79_, lg80_;
     bool haveLeagueCfg_ = false;   // at least one family layout loaded
     int leagueCfg_ = 0;            // active config screen id (72/74/75/76/79/80, 0 = none)
     std::string cfgName_;          // gate evidence label "FEFLOWxx"
@@ -225,7 +225,7 @@ public:
     int aggrVal_ = 7;              // FEFLOW76 s001 aggression: FCDB skill nibble scale [0,15] [H]
     int biasVal_ = 4;              // FEFLOW79 s001 attack-bias: slider position domain [0,8] [H]
     int cfgTeamPool_ = 0;          // pool index of the team painted on the grids (lbNN arrows)
-    std::vector<std::string> lg72Visible_, lg74Visible_, lg75Visible_, lg76Visible_, lg79Visible_, lg80Visible_;
+    std::vector<std::string> lg72Visible_, lg74Visible_, lg75Visible_, lg76Visible_, lg78Visible_, lg79Visible_, lg80Visible_;
     int sel_ = 0;
     std::unique_ptr<presentation::FeText> text_; // FFN face + FC*.BIN strings, loaded once (fe_screen.hpp)
     bool teamScreen_ = false;              // true = team-select list, false = FEFLOW05 main menu
@@ -239,6 +239,11 @@ public:
     std::optional<formats::FcdbDatabase> fcdb_;
     std::vector<std::string> fcdbPlayerNames_;
     [[nodiscard]] const formats::FcdbTeam* cfgTeam() const; // active grid team (null = no FCDB data)
+    void cycleLeagueScreen(int dir); // gofd/gobk chain 72->74->75->79->80 (keyloop_notes.txt)
+    [[nodiscard]] int rosterSize() const; // squad rows on the active grid team
+    // kt/menu row overlay: "#jersey name" caption + tricolour kit swatch from FCDB data.
+    void paintRosterRow(const formats::LayoutObject& row, render::SpriteBatch& ui, int rosterIdx,
+                        bool hilited, presentation::FeDrawStats& st) const;
     // "FNNN" art name for a cup-pool team id ("" when the pool has no entry). NNN = FCDB record index.
     std::string flagFileForTeam(std::uint32_t id) const;
     TeamListNav teams_;                    // paging cursor (team_select.hpp)

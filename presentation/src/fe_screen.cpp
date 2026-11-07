@@ -487,14 +487,14 @@ int drawCaption(const formats::LayoutObject& o, std::string_view s, render::Spri
 } // namespace
 
 std::uint32_t kitColor(int idx) {
-    // fifa98edit hslCols HSV triples (analysis/fifa98edit/__init__.py:90, community editor table):
-    // the FCDB 5-bit shirt/shorts colour indices index this 23-entry palette.
+    // fifa98edit hslCols HSV triples verbatim (analysis/fifa98edit/__init__.py:91): the FCDB
+    // 5-bit shirt/shorts colour indices index this 23-entry palette in table order.
     static constexpr int kHsv[23][3] = {
-        {0, 2, 244},   {2, 206, 170}, {5, 255, 255}, {6, 100, 180}, {12, 200, 255},
-        {21, 190, 190},{31, 200, 255},{45, 255, 255},{75, 255, 255},{126, 255, 255},
-        {158, 255, 255},{171, 255, 255},{190, 255, 255},{214, 255, 255},{235, 255, 255},
-        {255, 160, 255},{255, 78, 255},{255, 11, 255},{255, 0, 255},  {249, 0, 153},
-        {249, 0, 153}, {255, 20, 170},{164, 84, 185}};
+        {242, 165, 237}, {2, 206, 170}, {7, 216, 107}, {19, 201, 239}, {17, 234, 224},
+        {12, 242, 163}, {34, 237, 239}, {28, 219, 232}, {24, 224, 170}, {83, 175, 196},
+        {85, 226, 142}, {97, 214, 99}, {145, 181, 196}, {156, 178, 165}, {166, 170, 147},
+        {174, 201, 114}, {197, 160, 209}, {211, 188, 140}, {188, 168, 142}, {0, 2, 244},
+        {0, 2, 226}, {127, 7, 160}, {0, 0, 40}};
     if (idx < 0 || idx >= 23) return render::packRgba(0, 0, 0, 0xFF);
     const double h = kHsv[idx][0] / 255.0, s = kHsv[idx][1] / 255.0, v = kHsv[idx][2] / 255.0;
     // colorsys.hsv_to_rgb

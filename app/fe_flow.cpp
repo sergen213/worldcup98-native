@@ -89,9 +89,9 @@ FeFlow::FeFlow(render::Renderer& r, fs::path tree, std::string lang) : tree_(std
     // popup, 79 attack-bias, 80 player-attributes grid. Same tolerant reader; absent -> Enter on the
     // league row keeps launching directly (pre-slice behaviour).
     {
-        const char* kCfg[] = {"FEFLOW72", "FEFLOW74", "FEFLOW75", "FEFLOW76", "FEFLOW79", "FEFLOW80"};
-        formats::ScreenLayout* tgt[] = {&lg72_, &lg74_, &lg75_, &lg76_, &lg79_, &lg80_};
-        for (int i = 0; i < 6; ++i) {
+        const char* kCfg[] = {"FEFLOW72", "FEFLOW74", "FEFLOW75", "FEFLOW76", "FEFLOW78", "FEFLOW79", "FEFLOW80"};
+        formats::ScreenLayout* tgt[] = {&lg72_, &lg74_, &lg75_, &lg76_, &lg78_, &lg79_, &lg80_};
+        for (int i = 0; i < 7; ++i) {
             try {
                 fs::path d;
                 const std::string t = presentation::readLayout((tree_ / "FE/PACK/LAYOUTS/LAYOUTS.BIG").string() + "@" + kCfg[i] + ".LAY", d);
@@ -111,29 +111,29 @@ FeFlow::FeFlow(render::Renderer& r, fs::path tree, std::string lang) : tree_(std
                         "t100", "t101", "t102", "t110", "t111", "t112",
                         "b000", "b001", "v000", "b002", "b003", "v001", "b004", "b005", "v002",
                         "tmf0", "tmf1", "tmf2", "tmf3", "gobk", "gofd", "help"};
-        lg74Visible_ = {"back", "bnnr", "titl", "sbar", "vit0", "lb00", "lb01", "0000", "attb",
+        // '0000' + attb = engine-driven caption slots (four widgets share the name; FC-bank
+        // defaults are other contexts' strings, e.g. quit prompts) — hidden at rest by the scene.
+        lg74Visible_ = {"back", "bnnr", "titl", "sbar", "vit0", "lb00", "lb01",
                         "ab00", "ab01", "tmf0", "tmf1", "tmf2", "tmf3", "gobk", "gofd", "help"};
         lg75Visible_ = {"back", "bnnr", "titl", "vit0", "vit1",
                         "lb00", "lb01", "lb02", "lb03",
                         "s001", "tt00", "tt01", "tt03",
                         "tmf0", "tmf1", "tmf2", "tmf3", "gobk", "gofd", "help"};
         lg76Visible_ = {"canc", "alok", "0000", "s001", "help"}; // popup: 1x1 null back widget excluded
-        lg79Visible_ = {"back", "bnnr", "titl", "sbar", "s001", "tt00", "tt01", "tt03", "0000",
-                        "attb", "ab00", "ab01", "vit0", "vit3", "lb00", "lb01", "lb02", "lb03",
+        lg78Visible_ = {"canc", "alok", "0000", "s001", "help"}; // popup twin of FEFLOW76 (attack bias)
+        lg79Visible_ = {"back", "bnnr", "titl", "sbar", "s001", "tt00", "tt01", "tt03",
+                        "ab00", "ab01", "vit0", "vit3", "lb00", "lb01", "lb02", "lb03",
                         "oval", "tmf0", "tmf1", "tmf2", "tmf3", "gobk", "gofd", "help"};
+        // feflow80 = custom-kit grid (squad left, kit swatch columns): the tt*/ad*/at* textID label
+        // families are other modes' grids (engine hides per scene; FC defaults collide with pn rows).
         lg80Visible_ = {"back", "bnnr", "titl", "cmtx", "plnm", "bpll", "bplr", "btll", "btlr",
-                        "vit0", "t005", "t006", "tt00", "tt01", "tt02", "tt03", "tt04", "tt05",
-                        "tt06", "tt07", "mt98", "mt99", "attb", "sb00", "sb01", "cb00", "cb01",
+                        "vit0", "sb00", "sb01", "cb00", "cb01",
                         "cb03", "ncml", "ncmr",
                         "bl00", "br00", "bl01", "br01", "bl02", "br02", "bl03", "br03", "bl04",
                         "br04", "bl05", "br05", "bl06", "br06",
                         "al00", "ar00", "al01", "ar01", "al02", "ar02", "al03", "ar03", "al04",
                         "ar04", "al05", "ar05", "al06", "ar06", "al07", "ar07", "al08", "ar08",
                         "al09", "ar09", "al10", "ar10", "al11", "ar11", "al12", "ar12",
-                        "at00", "at01", "at02", "at03", "at04", "at05", "at06", "at07", "at08",
-                        "at09", "at10", "at11", "at12",
-                        "ad00", "ad01", "ad02", "ad03", "ad04", "ad05", "ad06", "ad07", "ad08",
-                        "ad09", "ad10", "ad11", "ad12",
                         "tmf0", "tmf1", "tmf2", "tmf3", "gobk", "gofd", "help"};
     }
     // Hub screen (Phase 1): Feflow06.lay — the Windows main-menu hub (mixed-case member; MENU_NAV_
@@ -283,10 +283,10 @@ FeDrawStats FeFlow::drawCaptureScreen(render::SpriteBatch& ui) const {
     return st;
 }
 
-FeDrawStats FeFlow::drawCurrent(render::SpriteBatch& ui) const {
-    if (useCapture_) return drawCaptureScreen(ui); // --fe-screen lane replaces the menu composite
+FeDrawStats FeFlow::drawCurrent(render::SpriteBatch& ui) const {    if (useCapture_) return drawCaptureScreen(ui); // --fe-screen lane replaces the menu composite
     if (teamScreen_) return drawTeams(ui);
     if (setupScreen_) return drawSetup(ui); // FEFLOW09/50 friendly/practise config screens
+    if (leagueCfg_) return drawLeagueCfg(ui); // FEFLOW72/74/75/76/79/80 config family
     if (leagueView_) return drawLeague(ui);
     if (optsView_ && haveOpts_) return drawOptions(ui);   // FEFLOW15 config screen (Phase 2)
     if (slView_ && haveSl_) return drawSaveLoad(ui);      // Feflow89 slot list (Phase 3)
@@ -443,6 +443,16 @@ void FeFlow::drawCursor(render::SpriteBatch& ui, presentation::FeDrawStats& st) 
 // alp{n} pane (the LAY's HILITECOLOUR analogue), the option index is kept per row for the match
 // model to consume when the config plumbing lands.
 void FeFlow::move(int delta) {
+    if (leagueCfg_) { // config grids: up/down = kt/menu row cursor / s001 slider value (keyloop_notes.txt)
+        switch (leagueCfg_) {
+            case 74: case 80: cfgRow_ = std::clamp(cfgRow_ + delta, 0, std::max(1, rosterSize()) - 1); break;
+            case 75: stratVal_ = std::clamp(stratVal_ + delta, 0, 4); break; // strategy: 5-step domain [H]
+            case 76: aggrVal_ = std::clamp(aggrVal_ + delta, 0, 15); break; // FCDB skill-nibble scale
+            case 78: case 79: biasVal_ = std::clamp(biasVal_ + delta, 0, 8); break; // attack-bias slider [H]
+            default: break; // FEFLOW72: continue-button row, no cursor domain (b010..b012)
+        }
+        return;
+    }
     if (optsView_ && haveOpts_) {                         // options rows lst{tab} (up/down, clamped)
         const int n = std::max<int>(1, int(optRows_[std::size_t(optTab_)].size()));
         optRow_ = std::clamp(optRow_ + delta, 0, n - 1);
@@ -479,6 +489,7 @@ bool FeFlow::enterLeague() {
 }
 
 void FeFlow::adjustValue(int dir) {
+    if (leagueCfg_) { cycleLeagueScreen(dir); return; } // left/right = gofd/gobk screen chain
     // Left/right cycles one option per row on the setup screen and on the options list rows
     // (the original's two-axis scheme: up/down = row, left/right = value).
     if (setupScreen_) {
@@ -505,6 +516,10 @@ void FeFlow::adjustValue(int dir) {
 // handler per-wedge tag compares (fe11 @0x449e29, fe07 @0x449e30, fe32 @0x449ce5, repl @0x449c01,
 // cred @0x449c11). Enter on hub = the wedge tag's scene edge (hubActivate below).
 bool FeFlow::enter() {
+    if (leagueCfg_) {                                   // Enter = 'alok' confirm: popups close to the grid, grids stay put
+        if (leagueCfg_ == 76 || leagueCfg_ == 78) cycleLeagueScreen(-1);
+        return false;
+    }
     if (optsView_ && haveOpts_) return false; // row Enter = value select is mouse-only in the port; L/R cycles values
     if (slView_ && haveSl_) {                 // slot confirm (Phase 3): WCT1 load via app/saveload.cpp
         const auto file = defaultSlotDir() / formats::slotFileName(slSlot_);
@@ -520,7 +535,10 @@ bool FeFlow::enter() {
     }
     if (credView_) { credView_ = false; return false; } // Enter/Esc exits the roll (event 2001)
     if (onHub()) return hubActivate(hubSel_) >= 0;      // wedge -> scene edge; true only for launch targets
-    if (leagueView_) return true; // league-list row confirm: shell launches the default match
+    if (leagueView_) { // row confirm -> formation-budget screen first (SCENEREG cluster feflow72)
+        if (openLeagueCfg(72)) return false;
+        return true; // no FEFLOW72 layout on this tree: shell launches the default match
+    }
     if (teamScreen_) { // confirm the highlighted team: Enter launches with pickedTeam()
         pick_ = poolIds_.empty() ? -1 : int(poolIds_[std::size_t(teams_.sel)]);
         return true;
@@ -551,12 +569,47 @@ void FeFlow::back() {
     if (slView_)   { slView_ = false; return; }
     if (credView_) { credView_ = false; return; }
     if (onHub()) return; // hub Esc: no parent scene (the Windows hub exits via the 'quit' wedge)
+    if (leagueCfg_) { leagueCfg_ = 0; return; } // Esc from a config grid/popup -> FEFLOW73 stays open
     if (leagueView_) { leagueView_ = false; return; } // Esc from the league list: straight to menu
     if (setupScreen_) { setupScreen_ = false; return; } // Esc from the config screen: straight to menu
     teamScreen_ = false;
     pick_ = -1; // no selection: default behaviour restored
 }
 
+// Slider thumb geometry (LAY x/y/w/h) + value domain. The LAY `barshapeid`/`knobshapeid` keys point
+// at real art (FEFLOW75/79 PAKs ship sbar+sbut); composite skips KnobBar widgets entirely, so the
+// bar texture + proportional knob are painted here (flat quad when the knob tag is absent [H]).
+void paintSliderThumb(render::SpriteBatch& ui, presentation::ScreenArt& art, const formats::LayoutObject& o,
+                      int val, int lo, int hi) {
+    const float x = float(o.x), y = float(o.y);
+    const float w = float(o.width > 0 ? o.width : 16), h = float(o.height > 0 ? o.height : 8);
+    const bool vert = h > w;
+    const std::string stem = [&] {
+        std::string f = o.fname;
+        const auto dot = f.find_last_of('.');
+        if (dot != std::string::npos) f = f.substr(0, dot);
+        std::transform(f.begin(), f.end(), f.begin(), [](unsigned char c) { return char(std::tolower(c)); });
+        return f;
+    }();
+    const std::string vpath = o.prop("vpath") ? *o.prop("vpath") : std::string();
+    if (const std::string* barTag = o.prop("barshapeid")) {
+        const auto sh = art.shape(vpath, stem, *barTag, -1);
+        if (sh.tex) ui.draw(sh.tex, {x, y, w, h}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu);
+    }
+    const float frac = hi > lo ? float(val - lo) / float(hi - lo) : 0.f;
+    constexpr std::uint32_t kKnob = 0x3CF5F5F5u; // ARGB soft white [H]
+    if (vert) {
+        const float k = std::clamp((h - 8.f) * frac, 0.f, h - 8.f);
+        ui.draw(0, {x, y + k, w, 8.f}, {}, kKnob);
+    } else {
+        const float k = std::clamp((w - 12.f) * frac, 0.f, w - 12.f);
+        if (const std::string* knobTag = o.prop("knobshapeid")) {
+            const auto sh = art.shape(vpath, stem, *knobTag, -1);
+            if (sh.tex) ui.draw(sh.tex, {x + k, y, float(sh.w), float(sh.h)}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu);
+            else ui.draw(0, {x + k, y, 12.f, h}, {}, kKnob);
+        } else ui.draw(0, {x + k, y, 12.f, h}, {}, kKnob);
+    }
+}
 // League Play select (FEFLOW73.LAY): composite art whitelist + the kt/menu row content the engine
 // paints from live state — pn00..pn08 rows get the active team's FCDB roster (#jersey name) with a
 // tricolour kit swatch (paintRowLabel, analysis/pass12/list_painter_notes.txt §1); the highlighted
@@ -618,6 +671,7 @@ bool FeFlow::openLeagueCfg(int screenId) {
                           : screenId == 74 ? (lg74_.object("titl") ? &lg74_ : nullptr)
                           : screenId == 75 ? (lg75_.object("s001") ? &lg75_ : nullptr)
                           : screenId == 76 ? (lg76_.object("alok") ? &lg76_ : nullptr)
+                          : screenId == 78 ? (lg78_.object("alok") ? &lg78_ : nullptr)
                           : screenId == 79 ? (lg79_.object("s001") ? &lg79_ : nullptr)
                           : screenId == 80 ? (lg80_.object("pn00") ? &lg80_ : nullptr) : nullptr;
     if (!sc) return false; // layout absent from this tree: the scene stays closed
@@ -629,18 +683,19 @@ bool FeFlow::openLeagueCfg(int screenId) {
 }
 
 void FeFlow::cycleLeagueScreen(int dir) {
-    // gofd/gobk chain (keyloop_notes.txt: every grid tick carries 'gofd'/'gobk'); the popup 76 is
-    // registered beside feflow75, so it joins the chain only when its layout is present.
-    static constexpr int kOrder[] = {72, 74, 75, 79, 80};
+    // gofd/gobk chain (keyloop_notes.txt: every grid tick carries 'gofd'/'gobk'); the slider
+    // popups 76/78 are registered beside feflow75 in SCENEREG, so they join when present.
+    static constexpr int kOrder[] = {72, 74, 75, 76, 78, 79, 80};
     int idx = 0;
-    for (int i = 0; i < 5; ++i)
+    for (int i = 0; i < 7; ++i)
         if (kOrder[i] == leagueCfg_) idx = i;
     // Skip screens whose layout is absent on this tree.
-    for (int step = 0; step < 5; ++step) {
-        idx = (idx + dir + 5) % 5;
+    for (int step = 0; step < 7; ++step) {
+        idx = (idx + dir + 7) % 7;
         const int cand = kOrder[idx];
         if ((cand == 72 && lg72_.object("bnnr")) || (cand == 74 && lg74_.object("titl")) ||
-            (cand == 75 && lg75_.object("s001")) || (cand == 79 && lg79_.object("s001")) ||
+            (cand == 75 && lg75_.object("s001")) || (cand == 76 && lg76_.object("alok")) ||
+            (cand == 78 && lg78_.object("alok")) || (cand == 79 && lg79_.object("s001")) ||
             (cand == 80 && lg80_.object("pn00"))) break;
     }
     leagueCfg_ = kOrder[idx];
@@ -657,11 +712,11 @@ FeDrawStats FeFlow::drawLeagueCfg(render::SpriteBatch& ui) const {
         case 74: sc = &lg74_; vis = &lg74Visible_; break;
         case 75: sc = &lg75_; vis = &lg75Visible_; break;
         case 76: sc = &lg76_; vis = &lg76Visible_; break;
+        case 78: sc = &lg78_; vis = &lg78Visible_; break;
         case 79: sc = &lg79_; vis = &lg79Visible_; break;
         case 80: sc = &lg80_; vis = &lg80Visible_; break;
         default: return {};
-    }
-    FeUiState uist; // nav-icon hover/press state (widgetHit geometry, composite shape-state chain)
+    }    FeUiState uist; // nav-icon hover/press state (widgetHit geometry, composite shape-state chain)
     ++animTicks_;
     uist.animMs = animTicks_ * 16u;
     for (const auto& o : sc->objects)
@@ -678,7 +733,7 @@ FeDrawStats FeFlow::drawLeagueCfg(render::SpriteBatch& ui) const {
         for (int i = 0; i < 3; ++i) {
             const formats::LayoutObject* o = sc->object(kBtn[i]);
             if (!o) continue;
-            const ScreenArt::Shape sh = art_.shape("..\\feflow72\\", "feflow72", kShape[i], -1);
+            const ScreenArt::Shape sh = const_cast<ScreenArt&>(art_).shape("..\\feflow72\\", "feflow72", kShape[i], -1);
             if (sh.tex) {
                 ui.draw(sh.tex, {float(o->x), float(o->y), float(o->width > 0 ? o->width : sh.w),
                                  float(o->height > 0 ? o->height : sh.h)}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu);
@@ -727,22 +782,30 @@ FeDrawStats FeFlow::drawLeagueCfg(render::SpriteBatch& ui) const {
                                         team && i < 2 ? (i == 0 ? &team->home : &team->away) : nullptr, st);
         }
     }
+    // Context help pane (LAY `help=` keys -> FC captions; helppaneid pane widget, e.g. canc=155,
+    // alok=812 on the popups): same model as the hub screen.
+    // The popups' default focus is the confirm control (Enter = 'alok', keyloop semantics): its help=
+    // caption paints until the pointer hovers another widget.
+    drawHelpPane(*sc, ui, st, (uist.hover.empty() || uist.hover == "back") && (leagueCfg_ == 76 || leagueCfg_ == 78)
+                     ? "alok" /* default focus = confirm; the popup's 1x1 'back' box sits at (0,0) */
+                     : uist.hover);
     // Slider thumbs: sbar/sbNN vertical page indicators + s001 KnobBar value positions.
     const auto thumb = [&](const formats::ScreenLayout& s, const char* name, int lo, int hi, bool vertPage) {
         const formats::LayoutObject* t = s.object(name);
         if (!t) return;
         if (vertPage) {
             const int pages = std::max(1, rosterSize() / rowsPerPage);
-            paintSliderThumb(ui, *t, cfgRow_ / rowsPerPage, 0, pages - 1);
+            paintSliderThumb(ui, const_cast<ScreenArt&>(art_), *t, cfgRow_ / rowsPerPage, 0, pages - 1);
         } else {
             const int v = leagueCfg_ == 75 ? stratVal_ : leagueCfg_ == 76 ? aggrVal_ : biasVal_;
-            paintSliderThumb(ui, *t, v, lo, hi);
+            paintSliderThumb(ui, const_cast<ScreenArt&>(art_), *t, v, lo, hi);
         }
     };
     if (leagueCfg_ == 74) thumb(lg74_, "sbar", 0, 0, true);
     if (leagueCfg_ == 79) { thumb(lg79_, "sbar", 0, 0, true); thumb(lg79_, "s001", 0, 8, false); }
     if (leagueCfg_ == 75) thumb(lg75_, "s001", 0, 4, false);
     if (leagueCfg_ == 76) thumb(lg76_, "s001", 0, 15, false);
+    if (leagueCfg_ == 78) thumb(lg78_, "s001", 0, 8, false);
     if (leagueCfg_ == 80) { thumb(lg80_, "sb00", 0, 0, true); thumb(lg80_, "sb01", 0, 0, true); }
 
     drawCursor(ui, st);
@@ -1145,6 +1208,34 @@ int FeFlow::pointerActivate() {
         }
         return -1;
     }
+    if (leagueCfg_) { // config grids/popups: nav icons, canc/alok, s001 click-to-value, clickenable rows
+        const formats::ScreenLayout* sc = leagueCfg_ == 72 ? &lg72_ : leagueCfg_ == 74 ? &lg74_ :
+                                           leagueCfg_ == 75 ? &lg75_ : leagueCfg_ == 76 ? &lg76_ :
+                                           leagueCfg_ == 78 ? &lg78_ : leagueCfg_ == 79 ? &lg79_ : &lg80_;
+        for (const char* n : {"gofd", "gobk"}) {
+            const formats::LayoutObject* o = sc->object(n);
+            if (o && widgetHit(*o, float(ptrX_), float(ptrY_))) { cycleLeagueScreen(n[2] == 'd' ? 1 : -1); return -1; }
+        }
+        for (const char* n : {"alok", "canc", "back"}) { // confirm/cancel close to FEFLOW73 (keyloop 'gobk' cluster)
+            const formats::LayoutObject* o = sc->object(n);
+            if (o && widgetHit(*o, float(ptrX_), float(ptrY_))) { leagueCfg_ = 0; return -1; }
+        }
+        if (const formats::LayoutObject* s = sc->object("s001"); s && widgetHit(*s, float(ptrX_), float(ptrY_))) {
+            const int hi = leagueCfg_ == 75 ? 4 : leagueCfg_ == 76 ? 15 : 8; // strategy / aggression / bias domains
+            const float frac = std::clamp((float(ptrX_) - float(s->x)) / float(std::max(1, s->width)), 0.f, 1.f);
+            if (leagueCfg_ == 75) stratVal_ = int(frac * hi + 0.5f);
+            else if (leagueCfg_ == 76) aggrVal_ = int(frac * hi + 0.5f);
+            else biasVal_ = int(frac * hi + 0.5f); // 78/79 share the attack-bias value
+            return -1;
+        }
+        const char* col = leagueCfg_ == 80 ? "pn" : "pr"; // clickenable kt/menu rows (list_painter_notes.txt §2)
+        const int rows = leagueCfg_ == 80 ? 12 : 5;
+        for (int i = 0; i < rows; ++i) {
+            const formats::LayoutObject* o = sc->object(std::string(col) + std::format("{:02d}", i));
+            if (o && widgetHit(*o, float(ptrX_), float(ptrY_))) { cfgRow_ = (cfgRow_ / rows) * rows + i; return -1; }
+        }
+        return -1; // config screens never launch a match by click
+    }
     if (!onHub()) return -1; // team/setup/league/menu rows are code-drawn: no LAY hit boxes here
     for (int i = 0; i < int(kHubButtons.size()); ++i) {
         const formats::LayoutObject* o = hubScreen_.object(kHubButtons[std::size_t(i)]);
@@ -1200,8 +1291,7 @@ void FeFlow::drawHelpPane(const formats::ScreenLayout& sc, render::SpriteBatch& 
     if (!text_ || !text_->ready() || widgetName.empty()) return;
     const formats::LayoutObject* o = sc.object(widgetName);
     if (!o) return;
-    int idx = 0;
-    const std::string* h = o->prop("HELP");
+    int idx = 0;    const std::string* h = o->prop("HELP");
     if (!h || std::sscanf(h->c_str(), "%d", &idx) != 1 || idx <= 0) return;
     const std::string_view s = text_->stringAt(std::size_t(idx));
     if (s.empty()) return;

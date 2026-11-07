@@ -67,7 +67,15 @@ int launchEntry(app::FeEntry e, const std::filesystem::path& tree, const std::st
     }
     case app::FeEntry::Tournament:
         return runTournamentDemo(userTeam); // reads $WC98_TREE (set at startup)
-    default: return 1;
+    case app::FeEntry::Practise: { // same match driver, distinct capture prefix (FEFLOW50 flow)
+        const std::string p = prefix + "_fe_practise";
+        const char* argv[] = {"wc98-native", p.c_str(), "--tree", tree.string().c_str()};
+        return runMatchDemo(4, const_cast<char**>(argv));
+    }
+    case app::FeEntry::LeaguePlay: // league scenes (feflow73+, lleagsel) are not ported yet: skip, stay in the FE
+        std::cout << "league play: the feflow73+ league screens are not implemented\n";
+        return 77;
+    default: return 1; // Count sentinel / unmapped entry codes
     }
 }
 
@@ -80,7 +88,7 @@ int run(int argc, char** argv) {
     std::filesystem::path tree;   // --tree DIR (default $WC98_TREE)
     std::string outPrefix = "/tmp/wc98port-out/fe"; // capture prefix for --fe-smoke PNGs
     bool feMode = false, strictNav = false;
-    int navEntry = -1; // --fe-nav target (exhibition/tournament), simulated after the smoke frames
+    int navEntry = -1; // --fe-nav target (exhibition/league/tournament/practise), simulated after the frames
     int presentGate = 0; // --fe-present: draw each between-round presentation screen, print stat lines
     bool padSmoke = false; // --pad-smoke: headless gamepad startup gate (SDL dummy driver)
     int liveSmoke = 0; // --live-match-smoke N: M10 headless playable-match gate (driver owns window).
@@ -89,6 +97,8 @@ int run(int argc, char** argv) {
     int saveloadSlot = -1; // --tournament-saveload N: headless save->load scenario on slot N
     int fePick = -1; // --fe-pick ID: scripted team-select pick for the tournament entry (non-interactive gate)
     bool feTeam = false; // --fe-team: open the team-select screen (FEFLOW11 grid) before the smoke frames
+    int feSetup = -1; // --fe-setup N: open the friendly (0) / practise (3) match-setup screen before the smoke frames
+    std::string feScreenName; // --fe-screen NAME: arbitrary LAYOUTS.BIG member capture lane ("make all menus 1:1")
     std::string lang = "eng"; // --lang CODE: FC*.BIN UI-string bank (registry Language key)
     std::string videoPlay; // --video-play FILE.DCT: movie playback through the Vulkan renderer (VIDEO.md)
     for (int i = 1; i < argc; ++i) {
@@ -107,12 +117,15 @@ int run(int argc, char** argv) {
         else if (a == "--fe-nav") { // gate mode: simulate Enter on the named entry after the frames
             feMode = true, strictNav = true;
             const std::string e = next();
-            navEntry = e == "exhibition" ? int(app::FeEntry::Exhibition) : e == "tournament" ? int(app::FeEntry::Tournament) : e == "tournament-load" ? 2 : -1;
+            navEntry = e == "exhibition" ? int(app::FeEntry::Exhibition) : e == "league" ? int(app::FeEntry::LeaguePlay)
+                     : e == "tournament" || e == "tournament-load" ? 2 : e == "practise" ? int(app::FeEntry::Practise) : -1;
         }
         else if (a == "--tournament-saveload") { saveloadSlot = std::stoi(next()); }
         else if (a == "--fe-pick") { fePick = std::stoi(next()); }
         else if (a == "--fe-present") { feMode = true, presentGate = 1; }
         else if (a == "--fe-team") { feTeam = true; }
+        else if (a == "--fe-setup") { feMode = true, feSetup = std::stoi(next()); }
+        else if (a == "--fe-screen") { feMode = true, smokeFrames = 1, feScreenName = next(); } // default capture 1 frame; --fe-smoke N overrides
         else if (a == "--pad-smoke") { padSmoke = true; }
         else if (a == "--live-match-smoke") { liveSmoke = std::stoi(next()); }
         else if (a == "--record-replay") { recordReplay = true; }
@@ -170,6 +183,10 @@ int run(int argc, char** argv) {
 
     std::unique_ptr<app::FeFlow> fe;
     if (feMode) fe = std::make_unique<app::FeFlow>(*renderer, tree, lang);
+    if (!feScreenName.empty()) { // arbitrary-screen capture lane (app/fe_flow.cpp): bad member name -> exit 2
+        std::string err;
+        if (!fe->loadCaptureScreen(feScreenName, err)) { std::cerr << "fe-screen " + feScreenName << ": " << err << '\n'; return 2; }
+    }
     std::unique_ptr<audio::Mixer> feAudio; // owns the one OpenAL context during the FE loop
     if (feMode) { // menu music: AUDIO/MUSC FE_*.ASF as a looping SCHl stream (AUDIO_RUNTIME.md);
         // best-effort like the live-match mixer: headless CI has no OpenAL device.
@@ -180,7 +197,8 @@ int run(int argc, char** argv) {
         }
     }
     int totalShapes = 0, totalTexts = 0, totalCursors = 0, presented = 0, navRc = -1;
-        if (fe && feTeam) { fe->move(1); fe->enter(); } // Tournament entry -> team-select grid
+        if (fe && feTeam) { fe->move(int(app::FeEntry::Tournament)); fe->enter(); } // Tournament entry -> team-select grid
+        if (fe && feSetup >= 0) { fe->move(feSetup); fe->enter(); } // friendly/practise -> FEFLOW09/50 config screen
 
     while (smokeFrames == 0 || presented < smokeFrames) {
         auto ev = window->poll();
@@ -210,19 +228,27 @@ int run(int argc, char** argv) {
             fe->move(-fe->selected());
             return true;
         };
-        for (const int sc : ev.keys) { // FE navigation: arrows select, Enter launches, Esc quits to menu
+        for (const int sc : ev.keys) { // FE navigation: arrows select, Enter launches, Esc quits to menu.
             if (!fe) break;
-            if (sc == SDL_SCANCODE_UP || sc == SDL_SCANCODE_LEFT) fe->move(-1);
-            else if (sc == SDL_SCANCODE_DOWN || sc == SDL_SCANCODE_RIGHT) fe->move(+1);
-            else if (sc == SDL_SCANCODE_ESCAPE) fe->back(); // team-select -> menu (no-op on the menu)
+            // Setup screen (FEFLOW09/50): up/down move the config row, left/right cycle its value
+            // (the original's two-axis scheme); on the other screens arrows cycle entries/pick rows.
+            const bool setup = fe->onSetup();
+            if (sc == SDL_SCANCODE_UP) fe->move(-1);
+            else if (sc == SDL_SCANCODE_DOWN) fe->move(+1);
+            else if (sc == SDL_SCANCODE_LEFT) { if (setup) fe->adjustValue(-1); else fe->move(-1); }
+            else if (sc == SDL_SCANCODE_RIGHT) { if (setup) fe->adjustValue(+1); else fe->move(+1); }
+            else if (sc == SDL_SCANCODE_ESCAPE) fe->back(); // setup/team-select -> menu (no-op on the menu)
             else if (sc == SDL_SCANCODE_RETURN || sc == SDL_SCANCODE_KP_ENTER) {
                 if (!launchSelected()) return navRc;
             }
         }
         for (const int d : ev.padNav) { // gamepad nav: same actions as the arrow keys
             if (!fe) break;
-            if (d == platform::Window::kPadNavUp || d == platform::Window::kPadNavLeft) fe->move(-1);
-            else if (d == platform::Window::kPadNavDown || d == platform::Window::kPadNavRight) fe->move(+1);
+            const bool setup = fe->onSetup();
+            if (d == platform::Window::kPadNavUp) fe->move(-1);
+            else if (d == platform::Window::kPadNavDown) fe->move(+1);
+            else if (d == platform::Window::kPadNavLeft) { if (setup) fe->adjustValue(-1); else fe->move(-1); }
+            else if (d == platform::Window::kPadNavRight) { if (setup) fe->adjustValue(+1); else fe->move(+1); }
         }
         for (const int b : ev.padButtons) { // confirm = South/Start; East/Back = Esc parity (team-select -> menu, no-op there)
             if (!fe) break;
@@ -239,8 +265,10 @@ int run(int argc, char** argv) {
                       << " cursors=" << totalCursors << " faces=" << fe->fontsLoaded() << " lang=" << fe->language()
                       << (fe->lastError().empty() ? std::string() : (" load-error=" + fe->lastError())) << '\n';
             if (totalShapes <= 0) { std::cerr << "FE screen drew no shapes\n"; return 1; }
-            // Labels must be visible: FC*.BIN strings through the FFN face (FeText).
-            if (totalTexts <= 0) { std::cerr << "FE screen drew no text quads\n"; return 1; }
+            // Labels must be visible: FC*.BIN strings through the FFN face (FeText). The --fe-screen
+            // lane renders raw LAY members whose dynamic row labels are scene-code content, so a
+            // zero-texts composite is legitimate there; shapes>0 above is the capture gate.
+            if (totalTexts <= 0 && feScreenName.empty()) { std::cerr << "FE screen drew no text quads\n"; return 1; }
         }
         if (fe && smokeFrames) { // per-frame offscreen capture: the gate asserts non-trivial PNGs
             render::Frame cap{};
@@ -298,7 +326,7 @@ int main(int argc, char** argv) {
         if (std::strcmp(argv[i], "--help") == 0) {
             std::puts("usage: wc98-native [--width N] [--height N] [--fullscreen|--windowed] [--smoke N]"
                       " [--fe] [--tree DIR] [--out-prefix P] [--fe-smoke N] [--tournament-saveload N] [--fe-pick N]"
-                      " [--fe-nav exhibition|tournament|tournament-load] [--fe-team] [--pad-smoke] [--live-match-smoke N]"
+                      " [--fe-nav exhibition|league|tournament|tournament-load|practise] [--fe-team] [--fe-setup N] [--fe-screen NAME]"
                       " [--record-replay] [--lang eng|fre|ger|ita|spa|dut|dan|swe|jap]"
                       " [--fe-present]");
             return 0;

@@ -4,6 +4,14 @@ All notable changes. Versioning: `0.x.y` pre-1.0; 1.0 = full World Cup
 tournament playable natively, per the definition of success in the
 project goals.
 
+## [0.3.2] - 2026-11-07 — AppImage launcher starts on desktop sessions
+### Fixed
+- AppImage launcher startup on desktop sessions: Qt resolved `qt.conf` relative to the *invoked*
+  binary, and an AppImage starts through the root-level `AppRun` symlink, so `usr/bin/qt.conf` was
+  invisible and the platform-plugin search path came out empty -> "Could not find the Qt platform
+  plugin "wayland"/"xcb" in """ + SIGABRT. Launcher main() now seeds `QT_PLUGIN_PATH` from the
+  symlink-resolved `/proc/self/exe`, and deploy.sh ships a root-level `qt.conf` (Prefix=usr) too.
+
 ## [0.3.1] - 2026-11-07 — authentic FE menus 1:1 (main-menu graph, friendly/practise setup screens, league select FEFLOW73)
 ### Added
 - Main-menu composite scene-ownership whitelist (pass-10): `composite()` draws only objects owned by the

@@ -6,6 +6,14 @@ project goals.
 
 ## [Unreleased]
 ### Added
+- MDL geometry gate `test_mdl`: synthetic GEOM parse + FE/*.MDL tree census (12 files, 113 groups,
+  4886 faces, 478 texture names; SKEL magic pinned on LPOLYBF.MDL).
+- Community patch lineage fully closed: the moddb "FIFAWC.EXE 3rd-Party Loader" = gold master +
+  the single no-CD byte at file offset 0x38440 (VA 0x439040 JNE->JMP); Ultimate Patch ships the
+  nGlide `voodooa.dll` verbatim (md5 match), `dxa.dll` = EA D3DA renamed, plus Galahs' new
+  `voodoo2a.dll` (`docs/research/EXTERNAL.md` §4/§5).
+- AISEQS.TBI clip pool refined: stride-24 tagged records `[fourcc pair][seq<<16][TBA keyframe
+  offset]`, 417 entries (AI_SEQS_TBI.md).
 - FE mouse cursor drawn from MAUS.PAK (`presentation::loadFeCursor`, 28x26 `curs` arrow, engine-hardcoded path at FIFAWC.EXE offset 1451894) over every FE composite in the window loop; gates `test_presentation` tree checks (MAUS entries + REDLEFT shipped-gap assert), `fe_render_tournament` FAIL regex `cursors=0`.
 - FE element colour state RESOLVED + implemented: hilite pane (HILITEPANE) draws HILITECOLOUR/HILITEDSHAPEID, plain panes NORMALCOLOUR (exe parse chain 0x46e0d9/0x46e10b fields +0x68/+0x6C; listbox draw FUN_00477f54 @0x477f54); no per-element blend mode exists. Gate `test_presentation` tree checks assert hilite/plain glyph rgba = pal[2]/pal[1].
 - Runtime audio wired into the shell (`app/game_audio.{hpp,cpp}`): FE flow starts a looping music

@@ -83,6 +83,9 @@ public:
     // Resolved label for one object's TEXTID key ("" when absent/unresolvable). The string bytes
     // are cp1252, matching FFN glyph codes; layoutText feeds them straight through.
     [[nodiscard]] std::string label(const formats::LayoutObject& o) const;
+    // Direct FC-bank access for engine-driven row captions (help pane `help=NNN,...` leading index,
+    // list rows, value strings). "" when the index is out of range.
+    [[nodiscard]] std::string_view stringAt(std::size_t idx) const { return idx < strings_.size() ? std::string_view{strings_[idx]} : std::string_view{}; }
 
 private:
     std::filesystem::path tree_;

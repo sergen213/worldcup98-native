@@ -128,10 +128,11 @@ const char* layoutObjectTypeName(int type) {
     case LayoutObjectType::Image: return "image";
     case LayoutObjectType::Text: return "text";
     case LayoutObjectType::Button: return "button";
-    case LayoutObjectType::Type3: return "type3";
+    case LayoutObjectType::AnimSeq: return "animseq";
     case LayoutObjectType::List: return "list";
     case LayoutObjectType::Bar: return "bar";
     case LayoutObjectType::ScrollBar: return "scrollbar";
+    case LayoutObjectType::Sbar: return "sbar";
     case LayoutObjectType::Animation: return "animation";
     case LayoutObjectType::AnimButton: return "animbutton";
     case LayoutObjectType::Slider: return "slider";
@@ -142,8 +143,15 @@ const char* layoutObjectTypeName(int type) {
     case LayoutObjectType::Formation: return "formation";
     case LayoutObjectType::Bracket: return "bracket";
     case LayoutObjectType::Video: return "video";
-    case LayoutObjectType::Type19: return "type19";
+    case LayoutObjectType::KnobBar: return "knobbar";
     case LayoutObjectType::Type20: return "type20";
+    case LayoutObjectType::Tbb: return "tbb";
+    case LayoutObjectType::Flg: return "flg";
+    case LayoutObjectType::Menu: return "menu";
+    case LayoutObjectType::Box: return "box";
+    case LayoutObjectType::Kt: return "kt";
+    case LayoutObjectType::Btn: return "btn";
+    case LayoutObjectType::SliderBtn: return "sliderbtn";
     case LayoutObjectType::Chat: return "chat";
     case LayoutObjectType::FadeText: return "fadetext";
     }

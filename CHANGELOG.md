@@ -11,6 +11,10 @@ project goals.
   layout); hidden edit/list widgets no longer paint their FC-bank soup. Gate `fe_flow_render` asserts
   the menu composite stats line (LAY_COMPOSITOR_NOTES.md "Main-menu scene").
 
+- League Play select screen (pass-11): Enter on the "League Play" menu entry opens FEFLOW73.LAY —
+  the authentic league list (`FeFlow::leagueView_`, pn00..pn08 row cursor, composite whitelist, Esc to
+  menu). `--fe-league` captures it headlessly; gate `fe_league_select` (FE_MENU_SCREENS_WC98.md §8).
+
 - Team-select fidelity (pass-11): pool pages from FCDB `teamdb` records (pool 3 = Europe B, 56 teams),
   names + flag file ids from the record fields; row flags drawn into the LAY icon slots (`stf0..stf7`,
   mixed zero-padding with `tt00..tt07` measured in FEFLOW11.LAY), current-team big shield over `tmfg`.

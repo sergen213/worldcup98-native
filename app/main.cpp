@@ -72,9 +72,11 @@ int launchEntry(app::FeEntry e, const std::filesystem::path& tree, const std::st
         const char* argv[] = {"wc98-native", p.c_str(), "--tree", tree.string().c_str()};
         return runMatchDemo(4, const_cast<char**>(argv));
     }
-    case app::FeEntry::LeaguePlay: // league scenes (feflow73+, lleagsel) are not ported yet: skip, stay in the FE
-        std::cout << "league play: the feflow73+ league screens are not implemented\n";
-        return 77;
+    case app::FeEntry::LeaguePlay: { // league select confirmed: same match driver, distinct prefix
+        const std::string p = prefix + "_fe_league";
+        const char* argv[] = {"wc98-native", p.c_str(), "--tree", tree.string().c_str()};
+        return runMatchDemo(4, const_cast<char**>(argv));
+    }
     default: return 1; // Count sentinel / unmapped entry codes
     }
 }
@@ -98,6 +100,7 @@ int run(int argc, char** argv) {
     int fePick = -1; // --fe-pick ID: scripted team-select pick for the tournament entry (non-interactive gate)
     bool feTeam = false; // --fe-team: open the team-select screen (FEFLOW11 grid) before the smoke frames
     int feSetup = -1; // --fe-setup N: open the friendly (0) / practise (3) match-setup screen before the smoke frames
+    bool feLeague = false; // --fe-league: open the FEFLOW73 league-select list before the smoke frames
     std::string feScreenName; // --fe-screen NAME: arbitrary LAYOUTS.BIG member capture lane ("make all menus 1:1")
     std::string lang = "eng"; // --lang CODE: FC*.BIN UI-string bank (registry Language key)
     std::string videoPlay; // --video-play FILE.DCT: movie playback through the Vulkan renderer (VIDEO.md)
@@ -125,6 +128,7 @@ int run(int argc, char** argv) {
         else if (a == "--fe-present") { feMode = true, presentGate = 1; }
         else if (a == "--fe-team") { feTeam = true; }
         else if (a == "--fe-setup") { feMode = true, feSetup = std::stoi(next()); }
+        else if (a == "--fe-league") { feMode = true, smokeFrames = 1, feLeague = true; } // FEFLOW73 list capture (1 frame; --fe-smoke N overrides)
         else if (a == "--fe-screen") { feMode = true, smokeFrames = 1, feScreenName = next(); } // default capture 1 frame; --fe-smoke N overrides
         else if (a == "--pad-smoke") { padSmoke = true; }
         else if (a == "--live-match-smoke") { liveSmoke = std::stoi(next()); }
@@ -199,6 +203,7 @@ int run(int argc, char** argv) {
     int totalShapes = 0, totalTexts = 0, totalCursors = 0, presented = 0, navRc = -1;
         if (fe && feTeam) { fe->move(int(app::FeEntry::Tournament)); fe->enter(); } // Tournament entry -> team-select grid
         if (fe && feSetup >= 0) { fe->move(feSetup); fe->enter(); } // friendly/practise -> FEFLOW09/50 config screen
+        if (fe && feLeague) { fe->move(int(app::FeEntry::LeaguePlay)); fe->enter(); } // League Play -> FEFLOW73 list
 
     while (smokeFrames == 0 || presented < smokeFrames) {
         auto ev = window->poll();
@@ -268,7 +273,7 @@ int run(int argc, char** argv) {
             // Labels must be visible: FC*.BIN strings through the FFN face (FeText). The --fe-screen
             // lane renders raw LAY members whose dynamic row labels are scene-code content, so a
             // zero-texts composite is legitimate there; shapes>0 above is the capture gate.
-            if (totalTexts <= 0 && feScreenName.empty()) { std::cerr << "FE screen drew no text quads\n"; return 1; }
+            if (totalTexts <= 0 && feScreenName.empty() && !fe->onLeague()) { std::cerr << "FE screen drew no text quads\n"; return 1; }
         }
         if (fe && smokeFrames) { // per-frame offscreen capture: the gate asserts non-trivial PNGs
             render::Frame cap{};
@@ -326,7 +331,7 @@ int main(int argc, char** argv) {
         if (std::strcmp(argv[i], "--help") == 0) {
             std::puts("usage: wc98-native [--width N] [--height N] [--fullscreen|--windowed] [--smoke N]"
                       " [--fe] [--tree DIR] [--out-prefix P] [--fe-smoke N] [--tournament-saveload N] [--fe-pick N]"
-                      " [--fe-nav exhibition|league|tournament|tournament-load|practise] [--fe-team] [--fe-setup N] [--fe-screen NAME]"
+                      " [--fe-nav exhibition|league|tournament|tournament-load|practise] [--fe-team] [--fe-setup N] [--fe-league] [--fe-screen NAME]"
                       " [--record-replay] [--lang eng|fre|ger|ita|spa|dut|dan|swe|jap]"
                       " [--fe-present]");
             return 0;

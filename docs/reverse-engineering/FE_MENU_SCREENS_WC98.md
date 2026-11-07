@@ -75,6 +75,12 @@ LAY members with the only shipped **objecttype=42/44 menu widgets** (pass-10 voc
 - FEFLOW73.LAY numobjects=60, authored `C:\Wc98\pc\local\cd\fe\LAYOUTS\Feflow73.lay`; FEFLOW74 38; FEFLOW79 57; FEFLOW80 132; **Feflow82.lay numobjects=31** with menu items `h000`, `t000`…`t008` **[C]** `lays/Feflow82.lay`.
 - Menu widget draw source: each item is a text box referencing FC-bank index pairs (`textid=bank,index`); the string bank is FCENG.BIN ("FCLG V1.7", 2031 strings, `FCENG.BIN.json`) — item captions resolved at runtime by bank index, coordinates from the LAY record **[C grammar]**; per-item list length/selection via handler state (init/tick §1: 0x45b860/0x45c800 etc.).
 - Scene ids: `lleagsel`, `lteamsel`, `lshed`, `lresults`, `lstand`, `lleaders`, `lstadium` **[C]** cluster §2 → feflow73=league select, 74/79/80/82 = league team/leaderboard/shed/results family **[H mapping by name]**.
+**Port**: Enter on the "League Play" entry opens **FEFLOW73** in `app/fe_flow.cpp` (`--fe-league`
+capture gate `fe_league_select`): composite whitelist (back/bnnr/titl/sbar/vit0/lb*/ptop + pn/pln/pls
+panes), row cursor on the pn00..pn08 geometry (x=35, y=134+19i), Esc back to the menu. The item
+captions themselves are runtime bank-index content (§8 grammar) — the port shows the pane art and
+the hilite, not invented strings; fixtures beyond select are not simulated (row confirm launches
+the default match demo).
 
 ## 9. In-game options popups
 

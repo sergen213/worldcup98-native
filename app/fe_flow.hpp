@@ -43,7 +43,7 @@ public:
     // Active screen layout name for the gate evidence line ("FEFLOW05" menu / "FEFLOW11" team-select /
     // "FEFLOW09"/"FEFLOW50" friendly & practise setup screens).
     [[nodiscard]] const char* screenName() const {
-        return useCapture_ ? captureName_.c_str() : teamScreen_ ? "FEFLOW11" : setupScreen_ ? (setupPractise_ ? "FEFLOW50" : "FEFLOW09") : "FEFLOW05";
+        return useCapture_ ? captureName_.c_str() : teamScreen_ ? "FEFLOW11" : leagueView_ ? "FEFLOW73" : setupScreen_ ? (setupPractise_ ? "FEFLOW50" : "FEFLOW09") : "FEFLOW05";
     }
 
     // Arbitrary-screen capture lane (--fe-screen NAME; "make all menus 1:1"): loads a chosen
@@ -56,6 +56,7 @@ public:
 
     void move(int delta);              // arrows: cycle menu selection / setup-screen config rows
     [[nodiscard]] bool onSetup() const { return setupScreen_; } // friendly/practise config screen shown
+    [[nodiscard]] bool onLeague() const { return leagueView_; } // FEFLOW73 league-select list shown
     void adjustValue(int dir);         // left/right on the setup screen: cycle one option per row
     [[nodiscard]] int selected() const { return sel_; }
     // Team-select screen = the authentic FEFLOW11.LAY grid (LAY_COMPOSITOR_NOTES.md): Enter on
@@ -73,6 +74,14 @@ public:
     int tourneyPresentCount(); // lazy ensureTourney: pool + layouts -> kTourneyRounds, else 0
     [[nodiscard]] const char* tourneyPresentName(int round) const; // "FEFLOW35" ... gate evidence label
     presentation::FeDrawStats drawTourneyPresent(render::SpriteBatch& ui, int round); // builds the model lazily
+    // League Play select (FE_MENU_SCREENS_WC98.md §4/§8): Enter on the "League Play" entry opens
+    // FEFLOW73.LAY — the authentic league list (pn00..pn08 rows, x=35 y=134..285). Rows are
+    // code-driven kt/menu widgets; fixtures aren't simulated, so Enter on a row returns to the
+    // menu (the Windows game chains into its league setup scenes with user-saved data).
+    bool enterLeague();  // confirm on a list row: true = shell launches default match
+    [[nodiscard]] int leagueSel() const { return leagueSel_; }
+    void moveLeague(int dir);              // up/down through the pn00..pn08 rows
+    presentation::FeDrawStats drawLeague(render::SpriteBatch& ui) const; // FEFLOW73 composite + row hilite
 
     static constexpr int kTourneyRounds = 4; // group stage, R16, QF, final boundaries -> 35/25/26/27
     struct TourneyModel;                     // deterministic schedule/standings/bracket (fe_flow.cpp)
@@ -122,6 +131,16 @@ public:
                                            "ovr3", "lrp3", "rrp3",  "alp3", "arp3",      "arw3", "ctx3",
                                            "grv0", "grv1", "grv2",  "grv3", "quit",      "fe06", "fe15",
                                            "fe07", "fe08", "tmtl",  "tmtr", "npll",      "nplr", "help"};
+    // League Play select (FEFLOW73.LAY): whitelist = background, banner, title, scrollbar and
+    // the row/panel art; the scene-code captions belonging to other scenes stay hidden.
+    formats::ScreenLayout league73_;
+    bool haveLeague_ = false;
+    bool leagueView_ = false;
+    int leagueSel_ = 0;
+    std::vector<std::string> leagueVisible_{"back", "bnnr", "titl", "sbar", "vit0", "lb00", "lb01",
+                                            "ptop", "pn00", "pn01", "pn02", "pn03", "pn04",
+                                            "pn05", "pn06", "pn07", "pn08", "pln0", "pln1",
+                                            "pln2", "pln3", "pls0", "pls1"};
     int sel_ = 0;
     std::unique_ptr<presentation::FeText> text_; // FFN face + FC*.BIN strings, loaded once (fe_screen.hpp)
     bool teamScreen_ = false;              // true = team-select list, false = FEFLOW05 main menu

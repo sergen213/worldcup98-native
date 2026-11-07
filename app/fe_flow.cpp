@@ -59,6 +59,14 @@ FeFlow::FeFlow(render::Renderer& r, fs::path tree, std::string lang) : tree_(std
         haveSetup_ = true;
     } catch (const std::exception&) { // no practise-setup art on this tree
     }
+    // League Play select screen (FE_MENU_SCREENS_WC98.md §4): FEFLOW73.LAY = the league list.
+    try {
+        fs::path d;
+        const std::string t73 = presentation::readLayout((tree_ / "FE/PACK/LAYOUTS/LAYOUTS.BIG").string() + "@FEFLOW73.LAY", d);
+        league73_ = formats::ScreenLayout::build("FEFLOW73", formats::LayoutDocument::parse(std::string_view(t73)), nullptr, nullptr, "PC");
+        haveLeague_ = true;
+    } catch (const std::exception&) { // no league-select art on this tree: League Play launches directly
+    }
     // Mouse cursor sprite (MAUS.PAK, exe string offset 1451894): absent art => no sprite drawn.
     if (presentation::loadFeCursor(tree_, cursor_) && !cursorTex_)
         cursorTex_ = r.createTexture(cursor_.bmp, render::Wrap::Clamp, "fe/maus-curs");
@@ -137,6 +145,7 @@ FeDrawStats FeFlow::drawCurrent(render::SpriteBatch& ui) const {
     if (useCapture_) return drawCaptureScreen(ui); // --fe-screen lane replaces the menu composite
     if (teamScreen_) return drawTeams(ui);
     if (setupScreen_) return drawSetup(ui); // FEFLOW09/50 friendly/practise config screens
+    if (leagueView_) return drawLeague(ui);
     FeDrawStats st;
     // Scene-ownership visibility: MNMSETUP's netplay widgets (mneb edit boxes, modem lists,
     // dial strings) belong to scenes the port never shows -> hidden. Only the FE-flow art
@@ -286,6 +295,7 @@ void FeFlow::drawCursor(render::SpriteBatch& ui, presentation::FeDrawStats& st) 
 // model to consume when the config plumbing lands.
 void FeFlow::move(int delta) {
     if (teamScreen_) teams_.move(delta);
+    else if (leagueView_) { moveLeague(delta); return; } // arrows = pn00..pn08 rows
     else if (setupScreen_) {
         setupRow_ = (setupRow_ + delta) % 4;
         if (setupRow_ < 0) setupRow_ += 4; // four config rows (ovr0..3 family)
@@ -294,6 +304,15 @@ void FeFlow::move(int delta) {
         if (sel_ < 0) sel_ += kFeEntryCount;
     }
 }
+void FeFlow::moveLeague(int dir) {
+    if (!haveLeague_) return;
+    leagueSel_ = (leagueSel_ + dir) % 9; // pn00..pn08 rows
+    if (leagueSel_ < 0) leagueSel_ += 9;
+}
+
+bool FeFlow::enterLeague() {
+    return haveLeague_; // row confirm: fixtures aren't simulated -> shell launches the default match
+}
 
 void FeFlow::adjustValue(int dir) {
     if (!setupScreen_) return;
@@ -301,6 +320,7 @@ void FeFlow::adjustValue(int dir) {
 }
 
 bool FeFlow::enter() {
+    if (leagueView_) return true; // league-list row confirm: shell launches the default match
     if (teamScreen_) { // confirm the highlighted team: Enter launches with pickedTeam()
         pick_ = poolIds_.empty() ? -1 : int(poolIds_[std::size_t(teams_.sel)]);
         return true;
@@ -312,6 +332,10 @@ bool FeFlow::enter() {
         setupPractise_ = sel_ == int(FeEntry::Practise);
         return false;
     }
+    if (sel_ == int(FeEntry::LeaguePlay) && haveLeague_) { // League Play opens FEFLOW73 first
+        leagueView_ = true;
+        return false;
+    }
     if (sel_ == int(FeEntry::Tournament) && !poolIds_.empty()) { // Tournament entry: pick your country first
         teamScreen_ = true;
         teams_.setCount(int(poolIds_.size()));
@@ -321,9 +345,20 @@ bool FeFlow::enter() {
 }
 
 void FeFlow::back() {
+    if (leagueView_) { leagueView_ = false; return; } // Esc from the league list: straight to menu
     if (setupScreen_) { setupScreen_ = false; return; } // Esc from the config screen: straight to menu
     teamScreen_ = false;
     pick_ = -1; // no selection: default behaviour restored
+}
+
+// League Play select (FEFLOW73.LAY): composite art whitelist + a hilite pane on the highlighted
+// pn row, matching the original's kt/menu selection feedback.
+FeDrawStats FeFlow::drawLeague(render::SpriteBatch& ui) const {
+    FeDrawStats st = presentation::composite(league73_, ui, const_cast<ScreenArt&>(art_), text_.get(), &leagueVisible_);
+    // Row hilite: filled pane over the highlighted pn slot (pn00..pn08 geometry x=35 y=134+19*i).
+    const float y = 134.f + 19.f * float(leagueSel_);
+    ui.draw(0, {32.f, y - 3.f, 230.f, 16.f}, {}, render::packRgba(255, 224, 96, 48));
+    return st;
 }
 
 // FEFLOW09/50 composite: art whitelist + the dynamic layer the original paints from live state —

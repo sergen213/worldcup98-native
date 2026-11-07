@@ -42,6 +42,20 @@ Parser (`parseSqf`) validates magic/kind/non-zero type count/payload presence.
   runtime patcher that computes the address from the DGROUP base → not statically locatable,
   and **absent** at analysis time (4,730-function Ghidra pass). Consequence: under Wine the
   FE SQF loads fail entirely; no decompressed sample exists on disk.
+- Pass-9eulz exhaustive negative (2026-11-06, `analysis/pass9/eulz/`, digests in
+  `EVIDENCE.sha256`): every disp32 reference to the slot window `0x593e88..0x593ee0` in the whole
+  FIFAWC.EXE image enumerated — **zero writes** to `[0x593e94]`; its only two references are the
+  read/cmp call sites (raw `0xc2277`, `0xc2295`). No setter exists in any shipped DLL
+  (D3DA/VOODOOA/EACSND/GLIDE2X import tables + strings), no `FTSND.DLL` exists on the ISO
+  (`INSTALL.SKU` is a 4-byte stub; `SETUP.PKG` = 270 KB InstallShield component, not game payload),
+  and the Ultimate Patch `fifawc.sdb` (706 B) carries shim flags only — no injected code.
+- Live probe v13-v15 (`winedbg --gdb` embedded gdb + native CLI lanes): hardware data watchpoints
+  unavailable on this Wine (embedded-gdb `-break-watch`/`watch -a` rejected: remote Z1 unsupported;
+  winedbg native `watch *0x593e94` → "No type or type mismatch", no PDB types). Software
+  breakpoints at the loader site fired 15 times: every SQF load executes
+  `cmpl $0,0x593e94; je cleanup` with slot value 0 → expansion never runs. EULZ setter is
+  unreachable under Wine on this host; a Win9x-era environment (DOSBox) or the EA art-build tool
+  would be needed for the capture (neither available: no `dosbox*` binary, Yama ptrace_scope=1).
 - Payload grammar probing (throwaway `/tmp/sqf_probe*.py`): stream is byte-aligned
   literal + escape-token LZ data. Escape = 3 bytes `7F C P`, control `C >= 0x80`
   (`0x8F` dominant: 42% of escapes in FTX13_2; also `0x86/0x87`). Param nibbles skew to
@@ -61,7 +75,9 @@ FTX7_2 `0xbca2732859187e04`, FTX13_2 `0x6af7f39411287da7` (stream stability, not
 
 1. EULZ expansion algorithm: needs a captured decompressed block (install the `[0x593e94]`
    hook target on a working Win98-era environment) or an EA tool spec. Then FOOTIX image
-   decode model + palette extraction follow.
+   decode model + palette extraction follow. Status 2026-11-06: setter confirmed absent from all
+   shipped binaries and unreachable under Wine (see §3 pass-9eulz); grammar derivation blocked on a
+   Win9x-era capture environment — not decodable statically from this ISO.
 2. `FTXLFT` (VA 0x5662fc): second magic/name field, no raw occurrence in any SQF → assumed
    to live inside expanded blocks only; unverified.
 3. Meaning of the two id/date records at 0x10/0x028 (Mac resource-fork style ids) — open.

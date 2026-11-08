@@ -89,13 +89,23 @@ const formats::FshFile* ScreenArt::file(const std::string& vpath, const std::str
     }
     // IG layouts reference ..\global\button.fsh which exists nowhere on disk; the tags
     // (btnn/btnd/btn2) live in FE/INGAME/INGAME.FSH. Original engine resolves them from a
-    // shared global object cache — mirror that with an explicit stem alias.
-    static const std::pair<const char*, const char*> kStemAlias[] = {{"button", "ingame"}};
+    // shared global object cache — mirror that with an explicit stem alias. Optional third
+    // field = preferred parent directory when several copies exist (e.g. TITLBR ships in
+    // IGCNTROL and IGOPTION; the INGAME frame bar is the options copy).
+    struct StemAlias { const char* from; const char* to; const char* dir; };
+    static constexpr StemAlias kStemAlias[] = {
+        {"button", "ingame", nullptr},
+        {"igtitlbr", "titlbr", "IGOPTION"},
+    };
     if (found.empty() && !root_.empty()) {
-        for (const auto& [from, to] : kStemAlias) {
+        for (const auto& [from, to, dir] : kStemAlias) {
             if (lowered(fs::path(slashes(fname)).stem().string()) == from) {
                 if (auto it = byStem_.find(to); it != byStem_.end() && !it->second.empty()) {
                     found = it->second.front();
+                    if (dir != nullptr) {
+                        for (const auto& p : it->second)
+                            if (iequals(p.parent_path().filename().string(), dir)) { found = p; break; }
+                    }
                     break;
                 }
             }

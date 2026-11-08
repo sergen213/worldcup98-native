@@ -77,8 +77,13 @@ live marker). `overlap` (+6 i16) = frames to defer the start thunk; negative inp
 ## 3. Open items carried from NOTES §5 / COMMENTARY_WC98
 
 * **§5.1 sentence assembly**: fetch segments lazily by `(phraseIdx, segTocOrdinal)` and key
-  runtime handles on `record.id` — done at the index layer; the phrase *selection* source
-  (`FUN_0048d0dc` pick logic) is not decompiled yet (COMMENTARY_WC98 open item 2).
+  runtime handles on `record.id` — done at the index layer; phrase *selection* source decoded
+  (pass 12, `analysis/pass12speech/SPEECH_PRELOAD_TABLE.md`): per-event objects carry
+  {event byte `[obj+0x20]&0x3f`, phrase id @+0xE, queue-slot result @+6} dispatched through a
+  7-case jump table at `0x48f45c`; the preload API family (`FUN_0048d378` enable /
+  `FUN_0048d3f4` disable, gate global `DAT_0063241c`) creates a `SNDbankcreate` bank handle
+  (`'BNkl'`, stored in `DAT_00632420`) that is the id handed to `SNDphraseadd`; timing comes
+  from the runtime scheduler family `0x48d4f7..0x48e1xx` (RNG-gated, no static table).
 * **§5.3 FCLG cross-map**: what the u16@0x12 ids index stays Unknown; the FCLG probe was
   negative (UI string table, COMMENTARY_WC98 §FCLG) — sentence = ordered run of segment ids,
   producer TBD.

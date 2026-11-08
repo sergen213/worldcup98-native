@@ -7,6 +7,11 @@ project goals.
 
 ## [Unreleased]
 ### Added
+- Commentary per-event speech preload table decoded (pass 12 ghidra dossier
+  `analysis/pass12speech/SPEECH_PRELOAD_TABLE.md`): event-byte switch dispatcher at
+  `0x48f45c/0x48f4b0`, preload enable/disable family (`FUN_0048d378/0x48d3f4`) creating a
+  `SNDbankcreate('BNkl')` bank handle as the phrase id, runtime RNG-gated scheduler
+  `0x48d4f7..0x48e1xx`; SPEECH_PHRASES.md §5.1 open item closed.
 - Automated gameplay self-test (goal §14): `wc98-native --self-test FILE.json` launches a real
   exhibition match from the FCDB tree, drives player 0 with scripted pad words (fixed tick windows),
   and measures every step on internal simulation state — movement/sprint/turning path & heading

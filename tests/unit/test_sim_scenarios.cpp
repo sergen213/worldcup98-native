@@ -1449,10 +1449,16 @@ void scenarioReceiverContest() {
             if (window > 0) {
                 const int p = w.ball.possessor;
                 if (p >= 0 && tmOf(w, p) == 0) st.clean = false; // defending-side win: interception branch
-                if (st.gainer < 0 && p >= 11 && p != passer) {
-                    const auto& P = w.players[static_cast<std::size_t>(p)];
-                    st.gainer = p;
-                    st.catchDist = iabs(P.posI.x - cx) + iabs(P.posI.z - cz);
+                if (st.gainer < 0) {
+                    for (auto& e : st.evts) // the transfer is recorded as an event, like scenarioPass
+                        if (e.type == EventType::Possession && tmOf(w, e.a) == 1 && e.a != passer) {
+                            st.gainer = e.a;
+                            break;
+                        }
+                    if (st.gainer >= 0) {
+                        const auto& P = w.players[static_cast<std::size_t>(st.gainer)];
+                        st.catchDist = iabs(P.posI.x - cx) + iabs(P.posI.z - cz);
+                    }
                 }
             }
         }
@@ -1466,8 +1472,8 @@ void scenarioReceiverContest() {
         if (e.type == EventType::Pass && e.a == 1) { passEv = &e; break; }
     ck(passEv != nullptr, "lane A: no Pass event on the uncontested lane");
     ck(passEv->team == 1 && passEv->player == passerId, "lane A: pass team/player wrong");
-    ck(recvA >= 11 && recvA != passerId, "lane A: possession did not transfer to a team-1 receiver");
-    std::fprintf(stderr, "[calibD] laneA gainer=%d catchDist=%d clean=%d\n", (int)recvA, pa.catchDist, (int)pa.clean);
+    ck(recvA >= 0 && recvA != passerId, "lane A: possession did not transfer to a team-1 receiver");
+    ck(pa.clean, "lane A: the defending side won the ball on the uncontested lane");
     // Determinism: the same seed replays the identical completion branch.
     runPass(pb);
     ck(pb.evts.size() == pa.evts.size() && pb.gainer == pa.gainer && pb.clean == pa.clean,
@@ -1518,9 +1524,23 @@ void scenarioReceiverContest() {
     };
     DuelRun da, db;
     runDuel(da, 35);
-    std::fprintf(stderr, "[calibD] laneB defWinner=%d recvHeld=%d evts:", (int)da.defWinner, (int)da.recvHeld);
-    for (auto& e : da.evts) std::fprintf(stderr, " %s", std::string(eventName(e.type)).c_str());
-    std::fprintf(stderr, "\n");
+    bool headerFired = false;
+    for (auto& e : da.evts)
+        if (e.type == EventType::Header) { headerFired = true; break; }
+    // Pair-43/44 duel semantics: with a defender inside reach of the aerial catch point the duel
+    // resolves as a deflection (Header touch), not a clean receiver capture. The branch fires
+    // deterministically on this seed and the replayed stream is identical.
+    ck(headerFired, "lane B: no deflection at the contested aerial catch point");
+    ck(!da.recvHeld, "lane B: the receiver captured the ball under an in-reach contest");
+    runDuel(db, 35);
+    ck(db.defWinner == da.defWinner && db.recvHeld == da.recvHeld,
+       "lane B: the contested-capture branch is not deterministic on the fixed seed");
+    ck(db.evts.size() == da.evts.size(), "lane B: the replayed duel stream sizes diverge");
+    for (std::size_t i = 0; i < da.evts.size(); ++i)
+        ck(db.evts[i].type == da.evts[i].type && db.evts[i].player == da.evts[i].player,
+           "lane B: the replayed duel stream diverges");
+
+    std::printf("receiver contest asserts %02d/%02d PASS\n", gChecks, gChecks);
 }
 } // namespace
 
@@ -1547,5 +1567,6 @@ int main() {
     scenarioAddedTime();
     scenarioKickoffPlacement();
     scenarioGaitTransitions();
+    scenarioReceiverContest();
     return 0;
 }

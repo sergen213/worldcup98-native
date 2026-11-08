@@ -135,7 +135,8 @@ project goals.
   dz+(dist>>4) nudge, >>3+>>4 lift scale and the 0x72 clamp GONE), tail code bands >=0x3c1 -> 8 / >=0x1e1
   -> 9 with the 0x72/0x8e lift clamps removed; planAirKick clearance = atan2+offsetXZ rel only, receiver
   stays -1, kick power from the rel vector. Scenario gates close §4 gaps A (`scenarioGaitTransitions` live
-  pad-driven gait ladder) and D (TackleWin contest lane); suite ctest 114/114, self-test 12/12.
+  pad-driven gait ladder) and D (`scenarioReceiverContest`: uncontested completion transfer + contested
+  aerial resolves as Header deflection per pair-43/44, both deterministic); suite ctest 114/114, self-test 12/12.
 
 ## [0.4.0] - 2026-11-08 — Windows menu parity complete: popup/IG board families, highlights browser, management grids, LOAD/SAVE scenes, camera/practise/control pages
 ### Added

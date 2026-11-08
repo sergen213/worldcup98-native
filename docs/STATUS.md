@@ -241,7 +241,8 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
   (`FUN_0050c820` onBallWon, `FUN_0050cc70` planAirKick) and installed - raw thresholds (no formation
   base), gate id 0x281, clearance = rand+offsetXZ point (target/nudge/lift-scale/0x72 clamp GONE), tail
   code bands >=0x3c1/>=0x1e1 clamps-removed; planAirKick clearance atan2+offsetXZ rel only, receiver
-  stays -1. Scenario gates A/D (`scenarioGaitTransitions` live gait ladder + TackleWin contest lane)
+  stays -1. Scenario gates A/D (`scenarioGaitTransitions` live gait ladder + `scenarioReceiverContest`
+  duel lanes: uncontested completion transfer, contested aerial = Header deflection per pair-43/44)
   close GAMEPLAY_PARITY §4 gaps A and D; suite ctest = 114/114 (self-test 12/12). Dossier
   `analysis/pass12air/ai2_xref_tables.txt`.
 

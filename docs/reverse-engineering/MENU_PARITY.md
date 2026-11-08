@@ -277,3 +277,23 @@ Method (goal §6): capture every screen via the proven `--fe-screen`/gate lanes,
 - Resolution/timing: 640×480 virtual canvas, aspect-correct letterbox scaling (gates capture at native 640×480); animation advances on a millisecond clock (`animMs`), independent of render resolution/vsync; frame pacing per LAY FRAMES= ranges.
 - Captured IG option popups (`--fe-screen igaoptns/iggoptns/igmoptns`: shapes=5, texts=46/33/37): region scan flags `ok/canc/defa` + help pane rects **black** (mean 0) — the buttons reference cross-file art `vpath=..\ingame\ fname=igicon.fsh sname=chck`; ScreenArt resolves FEFLOW*.fsh/FE PAKs (+INGAME.FSH via vpath-stem fix), IGICON.FSH not in the set → shape missing. Fix = add `..\ingame\igicon.fsh` to the art resolution list (small, queued with rank-8 slice).
   - Correction (proven 2026-11-07): **no `igicon.fsh` exists anywhere in the shipped tree** (`find` = zero hits; FE/INGAME loose files only INGAME.FSH; no IGICON member under FE/PACK incl. per-scene FEFLOWxx PAK dirs). The popup buttons' art ships via the window-object lazy-loader path `"fepack\%s.all"` (`FUN_0047a12c`, rank-6 blocker) — resolution needs that loader, not a static file list. `chk1..5.PAK` exists under FE/PACK/FEFLOW15 (options checkboxes, rank-10 type=18 art) [C].
+
+## 7. Round 2026-11-07b — league family + world-cup family landed (commits `f0f8109..d323433`, gate fix)
+
+- **League family [LANDED]**: FEFLOW72/74/75/76/78/79/80 config grids/popups + FEFLOW73 list, painted via
+  list(type=9)/row(42/44)/slider(11) painters, kit swatches through `presentation::kitColor` (fifa98edit hslCols
+  verbatim), soup suppressed by scene-ownership whitelists (§11 doc MENU_NAV_WC98.md). Gates `fe_league_select`,
+  `fe_league_cfg{72,74,75,76,78,79,80}` all green; captures viewed: rows + swatches legible. FEFLOW72 draws the
+  "Art Director" FC-bank#233 quirk — faithful to the original's string bank [C].
+- **World-cup family [LANDED]**: FEFLOW18 zones board (32 tmNN pool names, group letters A–H, staged `rand` re-draw),
+  FEFLOW23/24 R16 bracket boards (kit-shield cards, dark-ink names on silver plates, focus ring strk/stsc),
+  FEFLOW35 standings page (`nglt/ngrt` mod-8 group cursor, P/W/D/L/GF/GA/pts rows). Tag semantics decoded in
+  `analysis/pass12/wcfamily_notes.txt` (Ghidra pass 12: FUN_004cf150/FUN_00452568 rand, FUN_00464928 strk,
+  FUN_00451964 group nav). Gates `fe_wc_cfg{18,23,24,35}` green; captures viewed.
+- **FEFLOW73 gate root cause [FIXED]**: `--fe-league` ran `selectNav(LeaguePlay)` (hub case 1 opens the list)
+  *then* `enter()`, which on the hub re-activated the default wedge → Friendly setup (`setupScreen_`) preempted
+  `drawCurrent`'s league branch; stats printed "FEFLOW73" while feflow09 drew. Fix: gate calls `enter()` only on
+  the FEFLOW05 fallback menu. Also `cfgTeam()` falls back to the FCDB head team when `poolIds_` is empty (league
+  list opens with no pool screen ran), so pn rows paint "#jersey name" captions + tricolour kit swatches:
+  capture now shows `#8 Simeone … #15 Zanetti`, texts=85, region-clean.
+- Sweep this round: 12/12 interactive family screens render (`/tmp/sweep-out2/report.txt`); full suite **ctest 80/80**.

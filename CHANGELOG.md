@@ -54,6 +54,19 @@ project goals.
   Bare `wc98-native` used to render an empty frame loop (the black screen from the desktop bug report);
   the shell now reaches the front-end with music, intro chain and menu.
 
+### Added — World-Cup history boards + igoptns captions lane (pass 13)
+
+- feflow90/feflow91 interactive scene (`FeFlow::openHistory/drawHistory`): hub wedge `fe33` Enter opens the World-Cup history board; bounded year cursor over
+  15 finals 1930-1994 (original 'ysla'/'yslc'/'ysrb' tags, list length DAT_0057c970=9); finalist pair + scores painted from an app-side dataset with FCDB fullName
+  captions; shields/flags composited from FE/GLOBAL `F0NN.FSH` (record-index rule) over the tmfg emblem. Enter ('fe91' chain, selected-index store FUN_004857a8 ->
+  DAT_0062fab8) opens the feflow91 continuation board; Esc returns to the hub [C] analysis/pass13/CLASSICS_FE33.md. Gates `fe_history_select` /
+  `fe_history_select_1994` / `fe_nav_history`; captures `/tmp/wc98port-out/hist*_fe00.png`. F040/F041 flag files decode byte-identical = original-data duplicate for
+  Uruguay/Argentina 1930 (reproduced faithfully, never invented).
+- In-game option popup captions lane `igaoptns/iggoptns/igmoptns` (`FeFlow::openIgOptns/drawIgOptns`, `--fe-igoptns a|g|m`): trio ships inside LAYOUTS.BIG; ROWS tuple
+  parser reuses the FEFLOW15 grammar (label,mode,count,v...), list windowed to its box (ROWHEIGHT slots + scroll with the row cursor); tab captions trimmed into the
+  button boxes (this media's ids are FC-bank dev strings [C]); ok/canc/defa `igicon.fsh#chck` art is PROVEN ABSENT on disk (analysis/pass13/IGOPTNS_ART.md) -> text-only
+  captions, no invented placeholder art. Gates `fe_igoptns_{a,g,m}`; captures `/tmp/wc98port-out/ig{a,g,m}_fe00.png`.
+
 ## [0.3.2] - 2026-11-07 — AppImage launcher starts on desktop sessions
 ### Fixed
 - AppImage launcher startup on desktop sessions: Qt resolved `qt.conf` relative to the *invoked*

@@ -104,6 +104,9 @@ int run(int argc, char** argv) {
     int feLeagueCfg = 0; // --fe-league-cfg N: open the league config family screen N (72/74/75/76/78/79/80)
     int feWcCfg = 0; // --fe-wc-cfg N: open the world-cup family screen N (18/23/24/35)
     int feCheatsMask = -1; // --fe-cheats N: open the feflow95 cheats screen with cheat row i ON for bit i (MENU_PARITY.md §8)
+    int feHistoryYear = -1; // --fe-history N: open feflow90 (world-cup history board) at year row N (pass 13)
+    int feNavHistory = -1;  // --fe-nav-history N: open feflow90, move year cursor to N, Enter -> feflow91 chain
+    int feIgMode = 0;       // --fe-igoptns a|g|m: open the in-game option popup (igaoptns/iggoptns/igmoptns)
     std::string feScreenName; // --fe-screen NAME: arbitrary LAYOUTS.BIG member capture lane ("make all menus 1:1")
     bool feOptions = false, feSaveLoad = false, feCredits = false; // --fe-options/--fe-saveload/--fe-credits: open the hub scene-graph views (Phase 2/3/4 gates)
     std::string lang = "eng"; // --lang CODE: FC*.BIN UI-string bank (registry Language key)
@@ -137,6 +140,14 @@ int run(int argc, char** argv) {
         else if (a == "--fe-league-cfg") { feMode = true, smokeFrames = 1, feLeagueCfg = std::stoi(next()); } // league config grid/popup capture gate
         else if (a == "--fe-wc-cfg") { feMode = true, smokeFrames = 1, feWcCfg = std::stoi(next()); } // world-cup family screen capture gate
         else if (a == "--fe-cheats") { feMode = true, smokeFrames = 1, feCheatsMask = std::stoi(next()); } // feflow95 checkbox-screen capture gate; N = row bitmask ON at open
+        else if (a == "--fe-history") { feMode = true, smokeFrames = 1, feHistoryYear = std::stoi(next()); } // feflow90 capture gate; N = year row index at open
+        else if (a == "--fe-nav-history") { feMode = true, smokeFrames = 1, feNavHistory = std::stoi(next()); } // nav chain: feflow90 -> Enter 'fe91' -> feflow91 capture
+        else if (a == "--fe-igoptns") { // igoptns captions lane gate: a=audio g=game m=mouse popup
+            feMode = true, smokeFrames = 1;
+            const std::string m = next();
+            feIgMode = m == "a" ? 1 : m == "g" ? 2 : m == "m" ? 3 : 0;
+            if (!feIgMode) throw std::invalid_argument("--fe-igoptns needs a|g|m");
+        }
         else if (a == "--fe-screen") { feMode = true, smokeFrames = 1, feScreenName = next(); } // default capture 1 frame; --fe-smoke N overrides
         else if (a == "--fe-options")  { feMode = true, smokeFrames = 1, feOptions = true; }  // FEFLOW15 options view capture gate
         else if (a == "--fe-saveload") { feMode = true, smokeFrames = 1, feSaveLoad = true; } // Feflow89 slot-list capture gate
@@ -247,6 +258,19 @@ int run(int argc, char** argv) {
         }
         if (fe && feCheatsMask >= 0) { // --fe-cheats N gate frame: feflow95 cheats screen, rows ON per bitmask
             if (!fe->openCheats(feCheatsMask)) std::fprintf(stderr, "fe: cheats screen unavailable\n");
+        }
+        if (fe && feHistoryYear >= 0) { // --fe-history N gate frame: feflow90 board at year row N
+            if (!fe->openHistory(feHistoryYear)) std::fprintf(stderr, "fe: history board unavailable\n");
+        }
+        if (fe && feNavHistory >= 0) { // nav chain gate: wedge-opened board -> bounded year cursor -> 'fe91' Enter
+            if (!fe->openHistory(0)) std::fprintf(stderr, "fe: history board unavailable\n");
+            else {
+                for (int i = 0; i < feNavHistory; ++i) fe->move(+1); // 'ysrb' cursor moves [C] FUN_00468728
+                if (fe->historyScreen() == 90) fe->enter();          // Enter -> feflow91 continuation scene
+            }
+        }
+        if (fe && feIgMode) { // --fe-igoptns gate frame: in-game option popup captions lane
+            if (!fe->openIgOptns(feIgMode)) std::fprintf(stderr, "fe: igoptns popup unavailable\n");
         }
         if (fe && feOptions) fe->openOptions();   // --fe-options gate frame: FEFLOW15 composite
         if (fe && feSaveLoad) fe->openSaveLoad(); // --fe-saveload gate frame: Feflow89 slot list

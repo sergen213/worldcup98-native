@@ -209,6 +209,22 @@ if(DEFINED WC98_TREE)
     set_tests_properties(fe_cheats PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW95: shapes=[1-9][0-9]* texts=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 ")
     add_test(NAME fe_cheats_off COMMAND wc98-native --fe-cheats 0 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/cheatsoff)
     set_tests_properties(fe_cheats_off PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW95: shapes=[1-9][0-9]* texts=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 ")
+    # World-Cup history boards (feflow90/91, analysis/pass13/CLASSICS_FE33.md): --fe-history N opens the
+    # board at year row N (FCDB finalist pair + scores painted from the app-side dataset); --fe-nav-history
+    # moves the bounded 'ysrb' cursor and presses Enter ('fe91') to capture the feflow91 continuation scene.
+    add_test(NAME fe_history_select COMMAND wc98-native --fe-history 0 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/hist90)
+    set_tests_properties(fe_history_select PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW90: shapes=[1-9][0-9]* texts=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 |texts=0 |cursors=0 ")
+    add_test(NAME fe_history_select_1994 COMMAND wc98-native --fe-history 14 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/hist94)
+    set_tests_properties(fe_history_select_1994 PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW90: shapes=[1-9][0-9]* texts=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 |texts=0 |cursors=0 ")
+    add_test(NAME fe_nav_history COMMAND wc98-native --fe-nav-history 5 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/histnav)
+    set_tests_properties(fe_nav_history PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW91: shapes=[1-9][0-9]* texts=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 |texts=0 |cursors=0 ")
+    # In-game option popups (igaoptns/iggoptns/igmoptns, analysis/pass13/IGOPTNS_ART.md): captions lane —
+    # ROWS tuples + tab/help FC-bank captions painted; ok/canc/defa chck art is PROVEN ABSENT on this media,
+    # so the widgets render as text captions (documented legit-missing slots), never invented art.
+    foreach(_ig a g m)
+        add_test(NAME fe_igoptns_${_ig} COMMAND wc98-native --fe-igoptns ${_ig} --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/igopt${_ig})
+        set_tests_properties(fe_igoptns_${_ig} PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "IG[AGM]OPTNS: shapes=[1-9][0-9]* texts=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 ")
+    endforeach()
     # Hub screen (Feflow06.lay, MENU_NAV_WC98.md §3 global-key table): the 13-wedge menu hub becomes
     # the main-menu composite when present; help pane paints FC captions -> texts>0.
     add_test(NAME fe_hub COMMAND wc98-native --fe-smoke 1 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/hub)

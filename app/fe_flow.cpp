@@ -32,7 +32,9 @@ using presentation::ScreenArt;
 constexpr std::array<const char*, 13> kHubButtons{"fe33", "fe90", "fe32", "fe11", "fe07", "fe04", "fe02",
                                                   "quit", "fe15", "fe89", "fe41", "repl", "cred"};
 // Modes the port has no simulation for paint their DISABLEDSHAPE* and Enter is a documented no-op.
-constexpr std::array<const char*, 6> kHubDisabled{"fe33", "fe90", "fe04", "fe02", "fe89", "repl"};
+// fe33 (classic/world-cup history boards feflow90/91) left the disabled list with the pass-13 slice:
+// hub wedge 'fe33' opens FEFLOW90 [C] SITE 0x449dc5, analysis/pass13/CLASSICS_FE33.md.
+constexpr std::array<const char*, 5> kHubDisabled{"fe90", "fe04", "fe02", "fe89", "repl"};
 
 FeFlow::FeFlow(render::Renderer& r, fs::path tree, std::string lang) : tree_(std::move(tree)), art_(r, tree_, tree_ / "FE/PACK/LAYOUTS") {
     // Main menu screen (LAY_COMPOSITOR_NOTES.md measured table: FEFLOW05 -> 26 objects -> 11 shapes).
@@ -168,6 +170,56 @@ FeFlow::FeFlow(render::Renderer& r, fs::path tree, std::string lang) : tree_(std
         } catch (const std::exception&) { // no cheats art on this tree: the lane stays closed
         }
     }
+    // World-cup history boards feflow90/91 (hub wedge fe33 -> FEFLOW90, SITE 0x449dc5; handlers +
+    // dataset analysis/pass13/CLASSICS_FE33.md). Absent layouts keep the lane closed (no-op wedge).
+    {
+        const char* kSpec[] = {"Feflow90.lay", "Feflow91.lay"};
+        const char* kName[] = {"FEFLOW90", "FEFLOW91"};
+        formats::ScreenLayout* tgt[] = {&hist90_, &hist91_};
+        for (int i = 0; i < 2; ++i) {
+            try {
+                fs::path d;
+                const std::string t = presentation::readLayout((tree_ / "FE/PACK/LAYOUTS/LAYOUTS.BIG").string() + "@" + kSpec[i], d);
+                *tgt[i] = formats::ScreenLayout::build(kName[i], formats::LayoutDocument::parse(std::string_view(t)), nullptr, nullptr, "PC");
+                haveHistory_ = true;
+            } catch (const std::exception&) { // no board art on this tree: that screen stays closed
+            }
+        }
+        if (haveHistory_) {
+            // Scene-ownership whitelists: back/flag/titl + the two shield slots + nav icons + year
+            // buttons + volume bars + help pane are scene art; chat/cha2/cha3/masc runtime surfaces,
+            // the five null-named FC-bank stat captions (textid 429..433 = other contexts' soup) and
+            // the ball-shading null widgets stay hidden. ltnm/rtnm/ltsc/rtsc/year paint as overlays.
+            hist90Visible_ = {"back", "flag", "titl", "shdl", "shdr", "quit", "fe15", "fe89", "fe41",
+                              "fe06", "fe91", "yslb", "ysrb", "help",
+                              "rb01", "rb02", "rb03", "rb04", "rb05", "lb01", "lb02", "lb03", "lb04", "lb05"};
+            hist91Visible_ = {"back", "flag", "titl", "ltfg", "rtfg", "quit", "fe06", "fe15", "fe07",
+                              "fe08", "help", "ovr0", "ovr1", "ovr2", "ovr3",
+                              "alp0", "alp1", "alp2", "alp3", "arp0", "arp1", "arp2", "arp3"};
+        }
+    }
+    // In-game option popups igaoptns/iggoptns/igmoptns (analysis/pass13/IGOPTNS_ART.md): captions lane.
+    {
+        const char* kSpec[] = {"igaoptns.lay", "iggoptns.lay", "igmoptns.lay"};
+        const char* kName[] = {"IGAOPTNS", "IGGOPTNS", "IGMOPTNS"};
+        formats::ScreenLayout* tgt[] = {&igA_, &igG_, &igM_};
+        for (int i = 0; i < 3; ++i) {
+            try {
+                fs::path d;
+                const std::string t = presentation::readLayout((tree_ / "FE/PACK/LAYOUTS/LAYOUTS.BIG").string() + "@" + kSpec[i], d);
+                *tgt[i] = formats::ScreenLayout::build(kName[i], formats::LayoutDocument::parse(std::string_view(t)), nullptr, nullptr, "PC");
+                haveIg_ |= 1 << i;
+            } catch (const std::exception&) { // popup layout absent on this tree: the lane stays closed
+            }
+        }
+        if (haveIg_) {
+            // Scene-ownership whitelist: fill-colour window rect ("back" / audio's "1"), title bar, tab
+            // buttons (go_g/go_a/go_c in iggoptns/igmoptns; audio names them 2/3/04), slider track.
+            // "list" paints its ROWS textids statically and "12" (x=640) is a hidden FC-bank dump widget; the
+            // app overlay painter draws real per-tab rows/values, so both stay composite-hidden [C] IGOPTNS_ART.md.
+            igVisible_ = {"back", "titl", "go_g", "go_a", "go_c", "scrl", "1", "2", "3", "04"};
+        }
+    }
     if (haveCheats_) {
         // Scene-ownership whitelist: blur background, cheatart pane, the eight cheatbox frames, the
         // eight objecttype-18 toggle widgets, 'yes' and the help pane. txt0..txt7 are excluded: their
@@ -267,6 +319,9 @@ void FeFlow::loadTeams() {
                 try { fcdbPlayerNames_ = formats::FcdbNames::parse(wc98::readFile(pp)).players; }
                 catch (const std::exception&) {} // name table absent: rows draw jersey numbers only
             }
+            fcdbTeamFullNames_.clear();
+            fcdbTeamFullNames_.reserve(names.teams.size());
+            for (const auto& t : names.teams) fcdbTeamFullNames_.push_back(t.fullName);
             for (const std::uint16_t id : poolIds_) {
                 const auto it = std::ranges::find(db.teams, id, &formats::FcdbTeam::id);
                 const auto idx = std::size_t(std::distance(db.teams.begin(), it));
@@ -344,6 +399,8 @@ FeDrawStats FeFlow::drawCurrent(render::SpriteBatch& ui) const {
     if (setupScreen_) return drawSetup(ui); // FEFLOW09/50 friendly/practise config screens
     if (leagueCfg_) return drawLeagueCfg(ui); // FEFLOW72/74/75/76/79/80 config family
     if (wcCfg_) return drawWcFamily(ui); // FEFLOW18/23/24/35 world-cup family screens
+    if (histScreen_) return drawHistory(ui); // feflow90/91 world-cup history boards (pass 13)
+    if (igMode_) return drawIgOptns(ui);     // igaoptns/iggoptns/igmoptns captions lane (pass 13)
     if (cheatsView_) return drawCheats(ui); // feflow95 cheats screen (MENU_PARITY.md §8)
     if (leagueView_) return drawLeague(ui);
     if (optsView_ && haveOpts_) return drawOptions(ui);   // FEFLOW15 config screen (Phase 2)
@@ -508,6 +565,8 @@ void FeFlow::move(int delta) {
         else wcRow_ = std::clamp(wcRow_ + delta, 0, 3);
         return;
     }
+    if (histScreen_) { moveHistory(delta); return; } // feflow90 year cursor ('ysla'/'yslc'/'ysrb')
+    if (igMode_) { moveIgOption(delta); return; }     // igoptns list rows (up/down, bounded)
     if (cheatsView_) { moveCheat(delta); return; } // feflow95 rows btn0..btn7 (y=183+25i)
     if (leagueCfg_) { // config grids: up/down = kt/menu row cursor / s001 slider value (keyloop_notes.txt)
         switch (leagueCfg_) {
@@ -560,6 +619,17 @@ void FeFlow::adjustValue(int dir) {
         if (wcCfg_ == 35) wcGroup_ = (wcGroup_ + dir + 8) & 7; // feflow18/23/24 keyloops carry no L/R tag
         return;
     }
+    if (histScreen_) return; // feflow90/91 keyloops carry no L/R tag [C] FUN_00468728/FUN_00468b50
+    if (igMode_) {           // left/right cycles the focused row's FC-caption value (two-axis rows)
+        if (igRow_ >= 0 && std::size_t(igRow_) < igRows_.size() && igVals_.size() > std::size_t(igRow_)) {
+            const OptRow& r = igRows_[std::size_t(igRow_)];
+            if (!r.values.empty()) {
+                int& v = igVals_[std::size_t(igRow_)];
+                v = (v + dir + int(r.values.size())) % int(r.values.size());
+            }
+        }
+        return;
+    }
     // Left/right cycles one option per row on the setup screen and on the options list rows
     // (the original's two-axis scheme: up/down = row, left/right = value).
     if (setupScreen_) {
@@ -590,6 +660,9 @@ bool FeFlow::enter() {
         if (wcCfg_ == 18 && wcRandCount_ < 99) ++wcRandCount_;
         return false; // 23/24 strk/stsc + 35 stats-view: no launch edge from these boards
     }
+    if (histScreen_ == 90) { histScreen_ = 91; return false; } // 'fe91' Enter chain -> feflow91 [C] FUN_004857a8
+    if (histScreen_) return false;                             // feflow91 confirm: presentation-only board
+    if (igMode_) return false; // row Enter = value select is mouse-only in the port; L/R cycles values
     if (cheatsView_) { toggleCheat(cheatRow_); return false; } // Enter flips the focused checkbox row
     if (leagueCfg_) {                                   // Enter = 'alok' confirm: popups close to the grid, grids stay put
         if (leagueCfg_ == 76 || leagueCfg_ == 78) cycleLeagueScreen(-1);
@@ -643,6 +716,8 @@ void FeFlow::back() {
     if (optsView_) { optsView_ = false; return; }
     if (slView_)   { slView_ = false; return; }
     if (credView_) { credView_ = false; return; }
+    if (histScreen_) { histScreen_ = 0; return; } // Esc from feflow90/91 -> hub ('fe06'/'quit' exit tags)
+    if (igMode_) { igMode_ = 0; return; }         // Esc closes the in-game option popup to its parent
     if (onHub()) return; // hub Esc: no parent scene (the Windows hub exits via the 'quit' wedge)
     if (leagueCfg_) { leagueCfg_ = 0; return; } // Esc from a config grid/popup -> FEFLOW73 stays open
     if (wcCfg_) { wcCfg_ = 0; return; } // Esc closes the family screen to its parent flow
@@ -1408,13 +1483,52 @@ int FeFlow::hubActivate(int index) {
     if (n == "fe15") { openOptions(); return -1; }
     if (n == "fe41") { openSaveLoad(); return -1; }
     if (n == "cred") { openCredits(); return -1; }
-    // fe33 shootout, fe90 classic, fe04 modem, fe02 network: no port simulation of those modes.
-    // fe89 team management, repl highlights: same (no shipped scene driver in the port).
+    if (n == "fe33") { openHistory(); return -1; } // feflow90 world-cup history board [C] SITE 0x449dc5
+    // fe90 classic, fe04 modem, fe02 network: no port simulation of those modes. fe89 team
+    // management, repl highlights: same (no shipped scene driver in the port).
     return -1;
 }
 
 int FeFlow::pointerActivate() {
     using presentation::widgetHit;
+    if (histScreen_) { // year buttons + nav icons (LAY widgets, help= panes); feflow91 fe07 -> back
+        const formats::ScreenLayout& sc = histScreen_ == 90 ? hist90_ : hist91_;
+        for (const char* n : {"yslb", "ysrb"}) {
+            const formats::LayoutObject* o = sc.object(n);
+            if (o && widgetHit(*o, float(ptrX_), float(ptrY_))) { moveHistory(n[2] == 'l' ? -1 : 1); return -1; }
+        }
+        if (histScreen_ == 90) {
+            for (const char* n : {"fe06", "fe91"}) {
+                const formats::LayoutObject* o = hist90_.object(n);
+                if (o && widgetHit(*o, float(ptrX_), float(ptrY_))) {
+                    if (n[3] == '6') histScreen_ = 0; else histScreen_ = 91; // fe06 exit / fe91 chain [C]
+                    return -1;
+                }
+            }
+        } else if (const formats::LayoutObject* o = hist91_.object("fe07"); o && widgetHit(*o, float(ptrX_), float(ptrY_))) {
+            histScreen_ = 90; // LAY comment: "goes to feflow90"
+            return -1;
+        }
+        return -1;
+    }
+    if (igMode_) {
+        const formats::ScreenLayout& sc = igMode_ == 1 ? igA_ : igMode_ == 2 ? igG_ : igM_;
+        for (auto [name, mode] : {std::pair{"go_g", 2}, std::pair{"go_a", 1}, std::pair{"go_c", 3}}) {
+            const formats::LayoutObject* o = sc.object(name);
+            if (o && widgetHit(*o, float(ptrX_), float(ptrY_))) { openIgOptns(mode); return -1; } // tab switch [H]
+        }
+        for (const char* n : {"ok", "canc", "defa"}) { // commit/cancel/defaults close the popup [H] presentation-only
+            const formats::LayoutObject* o = sc.object(n);
+            if (o && widgetHit(*o, float(ptrX_), float(ptrY_))) { igMode_ = 0; return -1; }
+        }
+        if (const formats::LayoutObject* box = sc.object("list"); box && widgetHit(*box, float(ptrX_), float(ptrY_))) {
+            const int rh = std::max(8, box->intProp("ROWHEIGHT", 36));
+            igRow_ = int(std::clamp((float(ptrY_) - float(box->y)) / float(rh), 0.f,
+                                    float(std::max(1, int(igRows_.size())) - 1)));
+            return -1;
+        }
+        return -1;
+    }
     if (cheatsView_) { // feflow95 rows: a click focuses the row and flips its checkbox (the engine's
                        // hilite-flag write FUN_00479224 on the clicked widget)
         for (int i = 0; i < kCheats; ++i) {
@@ -1750,6 +1864,223 @@ FeDrawStats FeFlow::drawCheats(render::SpriteBatch& ui) const {
                 render::packRgba(12u, 10u, 6u, 150u)); // textbackshadow=50 dark plate [H]
         st.texts += paintCaption(*pane, kCheatLabels[std::size_t(cheatRow_)], ui);
     }
+    drawCursor(ui, st);
+    return st;
+}
+
+// ---- World-cup history boards feflow90/91 (hub wedge fe33; analysis/pass13/CLASSICS_FE33.md) -----
+// FCDB fullName for a team id (classic-era records 861..876 included); the dataset's literal string
+// paints when the record is absent (Czechoslovakia: no FCDB entry on this tree).
+std::string FeFlow::wcTeamName(std::uint16_t id, const char* fallback) const {
+    if (fcdb_ && !fcdbTeamFullNames_.empty()) {
+        const auto it = std::ranges::find(fcdb_->teams, id, &formats::FcdbTeam::id);
+        if (it != fcdb_->teams.end()) {
+            const auto idx = std::size_t(std::distance(fcdb_->teams.begin(), it));
+            if (idx < fcdbTeamFullNames_.size() && !fcdbTeamFullNames_[idx].empty()) return fcdbTeamFullNames_[idx];
+        }
+    }
+    return fallback;
+}
+
+// Shield/flag art file for a team id: "FNNN" = FCDB record INDEX (same rule as the pool flags);
+// "" when no record. FE/GLOBAL ships F000..F046, so the classic entries 861..876 (idx 41+) resolve.
+std::string FeFlow::wcFlagFile(std::uint16_t id) const {
+    if (!fcdb_) return {};
+    const auto it = std::ranges::find(fcdb_->teams, id, &formats::FcdbTeam::id);
+    if (it == fcdb_->teams.end()) return {};
+    char ff[8];
+    std::snprintf(ff, sizeof ff, "F%03u", unsigned(std::distance(fcdb_->teams.begin(), it)));
+    return ff;
+}
+
+bool FeFlow::openHistory(int yearIdx) {
+    if (!haveHistory_) { lastError_ = "Feflow90.lay is absent from this tree"; return false; }
+    histScreen_ = 90;
+    // Init cursor clamp [C] FUN_004688e8: DAT_0057d1cc bounded by the list length DAT_0057c970 = 9.
+    histYear_ = std::clamp(yearIdx, 0, kWcYears - 1);
+    return true;
+}
+
+void FeFlow::moveHistory(int dir) {
+    if (histScreen_) histYear_ = std::clamp(histYear_ + dir, 0, kWcYears - 1); // 'ysla'/'yslc' -1, 'ysrb' +1 [C]
+}
+
+FeDrawStats FeFlow::drawHistory(render::SpriteBatch& ui) const {
+    using namespace presentation;
+    if (histScreen_ == 91) {
+        // Continuation board: FUN_004857a8 stored the selected index -> this scene paints its pair.
+        FeDrawStats st = composite(hist91_, ui, const_cast<ScreenArt&>(art_), text_.get(), &hist91Visible_);
+        if (!text_ || !text_->ready()) return st;
+        const WcFinal& f = kWcFinals[std::size_t(std::clamp(histYear_, 0, kWcYears - 1))];
+        for (auto [w, nm] : {std::pair{"tltx", wcTeamName(f.leftId, f.leftName)},
+                             std::pair{"trtx", wcTeamName(f.rightId, f.rightName)}}) {
+            if (const formats::LayoutObject* o = hist91_.object(w)) st.texts += paintCaption(*o, nm, ui);
+        }
+        for (auto [w, id] : {std::pair{"ltfg", f.leftId}, std::pair{"rtfg", f.rightId}}) {
+            const formats::LayoutObject* o = hist91_.object(w);
+            if (!o) continue;
+            const std::string ff = wcFlagFile(id);
+            if (ff.empty()) { ++st.missing; continue; } // no FCDB record: keep the LAY default shield art
+            const ScreenArt::Shape sh = const_cast<ScreenArt&>(art_).shape("..\\global\\", ff, "f000", -1);
+            if (sh.tex) ui.draw(sh.tex, {float(o->x), float(o->y), float(sh.w), float(sh.h)}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu), ++st.shapes;
+            else ++st.missing;
+        }
+        drawHelpPane(hist91_, ui, st, "fe08"); // confirm-control caption (helppaneid pane) [H] default focus
+        drawCursor(ui, st);
+        return st;
+    }
+    FeDrawStats st = composite(hist90_, ui, const_cast<ScreenArt&>(art_), text_.get(), &hist90Visible_);
+    if (!text_ || !text_->ready()) return st;
+    const WcFinal& f = kWcFinals[std::size_t(std::clamp(histYear_, 0, kWcYears - 1))];
+    // Field values: the repaint FUN_00468954 fills ltnm/rtnm/ltsc/rtsc/year via widget text set
+    // FUN_004788bc ("%d" format string, VA 0x563f4c); the port draws the dataset fields direct.
+    if (const formats::LayoutObject* o = hist90_.object("year")) st.texts += paintCaption(*o, std::to_string(f.year), ui);
+    if (const formats::LayoutObject* o = hist90_.object("ltnm")) st.texts += paintCaption(*o, wcTeamName(f.leftId, f.leftName), ui);
+    if (const formats::LayoutObject* o = hist90_.object("rtnm")) st.texts += paintCaption(*o, wcTeamName(f.rightId, f.rightName), ui);
+    if (const formats::LayoutObject* o = hist90_.object("ltsc")) st.texts += paintCaption(*o, std::to_string(f.scoreL), ui);
+    if (const formats::LayoutObject* o = hist90_.object("rtsc")) st.texts += paintCaption(*o, std::to_string(f.scoreR), ui);
+    for (auto [w, id] : {std::pair{"shdl", f.leftId}, std::pair{"shdr", f.rightId}}) {
+        const formats::LayoutObject* o = hist90_.object(w);
+        if (!o) continue;
+        const std::string ff = wcFlagFile(id);
+        if (ff.empty()) { ++st.missing; continue; } // no FCDB record: keep the LAY default shield art
+        const ScreenArt::Shape sh = const_cast<ScreenArt&>(art_).shape("..\\global\\", ff, "f000", -1);
+        if (sh.tex) ui.draw(sh.tex, {float(o->x), float(o->y), float(sh.w), float(sh.h)}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu), ++st.shapes;
+        else ++st.missing;
+    }
+    drawHelpPane(hist90_, ui, st, "yslb"); // year-button caption (help=5095) [H] default focus
+    drawCursor(ui, st);
+    return st;
+}
+
+// ---- In-game option popups igaoptns/iggoptns/igmoptns (analysis/pass13/IGOPTNS_ART.md) -----------
+// Inline `rows=N, label,mode,count,v...` tuples (prop ROWS): FC-bank caption ids per row + values.
+std::vector<FeFlow::OptRow> FeFlow::parseIgRows(std::string_view rowsProp) {
+    std::vector<int> nums;
+    std::size_t p = 0;
+    while (p < rowsProp.size()) {
+        const std::size_t c = rowsProp.find(',', p);
+        std::string_view tok = rowsProp.substr(p, (c == std::string_view::npos ? rowsProp.size() : c) - p);
+        const std::size_t n0 = tok.find_first_not_of(" \t");
+        if (n0 != std::string_view::npos) {
+            tok = tok.substr(n0);
+            int v = 0;
+            if (std::from_chars(tok.data(), tok.data() + tok.size(), v).ptr == tok.data() + tok.size()) nums.push_back(v);
+        }
+        if (c == std::string_view::npos) break;
+        p = c + 1;
+    }
+    std::vector<OptRow> rows;
+    if (nums.size() < 4) return rows;
+    std::size_t i = 1; // nums[0] = tuple count
+    for (int t = 0; t < nums[0] && i + 2 < nums.size(); ++t) {
+        OptRow r;
+        r.label = nums[i++];
+        r.mode = nums[i++];
+        int cnt = nums[i++];
+        while (cnt-- > 0 && i < nums.size()) r.values.push_back(nums[i++]);
+        rows.push_back(std::move(r));
+    }
+    return rows;
+}
+
+bool FeFlow::openIgOptns(int mode) {
+    if (mode < 1 || mode > 3 || !(haveIg_ & (1 << (mode - 1)))) {
+        lastError_ = "igoptns popup layout is absent from this tree";
+        return false;
+    }
+    igMode_ = mode;
+    const formats::ScreenLayout& sc = mode == 1 ? igA_ : mode == 2 ? igG_ : igM_;
+    const formats::LayoutObject* list = sc.object("list");
+    igRows_ = list && list->prop("ROWS") ? parseIgRows(*list->prop("ROWS")) : std::vector<OptRow>{};
+    igVals_.assign(igRows_.size(), 0);
+    igRow_ = 0;
+    return true;
+}
+
+void FeFlow::moveIgOption(int dir) {
+    if (!igMode_) return;
+    const int n = std::max(1, int(igRows_.size()));
+    igRow_ = (igRow_ + dir + n) % n; // up/down row cursor (list widget, ROWHEIGHT stride rows) [H]
+}
+
+FeDrawStats FeFlow::drawIgOptns(render::SpriteBatch& ui) const {
+    using namespace presentation;
+    const formats::ScreenLayout& sc = igMode_ == 1 ? igA_ : igMode_ == 2 ? igG_ : igM_;
+    FeDrawStats st = composite(sc, ui, const_cast<ScreenArt&>(art_), text_.get(), &igVisible_);
+    if (!text_ || !text_->ready()) return st;
+    // List rows: label caption + current value caption from the FC bank (the tuples' ids), painted in
+    // the list box at the ROWHEIGHT stride with the row cursor hilite.
+    if (const formats::LayoutObject* box = sc.object("list")) {
+        std::vector<std::string> caps;
+        for (std::size_t i = 0; i < igRows_.size(); ++i) {
+            const OptRow& r = igRows_[i];
+            std::string cap;
+            if (const std::string_view s = text_->stringAt(r.label); !s.empty()) cap = std::string(s);
+            if (!r.values.empty() && i < igVals_.size()) {
+                const int v = r.values[std::size_t(igVals_[i]) % r.values.size()]; // value caption suffix [H]
+                if (const std::string_view s = text_->stringAt(v); !s.empty()) cap += "  " + std::string(s);
+            }
+            caps.push_back(std::move(cap));
+        }
+        const int fontId = box->intProp("TEXTFONT", 2); // list widget textFont=2 (measured)
+        const int rowH = box->intProp("ROWHEIGHT", 36); // slots that fit the list box (engine clips + scrolls)
+        const int vis = std::max(1, (box->height - 2) / rowH);
+        const int top = std::min(std::max(0, igRow_ - vis + 1), std::max(0, int(caps.size()) - vis));
+        std::vector<std::string> view;
+        for (int i = top; i < std::min(int(caps.size()), top + vis); ++i) view.push_back(caps[std::size_t(i)]);
+        paintListRows(ui, *box, std::span(view), igRow_ - top, *text_, fontId, st);
+        if (const formats::LayoutObject* trk = sc.object("scrl"))
+            paintSliderThumb(ui, const_cast<ScreenArt&>(art_), *trk, igRow_, 0, std::max(1, int(igRows_.size()) - 1));
+    }
+    // Tab buttons: objecttype-4 widgets with TEXTID are dynamic content -> composite skips the label;
+    // paint the bank captions over them (textid=1174/1175/1144 measured on go_g/go_a/go_c). The audio
+    // popup names its three tab buttons "2", "3", "04" (measured igaoptns.lay widget map).
+    const char* kTab[3] = {"go_g", "go_a", "go_c"};
+    if (igMode_ == 1) { kTab[0] = "2"; kTab[1] = "3"; kTab[2] = "04"; }
+    for (int i = 0; i < 3; ++i) {
+        const formats::LayoutObject* o = sc.object(kTab[i]);
+        if (!o) continue;
+        const std::string* t = o->prop("TEXTID");
+        if (!t) continue;
+        int idx = 0;
+        std::from_chars(t->data(), t->data() + std::min<std::size_t>(t->size(), 8), idx);
+        std::string s(text_->stringAt(idx)); // e.g. the game-tab caption (1174)
+        if (s.empty()) continue;
+        const formats::FfnFont* f = text_->face(4);
+        render::TextureId ftex = text_->faceTexture(4);
+        if (!f || !ftex) { f = text_->font(); ftex = text_->texture(); }
+        if (!f || !ftex) continue;
+        const float px = f->lineHeight ? float(f->lineHeight) : 16.f;
+        // The engine's font painter clips captions inside the widget box (this media's tab ids are long
+        // dev strings); trim to the button width so pills never bleed over neighbours.
+        while (s.size() > 1 && textWidthPx(*f, s, px) > float(o->width) - 8.f) s.pop_back();
+        const float w = textWidthPx(*f, s, px);
+        for (const auto& q : layoutText(*f, s, float(o->x) + (float(o->width) - w) * 0.5f,
+                                        float(o->y) + (float(o->height) - px) * 0.5f, px,
+                                        render::packRgba(235, 235, 235, 255)))
+            ui.draw(ftex, q.dst, q.uv, q.rgba);
+        ++st.texts;
+    }
+    // ok/canc/defa: art PROVEN ABSENT (igicon.fsh#chck dead reference, IGOPTNS_ART.md) -> paint the
+    // widgets' own help= FC captions as text over their boxes; no invented placeholder art.
+    const char* kCtl[3] = {"ok", "canc", "defa"}; // control widgets (chck art dead on this media)
+    const int kCap[3]   = {60, 62, 1176};         // their help= FC-bank caption ids (measured)
+    for (int i = 0; i < 3; ++i) {
+        const formats::LayoutObject* o = sc.object(kCtl[i]);
+        if (!o) continue;
+        ++st.missing; // the chck shape is a documented legit-missing art slot on this media [C]
+        std::string s(text_->stringAt(kCap[i]));
+        if (s.empty()) continue;
+        // Same widget-box clip as the engine's font painter: this media's ids are long dev strings.
+        const formats::FfnFont* f = text_->face(4);
+        if (f && f->lineHeight) {
+            const std::size_t maxChars = static_cast<std::size_t>(std::max(1.f, float(o->width) - 8.f) / (float(f->lineHeight) * 0.62f));
+            if (s.size() > maxChars) s.resize(maxChars);
+        }
+        st.texts += paintCaption(*o, std::string_view(s), ui);
+    }
+    drawHelpPane(sc, ui, st, "ok"); // confirm-control caption (help=60) [H] default focus
     drawCursor(ui, st);
     return st;
 }

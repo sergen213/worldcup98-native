@@ -51,6 +51,8 @@ public:
                : leagueCfg_         ? cfgName_.c_str()
                : wcCfg_             ? cfgName_.c_str()
                : cheatsView_        ? "FEFLOW95"
+               : histScreen_        ? (histScreen_ == 90 ? "FEFLOW90" : "FEFLOW91")
+               : igMode_            ? (igMode_ == 1 ? "IGAOPTNS" : igMode_ == 2 ? "IGGOPTNS" : "IGMOPTNS")
                : teamScreen_        ? "FEFLOW11"
                : leagueView_        ? "FEFLOW73"
                : setupScreen_       ? (setupPractise_ ? "FEFLOW50" : "FEFLOW09")
@@ -186,6 +188,43 @@ public:
         "Take a Dive", "Hot Potato", "Big Heads", "Skeleton Players",
         "Crazy Ball", "Silly Moves", "Flaming Ball", "Alien Model"};
     static constexpr const char* kCheatTitle = "Cheats"; // 'titl' caption string (VA 0x56400c)
+    // ---- World-cup history boards feflow90/91 (hub wedge fe33; analysis/pass13/CLASSICS_FE33.md) --
+    // Hub key handler SITE 0x449dc5 opens scene feflow90 on the 'fe33' wedge tag. Init FUN_004688e8
+    // sets the list length DAT_0057c970 = 9 (nine World Cup editions); keyloop FUN_00468728 tags:
+    // 'ysla'/'yslc' year-cursor -1, 'ysrb' +1 (bounded), Enter 'fe91' chains to feflow91
+    // (FUN_004857a8 stores the selected index -> DAT_0062fab8 consumed by feflow91), 'quit'/'fe06 exit.
+    struct WcFinal { int year; std::uint16_t leftId, rightId; const char* leftName, *rightName; int scoreL, scoreR; };
+    static constexpr int kWcYears = 9; // DAT_0057c970 = 9 rows [C] FUN_004688e8
+    // Finalist dataset per analysis/pass13/WCHISTORY_SLICE_SPEC: FIFA World Cup finals records, first
+    // nine editions. FCDB.DBI team ids where a record exists (classic-era entries 861..876 + modern
+    // pool teams); id 0 = no FCDB record -> the literal name string paints (Czechoslovakia). Scores
+    // per FIFA finals records; names prefer the FCDB STR0 fullName for the id, fallback = table string.
+    static constexpr std::array<WcFinal, kWcYears> kWcFinals{
+        WcFinal{1930, 861, 862, "Uruguay", "Argentina", 4, 2},
+        WcFinal{1934, 47, 0, "Italy", "Czechoslovakia", 2, 1},
+        WcFinal{1938, 47, 864, "Italy", "Hungary", 4, 3},
+        WcFinal{1950, 861, 59, "Uruguay", "Brazil", 2, 1},
+        WcFinal{1954, 72, 864, "Germany", "Hungary", 3, 2},
+        WcFinal{1958, 59, 39, "Brazil", "Sweden", 5, 2},
+        WcFinal{1962, 59, 0, "Brazil", "Czechoslovakia", 3, 1},
+        WcFinal{1966, 69, 72, "England", "Germany", 4, 2},
+        WcFinal{1970, 59, 47, "Brazil", "Italy", 4, 1}};
+    bool openHistory(int yearIdx = 0); // hub fe33 Enter / --fe-history N; false = layout absent
+    [[nodiscard]] int historyScreen() const { return histScreen_; } // 90/91 active board (0 = none)
+    [[nodiscard]] int historyYearIndex() const { return histYear_; }
+    void moveHistory(int dir); // 'ysla'/'yslc' -1, 'ysrb' +1 bounded year cursor [C] FUN_00468728
+    presentation::FeDrawStats drawHistory(render::SpriteBatch& ui) const;
+
+    // ---- In-game option popups igaoptns/iggoptns/igmoptns (analysis/pass13/IGOPTNS_ART.md) --------
+    // Captions lane: the trio ships list rows as inline `rows=N, tuples` data (FC-bank caption ids);
+    // the ok/canc/defa buttons reference igicon.fsh#chck art that is PROVEN ABSENT on this media
+    // (zero hits; lazy-loader "fepack\%s.all" dead) -> the port paints those three as captions of
+    // their own help= FC indices (60/62/1176), no invented placeholder art. Esc returns to hub.
+    bool openIgOptns(int mode); // 1=a(igaoptns) 2=g(iggoptns) 3=m(igmoptns); false = layout absent
+    [[nodiscard]] int igOptnsMode() const { return igMode_; }
+    void moveIgOption(int dir);  // up/down list-row cursor (bounded by the parsed row count)
+    void adjustIgValue(int dir); // left/right cycle the focused row's FC-caption value
+    presentation::FeDrawStats drawIgOptns(render::SpriteBatch& ui) const;
     // ---- Phase 2 options (FEFLOW15.LAY) / 3 save-load (Feflow89.LAY) / 4 credits (FEFLOW19) ----
     bool openOptions();  // Enter on fe15 / --fe-options; false when the layout is absent from the tree
     bool openSaveLoad(); // Enter on fe41 / --fe-saveload
@@ -288,6 +327,15 @@ public:
     std::array<bool, kCheats> cheatsOn_{}; // per-row toggle state (DAT_0057d2a0 analogue)
     std::vector<std::string> cheatsVisible_; // composite whitelist: scene-owned art only
     presentation::FeDrawStats drawCheats(render::SpriteBatch& ui) const; // composite + row overlays
+    // World-cup history boards (feflow90/91): layouts + scene-ownership whitelists + state. The
+    // year cursor is the port analogue of DAT_0057d1cc bounded by DAT_0057c970 = 9 [C].
+    formats::ScreenLayout hist90_, hist91_;
+    bool haveHistory_ = false;       // at least one board layout loaded
+    int histScreen_ = 0;             // active board: 90 feflow90, 91 continuation, 0 not shown
+    int histYear_ = 0;               // year cursor over kWcFinals (init clamp [C] FUN_004688e8)
+    std::vector<std::string> hist90Visible_, hist91Visible_;
+    [[nodiscard]] std::string wcTeamName(std::uint16_t id, const char* fallback) const; // FCDB fullName -> literal
+    [[nodiscard]] std::string wcFlagFile(std::uint16_t id) const;                       // FNNN (record index), "" = no record
     // One caption through FeText at widget geometry, centred inside the widget box (the alignment=3
     // semantics of the compositor's label path); colour = palette index from NORMALCOLOUR/HILITECOLOUR.
     // Captions bypass the FC-bank label() path: the scene installs exe strings on txt0..txt7/titl/'yes'.
@@ -303,6 +351,7 @@ public:
     // Full FCDB record set for the league-config roster rows (FEFLOW73 pnNN, 74/79 prNN, 80 pnNN);
     // kept from loadTeams' parse. Names = FCDBP<lang>.DBI STR1 entries parallel to fcdb_->players.
     std::optional<formats::FcdbDatabase> fcdb_;
+    std::vector<std::string> fcdbTeamFullNames_; // STR0 fullName parallel to fcdb_->teams (history boards)
     std::vector<std::string> fcdbPlayerNames_;
     [[nodiscard]] const formats::FcdbTeam* cfgTeam() const; // active grid team (null = no FCDB data)
     void cycleLeagueScreen(int dir); // gofd/gobk chain 72->74->75->79->80 (keyloop_notes.txt)
@@ -346,6 +395,16 @@ public:
     int optTab_ = 0, optRow_ = 0;       // active tab page + row cursor
     std::array<std::vector<OptRow>, 4> optRows_;
     std::array<std::vector<int>, 4> optVals_;   // current value index per row
+    // igoptns popups: rows live inline in the LAY as `rows=N, tuples` (prop ROWS); the LayoutDocument
+    // keeps them on one line, unlike feflow15's multi-line continuation rows.
+    formats::ScreenLayout igA_, igG_, igM_;
+    int haveIg_ = 0;                 // bit per mode present on this tree: 1<<a | 1<<g | 1<<m
+    int igMode_ = 0;                 // active popup (1/2/3, 0 = none)
+    int igRow_ = 0;                  // list row cursor
+    std::vector<OptRow> igRows_;     // rows of the active popup (label/mode/values FC-bank ids)
+    std::vector<int> igVals_;        // current value index per row
+    std::vector<std::string> igVisible_; // composite whitelist: scene-owned art only
+    static std::vector<OptRow> parseIgRows(std::string_view rowsProp);
     bool audioDirty_ = false;           // volume changed -> main.cpp saves settings.ini
     config::Settings* settings_ = nullptr;
     audio::Mixer* mixer_ = nullptr;

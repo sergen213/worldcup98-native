@@ -170,7 +170,7 @@ private:
 // user/rplyNNNN.dat + rplyindx.dat under the tree (docs/asset-formats/RPLY.md).
 int runLiveLoop(const std::filesystem::path& tree, const std::string& prefix, int smokeFrames,
                 platform::Window& window, render::Renderer& renderer, bool recordReplay = false,
-                bool igPauseSmoke = false, int boardScript = 0); // 1 stats tour / 2 half board / 3 full-time boards (gates fe_igstats/fe_ighalf/fe_igscsum/fe_igflsum) / 4 highlights browser / 5 save list (gates fe_highlite_browser/fe_hilsav_list) / 6 IGTEAM management page cycle + ab-swap + hub (gate fe_mgmt_pages, §E) / 7 manmarks ratings board from igteam72 'M' key (gate fe_manmarks_grid, §E) / 8 camera popup chain C->IGCAMERA->IGCAMSEL+mode apply (gate fe_camera_pages, §G) / 9 practise pages PRACT1<->PRACT2 tab cycle + keeper toggle (gate fe_practise_pages, §G)
+                bool igPauseSmoke = false, int boardScript = 0, int quality = 1); // 1 stats tour / 2 half board / 3 full-time boards (gates fe_igstats/fe_ighalf/fe_igscsum/fe_igflsum) / 4 highlights browser / 5 save list (gates fe_highlite_browser/fe_hilsav_list) / 6 IGTEAM management page cycle + ab-swap + hub (gate fe_mgmt_pages, §E) / 7 manmarks ratings board from igteam72 'M' key (gate fe_manmarks_grid, §E) / 8 camera popup chain C->IGCAMERA->IGCAMSEL+mode apply (gate fe_camera_pages, §G) / 9 practise pages PRACT1<->PRACT2 tab cycle + keeper toggle (gate fe_practise_pages, §G); quality = h23 DAT_00644778 tier word
 
 // CLI driver: --tree DIR [--live-match-smoke N] [--out-prefix P]. Standalone wrapper that owns its
 // window + Vulkan swapchain; "skip:" exits with 2 like the other tree gates.

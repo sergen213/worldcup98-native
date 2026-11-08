@@ -62,6 +62,17 @@ struct CameraPresetRow {
 // mode 3: subMode3 ? 0x1980 : 0x1100; else 0x1540}. Returns the plain height otherwise.
 [[nodiscard]] int tabATaskHeight(int idx, int mode, bool liveRefPos, bool subMode3, int playerHeight, int camHeight);
 
+// h23 FUN_004cafe0 scene-level quality-tier camera [P]: eye from the quality word DAT_00644778
+// (tier deltas below), x = clamp(xEdge + dx*0x10, -0x140-xEdge .. xEdge+0x760); z source by task
+// flags bit4/bit5: ball DAT_00644830 / player-pair DAT_00644820 (bit5) / block DAT_00644860,
+// clamped to zEdge-0x2a0 .. 0x230-zEdge. speedAngle = rec+0x10c bytes {0x40,6} = 0x640.
+struct TierCamEye {
+    int x, z;
+    int polarDist;   // dz << 4 tier lane (FUN_00518060 + atan pair argument [P])
+    unsigned speedAngle; // rec+0x10c constant (angle/speed pack)
+};
+TierCamEye tierCamera(int quality, int flags, int xEdge, int zEdge, int ballZ, int blockZ, int playerZ);
+
 // Camera presentation task record: the WC98 timer B (fade/zoom) + timer C (position dolly)
 // snapshot-swap model over a camera snapshot pair (section 7 delta 1). Mirrors the task-record
 // fields consumed by the h6/h8/h13/h21/h24/h27 follow family: snapshot A = dolly start,
@@ -129,6 +140,10 @@ public:
     [[nodiscard]] render::Camera camera() const;
 
     [[nodiscard]] glm::ivec3 eye() const { return eye_; }
+    // Scene-level quality word DAT_00644778 (h23 tier selector): the per-scene launch parameter
+    // written by task pool init (FUN_004a0810 argument [P]); consumed via presentation::tierCamera.
+    void setQualityTier(int q) { quality_ = q; }
+    [[nodiscard]] int qualityTier() const { return quality_; }
     [[nodiscard]] int yaw() const { return yaw_; }
     [[nodiscard]] int pitch() const { return pitch_; }
     [[nodiscard]] int fovHalf16() const { return fov_; }
@@ -146,6 +161,7 @@ private:
     glm::ivec3 eye_{0, 650, 0}, smoothBall_{};
     int yaw_ = 0, pitch_ = 0, velYaw_ = 0, velPitch_ = 0, velX_ = 0, velZ_ = 0;
     int side_ = 0;           // height-table side (possessing team's attack direction)
+    int quality_ = 1;      // DAT_00644778 scene-level quality word (h23 tier lane, default low)
     unsigned overrides_ = 0; // loose-ball override flags 0x100000 / 0x200000
     int fov_ = 3200, fovFrom_ = 3200, fovTo_ = 3200;
     float fovGlide_ = 1.5f;  // seconds into the 1.5 s glide

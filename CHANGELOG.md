@@ -19,6 +19,14 @@ project goals.
 - `.SCI` payload parser `formats/sci.cpp` + gate `test_sci`: header magic survey {0x201..0x204},
   stride-16 record streams, stride-12 tail tables and trailing stride-8 relocation-pair lists —
   all 87 `COMMON/*.SCI` files parse (TASK_HANDLERS_WC98 §6 grammar refined; delta-4).
+- Kickoff placement task `simulation::KickoffPlace_init/step` from h6 `FUN_00516f40`: side-aware
+  dolly to the centre spot (rec+0x1cc direction rule, 0x3c0/frame polar step), spin ±DAT_00656e08 at
+  the placement-phase tick with per-side sign; replaces the direct-set kick placement and livematch
+  pose follows `kickoffPlace.bearing` (gate `scenarioKickoffPlacement`; §7 delta-3, GAMEPLAY_PARITY §5.6).
+- Quality-tier scene camera `presentation::tierCamera` from h23 `FUN_004cafe0`: tier deltas
+  {0x71,0x3d}/{0x65,0x31}/{0x59,0x25} ×0x10 by quality word `DAT_00644778`, pitch-edge x/z clamps,
+  flags bit4/bit5 z-source lanes (ball/block/player), dz<<4 polar + 0x640 constants; live option
+  `wc98-native --quality N` (`MatchCamera::setQualityTier`) — gate in `test_presentation` (§7 delta-5).
 - Task-handler family dossier `docs/reverse-engineering/TASK_HANDLERS_WC98.md`: semantic map of the
   30 tabB task handlers (scene bindings via the `.SCI` descriptor table, camera/pitch-mesh/timer
   primitives, kickoff placement task), byte-proven `.SCI` payload grammar from `COMMON/*.SCI`, and a

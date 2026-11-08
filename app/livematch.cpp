@@ -742,7 +742,8 @@ presentation::FeDrawStats IgBoards::draw(render::SpriteBatch& ui, const IgMgmtDa
 
 
 int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames,
-                platform::Window& window, render::Renderer& renderer, bool recordReplay, bool igPauseSmoke, int boardScript) {
+                platform::Window& window, render::Renderer& renderer, bool recordReplay, bool igPauseSmoke, int boardScript,
+                int quality) {
     MatchBoot boot;
     if (!boot.init(tree)) return 2;
 
@@ -786,6 +787,7 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
     sim::Input_assignController(w, 0, 1, 0);
 
     MatchCamera camera; // default Tele: follows play behind the ball
+    camera.setQualityTier(quality); // h23 DAT_00644778 scene-level tier word [P]
     int controlledPid = -1;
 
     // Commentary: mixer is best-effort — headless CI has no OpenAL device, and the adapter then
@@ -1426,12 +1428,14 @@ int runLiveMatch(int argc, char** argv) {
     std::string prefix = "/tmp/wc98port-out/live";
     bool record = false; // --record-replay (parsed by main too, consumed here in live mode)
     bool igScript = false; // --ig-pause-smoke N: scripted Esc/Enter pause tour (gate fe_igmenu)
-    int boardScript = 0; // --ig-stats-smoke 1 / --ig-half-smoke 2 / --ig-full-smoke 3 (gates fe_igstats/fe_ighalf/fe_igscsum/fe_igflsum)
+    int boardScript = 0; // --ig-stats-smoke 1 / --ig-half-smoke 2 / --ig-full-smoke 3 (gates fe_igstats/fe_igscsum/fe_igflsum)
+    int quality = 1; // --quality N: scene-level camera quality word DAT_00644778 (h23 tier lane)
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         if (a == "--tree" && i + 1 < argc) root = argv[++i];
         else if (a == "--live-match-smoke") smoke = std::atoi(argv[++i]);
         else if (a == "--out-prefix" && i + 1 < argc) prefix = argv[++i];
+        else if (a == "--quality") quality = std::atoi(argv[++i]); // h23 tier selector [P]
         else if (a == "--ig-pause-smoke") { smoke = std::atoi(argv[++i]); igScript = true; } // gate fe_igmenu
         else if (a == "--ig-stats-smoke") { smoke = std::atoi(argv[++i]); boardScript = 1; } // gate fe_igstats: IGMENU Stats-row tour -> IGSTATS composite
         else if (a == "--ig-half-smoke") { smoke = std::atoi(argv[++i]); boardScript = 2; }   // gate fe_ighalf: 1-min halves, IGHALF opens at the half whistle
@@ -1480,7 +1484,7 @@ int runLiveMatch(int argc, char** argv) {
     vcfg.drawableSize = [&] { return window->pixelSize(); };
 
     auto renderer = render::createVulkanRenderer(vcfg, settings);
-    const int rc = runLiveLoop(root, prefix, smoke, *window, *renderer, record, igScript, boardScript);
+    const int rc = runLiveLoop(root, prefix, smoke, *window, *renderer, record, igScript, boardScript, quality);
     renderer.reset(); // drain validation messages before the verdict (render-demo pattern)
     if (*messages && rc == 0) { std::cerr << *messages << " validation message(s)\n"; return 3; }
     return rc;

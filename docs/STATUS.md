@@ -209,12 +209,17 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
   (`simulation::KickoffPlace_init/step` in rules.cpp - side-aware dolly to the centre spot, spin
   ±DAT_00656e08 at the placement-phase tick; replaces the direct-set kick placement; livematch pose
   path consumes `kickoffPlace.bearing`; gate `scenarioKickoffPlacement`). §7 delta-3 + GAMEPLAY_PARITY
-  §5.6 closed; remaining: quality-tier camera gate (5).
+  §5.6 closed (superseded by the delta-5 lane below; see 2026-11-08 h23 entry).
 - Landed (2026-11-08): commentary per-event preload + scheduler parity models wired
   (`app/commentary` SpeechPreload/EventDispatch/Scheduler; gates a-d in test_commentary).
 - Landed (2026-11-08, pass-12kick): kick-plan power clamp + slot-0 rect predicate ported
   (`FUN_00502fc0` 39-64 helpers incl. `DAT_00585898` sin table; gate scenarioKickPowerClamp);
   SIM_PORT_NOTES "Kick family" open items closed (dossier `analysis/pass12kick/`).
+- Landed (2026-11-08, pass-12sci §7 delta-5): quality-tier camera modeled from h23 `FUN_004cafe0`
+  (`presentation::tierCamera`: tier deltas {0x71,0x3d}/{0x65,0x31}/{0x59,0x25}, pitch-edge x/z clamps,
+  flags bit4/bit5 z-source lanes, dz<<4 polar + 0x640 angle/speed constants [P]; producer = task pool
+  init `FUN_004a0810` argument, quality word DAT_00644778). `MatchCamera::setQualityTier` mirrors the
+  word; `wc98-native --quality N` live option. Gate in test_presentation; §7 deltas 1-5 all closed.
 
 ## Known limitations
 

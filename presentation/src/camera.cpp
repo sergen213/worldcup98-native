@@ -469,6 +469,32 @@ CameraPresetRow cameraPresetH14(int slot) {
 
 CameraPresetRow cameraPresetH28() { return kH28Preset; }
 
+// h23 FUN_004cafe0 quality-tier scene camera [P]. Tier deltas from the quality word
+// DAT_00644778 (producer = task pool init FUN_004a0810 argument; per-scene launch parameter):
+// <=1 {0x71,0x3d}, 2 {0x65,0x31}, 3 {0x59,0x25}; >3 falls back to the low lane (exe branch shape).
+TierCamEye tierCamera(int quality, int flags, int xEdge, int zEdge, int ballZ, int blockZ, int playerZ) {
+    int dx = 0x71, dz = 0x3d; // LAB_004cb003 default lane (quality <= 1 and > 3 fall-through [P])
+    if (quality > 1) {
+        if (quality == 2) { dx = 0x65; dz = 0x31; }
+        else if (quality == 3) { dx = 0x59; dz = 0x25; }
+    }
+    // z source: DAT_00644830 default; bit4 clear -> block DAT_00644860, and with bit5 set -> player
+    // pair DAT_00644820 (in-condition assignment order per decompile [P]).
+    int z = ballZ;
+    if ((flags & 0x10) == 0) {
+        z = blockZ;
+        if (flags & 0x20) z = playerZ;
+    }
+    // x = DAT_00644780 + dx*0x10 clamped to [-0x140-xEdge, xEdge+0x760]; z clamped to
+    // [0x230-zEdge, zEdge-0x2a0] (symmetric pitch-edge lanes [P]).
+    int x = xEdge + dx * 0x10;
+    if (x > xEdge + 0x760) x = xEdge + 0x760;
+    if (x < -0x140 - xEdge) x = -0x140 - xEdge;
+    if (z > zEdge - 0x2a0) z = zEdge - 0x2a0;
+    if (z < 0x230 - zEdge) z = 0x230 - zEdge;
+    return {x, z, dz << 4, 0x640}; // dz<<4 atan/commit lane + rec+0x10c bytes {0x40,6} = 0x640 [P]
+}
+
 int tabATaskHeight(int idx, int mode, bool liveRefPos, bool subMode3, int playerHeight, int camHeight) {
     if (idx < 0 || std::size_t(idx + 1) >= std::size(kTaskHeights)) return camHeight; // [port] beyond dump: rec+0x114 lane
     const unsigned w = static_cast<unsigned>(static_cast<int>(std::int16_t(kTaskHeights[std::size_t(idx) + 1]))); // packed >>16 sign-extended halfword

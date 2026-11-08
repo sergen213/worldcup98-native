@@ -103,6 +103,28 @@ void pureLogic() {
         const auto p28 = cameraPresetH28();
         CHECK(p28.angle == 0x445c && p28.speed == 0xf3e8 && p28.height == 0x8fc && p28.yawOff == 0x30);
     }
+
+    // h23 FUN_004cafe0 quality-tier scene camera (section 7 delta 5): tier table {0x71,0x3d}/
+    // {0x65,0x31}/{0x59,0x25}, pitch-edge x/z clamps and flags bit4/bit5 z-source lanes [P].
+    {
+        const auto t1 = tierCamera(1, 0x10, 1000, 3000, 100, 200, 300);
+        CHECK(t1.x == 1000 + 0x71 * 0x10 && t1.z == 100 && t1.polarDist == 0x3d << 4 && t1.speedAngle == 0x640); // bit4 set -> ball z
+        const auto t2 = tierCamera(2, 0x10, 1000, 3000, 100, 200, 300);
+        CHECK(t2.x == 1000 + 0x65 * 0x10 && t2.polarDist == 0x31 << 4);
+        const auto t3 = tierCamera(3, 0x10, 1000, 3000, 100, 200, 300);
+        CHECK(t3.x == 1000 + 0x59 * 0x10 && t3.polarDist == 0x25 << 4);
+        CHECK(tierCamera(0, 0x10, 1000, 3000, 100, 200, 300).x == t1.x); // quality <=1 shares low lane
+        CHECK(tierCamera(4, 0x10, 1000, 3000, 100, 200, 300).x == t1.x); // >3 exe fall-through [P]
+        const auto zB = tierCamera(1, 0x00, 1000, 3000, 100, 200, 300);   // bit4 clear -> block DAT_00644860
+        CHECK(zB.z == 200);
+        const auto zP = tierCamera(1, 0x20, 1000, 3000, 100, 200, 300);   // bit4 clear + bit5 -> DAT_00644820
+        CHECK(zP.z == 300);
+        CHECK(tierCamera(1, 0x30, 1000, 3000, 100, 200, 300).z == 100);   // bit4 set wins over bit5 [P]
+        const auto lo = tierCamera(3, 0x10, -1000, 3000, 100, 200, 300);  // x lower clamp -0x140-xEdge
+        CHECK(lo.x == -0x140 + 1000);
+        CHECK(tierCamera(1, 0x10, 1000, 1000, 9999, 200, 300).z == 1000 - 0x2a0); // z upper clamp zEdge-0x2a0
+        CHECK(tierCamera(1, 0x10, 1000, 1000, -9999, 200, 300).z == 0x230 - 1000); // z lower clamp 0x230-zEdge
+    }
     // tabA_pre height prelude FUN_004a0790 on DAT_0057FB82 u16[32]: value = H[idx+1] with the
     // sentinel lanes -5 -> rec+0x78, -4 -> rec+0x114, -1 -> mode constants (pass-12cam).
     {

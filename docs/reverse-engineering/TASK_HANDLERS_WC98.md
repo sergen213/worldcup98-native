@@ -294,8 +294,8 @@ Family → component mapping (HANDLER_DIFF_AUDIT.md style; components per GAMEPL
 | module trio h0-h5,h7,h9 | fade-timer + ball→mesh re-sample + snapshot commit, scene = payload data | `presentation/match_scene.cpp` fixed camera loop (no task layer) | MISSING-lane: no per-scene presentation tasks; match flow is direct-state |
 | h6 kickoff placement | side-aware ball dolly + spin at phase 9 | `simulation/rules.cpp` `KickoffPlace_init/step` (h6 model), `app/livematch` pose note consumed via `kickoffPlace.bearing` | PORTED (gate `scenarioKickoffPlacement`; spin slot value [H] = z-grid origin derivation) |
 | h8/h13/h21/h27 camera follow | polar offset cam, pitch clamp, mode switch `DAT_00580df0`, carrier/block +100 source | `presentation/camera.cpp` FUN_00501910 grid box port | DATA-DELTA: same framing math, no timer-dolly/commit-snapshot model |
-| h12/h14/h28 presets | static u16 preset rows (DAT_00585Fxx/5860xx/5862Dx) + sin/cos² offsets | camera.cpp constants | DATA-DELTA: table values available [P], not installed |
-| h18/h20/h23 edge/tier cams | pitch-edge + quality-tier cameras (DAT_00644778 tiers {0x59,0x65,0x71}) | none | MISSING |
+| h12/h14/h28 presets | static u16 preset rows (DAT_00585Fxx/5860xx/5862Dx) + sin/cos² offsets | `presentation::cameraPresetH12/H14/H28` (delta-2 install) | PORTED: byte-verified rows installed, gate in `test_presentation` |
+| h18/h20/h23 edge/tier cams | pitch-edge + quality-tier cameras (DAT_00644778 tiers {0x59,0x65,0x71}) | `presentation::tierCamera` (h23 geometry) + `MatchCamera::setQualityTier`, `--quality N` live option | PORTED for h23 (gate in `test_presentation`; tier table/clamp/z-source lanes [P]); h18/h20 edge+overhead lanes stay open |
 | h24/h25 follow FSM `FUN_004a0f40` | player-follow task FSM (snapshot + timer C dolly) | `player_states_*` per-tick state machines (semantic port) | IDENTICAL-semantics via different structure [C] |
 | h19 trampoline / event tasks | `PTR_FUN_00586014[rec+0xc]` callback table | commentary/event queue lane (`app/commentary.cpp`) | partial: no task-id registry |
 | payload grammar §6 | .SCI record streams feed per-scene params | none (no .SCI loader in port) | MISSING |
@@ -315,7 +315,11 @@ Ranked actionable deltas:
 4. **.SCI loader in tooling** (not runtime) — **DONE (2026-11-08)**: grammar refined across all 87
    files (`formats/sci.cpp`, gate `test_sci`: header/magic survey, stride-12 tail + stride-8 trailer).
    Loader-splitting [H] stays open — Win9x-env capture lane (SQF EULZ family blocker).
-5. **Quality-tier camera gate** (h23 `DAT_00644778` tiers) once presentation quality option lands.
+5. **Quality-tier camera gate** (h23 `DAT_00644778` tiers) — **DONE (2026-11-08)**:
+   `presentation::tierCamera` models the h23 geometry (tier deltas {0x71,0x3d}/{0x65,0x31}/
+   {0x59,0x25}, x/z pitch-edge clamps, flags bit4/bit5 z-source lanes, polar dz<<4 + 0x640 constant),
+   `MatchCamera::setQualityTier` mirrors the quality word and `wc98-native --quality N` wires the
+   live option; gate in `test_presentation`. h18/h20 edge/overhead cams stay open (tabA stubs).
 
 ## 8. Open items
 

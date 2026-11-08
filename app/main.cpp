@@ -187,6 +187,7 @@ int run(int argc, char** argv) {
         else if (a == "--ig-practise-smoke") { liveSmoke = std::stoi(next()); }  // gate fe_practise_pages: PRACT1/PRACT2/IGPRAC1 page cycle + keeper toggle (§G), driver parses its own flag
         else if (a == "--ig-manmarks-smoke") { liveSmoke = std::stoi(next()); } // gate fe_manmarks_grid: MANMARKS ratings board from igteam72 'M' (§E), driver parses its own flag
         else if (a == "--record-replay") { recordReplay = true; }
+        else if (a == "--quality") { std::string v = next(); } // h23 tier word: live driver parses its own flag from raw argv
         else if (a == "--video-play") { videoPlay = next(); }
         else if (a == "--no-intro") { noIntro = true; }
         else throw std::invalid_argument("unknown argument '" + a + "'");
@@ -508,7 +509,7 @@ int main(int argc, char** argv) {
                       " [--fe-options|--fe-saveload|--fe-credits]"
                       " [--record-replay] [--lang eng|fre|ger|ita|spa|dut|dan|swe|jap]"
                       " [--ig-camera-smoke N] [--ig-practise-smoke N]"
-                      " [--fe-present] [--self-test FILE]");
+                      " [--fe-present] [--self-test FILE] [--quality N]");
             return 0;
         }
     }

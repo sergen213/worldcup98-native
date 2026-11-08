@@ -143,9 +143,10 @@ transitions, D receiver-capture contest, M AI spacing realism (qualitative vs or
    byte-identical because the tables are never patched. **LANDED (2026-11-08)**: camera dolly +
    preset/height tables installed (`presentation::CameraTask`, `MatchCamera::glideTo`; byte-verified
    rows DAT_00585FEA/586046/5862D2 + height DAT_0057FB82, sine DAT_00585898), `.SCI` payload grammar
-   parsed across all 87 COMMON/*.SCI (`formats/sci.cpp`, gate `test_sci`). Remaining from §7: the
-   kickoff placement task (delta-3) and quality-tier camera gate (delta-5, pending a presentation
-   quality option); handler-family semantic diff = TASK_HANDLERS_WC98.md §7 delta table.
+   parsed across all 87 COMMON/*.SCI (`formats/sci.cpp`, gate `test_sci`), kickoff placement dolly
+   (delta-3, `simulation::KickoffPlace_*`, gate `scenarioKickoffPlacement`) and quality-tier camera
+   (delta-5, `presentation::tierCamera` + `--quality N`, gate in `test_presentation`). §7 deltas 1-5
+   ALL CLOSED (2026-11-08); semantic diff = TASK_HANDLERS_WC98.md §7 delta table.
 2. ~~Per-handler WC98 vs FIFA-99 decompile diff audit~~ **CLOSED** (pass 11): the code half is
    now audited handler-by-handler - verdict table + ranked real differences in
    HANDLER_DIFF_AUDIT.md (`analysis/pass11/handlers/` evidence). The data-table half was already

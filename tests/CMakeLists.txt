@@ -295,6 +295,9 @@ if(DEFINED WC98_TREE)
     # fe_mgmt_pages (§E): IGMENU Management row opens IGTEAM72 over the seeded fixture; gobk/gofd cycle 73->74->75->79->80, Enter swaps the 73 ab-pair (FCDB data), 'B' opens hub IGTEAM89 rows.
     add_test(NAME fe_mgmt_pages COMMAND wc98-native --ig-mgmt-smoke 370 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/mgmt)
     set_tests_properties(fe_mgmt_pages PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "IGTEAM89: shapes=[1-9]" FAIL_REGULAR_EXPRESSION "IGTEAM[0-9]+: shapes=0 |igmgmt: swap pair ab01$|texts=0$ ")
+    # fe_manmarks_grid (§E): igteam72 'M' opens the MANMARKS ratings board over the seeded fixture: FCDB pNNN squad grid rows (shirt + name + kit swatch; row cursor pans a five-row window, sbar thumb), mm00..mm02 home-defender <-> away-forward pair captions.
+    add_test(NAME fe_manmarks_grid COMMAND wc98-native --ig-manmarks-smoke 370 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/manmarks)
+    set_tests_properties(fe_manmarks_grid PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "MANMARKS: shapes=[1-9]" FAIL_REGULAR_EXPRESSION "MANMARKS: shapes=0 |MANMARKS: texts=0$ ")
     # Between-round tournament presentation (FEFLOW35/25/26/27, LAY_COMPOSITOR_NOTES.md "Tournament
     # presentation scenes"): one stat line per screen; fails on zero shapes/texts/cursors.
     add_test(NAME fe_render_present COMMAND wc98-native --fe-smoke 1 --fe-present --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/present)

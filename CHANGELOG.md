@@ -7,6 +7,12 @@ project goals.
 ## [Unreleased]
 ### Added
 
+
+- MANMARKS ratings board (`IgBoards` kind 15, `--ig-manmarks-smoke`, gate `fe_manmarks_grid`): igteam72 'M' opens the
+  player-marker management screen over the frozen fixture match — pNNN squad grid rows painted from FCDB lineup/subs
+  ("#shirt name" + tricolour kit swatch, hilite pane = row cursor; UP/DOWN pans a five-row window with the sbar thumb),
+  mm00..mm02 pair captions pairing home defenders (lineup tail) with away attackers, FC-bank subtitle 1025 'Man
+  Marking'; Esc -> IGMENU. Capture /tmp/wc98port-out/manmarks_manmarks.png.
 - Single-player setup + stadium select (`FeFlow` FEFLOW07/08, `--fe-setup07 N`, `--fe-stadium08 N`, gates
   `fe_setup07`, `fe_stadium08`): the hub 'fe07' wedge opens the FEFLOW07 matchup screen — ltnm/rtnm team names
   and shdl/shdr FNNN shields over the lbNN/rbNN skill-bar pairs (bar art via HILITEDSHAPEIDON, FCENG captions

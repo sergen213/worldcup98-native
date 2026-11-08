@@ -244,7 +244,7 @@ bool IgBoards::open(std::string_view name) {
     kind_ = n == "igstats" ? 1 : n == "ighalf" ? 2 : n == "igflsum" ? 3 : n == "igscsum" ? 4
           : n == "ighilite" ? 5 : n == "ighilsav" ? 6 : n == "ighilit1" ? 7
           : n == "igteam72" ? 8 : n == "igteam73" ? 9 : n == "igteam74" ? 10 : n == "igteam75" ? 11
-          : n == "igteam79" ? 12 : n == "igteam80" ? 13 : n == "igteam89" ? 14 : 0; // §D highlights + §E IGTEAM management mirrors (IGHILIT1 = dummy hotkey-transition page, LAY comment)
+          : n == "igteam79" ? 12 : n == "igteam80" ? 13 : n == "igteam89" ? 14 : n == "manmarks" ? 15 : 0; // §D highlights + §E IGTEAM management mirrors + MANMARKS ratings board (IGHILIT1 = dummy hotkey-transition page, LAY comment)
     page_ = 0;
     hlSel_ = 0;
     mgSel_ = 0;
@@ -490,7 +490,7 @@ presentation::FeDrawStats IgBoards::draw(render::SpriteBatch& ui, const IgMgmtDa
     }
     // Subtitle band (subt slot, code-driven): FC-bank page caption centered at the panel top.
     static constexpr std::array<int, 7> kSubtId{748, 1788, 946, 250, 1379, 1025, 0}; // kind-8: Formation (IGM) / Substitutions / Kick Takers / Attack Bias / Positioning / Man Marking
-    if (kind_ >= 8 && kind_ <= 13) st.texts += paintCentered(text_.get(), ui, txt(std::size_t(kSubtId[kind_ - 8]), "MANAGEMENT"), 400.f, 26.f, 300.f);
+    if ((kind_ >= 8 && kind_ <= 13) || kind_ == 15) st.texts += paintCentered(text_.get(), ui, txt(std::size_t(kSubtId[kind_ == 15 ? 5 : kind_ - 8]), "MANAGEMENT"), 400.f, 26.f, 300.f);
 
     if (kind_ == 8) { // formation grid: b010..b012 template buttons + pNNN slots with shirt numbers
         static constexpr std::array<const char*, 3> kBtn{"b010", "b011", "b012"}, kShape{"bt10", "bt20", "bt30"};
@@ -566,6 +566,28 @@ presentation::FeDrawStats IgBoards::draw(render::SpriteBatch& ui, const IgMgmtDa
             const float w = o->width > 0 ? float(o->width) : 262.f, h = o->height > 0 ? float(o->height) : 25.f;
             if (mgSel_ == i) ui.draw(0, {float(o->x) - 3.f, float(o->y) - 2.f, w + 6.f, h + 4.f}, {}, render::packRgba(255u, 224u, 96u, 70u));
             st.texts += paintCentered(text_.get(), ui, txt(std::size_t(kHubId[std::size_t(i)]), "PAGE"), float(o->x) + w * 0.5f, float(o->y) + h * 0.5f, w);
+        }
+    } else if (kind_ == 15) { // MANMARKS ratings board (§E): pNNN squad grid rows + mm00..mm02 pair rows + sbar pan.
+        const int nL = int(mg.lineup.size()), nS = int(mg.subs.size());
+        const int nRows = std::min(nL + nS, 16);            // p000..p016 grid domain (LAY widget count)
+        const int page = mgSel_ / 5;                        // ptop/pbot pan: five-row window per page
+        for (int i = 0; i < 5 && page * 5 + i < nRows; ++i) {
+            const int idx = page * 5 + i;                   // runtime row grid: widgets are x=0 y=0, engine positions at draw time [H]
+            const IgMgmtRow& r = idx < nL ? mg.lineup[std::size_t(idx)] : mg.subs[std::size_t(idx - nL)];
+            formats::LayoutObject row;                              // runtime row grid: widgets are x=0 y=0, engine positions at draw time [H]
+            row.name = "p000"; row.x = 47; row.y = 132 + 16 * i; row.width = 300; row.height = 16;
+            paintRowLabel(ui, row, std::format("#{} {}", r.shirt, r.name), *text_, 0, idx == mgSel_, &mg.kit, st); // hilite pane = cursor
+        }
+        for (int i = 0; i < 3; ++i) { // mmNN: home defender <-> away forward pairing (lineup tail pair = forwards [H])
+            if (9 + i >= nL || i >= int(d.teams[1].lineup.size())) break;
+            const IgMgmtRow& def = mg.lineup[std::size_t(9 + i)];
+            const IgMgmtRow& fwd = d.teams[1].lineup[std::size_t(i)];
+            if (const formats::LayoutObject* o = layObj(sc_, "mm0" + std::to_string(i)))
+                st.texts += paintCentered(text_.get(), ui, std::format("{} <-> {}", def.name, fwd.name), float(o->x) + 150.f, float(o->y) + 9.f, 280.f);
+        }
+        if (const formats::LayoutObject* s = layObj(sc_, "sbar")) { // pan thumb over the row window
+            paintSliderThumb(ui, *s, page, 0, std::max(1, (nRows + 4) / 5) - 1);
+            ++st.shapes;
         }
     }
     return st;
@@ -677,9 +699,9 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
     // dismisses/resumes (payload grammar ESC=0x65), L/R moves pages ('igbC' btn1..btn4 FUN_0043a3f4).
     std::unique_ptr<IgBoards> boards;
     int boardSrc = 0;                    // open source: 1 stats menu, 2 half-time, 3 full-time chain, 4 highlights browser (menu), 5 save list (browser 'save' button), 6 IGTEAM management pages (§E)
-    bool boardReported[15] = {}, halfShown = false, ftShown = false;
+    bool boardReported[16] = {}, halfShown = false, ftShown = false;
     int boardShotAt = -1;                // capture frame of the current board (gate auto-script pacing)
-    static constexpr std::array<const char*, 15> kBoardName{"", "IGSTATS", "IGHALF", "IGFLSUM", "IGSCSUM", "IGHILITE", "IGHILSAV", "IGHILIT1", "IGTEAM72", "IGTEAM73", "IGTEAM74", "IGTEAM75", "IGTEAM79", "IGTEAM80", "IGTEAM89"};
+    static constexpr std::array<const char*, 16> kBoardName{"", "IGSTATS", "IGHALF", "IGFLSUM", "IGSCSUM", "IGHILITE", "IGHILSAV", "IGHILIT1", "IGTEAM72", "IGTEAM73", "IGTEAM74", "IGTEAM75", "IGTEAM79", "IGTEAM80", "IGTEAM89", "MANMARKS"};
     const int initPeriod = w.match.periodIndex; // DAT_0065F224: 0 -> >=1 transition marks the half whistle
     std::array<std::int64_t, 2> possAcc{};      // per-team possessionFrames deltas (DAT_0065f264 + owning team DAT_0065f250)
     std::int32_t lastPoss = w.time.possessionFrames;
@@ -945,6 +967,22 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
             if (presented == 336) key(SDL_SCANCODE_ESCAPE, true);     // hub -> IGMENU (§E Esc grammar)
             if (presented == 350) key(SDL_SCANCODE_ESCAPE, true);     // resume
         }
+        // MANMARKS ratings board gate script. Mode 7 (fe_manmarks_grid): IGMENU Management row opens
+        // igteam72 over the seed-0x2E7A fixture, 'M' opens the man-marking board (pNNN squad grid rows
+        // from FCDB lineup/subs + mmNN pair rows + sbar pan thumb); UP/DOWN pans the five-row window.
+        if (boardScript == 7) {
+            if (presented == 200) key(SDL_SCANCODE_ESCAPE, true);   // IGMENU opens after kickoff progress
+            for (int i = 0; i < 3; ++i)                             // cursor x3: -> Management row
+                if (presented == 210 + i * 4) { key(SDL_SCANCODE_DOWN, true); key(SDL_SCANCODE_DOWN, false); }
+            if (presented == 230) { key(SDL_SCANCODE_RETURN, true); } // Enter: IGTEAM72 (frozen FCDB/sim data)
+            if (presented == 231) key(SDL_SCANCODE_RETURN, false);
+            if (presented == 246) { key(SDL_SCANCODE_M, true); }      // 'M' -> MANMARKS ratings board (§E)
+            if (presented == 247) key(SDL_SCANCODE_M, false);
+            for (int i = 0; i < 3; ++i)                              // row cursor: pan window slides
+                if (presented == 260 + i * 6) { key(SDL_SCANCODE_DOWN, true); key(SDL_SCANCODE_DOWN, false); }
+            if (presented == 300) key(SDL_SCANCODE_ESCAPE, true);     // MANMARKS -> IGMENU (§E Esc grammar)
+            if (presented == 315) key(SDL_SCANCODE_ESCAPE, true);     // resume
+        }
 
         for (SDL_Event e; SDL_PollEvent(&e);) { // keyboard + gamepad transitions into the ported layer
             if (e.type == SDL_EVENT_QUIT) quit = true;
@@ -975,7 +1013,7 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
                                   << " off #" << tm.subs[std::size_t(i)].shirt << ' ' << tm.subs[std::size_t(i)].name << '\n';
                     }
                 };
-                const auto mgRows = [](int kind) { return kind == 14 ? 6 : kind == 9 ? 2 : kind == 13 ? 12 : (kind == 10 || kind == 12) ? 5 : 0; };
+                const auto mgRows = [&](int kind) { return kind == 14 ? 6 : kind == 9 ? 2 : kind == 13 ? 12 : kind == 15 ? int(mgmt.teams[0].lineup.size() + mgmt.teams[0].subs.size()) : (kind == 10 || kind == 12) ? 5 : 0; };
                 switch (e.key.scancode) { // list cursor INC EDX @0x43FCD0: port domain {Resume, Stats, Highlights, Management, Quit}
                     case SDL_SCANCODE_UP:
                         if (pause == IgPause::Board && boards && boards->kind() >= 8) {
@@ -997,13 +1035,14 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
                     case SDL_SCANCODE_RIGHT: if (pause == IgPause::Board && boards) { if (boards->kind() >= 8 && boards->kind() <= 13) mgmtCycle(+1); else if (boards->kind() < 8) boards->movePage(1); } break; // btrt / gofd
                     case SDL_SCANCODE_S: if (pause == IgPause::Board && boards && boards->kind() == 5) openBoard("ighilsav", 5); break; // 'save' button -> IGHILSAV slot list
                     case SDL_SCANCODE_B: if (pause == IgPause::Board && boards && boards->kind() >= 8) openBoard("igteam89", 6); else if (pause == IgPause::Menu) { mgmt = buildIgMgmt(); openBoard("igteam89", 6); } break; // tmf3 icon -> management hub (§E)
+                    case SDL_SCANCODE_M: if (pause == IgPause::Board && boards && boards->kind() >= 8 && boards->kind() <= 14) openBoard("manmarks", 6); break; // igmgoptns hotkey: man-marking ratings board (§E)
                     case SDL_SCANCODE_RETURN: case SDL_SCANCODE_KP_ENTER: case SDL_SCANCODE_SPACE:
                         if (pause == IgPause::Board) {
                             const int bk = boards ? boards->kind() : 0;
                             if (bk == 4) openBoard("igflsum", 3);      // Enter advances the full-time chain IGSCSUM -> IGFLSUM [C]
                             else if (bk == 5) playSelected();          // browser 'play': app/replay.cpp re-drive of the selected slot
                             else if (bk == 6) saveHighlights();        // 'save' button: rply%04d.dat + index update via recordToUserDir
-                            else if (bk >= 8 && bk <= 13 && bk != 9) { /* pages apply in place: no dismiss */ }
+                            else if ((bk >= 8 && bk <= 13 && bk != 9) || bk == 15) { /* pages apply in place: no dismiss */ }
                             else if (bk == 9) mgSwap(boards->mgSel() % 2); // ab00/ab01 sub pair swap (FCDB data, persists across frames)
                             else if (bk == 14) { // hub row: b000..b005 -> page map Formation/Subs/Positions/Bias/ManMark/KickTakers
                                 static constexpr std::array<const char*, 6> kHubMap{"igteam72", "igteam73", "igteam79", "igteam75", "igteam80", "igteam74"};
@@ -1210,6 +1249,7 @@ int runLiveMatch(int argc, char** argv) {
         else if (a == "--ig-hlite-smoke") { smoke = std::atoi(argv[++i]); boardScript = 4; } // gate fe_highlite_browser: Highlights row -> IGHILITE browser, fixture slots + replay-driver play action
         else if (a == "--ig-hlsav-smoke") { smoke = std::atoi(argv[++i]); boardScript = 5; }  // gate fe_hilsav_list: browser 'S' save button -> IGHILSAV list, Enter writes a new slot via recordToUserDir
         else if (a == "--ig-mgmt-smoke") { smoke = std::atoi(argv[++i]); boardScript = 6; } // gate fe_mgmt_pages: Management row -> IGTEAM72..80 cycle + ab-pair swap + hub IGTEAM89 (§E)
+        else if (a == "--ig-manmarks-smoke") { smoke = std::atoi(argv[++i]); boardScript = 7; } // gate fe_manmarks_grid: igteam72 'M' -> MANMARKS ratings board + row cursor (§E)
         else if (a == "--record-replay") record = true;
         // Flags owned by other modes of the same CLI pass through untouched.
     }

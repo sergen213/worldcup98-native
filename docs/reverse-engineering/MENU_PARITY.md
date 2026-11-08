@@ -213,7 +213,7 @@ Dump: `wc98-extract FE/PACK/LAYOUTS/IGLAY.BIG` → "1 files, 30 BIG members" (`/
 | IGTEAM79.LAY | 64 | squad/formation mirror ("attack bias slide bar" comment) | **impl** (s001 attack-bias slider: UP/DOWN ±10 keyloop grammar, live teams[0] bias in the header pair; gate `fe_mgmt_pages`) |
 | IGTEAM80.LAY | 57 | custom-mode grid mirror (yel/red, players block, help= keys) | **impl** (players block + card rows composite + FC help strings; cycle position 6; gate `fe_mgmt_pages`) |
 | IGTEAM89.LAY | 17 | save/load menu mirror of Feflow89 (b000-b005 buttons, gofd/gobk) | **impl** ('B' (tmf3 icon) opens the management hub: b000..b005 rows = FC captions Formation/Substitutions/Positioning/Attack Bias/Man Marking/Kick Takers + vit stamina bars; Enter enters mapped page {72,73,79,75,80,74}; Esc -> IGMENU; gate `fe_mgmt_pages`) |
-| MANMARKS.LAY | 59 | player-marker management screen (yel/red rows + players block) | miss |
+| MANMARKS.LAY | 59 | player-marker management screen (yel/red rows + players block) | **impl** (`IgBoards` kind 15: pNNN squad grid rows from FCDB lineup/subs with kit swatches + row-cursor pan window (sbar thumb), mm00..mm02 defender <-> attacker pair captions, FC 1025 subtitle; igteam72 'M' opens it, Esc -> IGMENU; gate `fe_manmarks_grid`) |
 | MESG.LAY | 10 | message box yes/no authored `C:\fifa98.pc\source\FE.OLD\LAYOUTS\mesg.lay` — FIFA'98-era popup kept for in-game messages | cap (gate `fe_mesg`; FUN_004425e0 'yes ' payload grammar §32) |
 | ingame.lst | n/a | member name list (not a .LAY) | n/a |
 

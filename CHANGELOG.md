@@ -128,6 +128,14 @@ project goals.
   mode-selector writes, kit/side-gated camera zeroing, unfreeze sweep `FUN_004aa432`) and the loader
   field-split layout proven at code level (`FUN_004aaf00`: count nibbles +0x232, stride-8 triple arrays
   +0x170/+0x1c8 >>10, u16 pairs +0x220..+0x22e); TASK_HANDLERS_WC98 §8 closed.
+- WC98 pair 43/44 air-kick bodies (pass-12air): `TeamAI_onBallWon` = `FUN_0050c820`,
+  `TeamAI_planAirKick` = `FUN_0050cc70` - located via xrefs into the mentality-threshold byte tables
+  (`analysis/pass12air/ai2_xref_tables.txt`). Installed divergences: thresholds RAW (no formation/difficulty
+  base add); onBallWon gate id 0x281, clearance lane = rand + offsetXZ point only (nearest-player target,
+  dz+(dist>>4) nudge, >>3+>>4 lift scale and the 0x72 clamp GONE), tail code bands >=0x3c1 -> 8 / >=0x1e1
+  -> 9 with the 0x72/0x8e lift clamps removed; planAirKick clearance = atan2+offsetXZ rel only, receiver
+  stays -1, kick power from the rel vector. Scenario gates close §4 gaps A (`scenarioGaitTransitions` live
+  pad-driven gait ladder) and D (TackleWin contest lane); suite ctest 114/114, self-test 12/12.
 
 ## [0.4.0] - 2026-11-08 — Windows menu parity complete: popup/IG board families, highlights browser, management grids, LOAD/SAVE scenes, camera/practise/control pages
 ### Added

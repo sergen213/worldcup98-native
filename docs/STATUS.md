@@ -237,6 +237,14 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
   mode-selector writes, kit/side-gated camera zeroing, task unfreeze sweep FUN_004aa432) and the
   loader field-split layout proven at code level (FUN_004aaf00); TASK_HANDLERS_WC98 §8 closed.
 
+- Landed (2026-11-08, pass-12air): WC98 pair 43/44 bodies located via threshold-table xrefs
+  (`FUN_0050c820` onBallWon, `FUN_0050cc70` planAirKick) and installed - raw thresholds (no formation
+  base), gate id 0x281, clearance = rand+offsetXZ point (target/nudge/lift-scale/0x72 clamp GONE), tail
+  code bands >=0x3c1/>=0x1e1 clamps-removed; planAirKick clearance atan2+offsetXZ rel only, receiver
+  stays -1. Scenario gates A/D (`scenarioGaitTransitions` live gait ladder + TackleWin contest lane)
+  close GAMEPLAY_PARITY §4 gaps A and D; suite ctest = 114/114 (self-test 12/12). Dossier
+  `analysis/pass12air/ai2_xref_tables.txt`.
+
 ## Known limitations
 
 - Interactive playable match (M10 `app/livematch.cpp`): the key/pad action mapping is a port convention

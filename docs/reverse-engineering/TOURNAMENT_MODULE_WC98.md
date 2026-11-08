@@ -112,7 +112,11 @@ split at NUL into 5 fields (`local_b4[0..5]` boundary table, built in the loop `
   histogram byte0∈{0,1,2,3,5}, byte1∈{0..3}, byte2∈{0..3}; 131 non-zero pairs; degrees 1..18 per
   team (qualifiers + finals history, not a single-tournament schedule). [H-res decode]
 - ZINTER.RES: identical structure/ids, pair bytes differ from offset 0x52 — same format for the
-  intercontinental mode. [H-cmp first diff char 83]
+  intercontinental mode. [H-cmp first diff char 83] **Parser landed**: `formats/res.cpp` parses both
+  files (gate `test_res`: n=40, C(40,2) bijection scan, 7 placeholder ids, ZWCUP goals histogram
+  {0,1,2,3,5}, Brazil-Scotland/Italy-Chile directional triples per ZWCUP_TRIPLE.md). Full-tree probe:
+  ZINTER goal bytes reach ~60 (aggregate international-history stats, not single finals scores), so
+  the finals-score histogram is ZWCUP-scoped. [P via gate]
 
 ### 2.6 Knockout advancement writes
 Bracket model = linked node heap at list head `DAT_006324b4` (init flag `DAT_0063241c`; fields

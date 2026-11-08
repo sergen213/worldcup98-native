@@ -42,6 +42,16 @@ struct ShootoutState {
     std::uint32_t flags = 0;          // +0x70 0x65EE84: 1 team to kick, 2 can win now, 4 must score, 0x20 decided
 };
 
+// h6 kickoff placement task (FUN_00516f40) private state, modeled per-frame in the port sim
+// (TASK_HANDLERS_WC98 §4 glossary "rec+0x1c4..+0x1d8 h6 placement-task private state", §7 delta-3).
+struct KickoffPlaceState {
+    std::int32_t timer = 0;        // rec+0x1c4: placement timer (accumulates the scene tick word while ball y < 0x80)
+    std::int32_t sideByte = -1;    // rec+0x1c8: init sentinel -1, then attack-side bit (& 1); spin sign source
+    std::int32_t dollyActive = 0;  // rec+0x1ca: placement dolly armed (timer C started at FUN_00517e30)
+    std::int32_t dir = 1;          // rec+0x1cc: side-aware dolly direction, ±1
+    Angle bearing = 0;             // rec+0x1d0: live dolly bearing (port angle units, -0x200..0x1ff)
+};
+
 struct MatchState {
     // --- phase / state machine (0x65F228..) ---
     std::uint32_t status = 0;   // DAT_0065F228: 1 dead ball, 2 kick-off pending, 4 added time shown, 8 period
@@ -118,6 +128,7 @@ struct MatchState {
     std::uint32_t seqFlags = 0;      // byte DAT_006675F4 bit 0 substitution pending
     std::int32_t cutScene = 0;       // DAT_0066341C (CutScene_playForEvent sets 1)
     std::int32_t scriptState = 1;    // DAT_006633D8 cut-scene engine state: 1 idle, 4 starting
+    KickoffPlaceState kickoffPlace; // h6 placement task (rec+0x1c4.. state mirror; §7 delta-3)
 
     // --- foul state 0x65E018..0x65E04C (cleared by FUN_0046F39C) ---
     std::int32_t foulClass = 0;      // DAT_0065E018 0 none, 1 yellow-able, 2 red-able, 3 offside, 4 red,
@@ -269,5 +280,13 @@ void Player_clearDistanceCache_4D9F70(World& w);
 void PlayerAI_reset_4BEC34(World& w);
 // Ball (ball.hpp): Ball_init, Ball_resetForPeriod, Ball_placeAt, Ball_releaseFromPossessor,
 // Ball_markerInForecast are declared there.
+
+// WC98 h6 kickoff placement task (FUN_00516f40) modeled per-frame in the port sim
+// (TASK_HANDLERS_WC98 §5 "h6", §7 delta-3). KickoffPlace_init arms the dolly window on a kick
+// restart (replacing the direct centre placement), KickoffPlace_step advances it every frame;
+// kickoffSpinUnits is the ±DAT_00656e08 spin-adjust magnitude (see rules.cpp for provenance).
+void KickoffPlace_init(World& w);
+bool KickoffPlace_step(World& w); // true while the dolly window runs
+std::int32_t kickoffSpinUnits(const World& w);
 
 } // namespace wc98::sim

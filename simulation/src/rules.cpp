@@ -453,6 +453,87 @@ void Match_startPeriodIndex(World& w, int index) {
     Match_dispatchEvent(w, 0, p.kickoffTeam);
 }
 
+// WC98 h6 kickoff placement task (FUN_00516f40) modeled per-frame in the port sim —
+// TASK_HANDLERS_WC98 §5 "h6" / §7 delta-3. The exe task dollies its presentation target from the
+// ball world position with a side-flip + spin adjust ±DAT_00656e08 (attack sign); the port drives
+// the ball itself toward the centre spot over the kickoff restart window, replacing the direct-set
+// placement in the kick path (Match_resetPhase, seq4TakeRestart rt == 0). Other restarts untouched.
+namespace {
+constexpr std::int32_t kKickoffDollySpeed = 0x3c0; // h6 path A polar speed sin/cos x 0x3c0 per frame [P]
+constexpr std::int32_t kKickoffSideFlipTimeout = 0x27fff; // rec+0x1c4 side-flip compare threshold [P]
+
+// h6 0x51712B..0x5171B7 (rec+0x1cc): direction +1 when (ballX >= 1) == (sideBit != 0), else -1. [P]
+void kickoffPlaceSetDir(World& w, KickoffPlaceState& kp) {
+    kp.dir = ((w.ball.posI.x >= 1) == (kp.sideByte != 0)) ? 1 : -1;
+}
+} // namespace
+
+std::int32_t kickoffSpinUnits(const World& w) {
+    // DAT_00656e08: h6 spin adjust ±DAT_00656e08 by attack sign [P, sci4 0x517043..0x51704B] and the
+    // pitch-mesh z-grid origin - FUN_005166f0 samples cell i as `(z + DAT_00656e08) * DAT_00656e18`
+    // (§4 grid layout [P]). The slot is a BSS variable computed at setup (write site MOV dword ptr
+    // [0x656e08], ECX; pass7 pick3 raw 161970), so the numeric value is not byte-provable from the
+    // image: port derivation = the pitch mesh z-grid origin, w.pitch.halfLength. Value [H], uses [P].
+    return w.pitch.halfLength;
+}
+
+void KickoffPlace_init(World& w) {
+    MatchState& m = w.match;
+    KickoffPlaceState& kp = m.kickoffPlace;
+    // Side byte: h6 init from the kit/side index DAT_00644760 + DAT_006447f8*4 (rec+0x1c8 == -1),
+    // then the side-flip compare DAT_00644814/880 gated by DAT_00644800/87c [P]; the port reads the
+    // restart-taker's live side (Match_setPhase: m.restartSide = w.teams[team].side).
+    kp.sideByte = m.restartSide & 1;
+    kp.timer = 0;
+    kp.bearing = 0;
+    kp.dollyActive = 1;               // rec+0x1ca := 1 (timer C start, FUN_00517e30(0,rec))
+    kickoffPlaceSetDir(w, kp);        // rec+0x1cc side-aware direction
+}
+
+bool KickoffPlace_step(World& w) {
+    MatchState& m = w.match;
+    KickoffPlaceState& kp = m.kickoffPlace;
+    if (!kp.dollyActive) return false;
+    BallState& b = w.ball;
+    // Placement timer accumulates the scene tick word (dispatcher writes rec+4 each frame), gated on
+    // ball y < 0x80 (h6 DAT_006447c0 < 0x80 [P]); placement windows are ground-level, so it accrues.
+    kp.timer += std::max(1, w.time.simFrames);
+    // Timeout side-flip compare (h6 0x5170E2..: rec+0x1c4 > 0x27fff -> DAT_00644814/880 vs the saved
+    // rec+0x1c6 halfword): a flipped attacking side re-arms direction and spin sign.
+    if (kp.timer > kKickoffSideFlipTimeout && (m.restartSide & 1) != kp.sideByte) {
+        kp.sideByte = m.restartSide & 1;
+        kickoffPlaceSetDir(w, kp);
+    }
+    const Vec3 centre{0, 0, 0};       // centre spot 0x65F38C
+    const OctDist od = octDistance(b.posI, centre);
+    if (od.dist <= kKickoffDollySpeed) {
+        // Arrival: place the ball on the centre spot ("place ball at the kickoff spot" [P, §5]) and
+        // apply spin at the placement-phase tick (h6 phase gate DAT_006447fc == 9 [H]), sign by the
+        // attack-side bit: side != 0 -> -DAT_00656e08 [P, sci4 0x517043..0x51704B].
+        Ball_placeAt(w, centre);
+        const std::int32_t s = kickoffSpinUnits(w);
+        b.spin = kp.sideByte != 0 ? -fxi(s) : fxi(s);
+        kp.dollyActive = 0;
+        kp.timer = 0;                 // h6 arrival path: rec+0x1c4 := 0
+        return true;                  // final tick of the placement window
+    }
+    // Normal dolly = pure centre-tracking (h6 `rec+0x1c4 < 0x40001` branch [P]); the spin-deflected
+    // heading belongs to the post-timeout spin-off branch (`timer >= 0x40001` && rec+0x1ca armed,
+    // FUN_004a6fa0 spin argument = dir * DAT_00656e08 [P]).
+    const bool spinMode = kp.timer >= 0x40001;
+    const Angle a = wrapAngle(spinMode ? atan2i(od.dx, od.dz + kp.dir * kickoffSpinUnits(w))
+                                       : atan2i(od.dx, od.dz));
+    kp.bearing = a;                   // rec+0x1d0 live dolly bearing (livematch pose consumes)
+    // Polar per-frame step toward the centre (sin/cos x 960 idiom [P]), clamped to the remainder.
+    const std::int32_t step = std::min<std::int32_t>(kKickoffDollySpeed, od.dist);
+    b.prevPosI = b.posI;              // presentation camera focus follows the dolly
+    b.posI = offsetInDirection(b.posI, step, a);
+    b.posI.y = 0;                     // ground placement (ball y < 0x80 gate [P])
+    b.pos = {fxi(b.posI.x), 0, fxi(b.posI.z)};
+    b.framePos16 = b.pos;
+    return true;
+}
+
 void Match_resetPhase(World& w) {
     MatchState& m = w.match;
     if (w.opt.gameMode != 1 || m.trainDrill == 2) m.phase = m.restartType = 0;
@@ -470,8 +551,9 @@ void Match_resetPhase(World& w) {
     m.setPieceKind = 0;
     m.setPieceMode = 1;
     if (!(w.opt.gameMode == 1 && m.trainDrill != 2)) {
-        const Vec3 centre{0, 0, 0}; // 0x65F38C centre spot
-        Ball_placeAt(w, centre);
+        // §7 delta-3: kickoff placement dolly toward the centre spot (0x65F38C), side-aware offset,
+        // spin at the placement-phase tick; replaces the direct-set placement for kick restarts.
+        KickoffPlace_init(w);
     }
     // FUN_004BBB3C (AI timers; DAT_00673210 lives in FrameTime)
     m.ai6731f4 = 0;
@@ -624,6 +706,9 @@ void Match_updateRules(World& w) {
         if (m.phase != 9 && m.phase != 10) r.moveReq |= 1;
         r.anim.req = static_cast<std::uint32_t>(static_cast<std::int32_t>(r.moveReq) >> 16);
     }
+    // §7 delta-3: the kickoff placement dolly (h6 FUN_00516f40) advances every frame during the
+    // restart window, before the sequence pump consumes the step.
+    KickoffPlace_step(w);
     if (m.seqId != 0) {
         m.seqFrames += w.time.simFrames;
         MatchSeq_run(w, m.seqId);
@@ -2001,7 +2086,11 @@ void seq4TakeRestart(World& w) { // 0x472ED8
         const bool busy = (m.flags278 & 0x400) || Team_playersBusy(w, 0) || Team_playersBusy(w, 1);
         if ((walking || busy) && static_cast<u32>(m.seqFrames) < 0x960) return;
         Match_lineUpRestart(w, rt);
-        if (rt != 1 && rt != 2 && rt != 3 && rt != 5) Ball_placeAt(w, w.ball.restartPos, false, 0);
+        if (rt == 0) {
+            KickoffPlace_init(w); // §7 delta-3: kickoff dollies to the centre spot, no direct snap
+        } else if (rt != 1 && rt != 2 && rt != 3 && rt != 5) {
+            Ball_placeAt(w, w.ball.restartPos, false, 0);
+        }
         if (rt != 2 && rt != 5 && rt != 6) w.time.focus = -1;
         m.flags278 &= ~1u;
         seqNext(m);

@@ -169,9 +169,12 @@ transitions, D receiver-capture contest, M AI spacing realism (qualitative vs or
    `FUN_0040e748` (`%s_T_d_P_%d_%d`, pool `DAT_0059e040`); whistle/clock grammar ported [C].
    No referee handler code is statically reachable - task tables install at runtime (.SCI layer,
    item 1), so positioning RE stays blocked on the same blocker; rank 5.
-6. **Kickoff first-second pose** (M7 scenario note: 1-2 s of "poses" at kickoff): documented as the
-   faithful data path in docs/STATUS.md "Known limitations" (l.195-206) - no work expected; keep for
-   cosmetic A/B once capture lane revives.
+6. **Kickoff first-second pose** (M7 scenario note: 1-2 s of "poses" at kickoff) — **CLOSED
+   (2026-11-08, TASK_HANDLERS_WC98 §7 delta-3)**: the h6 placement dolly is modeled in the sim
+   (`simulation::KickoffPlace_init/step`, gate `scenarioKickoffPlacement`); the livematch snapshot
+   pose path consumes `w.match.kickoffPlace` so the rendered kickoff heading follows the dolly
+   bearing (rec+0x1d0) frame-by-frame instead of a snap. Mass-prone anim poses remain faithful exe
+   data (docs/STATUS.md "Known limitations"); cosmetic A/B stays parked with the capture lane.
 7. ~~Coverage gaps B/C/D/E/F/G/H/K/L/M/N/P~~ (section 4): all gates landed - `self_test_gameplay`
    (§14 lane) covers B, C and D-placement with measured internal-state assertions; E/F/G/H/K/L/N/P
    are fixed-seed scenarios in `test_sim_scenarios`. Remaining: A gait transitions, D capture

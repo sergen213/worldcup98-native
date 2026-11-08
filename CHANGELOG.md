@@ -7,6 +7,10 @@ project goals.
 
 ## [Unreleased]
 ### Added
+- `.RES` team-history pair-matrix parser `formats/res.cpp` + gate `test_res`: ZWCUP/ZINTER
+  `[u16 n][ids][C(n,2) triples]` layout with the FUN_0048cc58 pair-index formula and directional
+  head-to-head lookup; Brazil–Scotland (2,1,0) / Italy–Chile (1,0,1) dossier triples asserted
+  (TOURNAMENT_MODULE_WC98 §2.5 marked [P via gate]).
 - Camera dolly model + byte-proven preset tables in `presentation::CameraTask` /
   `MatchCamera::glideTo`: timer B/C snapshot-swap (`FUN_00517b50/e30/f20/cc0`, bit-15 carry
   rounding), commit trio, preset rows `DAT_00585FEA/586046/5862D2`, height table `DAT_0057FB82`

@@ -171,6 +171,11 @@ MatchSnapshot snapshotFromWorld(const sim::World& w, const sim::MatchData& md) {
     s.ball.heading = float(b.heading & 0x3FF);            // B+0xDB0 atan2(vel), game angle units
     const int holder = (b.flags & 0x20u) ? b.possessor : b.lastToucher; // 0x20 possessed, fallback touch
     s.possessor = (holder >= 0 && holder < sim::kPlayers) ? holder : -1;
+    // GAMEPLAY_PARITY §5.6 poses note (TASK_HANDLERS_WC98 §7 delta-3): during the kickoff placement
+    // window (h6 dolly) the rendered pose follows the dolly bearing rec+0x1d0, not a snap; ball.pos
+    // above tracks the dollied position frame by frame.
+    if (w.match.kickoffPlace.dollyActive)
+        s.ball.heading = float(w.match.kickoffPlace.bearing & 0x3FF);
 
     for (int t = 0; t < 2; ++t) {
         // TeamState::side (+0x004 "attack direction"): hypothesis side 0 -> +z, 1 -> -z.

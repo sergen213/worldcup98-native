@@ -205,6 +205,11 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
   delta-1/2 closed) and `.SCI` payload parser across all 87 COMMON files (`formats/sci.cpp`, gate
   `test_sci`; delta-4). Suite ctest = 113/113. Remaining §7 deltas: kickoff placement task (3),
   quality-tier camera gate (5, pending presentation quality option).
+- Landed (2026-11-08, pass-12sci §7 delta-3): kickoff placement task modeled from h6 `FUN_00516f40`
+  (`simulation::KickoffPlace_init/step` in rules.cpp - side-aware dolly to the centre spot, spin
+  ±DAT_00656e08 at the placement-phase tick; replaces the direct-set kick placement; livematch pose
+  path consumes `kickoffPlace.bearing`; gate `scenarioKickoffPlacement`). §7 delta-3 + GAMEPLAY_PARITY
+  §5.6 closed; remaining: quality-tier camera gate (5).
 - Landed (2026-11-08): commentary per-event preload + scheduler parity models wired
   (`app/commentary` SpeechPreload/EventDispatch/Scheduler; gates a-d in test_commentary).
 - Landed (2026-11-08, pass-12kick): kick-plan power clamp + slot-0 rect predicate ported

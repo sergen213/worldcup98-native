@@ -44,12 +44,14 @@ constexpr std::uint32_t kSeed = 0x2E7A;
 
 int gTick = 0;       // current tick of the running scenario, for failure prints
 const char* gName = "";
+int gChecks = 0;   // passing asserts, for the two-digit PASS print of scenario gates
 
 void ck(bool cond, const char* what) {
     if (!cond) {
         std::fprintf(stderr, "[scenario %s] seed=0x%X tick=%d: %s\n", gName, kSeed, gTick, what);
         std::exit(1);
     }
+    ++gChecks;
 }
 
 MatchData makeMd() {
@@ -1163,6 +1165,60 @@ void scenarioAddedTime() {
     ck((w.match.status & 4) != 0 || injEnd > 0, "added-time board bit (status&4) never armed with injury time");
     ck(injEnd >= (dur >> 2), "injurySec below the duration>>2 clamp floor");
 }
+
+// 21. Kickoff placement (TASK_HANDLERS_WC98 §7 delta-3): the h6 (FUN_00516f40) model dollies the
+// ball to the centre spot over the kickoff restart window with a side-aware direction and spin
+// ±DAT_00656e08 applied at the placement-phase tick. Fixed seed, pure logic on public helpers.
+void scenarioKickoffPlacement() {
+    gName = "kickoffPlacement";
+    MatchData md = makeMd();
+    Options opt{};
+    SimRunner r(md, opt, kSeed);
+    auto& w = r.world();
+
+    // Spin constant: DAT_00656e08 z-grid origin port derivation (rules.cpp for slot provenance).
+    const std::int32_t spin = kickoffSpinUnits(w);
+    ck(spin == w.pitch.halfLength, "spin magnitude not the pitch-mesh z grid origin");
+
+    // Side-aware direction (h6 rec+0x1cc): same ball x, attacking side flips -> dolly dir flips.
+    Ball_placeAt(w, Vec3{100, 0, 4200}); // off-centre start on the +x leg
+    w.match.restartSide = 0;
+    KickoffPlace_init(w);
+    ck(w.match.kickoffPlace.dollyActive == 1, "init did not arm the dolly");
+    ck(w.match.kickoffPlace.dir == -1, "side 0 with ball x >= 1 must dolly direction -1 (h6 rec+0x1cc)");
+    w.match.restartSide = 1;
+    KickoffPlace_init(w);
+    ck(w.match.kickoffPlace.dir == 1, "side 1 with ball x >= 1 must dolly direction +1 (h6 rec+0x1cc)");
+
+    // Dolly: the ball walks to the centre spot over the window and spin lands at placement phase.
+    Ball_placeAt(w, Vec3{100, 0, 4200});
+    w.match.restartSide = 1;
+    KickoffPlace_init(w);
+    ck(w.ball.posI.z == 4200, "gate setup ball not off-centre");
+    int steps = 0;
+    while (w.match.kickoffPlace.dollyActive && ++steps <= 64) KickoffPlace_step(w);
+    ck(!w.match.kickoffPlace.dollyActive, "dolly window never closed inside budget");
+    ck(steps >= 5, "long-distance placement must take multiple dolly ticks");
+    ck(w.ball.posI == Vec3{0, 0, 0}, "ball not on centre spot after placement window");
+    ck(w.ball.spin == -fxi(spin), "placement-phase spin not -DAT_00656e08 for attack side 1");
+
+    // Spin sign flips with the attack-side bit (h6: side != 0 -> -spin, else +spin [P]).
+    Ball_placeAt(w, Vec3{-100, 0, -4200});
+    w.match.restartSide = 0;
+    KickoffPlace_init(w);
+    ck(w.match.kickoffPlace.dir == 1, "side 0 with ball x < 1 must dolly direction +1 (h6 rec+0x1cc)");
+    steps = 0;
+    while (w.match.kickoffPlace.dollyActive && ++steps <= 64) KickoffPlace_step(w);
+    ck(w.ball.posI == Vec3{0, 0, 0}, "ball not on centre spot after flipped placement window");
+    ck(w.ball.spin == fxi(spin), "placement-phase spin not +DAT_00656e08 for attack side 0");
+
+    // Live kickoff: the period-start window completes and leaves the ball exactly on the centre spot.
+    SimRunner r2(md, opt, kSeed);
+    for (int i = 0; i < 20 && !r2.finished(); ++i) step(r2);
+    ck(!r2.world().match.kickoffPlace.dollyActive, "period-start placement window stayed open");
+    ck(r2.world().ball.posI == Vec3{0, 0, 0}, "kickoff placement did not land on the centre spot");
+    std::printf("kickoff placement asserts %02d/%02d PASS\n", gChecks, gChecks);
+}
 } // namespace
 
 int main() {
@@ -1186,5 +1242,6 @@ int main() {
     scenarioKeeperDistribution();
     scenarioPenaltyKick();
     scenarioAddedTime();
+    scenarioKickoffPlacement();
     return 0;
 }

@@ -292,7 +292,7 @@ Family → component mapping (HANDLER_DIFF_AUDIT.md style; components per GAMEPL
 | handler family | WC98 behavior | port sim component | verdict |
 |---|---|---|---|
 | module trio h0-h5,h7,h9 | fade-timer + ball→mesh re-sample + snapshot commit, scene = payload data | `presentation/match_scene.cpp` fixed camera loop (no task layer) | MISSING-lane: no per-scene presentation tasks; match flow is direct-state |
-| h6 kickoff placement | side-aware ball dolly + spin at phase 9 | `simulation/rules.cpp` restarts set ball directly; `app/livematch` pose note (STATUS "poses") | STRUCTURAL-DIFF (dolly absent) |
+| h6 kickoff placement | side-aware ball dolly + spin at phase 9 | `simulation/rules.cpp` `KickoffPlace_init/step` (h6 model), `app/livematch` pose note consumed via `kickoffPlace.bearing` | PORTED (gate `scenarioKickoffPlacement`; spin slot value [H] = z-grid origin derivation) |
 | h8/h13/h21/h27 camera follow | polar offset cam, pitch clamp, mode switch `DAT_00580df0`, carrier/block +100 source | `presentation/camera.cpp` FUN_00501910 grid box port | DATA-DELTA: same framing math, no timer-dolly/commit-snapshot model |
 | h12/h14/h28 presets | static u16 preset rows (DAT_00585Fxx/5860xx/5862Dx) + sin/cos² offsets | camera.cpp constants | DATA-DELTA: table values available [P], not installed |
 | h18/h20/h23 edge/tier cams | pitch-edge + quality-tier cameras (DAT_00644778 tiers {0x59,0x65,0x71}) | none | MISSING |
@@ -308,8 +308,10 @@ Ranked actionable deltas:
 2. **Preset table installation** — **DONE (2026-11-08)**: byte-verified rows `DAT_00585FEA`
    (h12), `DAT_00586046` (h14), `DAT_005862D2` (h28) + height table `DAT_0057FB82` (sentinels
    −5/−4/−1 lanes, FUN_004a0790 prelude) installed in camera.cpp; sine `DAT_00585898` embedded.
-3. **Kickoff placement task**: h6 side-flip + spin ±`DAT_00656e08` dolly as `rules::kickoffPlace`
-   scenario; closes the "poses" cosmetic note (GAMEPLAY_PARITY §5.6) with real behavior.
+3. **Kickoff placement task** — **DONE (2026-11-08)**: h6 side-flip + spin ±`DAT_00656e08` dolly
+   modeled as `simulation::KickoffPlace_init/step` (`rules.cpp`, replaces the direct-set kick placement;
+   per-frame hook in `Match_updateRules`), gate `scenarioKickoffPlacement` (`test_sim_scenarios`);
+   "poses" cosmetic note closed (GAMEPLAY_PARITY §5.6) — livematch pose path follows the dolly bearing.
 4. **.SCI loader in tooling** (not runtime) — **DONE (2026-11-08)**: grammar refined across all 87
    files (`formats/sci.cpp`, gate `test_sci`: header/magic survey, stride-12 tail + stride-8 trailer).
    Loader-splitting [H] stays open — Win9x-env capture lane (SQF EULZ family blocker).

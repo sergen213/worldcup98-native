@@ -129,9 +129,9 @@ Source: `analysis/pass11/screen_inventory.txt` (`== MEMBER` sections; authored-p
 | FEFLOW36.LAY | 1 | null stub | cap (stub) |
 | FEFLOW37.LAY | 8 | yes/no popup authored `Feflow86.lay` copy (blur, no/yes, txt×3) | **impl** (popup lane; quit-confirm caption index 220 + hub 'quit' wedge wiring) |
 | FEFLOW38–40.LAY | 1 | null stubs | cap (stubs) |
-| FEFLOW41.LAY | 6 | LOAD game list: blur+overlay, "LOAD game", quit button, `lstb`+slider; caption id6="…and icons" leak | miss (no save UI scene) |
-| FEFLOW42.LAY | 7 | SAVE game list ("SAVE game", tick/cross buttons, `lstb`) | miss |
-| FEFLOW43.LAY | 101 | full team-management grid: player overlays/cards, SMALL STATUS, positions/Sub captions (979 "Left Back", 1783 "Sub"), reset-all/save — authored Feflow43.lay; **not in registry** → superseded by feflow73-80 family **[H]** | miss (unregistered) |
+| FEFLOW41.LAY | 6 | LOAD game list: blur+overlay, "LOAD game", quit button, `lstb`+slider; caption id6="…and icons" leak | **impl** (`--fe-load-game`: lstb rows over SLOT%.2d.SAV scan + sbar thumb; soup caption excluded) |
+| FEFLOW42.LAY | 7 | SAVE game list ("SAVE game", tick/cross buttons, `lstb`) | **impl** (`--fe-save-manager`: Enter writes slot via saveTournament, cros→tick nvicons chain) |
+| FEFLOW43.LAY | 101 | full team-management grid: player overlays/cards, SMALL STATUS, positions/Sub captions (979 "Left Back", 1783 "Sub"), reset-all/save — authored Feflow43.lay; **not in registry** → superseded by feflow73-80 family **[H]** | **impl** (`--fe-mgmt-grid`: composite iNNn chain + FCDB squad rows, FC-bank position labels, aNNN card icons from FE/PACK/FEFLOW73) |
 | FEFLOW44.LAY | 1 | null stub | cap (stub) |
 | FEFLOW45.LAY | 6 | dev "test button" screen | cap |
 | FEFLOW46–49.LAY | 1 | null stubs | cap (stubs) |

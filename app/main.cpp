@@ -107,6 +107,9 @@ int run(int argc, char** argv) {
     int feHistoryYear = -1; // --fe-history N: open feflow90 (world-cup history board) at year row N (pass 13)
     int feNavHistory = -1;  // --fe-nav-history N: open feflow90, move year cursor to N, Enter -> feflow91 chain
     int feSetup07 = -1;   // --fe-setup07 N: open FEFLOW07 single-player setup, row cursor +N moves (pass 13 §B)
+    int feMgmt43 = -1;    // --fe-mgmt-grid N: FEFLOW43 management grid, roster row cursor +N (pass 13 §E)
+    int feLoad41 = -1;    // --fe-load-game N: feflow41 LOAD list over defaultSlotDir, rows +N
+    int feSave42 = -1;    // --fe-save-manager N: feflow42 SAVE list + tick confirm, rows +N then Enter
     int feStad08 = -1;    // --fe-stadium08 N: friendly chain -> FEFLOW08 stadium select, tile cursor +N moves
     int feIgMode = 0;       // --fe-igoptns a|g|m: open the in-game option popup (igaoptns/iggoptns/igmoptns)
     std::string fePopupName; // --fe-popup NAME: shared popup lane gate (feflow10/37, igconsel/mesg/Feflow86)
@@ -149,6 +152,9 @@ int run(int argc, char** argv) {
         else if (a == "--fe-nav-history") { feMode = true, smokeFrames = 1, feNavHistory = std::stoi(next()); } // nav chain: feflow90 -> Enter 'fe91' -> feflow91 capture
         else if (a == "--fe-setup07") { feMode = true, smokeFrames = 1, feSetup07 = std::stoi(next()); }   // FEFLOW07 matchup capture gate; N = side-cursor moves
         else if (a == "--fe-stadium08") { feMode = true, smokeFrames = 1, feStad08 = std::stoi(next()); }  // FEFLOW08 stadium-select chain gate; N = tile-cursor moves
+        else if (a == "--fe-mgmt-grid") { feMode = true, smokeFrames = 1, feMgmt43 = std::stoi(next()); }     // FEFLOW43 management grid gate; N = row-cursor moves
+        else if (a == "--fe-load-game") { feMode = true, smokeFrames = 1, feLoad41 = std::stoi(next()); }      // feflow41 LOAD list gate; N = lstb row-cursor moves
+        else if (a == "--fe-save-manager") { feMode = true, smokeFrames = 1, feSave42 = std::stoi(next()); }   // feflow42 SAVE confirm gate; N = row moves + Enter write
         else if (a == "--fe-igoptns") { // igoptns captions lane gate: a=audio g=game m=mouse popup
             feMode = true, smokeFrames = 1;
             const std::string m = next();
@@ -297,6 +303,22 @@ int run(int argc, char** argv) {
                 fe->enter(); // forward edge to FEFLOW09 friendly config (feflow09 row screen)
                 fe->enter(); // confirm -> the 'fe08' widget tag opens stadium select [C] @0x44C3D3/C3C8
                 for (int i = 0; i < feStad08; ++i) fe->move(+1); // mpNN tile ring cursor cycle
+            }
+        }
+        if (fe && feMgmt43 >= 0) { // --fe-mgmt-grid N: FEFLOW43 management board over FCDB squad data, row cursor +N
+            if (!fe->openMgmtGrid()) std::fprintf(stderr, "fe: mgmt grid unavailable\n");
+            else for (int i = 0; i < feMgmt43; ++i) fe->move(+1); // roster row cursor [H]
+        }
+        if (fe && feLoad41 >= 0) { // --fe-load-game N: feflow41 LOAD list over the port slot dir, rows +N
+            fe->ensureFixtureSlots(); // deterministic SLOT00/SLOT01 fixture when the dir is empty [H]
+            if (!fe->openLoadGame()) std::fprintf(stderr, "fe: load game unavailable\n");
+            else for (int i = 0; i < feLoad41; ++i) fe->move(+1); // lstb row cursor
+        }
+        if (fe && feSave42 >= 0) { // --fe-save-manager N: feflow42 SAVE list, rows +N then Enter = write + tick
+            if (!fe->openSaveGame()) std::fprintf(stderr, "fe: save manager unavailable\n");
+            else {
+                for (int i = 0; i < feSave42; ++i) fe->move(+1);
+                fe->enter(); // focused row -> saveTournament + 'tick' confirm icon [C] tic chain
             }
         }
         if (fe && feIgMode) { // --fe-igoptns gate frame: in-game option popup captions lane
@@ -465,6 +487,7 @@ int main(int argc, char** argv) {
         if (std::strcmp(argv[i], "--help") == 0) {
             std::puts("usage: wc98-native [--width N] [--height N] [--fullscreen|--windowed] [--smoke N]"
                       " [--fe] [--tree DIR] [--out-prefix P] [--fe-smoke N] [--tournament-saveload N] [--fe-pick N]"
+                      " [--fe-mgmt-grid N] [--fe-load-game N] [--fe-save-manager N]"
                       " [--fe-nav exhibition|league|tournament|tournament-load|practise] [--fe-team] [--fe-setup N] [--fe-league] [--fe-league-cfg N] [--fe-setup07 N] [--fe-stadium08 N] [--fe-screen NAME]"
                       " [--fe-wc-cfg N]"
                       " [--fe-popup NAME] [--fe-popup-keys N] [--fe-popup-enter|--fe-popup-back]"

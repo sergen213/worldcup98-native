@@ -52,6 +52,8 @@ public:
                : setup07View_       ? "FEFLOW07"
                : stad08View_        ? "FEFLOW08"
                : leagueCfg_         ? cfgName_.c_str()
+               : mgmtView_         ? "FEFLOW43"
+               : lsView_           ? (lsView_ == 41 ? "FEFLOW41" : "FEFLOW42")
                : wcCfg_             ? cfgName_.c_str()
                : cheatsView_        ? "FEFLOW95"
                : histScreen_        ? (histScreen_ == 90 ? "FEFLOW90" : "FEFLOW91")
@@ -137,6 +139,37 @@ public:
     bool openStad08();   // friendly-confirm 'fe08' chain / --fe-stadium08 gate; false = layout absent
     [[nodiscard]] bool onStad08() const { return stad08View_; }
     presentation::FeDrawStats drawStad08(render::SpriteBatch& ui) const; // composite + tile/name overlays
+    // ---- FEFLOW43 management grid + feflow41 LOAD / feflow42 SAVE lists (MENU_PARITY.md rows 29/30) --
+    // FEFLOW43.LAY (analysis/pass13 sweep dump): the full team-management grid — back collage, bt00..bt07
+    // formation/kick-takers/strategy/positioning/aggression/custom/line-up/bias edit buttons + canc/save/
+    // rest/resa function buttons (feflow43.fsh iNNn/iNNh/iNNp chain), tmnm team name + tmlt/tmrt pool
+    // arrows, vNNN roster rows (x=170 y=150+20i) with position slots v(N+4)NN and aNNN icon columns
+    // (selection/bio/fatigue/match-cards/total-cards animseq placeholders at x=348/388/420/460/500),
+    // oNNN row overlays, pyNN shirt-number slots, b000/b001 scroll buttons + sbar pan. Scene registry:
+    // not in the exe SCENEREG table (superseded by the feflow73-80 family [H]); the port opens it as a
+    // standalone management board (--fe-mgmt-grid gate) over FCDB squad data.
+    bool openMgmtGrid(int poolIdx = 0); // false = layout absent on this tree
+    [[nodiscard]] bool onMgmtGrid() const { return mgmtView_; }
+    presentation::FeDrawStats drawMgmtGrid(render::SpriteBatch& ui) const; // composite + roster/position/icon overlays
+    // feflow41 LOAD game list (registry row 0x562484, init 0x459420): blur + feflow42.fsh#pict panel +
+    // lstb list box (page=10 lineHeight=19 font=5) over the port's SLOT%.2d.SAV directory scan
+    // (app/saveload.cpp defaultSlotDir), sbar pan thumb, 'exit' nvicons crs button. The "0000" caption
+    // slot carries soup textid 6 (" and icons") -> excluded from composite per the f0f8109 rule; rows
+    // paint real save-file state. Enter on a row runs the existing loadTournament verify path.
+    bool openLoadGame();
+    [[nodiscard]] bool onLoadGame() const { return lsView_ == 41; }
+    // feflow42 SAVE game list (registry row 0x562490, init 0x45979c, keyloop 0x459b98): same panel with
+    // the tick/cros confirm pair (nvicons.fsh tic1/crs1 chain at x=417 y=370). The port paints `tick`
+    // when a write is confirmed (Enter on a row = saveTournament into that slot), `cros` as the idle
+    // state. soup textid 38 caption excluded; rows list existing slots + append new ones.
+    bool openSaveGame();
+    [[nodiscard]] bool onSaveGame() const { return lsView_ == 42; }
+    presentation::FeDrawStats drawLoadSave(render::SpriteBatch& ui) const; // composite + lstb rows + sbar thumb
+    [[nodiscard]] int loadSaveCursor() const { return lsRow_; }
+    // Deterministic gate fixture: when the slot directory is empty, write two scenario states to
+    // SLOT00/SLOT01 (same fixed seeds as the tournament presentation lane) so the LOAD list paints.
+    void ensureFixtureSlots(); // deterministic --fe-load-game gate fixture (writes SLOT00/SLOT01 if empty)
+    std::vector<int> slotFiles() const; // sorted SLOT%.2d.SAV indices in defaultSlotDir
 
     static constexpr int kTourneyRounds = 4; // group stage, R16, QF, final boundaries -> 35/25/26/27
     struct TourneyModel;                     // deterministic schedule/standings/bracket (fe_flow.cpp)
@@ -377,6 +410,28 @@ public:
     bool stad08View_ = false;   // FEFLOW08 shown ('fe08' friendly-confirm chain / --fe-stadium08 gate)
     int s08Sel_ = 0;            // mpNN tile cursor (mp00..mp09, mod 10; nslt/nsrt arrows cycle)
     int s08Half_ = 0, s08Weather_ = 0, s08Night_ = 0; // sint/wint/hint fake-interface cycle state [H]
+    // FEFLOW43 management grid (public API block): layout + scene-ownership whitelist. The vNNN/aNNN/
+    // oNNN/pyNN animseq runtime surfaces, mmod mode slot and chat widgets stay hidden (composite paints
+    // the iNNn button chain + back collage; dynamic content is painted as overlays from FCDB data).
+    formats::ScreenLayout mgmt43_;
+    bool haveMgmt43_ = false;
+    bool mgmtView_ = false;      // FEFLOW43 shown (--fe-mgmt-grid gate)
+    int mgmtRow_ = 0;            // roster row cursor (UP/DOWN; four-row window pages via sbar)
+    int mgmtTeam_ = 0;           // pool index of the grid team (tmlt/tmrt arrows cycle, L/R axis [H])
+    std::vector<std::string> mgmt43Visible_;
+    // feflow41/42 save-list lane: lsView_ 41 = LOAD list, 42 = SAVE confirm; lsConfirm_ (42) drives the
+    // tick/cros state icons. The "0000" soup caption slots are excluded from both whitelists.
+    formats::ScreenLayout load41_, save42_;
+    bool haveLoad41_ = false, haveSave42_ = false;
+    int lsView_ = 0;             // active list scene (41/42, 0 = none)
+    int lsRow_ = 0;              // lstb row cursor over the SLOT-file scan
+    int lsConfirm_ = 0;          // feflow42: 0 = idle ('cros' icon), 1 = confirmed write ('tick')
+    std::vector<std::string> load41Visible_, save42Visible_;
+    [[nodiscard]] const formats::FcdbPlayer* gridPlayer(int rosterIdx) const; // FCDB record for a grid row
+    void lstbPage(int dir); // feflow41/42: pan lsRow_ by one list page (sbar/b000 b001 semantics)
+    void loadSelectedSlot(); // feflow41 Enter: loadTournament + summary print on the focused lstb row
+    void saveSelectedSlot(); // feflow42 Enter: write the scenario state to the focused slot, tick confirm
+    [[nodiscard]] int gridRosterSize() const; // populated squad slots of the active grid team
     [[nodiscard]] std::array<int, 5> teamBars(const formats::FcdbTeam* t) const; // FCDB skill rows 0..10
     [[nodiscard]] const formats::FcdbTeam* poolTeamFor(int poolIdx) const;        // FCDB record for a pool index
     // Shared popup lane (public API block above): FEFLOW10 ok_1/canc + FEFLOW37 yes/no loaded eagerly,

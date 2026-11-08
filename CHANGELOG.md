@@ -8,6 +8,17 @@ project goals.
 ### Added
 
 
+- Management grid + LOAD/SAVE list scenes (`FeFlow` FEFLOW43/41/42, `--fe-mgmt-grid N`, `--fe-load-game N`,
+  `--fe-save-manager N`, gates `fe_mgmt_grid43`, `fe_loadsave41`, `fe_savemgr42`; MENU_PARITY rows 29-30):
+  FEFLOW43 opens as a standalone board (not in the scene registry [H]) — composite paints the iNNn button chain +
+  back collage via FE/PACK/FEFLOW43, overlays paint FCDB squad rows ("#shirt name" on vNNN + kit swatch), FC-bank
+  position labels under each column (GK=810 SW=1801 RB=1531 LB=979 RM=1534 LM=982 RF=1533 LF=981 MF=1070 FW=751,
+  header captions 1379-1381/1382), and the aNNN card-icon columns (redc/yell/but1..3) resolved from the
+  FE/PACK/FEFLOW73 PAK like the feflow72 tile lane; UP/DOWN pans the four-row window, sbar thumb follows, Enter =
+  Save via saveTournament. feflow41 LOAD lists real SLOT%.2d.SAV files scanned from defaultSlotDir (rows through
+  paintListRows + sbbg/sbar page slider), feflow42 SAVE adds the tick/cross confirm: Enter writes the focused slot
+  and flips cros(idle) -> nvicons tic1, evidence "fe: saved slot NN". Gate fixtures seed deterministic slots under a
+  scratch XDG_DATA_HOME. Captures /tmp/wc98port-out/{mgmt43,load41,save42}.png.
 - MANMARKS ratings board (`IgBoards` kind 15, `--ig-manmarks-smoke`, gate `fe_manmarks_grid`): igteam72 'M' opens the
   player-marker management screen over the frozen fixture match — pNNN squad grid rows painted from FCDB lineup/subs
   ("#shirt name" + tricolour kit swatch, hilite pane = row cursor; UP/DOWN pans a five-row window with the sbar thumb),

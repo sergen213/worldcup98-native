@@ -298,6 +298,20 @@ if(DEFINED WC98_TREE)
     # fe_manmarks_grid (§E): igteam72 'M' opens the MANMARKS ratings board over the seeded fixture: FCDB pNNN squad grid rows (shirt + name + kit swatch; row cursor pans a five-row window, sbar thumb), mm00..mm02 home-defender <-> away-forward pair captions.
     add_test(NAME fe_manmarks_grid COMMAND wc98-native --ig-manmarks-smoke 370 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/manmarks)
     set_tests_properties(fe_manmarks_grid PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "MANMARKS: shapes=[1-9]" FAIL_REGULAR_EXPRESSION "MANMARKS: shapes=0 |MANMARKS: texts=0$ ")
+    # FEFLOW43 management grid (MENU_PARITY rows 29/30, pass13 §E): composite iNNn button chain + back
+    # collage via FE/PACK/FEFLOW43; overlays paint FCDB squad rows ("#shirt name" + kit swatch on vNNN),
+    # FC-bank position labels (GK=810 SW=1801 RB=1531 ... FW=751) and the aNNN icon columns from
+    # FE/PACK/FEFLOW73 (redc/yell/but1..3); sbar thumb pans the four-row window.
+    add_test(NAME fe_mgmt_grid43 COMMAND wc98-native --fe-mgmt-grid 2 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/mgmt43)
+    set_tests_properties(fe_mgmt_grid43 PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW43: shapes=[1-9][0-9]* texts=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 |texts=0 ")
+    # feflow41 LOAD list: scratch slot dir (XDG_DATA_HOME) seeded by the deterministic SLOT00/SLOT01
+    # fixture; lstb rows scan real SLOT%.2d.SAV files and print summary facts, sbar thumb pans pages.
+    add_test(NAME fe_loadsave41 COMMAND wc98-native --fe-load-game 1 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/load41)
+    set_tests_properties(fe_loadsave41 PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE};XDG_DATA_HOME=/tmp/wc98port-slots-load" PASS_REGULAR_EXPRESSION "FEFLOW41: shapes=[1-9][0-9]* texts=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 |texts=0 ")
+    # feflow42 SAVE confirm: list rows over the scratch dir, Enter writes the focused slot through the
+    # existing saveTournament path and flips cros(idle) -> tick(tic1); evidence line pins the write.
+    add_test(NAME fe_savemgr42 COMMAND wc98-native --fe-save-manager 0 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/save42)
+    set_tests_properties(fe_savemgr42 PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE};XDG_DATA_HOME=/tmp/wc98port-slots-save" PASS_REGULAR_EXPRESSION "fe: saved slot 00" FAIL_REGULAR_EXPRESSION "save FAILED |FEFLOW42: shapes=0 ")
     # Between-round tournament presentation (FEFLOW35/25/26/27, LAY_COMPOSITOR_NOTES.md "Tournament
     # presentation scenes"): one stat line per screen; fails on zero shapes/texts/cursors.
     add_test(NAME fe_render_present COMMAND wc98-native --fe-smoke 1 --fe-present --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/present)

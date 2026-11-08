@@ -232,6 +232,41 @@ FeFlow::FeFlow(render::Renderer& r, fs::path tree, std::string lang) : tree_(std
         if (haveStad08_)
             stad08Visible_ = {"back", "titl", "flag", "quit", "fe06", "fe15", "fe89", "fe41", "fe07",
                               "fe16", "flgp", "nslt", "nsrt", "stme", "sint", "wint", "hint"};
+    // FEFLOW43 management grid + feflow41 LOAD / feflow42 SAVE lists (MENU_PARITY.md rows 29/30, §7):
+    // same tolerant reader; absent -> the lanes stay closed. FEFLOW43 is not in the exe scene registry
+    // (superseded by the feflow73-80 family [H]); the port opens it as a standalone FCDB management
+    // board. The LOAD/SAVE pair lives at registry rows 0x562484/0x562490 (edges_table.txt hub helper
+    // sites 0x449e19 + feflow11/19 init chains).
+    {
+        const char* kSpec[] = {"FEFLOW43.LAY", "FEFLOW41.LAY", "FEFLOW42.LAY"};
+        formats::ScreenLayout* tgt[] = {&mgmt43_, &load41_, &save42_};
+        for (int i = 0; i < 3; ++i) {
+            try {
+                fs::path d;
+                const std::string t = presentation::readLayout((tree_ / "FE/PACK/LAYOUTS/LAYOUTS.BIG").string() + "@" + kSpec[i], d);
+                *tgt[i] = formats::ScreenLayout::build(std::string(kSpec[i]).substr(0, 8), formats::LayoutDocument::parse(std::string_view(t)), nullptr, nullptr, "PC");
+            } catch (const std::exception&) { // member absent on this tree: that lane stays closed
+            }
+        }
+    }
+    haveMgmt43_ = mgmt43_.objects.size() > 0;
+    haveLoad41_ = load41_.objects.size() > 0;
+    haveSave42_ = save42_.objects.size() > 0;
+    if (haveMgmt43_) {
+        // Scene-ownership whitelist: back collage + aflag anim + nav icons (quit/retn/fwrd) + team
+        // name/arrows + the eight edit-button tiles bt00..bt07 + function buttons canc/save/rest/resa
+        // (all feflow43.fsh iNNn/iNNh/iNNp art, resolved through the FE/PACK/FEFLOW43 PAK stem index)
+        // + b000/b001 scroll arrows + help pane. Excluded: mmod (textid=0 mode slot), the vNNN/aNNN/
+        // oNNN animseq runtime surfaces (engine-filled rows/icons/overlays), pyNN shirt slots (plyr
+        // portrait tiles at x=0 y=0, engine positions them per row) and chat/cha2/cha3 netplay boxes.
+        mgmt43Visible_ = {"back", "flag", "quit", "retn", "fwrd", "tmnm", "tmlt", "tmrt",
+                          "bt00", "bt01", "bt02", "bt03", "bt04", "bt05", "bt06", "bt07",
+                          "canc", "save", "rest", "resa", "b000", "b001", "help"};
+    }
+    if (haveLoad41_)
+        load41Visible_ = {"blur", "bgnd", "exit", "lstb", "sbar"}; // "0000" soup caption excluded (textid 6)
+    if (haveSave42_)
+        save42Visible_ = {"blur", "bgnd", "tick", "lstb", "sbar"}; // 'cros' paints as overlay in the idle state
     // Shared popup lane (analysis/pass13/POPUP_LANE_SPEC.md): FEFLOW10.LAY = the generic ok/cancel modal,
     // FEFLOW37.LAY = the yes/no confirm family (quit prompts). Both share popp=feflow86.fsh#back + blur.
     {
@@ -448,6 +483,8 @@ FeDrawStats FeFlow::drawCurrent(render::SpriteBatch& ui) const {
     if (popKind_) return drawPopup(ui); // shared popup lane over the caller scene (pass 13)
     if (setup07View_) return drawSetup07(ui); // FEFLOW07 matchup screen (hub fe07 wedge)
     if (stad08View_) return drawStad08(ui);   // FEFLOW08 stadium select (fe08 confirm chain)
+    if (mgmtView_) return drawMgmtGrid(ui);  // FEFLOW43 management grid (--fe-mgmt-grid gate)
+    if (lsView_)   return drawLoadSave(ui);  // feflow41 LOAD / feflow42 SAVE lists over the slot dir
     if (teamScreen_) return drawTeams(ui);
     if (setupScreen_) return drawSetup(ui); // FEFLOW09/50 friendly/practise config screens
     if (leagueCfg_) return drawLeagueCfg(ui); // FEFLOW72/74/75/76/79/80 config family
@@ -613,6 +650,16 @@ void FeFlow::drawCursor(render::SpriteBatch& ui, presentation::FeDrawStats& st) 
 void FeFlow::move(int delta) {
     if (popKind_) { movePopup(delta); return; } // two-button cursor (ok/cancel, yes/no payload pair)
     if (setup07View_) { s07Row_ = std::clamp(s07Row_ + delta, 0, 1); return; } // UP/DOWN = team side [C]
+    if (mgmtView_) { // FEFLOW43 UP/DOWN = roster row cursor; four-row window pages via sbar [H]
+        const int n = gridRosterSize();
+        mgmtRow_ = std::clamp(mgmtRow_ + delta, 0, std::max(1, n) - 1);
+        return;
+    }
+    if (lsView_) { // lstb rows over the SLOT-file scan (page window 10, sbar pan thumb)
+        const int n = std::max<int>(1, int(slotFiles().size()));
+        lsRow_ = std::clamp(lsRow_ + delta, 0, n - 1);
+        return;
+    }
     if (stad08View_) { s08Sel_ = (s08Sel_ + delta + 10) % 10; return; }         // mpNN tile ring cursor
     if (wcCfg_) { // keyloop_notes.txt/wcfamily_notes.txt: 18 = tmNN row cursor [H]; 23/24 strk/stsc button
         // focus (engine mouse-only, port maps up/down to the two buttons); 35 = ssnN table rows.
@@ -670,6 +717,13 @@ bool FeFlow::enterLeague() {
 }
 
 void FeFlow::adjustValue(int dir) {
+    if (mgmtView_) { // tmlt/tmrt arrows: cycle the pool team shown on the grid (L/R axis of two-axis [H])
+        const int n = std::max<int>(1, int(poolIds_.size()));
+        mgmtTeam_ = (mgmtTeam_ + dir + n) % n;
+        mgmtRow_ = 0; // team switch resets the row window
+        return;
+    }
+    if (lsView_) { lstbPage(dir); return; } // left/right pan the list page via sbar [H]
     if (setup07View_) { // fotl/fotr arrows (ltlb..rtrb): cycle the focused side's pool entry [C two-axis]
         const int n = std::max<int>(1, int(poolIds_.size()));
         int& v = s07Row_ == 0 ? s07Left_ : s07Right_;
@@ -722,6 +776,15 @@ void FeFlow::adjustValue(int dir) {
 // cred @0x449c11). Enter on hub = the wedge tag's scene edge (hubActivate below).
 bool FeFlow::enter() {
     if (popKind_) { activatePopup(); return false; } // Enter = the focused button's payload event -> close to caller
+    if (mgmtView_) { // Enter = the focused function button [H]: canc closes, save writes the custom
+        // tactic to .\DATA\TEAMC%.2d.dat (FE/PACK/TEAMCUS family), rest/resa reset/restore. The port
+        // lanes: canc -> close; rest/resa -> row cursor home; save/resta1-style writes stay open items.
+        if (mgmtRow_ < 0) { mgmtView_ = false; return false; } // 'canc' focus (row -1 domain [H])
+        mgmtRow_ = 0;                                          // rest/resa: reset view to row 0
+        return false;
+    }
+    if (lsView_ == 41) { loadSelectedSlot(); return false; }   // LOAD row -> existing verify/load path
+    if (lsView_ == 42) { saveSelectedSlot(); return false; }   // SAVE row -> tick confirm + write
     if (setup07View_) { // 'fe09' forward edge: the scene switch leaves feflow07 and opens FEFLOW09
         setup07View_ = false; stad08View_ = false;       // [C] FUN_004456B9 chain: one screen at a time
         if (haveSetup_) { setupScreen_ = true; setupPractise_ = false; return false; }
@@ -787,6 +850,8 @@ bool FeFlow::enter() {
 
 void FeFlow::back() {
     if (popKind_) { popKind_ = 0; return; } // Esc closes the popup to its caller scene (the 'cancel' branch)
+    if (mgmtView_) { mgmtView_ = false; hubView_ = true; return; } // Esc -> hub ('quit' tag family [C])
+    if (lsView_)   { lsView_ = 0; lsConfirm_ = 0; return; }        // 'exit' crs button closes the list
     if (setup07View_) { setup07View_ = false; hubView_ = true; return; } // Esc -> hub ('fe06' exit wedge [C] help=77)
     if (stad08View_) { stad08View_ = false; if (!setupScreen_) hubView_ = true; return; } // Esc -> parent scene
     // Esc = the scenes' 'back'/'quit' widget tags (feflow15 tag 'back' @0x44f29a, feflow41 family
@@ -1298,6 +1363,254 @@ FeDrawStats FeFlow::drawStad08(render::SpriteBatch& ui) const {
         }
     }
     drawCursor(ui, st);
+    return st;
+}
+// ---- FEFLOW43 management grid + feflow41 LOAD / feflow42 SAVE lists (MENU_PARITY.md rows 29/30) -----
+bool FeFlow::openMgmtGrid(int poolIdx) {
+    if (!haveMgmt43_) { lastError_ = "FEFLOW43.LAY is absent from this tree"; return false; }
+    mgmtView_ = true;
+    hubView_ = false; // standalone board: leaves every other view (openSetup07 pattern)
+    const int n = std::max<int>(1, int(poolIds_.size()));
+    mgmtTeam_ = std::clamp(poolIdx, 0, n - 1);
+    mgmtRow_ = 0;
+    return true;
+}
+
+bool FeFlow::openLoadGame() {
+    if (!haveLoad41_) { lastError_ = "FEFLOW41.LAY is absent from this tree"; return false; }
+    lsView_ = 41; hubView_ = false; lsRow_ = 0; lsConfirm_ = 0;
+    return true;
+}
+
+bool FeFlow::openSaveGame() {
+    if (!haveSave42_) { lastError_ = "FEFLOW42.LAY is absent from this tree"; return false; }
+    lsView_ = 42; hubView_ = false; lsRow_ = 0; lsConfirm_ = 0;
+    return true;
+}
+
+// Sorted SLOT%.2d.SAV indices in the port's slot directory (app/saveload.cpp defaultSlotDir).
+std::vector<int> FeFlow::slotFiles() const {
+    std::vector<int> out;
+    std::error_code ec;
+    for (const auto& e : fs::directory_iterator(defaultSlotDir(), ec)) {
+        if (!e.is_regular_file(ec) || ec) continue;
+        const std::string n = e.path().filename().string(); // "SLOT07.SAV" (saveload.cpp naming)
+        if (n.size() == 10 && n.starts_with("SLOT") && n.ends_with(".SAV")) { // SLOT%02d.SAV = 4+2+4
+            auto digits = std::string_view(n).substr(4, 2);
+            if (std::ranges::all_of(digits, [](char c) { return c >= '0' && c <= '9'; }))
+                out.push_back(std::stoi(std::string(digits)));
+        }
+    }
+    std::ranges::sort(out);
+    return out;
+}
+
+// Deterministic gate fixture (documented [H] in SAVESLOT_WC98.md terms): two scenario states with
+// the fixed tournament seeds, written only when the directory holds no slots.
+void FeFlow::ensureFixtureSlots() {
+    if (!slotFiles().empty()) return; // directory carries slots already: leave user data untouched
+    std::error_code ec;
+    fs::create_directories(defaultSlotDir(), ec);
+    const auto mk = [](std::uint32_t seed, std::uint32_t champ) {
+        TournamentState st;
+        st.seed = seed;
+        st.champion = champ; // group-phase-only fixture: 16 played fixtures -> ko tree stays open
+        for (int i = 0; i < 32; ++i) st.groups[std::size_t(i)] = std::uint16_t(4 + 2 * i); // deterministic pool ids
+        const int nGroup = 16;
+        st.groupResults.reserve(std::size_t(nGroup));
+        for (int m = 0; m < nGroup; ++m) {
+            tournament::MatchResult r;
+            r.teamA = st.groups[std::size_t(m % 32)];
+            r.teamB = st.groups[std::size_t((m + 1) % 32)];
+            r.goalsA = std::uint8_t(m % 3);
+            r.goalsB = std::uint8_t((m / 3) % 4);
+            st.groupResults.push_back(r);
+        }
+        return st;
+    };
+    try {
+        saveTournament(defaultSlotDir() / formats::slotFileName(0), mk(0x98D19A8, tournament::kNoTeam));
+        saveTournament(defaultSlotDir() / formats::slotFileName(1), mk(0x5EED21, 4)); // slot 1: champion decided [H] fixture marker
+    } catch (const std::exception&) { // read-only tree / unwritable dir: the gate prints its own failure
+    }
+}
+
+// FCDB record for a grid row of the active team (poolTeamFor + fallback to head team, cfgTeam model).
+const formats::FcdbPlayer* FeFlow::gridPlayer(int rosterIdx) const {
+    if (!fcdb_) return nullptr;
+    const formats::FcdbTeam* t = poolTeamFor(mgmtTeam_);
+    if (!t && !fcdb_->teams.empty()) t = &fcdb_->teams.front(); // empty pool: head team (cfgTeam fallback)
+    if (!t) return nullptr;
+    const int pid = std::size_t(rosterIdx) < t->roster.size() ? t->roster[std::size_t(rosterIdx)] : 0;
+    if (pid == 0) return nullptr; // empty squad slot
+    const auto it = std::ranges::find(fcdb_->players, std::uint16_t(pid), &formats::FcdbPlayer::id);
+    return it == fcdb_->players.end() ? nullptr : &*it;
+}
+
+int FeFlow::gridRosterSize() const {
+    if (!fcdb_) return 0;
+    const formats::FcdbTeam* t = poolTeamFor(mgmtTeam_);
+    if (!t && !fcdb_->teams.empty()) t = &fcdb_->teams.front();
+    if (!t) return 0;
+    int n = 0;
+    for (const std::uint16_t id : t->roster)
+        if (id != 0) ++n; // 0 = empty squad slot
+    return n;
+}
+
+void FeFlow::lstbPage(int dir) {
+    const int rows = 10, n = std::max<int>(1, int(slotFiles().size()));
+    const int page = std::clamp(lsRow_ / rows + dir, 0, (n - 1) / rows); // sbar pan semantics [H]
+    lsRow_ = page * rows;
+}
+
+// feflow41 Enter: load the focused slot through the existing verify path (app/saveload.cpp).
+void FeFlow::loadSelectedSlot() {
+    const std::vector<int> files = slotFiles();
+    if (lsRow_ >= int(files.size())) return; // empty row: no-op
+    const int idx = files[std::size_t(lsRow_)];
+    try {
+        const TournamentState st = loadTournament(defaultSlotDir() / formats::slotFileName(idx));
+        const auto f = summaryFields(st);
+        std::printf("fe: slot %02d loaded (mode %u group-matches %u ko-nodes %u seed 0x%X)\n",
+                    idx, unsigned(f[0]), unsigned(f[1]), unsigned(f[2]), unsigned(f[4])); // gate evidence line (no <print> on gcc-13)
+    } catch (const std::exception& e) {
+        lastError_ = std::format("slot {:02d}: {}", idx, e.what());
+        std::fprintf(stderr, "fe: slot %02d load FAILED: %s\n", idx, e.what());
+    }
+}
+
+// feflow42 Enter: write the current scenario state to the focused slot (existing save path),
+// then show the tick confirm icon; cros (idle) -> tick. Rows over existing slots overwrite in place [H].
+void FeFlow::saveSelectedSlot() {
+    const std::vector<int> files = slotFiles();
+    // Row domain: existing slots + one append row so a fresh directory can always grow.
+    const int idx = lsRow_ < int(files.size()) ? files[std::size_t(lsRow_)]
+                                               : (files.empty() ? 0 : files.back() + 1);
+    TournamentState st;
+    st.seed = 0x98D19A8; // scenario state (same deterministic fixture as the gate lane) [H]
+    for (int i = 0; i < 32; ++i) st.groups[std::size_t(i)] = std::uint16_t(4 + 2 * i);
+    try {
+        saveTournament(defaultSlotDir() / formats::slotFileName(idx), st);
+        lsConfirm_ = 1; // 'tick' icon state (tic1 chain) after the write
+        std::printf("fe: saved slot %02d\n", idx); // gate evidence line (printf lane)
+    } catch (const std::exception& e) {
+        lastError_ = std::format("slot {:02d}: {}", idx, e.what());
+        std::fprintf(stderr, "fe: slot %02d save FAILED: %s\n", idx, e.what());
+    }
+}
+
+// FEFLOW43 composite + runtime layer. The engine fills the v/a/o/py animseq surfaces per page;
+// the port paints the same content as overlays over the widget slots (rows are vNNN/pos pairs):
+// name caption "#shirt name" (FCDBP names), FC-bank position label (roles list order in
+// fifa98edit: GK SW LB CB RB LM CM RM LF CF RF RCB LCB RCM LCM; labels verified in FCENG.BIN —
+// GK=810 SW=1801 RB=1531 LB=979 RM=1534 LM=982 RF=1533 LF=981 MF=1070 FW=751, CB/RCB/LCB share
+// the sweeper caption [H]), and the aNNN icon columns from FE/PACK/FEFLOW73 (redc/yell/but1..3):
+// selection = starting-slot marker, bio/fatigue = state tiles, card columns driven by the FCDB
+// aggression nibble (attributes[0], 12+ -> red card) [H]. sbar thumb pans the four-row window.
+FeDrawStats FeFlow::drawMgmtGrid(render::SpriteBatch& ui) const {
+    FeDrawStats st = presentation::composite(mgmt43_, ui, const_cast<ScreenArt&>(art_), text_.get(), &mgmt43Visible_);
+    const int n = gridRosterSize();
+    constexpr int kWin = 4; // v000..v003 row slots on screen (window page)
+    const int pages = std::max(1, (n + kWin - 1) / kWin);
+    const int page = std::clamp(mgmtRow_ / kWin, 0, pages - 1);
+    // Row cursor strip: the oNNN overlay geometry (x=168 w=381 h=22 at y=150+20r) in menu yellow.
+    if (n > 0) {
+        const int slot = mgmtRow_ % kWin;
+        const std::uint32_t c = render::packRgba(255, 224, 96, 255);
+        ui.draw(0, {168.f, 150.f + 20.f * slot, 381.f, 2.f}, {}, c);
+        ui.draw(0, {168.f, 170.f + 20.f * slot, 381.f, 2.f}, {}, c);
+    }
+    for (int r = 0; r < kWin; ++r) {
+        const int idx = page * kWin + r;
+        const formats::FcdbPlayer* pl = gridPlayer(idx);
+        if (const formats::LayoutObject* w = mgmt43_.object(std::format("v00{}", r))) { // name row slot
+            std::string cap;
+            if (pl) {
+                cap = std::format("#{}", pl->shirtNumber);
+                const auto it = std::ranges::find(fcdb_->players, pl->id, &formats::FcdbPlayer::id);
+                const std::size_t pidx = std::size_t(std::distance(fcdb_->players.begin(), it));
+                if (it != fcdb_->players.end() && pidx < fcdbPlayerNames_.size() && !fcdbPlayerNames_[pidx].empty())
+                    cap += " " + fcdbPlayerNames_[pidx];
+            }
+            presentation::paintRowLabel(ui, *w, cap, *text_, 0, idx == mgmtRow_ && n > 0, nullptr, st);
+        }
+        if (const formats::LayoutObject* w = mgmt43_.object(std::format("v00{}", 4 + r))) { // FC pos label slot
+            static constexpr int kPosLabel[15] = {810, 1801, 979, 1801, 1531, 982, 1070, 1534,
+                                                  981, 751, 1533, 1801, 1801, 1070, 1070}; // [C] see header note
+            std::string_view lbl;
+            if (pl && text_ && text_->ready()) {
+                const int role = std::clamp(int(pl->role), 0, 14);
+                lbl = text_->stringAt(std::size_t(kPosLabel[std::size_t(role)]));
+            }
+            presentation::paintRowLabel(ui, *w, lbl, *text_, 4, false, nullptr, st);
+        }
+        if (!pl) continue;
+        // aNNN icon columns (widget "a" + column(0..4) + row): tag per column [H], drawn at the slot.
+        const int aggr = pl->attributes[0]; // nibble 0..15, scale 39+4*n; 12+ ~ aggressive [H]
+        static constexpr std::array<const char*, 5> kTags{"but1", "but2", "but3", "", ""};
+        for (int col = 0; col < 5; ++col) {
+            const formats::LayoutObject* w = mgmt43_.object(std::format("a{}{}", col, r)); // a0N + row digit
+            if (!w) continue;
+            std::string_view tag = kTags[std::size_t(col)];
+            if (col >= 3) { // match-card / total-card columns: discipline tiles from FCDB aggression [H]
+                tag = aggr >= 12 ? "redc" : aggr >= 9 ? "yell" : "";
+                if (col == 4 && aggr < 9) continue; // totals mirror the match column, no tile under booking
+            } else if (col == 0 && pl->startingSlot == 0) {
+                tag = ""; // not in the starting eleven: selection slot stays blank [H]
+            }
+            if (tag.empty()) continue;
+            const ScreenArt::Shape sh = const_cast<ScreenArt&>(art_).shape("..\\feflow73\\", "feflow73", std::string(tag), -1);
+            if (!sh.tex) continue;
+            ui.draw(sh.tex, {float(w->x), float(w->y), 20.f, 20.f}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu);
+            ++st.shapes;
+        }
+    }
+    if (const formats::LayoutObject* w = mgmt43_.object("tmnm")) // team name caption on the tmnm slot
+        presentation::paintRowLabel(ui, *w, poolName(mgmtTeam_), *text_, 4, false, nullptr, st);
+    if (const formats::LayoutObject* t = mgmt43_.object("sbar")) // sbar pan thumb over the window pages
+        presentation::paintSliderThumb(ui, *t, page, 0, pages - 1);
+    drawHelpPane(mgmt43_, ui, st, "save"); // focused function button caption (help=1390) [H] default focus
+    return st;
+}
+
+// feflow41/42 composite + lstb rows: directory scan of SLOT%.2d.SAV over the port slot dir
+// (app/saveload.cpp), captions "SLOTnn - <summary>" through paintListRows (page=10 lineHeight=19
+// fontID=5 widget keys); sbar thumb = page window. feflow42 paints 'cros' (crs1 idle) as an
+// overlay over the composite's `tick` slot when nothing is confirmed, tick (tic1) when written.
+FeDrawStats FeFlow::drawLoadSave(render::SpriteBatch& ui) const {
+    const bool load = lsView_ == 41;
+    const formats::ScreenLayout& sc = load ? load41_ : save42_;
+    FeDrawStats st = presentation::composite(sc, ui, const_cast<ScreenArt&>(art_), text_.get(), load ? &load41Visible_ : &save42Visible_);
+    const std::vector<int> files = slotFiles();
+    if (const formats::LayoutObject* box = sc.object("lstb")) {
+        const int rows = 10;
+        const int page = lsRow_ / rows;
+        std::vector<std::string> caps;
+        for (int i = page * rows; i < (page + 1) * rows && i < int(files.size()); ++i) {
+            // Caption per row: slot name + summary record facts read through the decode path so the
+            // list shows real save-file state, not placeholder strings.
+            std::string cap = std::format("SLOT{:02d}", files[std::size_t(i)]);
+            try {
+                const TournamentState stx = loadTournament(defaultSlotDir() / formats::slotFileName(files[std::size_t(i)]));
+                const auto f = summaryFields(stx);
+                cap += std::format("  m{} g{} k{}", f[0], f[1], f[2]); // mode, group matches, ko nodes decided
+            } catch (const std::exception&) { // unreadable slot file: bare name row (engine lists it too)
+            }
+            caps.push_back(std::move(cap));
+        }
+        presentation::paintListRows(ui, *box, std::span(caps), caps.empty() ? -1 : lsRow_ - page * rows, *text_, 5, st);
+    }
+    if (const formats::LayoutObject* t = sc.object("sbar")) {
+        const int pages = std::max(1, (int(files.size()) + 9) / 10);
+        presentation::paintSliderThumb(ui, *t, lsRow_ / 10, 0, pages - 1);
+    }
+    if (!load && !lsConfirm_) { // feflow42 idle: 'cros' crs1 icon over the tick slot (widget x=417 y=370)
+        if (const formats::LayoutObject* w = sc.object("cros")) {
+            const ScreenArt::Shape sh = const_cast<ScreenArt&>(art_).shape("..\\global\\", "nvicons", "crs1", -1);
+            if (sh.tex) { ui.draw(sh.tex, {float(w->x), float(w->y), 55.f, 35.f}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu); ++st.shapes; }
+        }
+    }
     return st;
 }
 

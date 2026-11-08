@@ -49,6 +49,8 @@ public:
     [[nodiscard]] const char* screenName() const {
         return useCapture_          ? captureName_.c_str()
                : popKind_           ? popName_.c_str()
+               : setup07View_       ? "FEFLOW07"
+               : stad08View_        ? "FEFLOW08"
                : leagueCfg_         ? cfgName_.c_str()
                : wcCfg_             ? cfgName_.c_str()
                : cheatsView_        ? "FEFLOW95"
@@ -121,6 +123,20 @@ public:
     bool openLeagueCfg(int screenId); // Enter on FEFLOW73 / --fe-league-cfg N gate; false = layout absent
     [[nodiscard]] bool onLeagueCfg() const { return leagueCfg_ > 0; }
     presentation::FeDrawStats drawLeagueCfg(render::SpriteBatch& ui) const; // composite + row/slider overlays
+    // ---- FEFLOW07 single-player match setup + FEFLOW08 stadium select (pass 13 §B) --------------
+    // Scene edges (MENU_NAV_WC98.md §3/§5): hub wedge 'fe07' opens feflow07 (matchup screen: ltnm/rtnm
+    // names, shdl/shdr shields, shtg/pssg/rnng/dfce/ovrl FC-bank captions 429..433 over the lbNN/rbNN
+    // skill bars = two-axis grammar; UP/DOWN rows, LEFT/RIGHT team cycle via ltlb/ltrb/rtlb/rtrb); its
+    // 'fe09' forward edge chains to FEFLOW09 (friendly config) and the friendly confirm opens feflow08
+    // ('fe08' tag @0x44C3D3): the stadium map — mpNN ball markers on the France map (hilitedshape=hbal,
+    // help=4621..4630 stadium captions), nslt/nsrt arrows + stme runtime name, sint/wint/hint fake-
+    // interface buttons (HALF LENGTH / WEATHER / DAY-NIGHT). Esc = back per 'fe07'/'fe06' exit tags.
+    bool openSetup07();  // hub fe07 wedge entry / --fe-setup07 gate; false = layout absent on this tree
+    [[nodiscard]] bool onSetup07() const { return setup07View_; }
+    presentation::FeDrawStats drawSetup07(render::SpriteBatch& ui) const; // composite + shields/names/bars
+    bool openStad08();   // friendly-confirm 'fe08' chain / --fe-stadium08 gate; false = layout absent
+    [[nodiscard]] bool onStad08() const { return stad08View_; }
+    presentation::FeDrawStats drawStad08(render::SpriteBatch& ui) const; // composite + tile/name overlays
 
     static constexpr int kTourneyRounds = 4; // group stage, R16, QF, final boundaries -> 35/25/26/27
     struct TourneyModel;                     // deterministic schedule/standings/bracket (fe_flow.cpp)
@@ -348,6 +364,21 @@ public:
     int histScreen_ = 0;             // active board: 90 feflow90, 91 continuation, 0 not shown
     int histYear_ = 0;               // year cursor over kWcFinals (init clamp [C] FUN_004688e8)
     std::vector<std::string> hist90Visible_, hist91Visible_;
+    // ---- FEFLOW07 single-player match setup + FEFLOW08 stadium select (pass 13 §B) --------------
+    // Layouts loaded eagerly in the ctor; scene-ownership whitelists exclude the netplay chat widgets
+    // (chat/cha2/cha3), the footix/mascot runtime surfaces and the null.fsh hit-region polygons
+    // (ltll/ltlr/rtlr/rtrr + stad/sare/0000 cover boxes) per LAY_COMPOSITOR_NOTES.md.
+    formats::ScreenLayout setup07_, stad08_;
+    bool haveSetup07_ = false, haveStad08_ = false; // layouts present on this tree
+    bool setup07View_ = false;  // FEFLOW07 shown (hub fe07 wedge / --fe-setup07 gate)
+    int s07Row_ = 0;            // two-axis row cursor: 0 = left team side, 1 = right team side
+    int s07Left_ = 0, s07Right_ = 1; // pool indices of the matchup sides (ltlb/ltrb/rtlb/rtrb cycle)
+    std::vector<std::string> setup07Visible_, stad08Visible_;
+    bool stad08View_ = false;   // FEFLOW08 shown ('fe08' friendly-confirm chain / --fe-stadium08 gate)
+    int s08Sel_ = 0;            // mpNN tile cursor (mp00..mp09, mod 10; nslt/nsrt arrows cycle)
+    int s08Half_ = 0, s08Weather_ = 0, s08Night_ = 0; // sint/wint/hint fake-interface cycle state [H]
+    [[nodiscard]] std::array<int, 5> teamBars(const formats::FcdbTeam* t) const; // FCDB skill rows 0..10
+    [[nodiscard]] const formats::FcdbTeam* poolTeamFor(int poolIdx) const;        // FCDB record for a pool index
     // Shared popup lane (public API block above): FEFLOW10 ok_1/canc + FEFLOW37 yes/no loaded eagerly,
     // IGCONSEL/MESG/Feflow86 lazy-loaded members for the capture-style gates. The two-button cursor
     // domain is [canc|no, ok_1|yes]; popSel_ 0 = cancel slot (engine default focus [H]), 1 = confirm.

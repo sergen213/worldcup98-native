@@ -218,6 +218,15 @@ if(DEFINED WC98_TREE)
     set_tests_properties(fe_history_select_1994 PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW90: shapes=[1-9][0-9]* texts=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 |texts=0 |cursors=0 ")
     add_test(NAME fe_nav_history COMMAND wc98-native --fe-nav-history 5 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/histnav)
     set_tests_properties(fe_nav_history PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW91: shapes=[1-9][0-9]* texts=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 |texts=0 |cursors=0 ")
+    # Single-player setup family (FEFLOW07 matchup + FEFLOW08 stadium select; analysis/pass13/IG_FAMILIES_SPEC.md §B,
+    # MENU_NAV_WC98.md feflow07/08 rows): --fe-setup07 N opens the hub fe07-wedge screen (ltnm/rtnm names, FNNN shields,
+    # FC-bank row captions 1691/1330/1741/573/1278, FCDB squad-skill bars) and moves the two-axis side cursor N times;
+    # --fe-stadium08 N chains feflow07 Enter -> FEFLOW09 friendly config confirm -> 'fe08' stadium select (mpNN tiles +
+    # stadium name overlays from FC-bank strings), cycling the tile ring cursor N times. Esc = back, Enter = advance.
+    add_test(NAME fe_setup07 COMMAND wc98-native --fe-setup07 1 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/setup07)
+    set_tests_properties(fe_setup07 PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW07: shapes=[1-9][0-9]* texts=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 |texts=0 |cursors=0 ")
+    add_test(NAME fe_stadium08 COMMAND wc98-native --fe-stadium08 3 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/stad08)
+    set_tests_properties(fe_stadium08 PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW08: shapes=[1-9][0-9]* texts=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 |texts=0 |cursors=0 ")
     # Shared popup lane (FEFLOW10/37 + IG boxes; analysis/pass13/POPUP_LANE_SPEC.md): blur+popp modal with
     # the nvicons ok_1/canc and yes/no button pair, FC-bank runtime captions ("Are you sure you want to
     # Quit?", index 220) + help pane (button help= indices 12/13). Scripted-key gates: two-axis cursor over

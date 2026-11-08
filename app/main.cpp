@@ -106,6 +106,8 @@ int run(int argc, char** argv) {
     int feCheatsMask = -1; // --fe-cheats N: open the feflow95 cheats screen with cheat row i ON for bit i (MENU_PARITY.md §8)
     int feHistoryYear = -1; // --fe-history N: open feflow90 (world-cup history board) at year row N (pass 13)
     int feNavHistory = -1;  // --fe-nav-history N: open feflow90, move year cursor to N, Enter -> feflow91 chain
+    int feSetup07 = -1;   // --fe-setup07 N: open FEFLOW07 single-player setup, row cursor +N moves (pass 13 §B)
+    int feStad08 = -1;    // --fe-stadium08 N: friendly chain -> FEFLOW08 stadium select, tile cursor +N moves
     int feIgMode = 0;       // --fe-igoptns a|g|m: open the in-game option popup (igaoptns/iggoptns/igmoptns)
     std::string fePopupName; // --fe-popup NAME: shared popup lane gate (feflow10/37, igconsel/mesg/Feflow86)
     int fePopupKeys = 0;     // --fe-popup-keys N: scripted button-cursor presses before the capture frame
@@ -145,6 +147,8 @@ int run(int argc, char** argv) {
         else if (a == "--fe-cheats") { feMode = true, smokeFrames = 1, feCheatsMask = std::stoi(next()); } // feflow95 checkbox-screen capture gate; N = row bitmask ON at open
         else if (a == "--fe-history") { feMode = true, smokeFrames = 1, feHistoryYear = std::stoi(next()); } // feflow90 capture gate; N = year row index at open
         else if (a == "--fe-nav-history") { feMode = true, smokeFrames = 1, feNavHistory = std::stoi(next()); } // nav chain: feflow90 -> Enter 'fe91' -> feflow91 capture
+        else if (a == "--fe-setup07") { feMode = true, smokeFrames = 1, feSetup07 = std::stoi(next()); }   // FEFLOW07 matchup capture gate; N = side-cursor moves
+        else if (a == "--fe-stadium08") { feMode = true, smokeFrames = 1, feStad08 = std::stoi(next()); }  // FEFLOW08 stadium-select chain gate; N = tile-cursor moves
         else if (a == "--fe-igoptns") { // igoptns captions lane gate: a=audio g=game m=mouse popup
             feMode = true, smokeFrames = 1;
             const std::string m = next();
@@ -282,6 +286,18 @@ int run(int argc, char** argv) {
                 if (fe->historyScreen() == 90) fe->enter();          // Enter -> feflow91 continuation scene
             }
         }
+        if (fe && feSetup07 >= 0) { // --fe-setup07 N: FEFLOW07 opened via the hub fe07 wedge edge, then side cursor
+            if (!fe->openSetup07()) std::fprintf(stderr, "fe: setup07 unavailable\n");
+            else for (int i = 0; i < feSetup07; ++i) fe->move(+1); // UP/DOWN team-side cursor [C]
+        }
+        if (fe && feStad08 >= 0) {  // --fe-stadium08 N: hub -> feflow07 Enter 'fe09' -> friendly config confirm -> 'fe08' stadium
+            if (!fe->openSetup07()) std::fprintf(stderr, "fe: setup07 unavailable\n");
+            else {
+                fe->enter(); // forward edge to FEFLOW09 friendly config (feflow09 row screen)
+                fe->enter(); // confirm -> the 'fe08' widget tag opens stadium select [C] @0x44C3D3/C3C8
+                for (int i = 0; i < feStad08; ++i) fe->move(+1); // mpNN tile ring cursor cycle
+            }
+        }
         if (fe && feIgMode) { // --fe-igoptns gate frame: in-game option popup captions lane
             if (!fe->openIgOptns(feIgMode)) std::fprintf(stderr, "fe: igoptns popup unavailable\n");
         }
@@ -347,7 +363,7 @@ int run(int argc, char** argv) {
             // Setup (FEFLOW09/50) + options (feflow15 lst rows): up/down move the row cursor,
             // left/right cycle its value (the original's two-axis scheme); TAB switches feflow15
             // tab pages ('ops2' event family). On the other screens arrows cycle entries/pick rows.
-            const bool setup = fe->onSetup() || fe->onOptions();
+            const bool setup = fe->onSetup() || fe->onOptions() || fe->onSetup07() || fe->onStad08();
             if (sc == SDL_SCANCODE_UP) fe->move(-1);
             else if (sc == SDL_SCANCODE_DOWN) fe->move(+1);
             else if (sc == SDL_SCANCODE_LEFT) { if (setup) fe->adjustValue(-1); else fe->move(-1); }
@@ -361,7 +377,7 @@ int run(int argc, char** argv) {
         }
         for (const int d : ev.padNav) { // gamepad nav: same actions as the arrow keys
             if (!fe) break;
-            const bool setup = fe->onSetup() || fe->onOptions();
+            const bool setup = fe->onSetup() || fe->onOptions() || fe->onSetup07() || fe->onStad08();
             if (d == platform::Window::kPadNavUp) fe->move(-1);
             else if (d == platform::Window::kPadNavDown) fe->move(+1);
             else if (d == platform::Window::kPadNavLeft) { if (setup) fe->adjustValue(-1); else fe->move(-1); }
@@ -448,7 +464,7 @@ int main(int argc, char** argv) {
         if (std::strcmp(argv[i], "--help") == 0) {
             std::puts("usage: wc98-native [--width N] [--height N] [--fullscreen|--windowed] [--smoke N]"
                       " [--fe] [--tree DIR] [--out-prefix P] [--fe-smoke N] [--tournament-saveload N] [--fe-pick N]"
-                      " [--fe-nav exhibition|league|tournament|tournament-load|practise] [--fe-team] [--fe-setup N] [--fe-league] [--fe-league-cfg N] [--fe-screen NAME]"
+                      " [--fe-nav exhibition|league|tournament|tournament-load|practise] [--fe-team] [--fe-setup N] [--fe-league] [--fe-league-cfg N] [--fe-setup07 N] [--fe-stadium08 N] [--fe-screen NAME]"
                       " [--fe-wc-cfg N]"
                       " [--fe-popup NAME] [--fe-popup-keys N] [--fe-popup-enter|--fe-popup-back]"
                       " [--fe-cheats N]"

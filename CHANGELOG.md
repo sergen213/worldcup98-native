@@ -7,6 +7,19 @@ project goals.
 ## [Unreleased]
 ### Added
 
+- Single-player setup + stadium select (`FeFlow` FEFLOW07/08, `--fe-setup07 N`, `--fe-stadium08 N`, gates
+  `fe_setup07`, `fe_stadium08`): the hub 'fe07' wedge opens the FEFLOW07 matchup screen — ltnm/rtnm team names
+  and shdl/shdr FNNN shields over the lbNN/rbNN skill-bar pairs (bar art via HILITEDSHAPEIDON, FCENG captions
+  Shooting/Passing/Speed/Defence/Overall @1691/1330/1741/573/1278); two-axis grammar = UP/DOWN moves the side
+  cursor (yellow HILITEDSHAPEIDON box at ltrb/rtrb), LEFT/RIGHT cycles that side's team through the FCDB pool,
+  Enter follows the 'fe09' forward edge into friendly config. FEFLOW08 stadium select opens from the friendly
+  confirm ('fe08' tag @0x44C3D3): France-map mpNN ball-marker tiles (feflow08.fsh via the stem-index lane,
+  `hbal` hilite), nslt/nsrt arrows walk the tile ring, stme runtime stadium name + hint pane strip show the
+  FCENG stadium captions ("Parc des Princes"…), sint/wint/hint decoration row; Esc = back per the 'fe06' exit
+  wedge. Scene-ownership whitelists exclude the chat/cha2/cha3 netplay surfaces and soup textids (429-433,
+  1185-1207) per the f0f8109 rule; key slot = default thunk FUN_0044a210. Evidence analysis/pass13
+  IG_FAMILIES_SPEC.md §B, MENU_NAV_WC98.md feflow07/08 rows; captures /tmp/wc98port-out/setup07_fe00.png,
+  stad08_fe00.png.
 - IGTEAM management mirrors (`IgBoards` kinds 8-14, `--ig-mgmt-smoke`, gate `fe_mgmt_pages`): the IGMENU
   'Management' row (five-row domain {Resume, Stats, Highlights, Management, Quit}, bt0-bt4 INGAME.FSH chrome)
   opens the §E page cycle over a deterministic seed-0x2E7A fixture match — IGTEAM72 pNNN pitch grid + tNNN

@@ -262,18 +262,19 @@ CLAINC00.SCI 4316 B, GEN2NC00.SCI 2500 B, GENANC00.SCI 4476 B). Layout:
 1. **Header 0x00..0x2F.** `u32 count` (GENGOL00 = 0x20, CLAINC00/GENANC00 = 0x11, GEN2NC00 =
    0x61); then three u16 pairs `{0x35, val}` {size?}: GENGOL 0xc9=201, CLAINC 0xe7=231, GEN2NC
    0x123=291, GENANC 0x222=546 — monotone with file size [H: payload word/record count];
-   `{2|6, offset}`; `{0x16(22), {0x201|0x203}}`. Then six DGROUP VA relocation pointers at
-   +0x10..+0x24: `0x580054, 0x580058, 0x5a3054, 0x5a30cc, 0x5a31d4, 0x5a31e4` (identical in all
-   four files) — loader relocation targets into the scene data block [P].
+   `{2|6, offset}`; `{0x16(22), magic@0x0E}` — full-tree survey across all 87 files: magic ∈
+   {0x201×65, 0x202×5, 0x203×15, 0x204×2} (`formats/sci.cpp` enforces). Six DGROUP VA relocation
+   pointers at +0x10..+0x24: `0x580054 … 0x5a31e4` (identical in all four sampled files) [P].
 2. **Record stream @0x30, stride 16 = 8×i16.** Verified aligned runs; observed record types:
-   {0,1,4,5,6,7,9,0xa,0xb,0xc,0xd,0x10,0x13,0x15,0x19} (CLAINC00 @0x40 `{0x15, x=-0x14, y=6,
-   e=0xa0}`; GENGOL00 @0x80 `{0x15, 0x3c, 5, 0x96}`; triple groups `0xb/0xa/0xd`, pairs `0x4/0x9`
-   interleave in CLAINC00). Fields are i16 offsets/speeds/angles — the same units as the handler
-   writes (§5) [P, byte dumps above].
-3. **Tail VA table.** Stride-12 records of `{u32 DGROUP VA, u16[5]}`; e.g. GENGOL00 @0x7D8..
-   `0x582054, 0x58c054, 0x58d054 …` (per-arena data bases, stride 0x1000), CLAINC00 @0xF98 same
-   pattern + trailing `0x5a30cc/0x5a3150/0x5a2054`. The 0x5Axxxx entries land in the BSS scene-data
-   block that handlers read (`DAT_00656e04..e20` grid constants region) [P].
+   {0,1,4,5,6,7,9,0xa,0xb,0xc,0xd,0x10,0x13,0x15,0x19} (CLAINC00 @0x40 fields
+   `{0x15,0,-0x14,6,0xa0}`; GENGOL00 @0x80 `{0x15,0,0x3c,5}` [P bytes]).
+   Triple groups `0xb/0xa/0xd`, pairs `0x4/0x9` interleave in CLAINC00. Fields are i16 offsets/
+   speeds/angles — the same units as the handler writes (§5) [P, byte dumps above].
+3. **Tail VA table.** Main entries stride-12 = `{u32 DGROUP VA, u16[4]}` (words observed {0,0,count,
+   index}); e.g. GENGOL00 @0x7D8 `0x582054, 0x58c054 …` (per-arena bases, stride 0x1000), CLAINC00
+   @0xF98; then a trailing packed stride-8 list of `{u32 VA, u32 val}` pairs ending at EOF: GENGOL00/
+   CLAINC00 = `0x5a30cc/0x5a3150/0x5a2054` (BSS relocation bases; boundary = first stride-12 view
+   with nonzero words[0..1]) [P, all 87 files parse via `formats/sci.cpp`, gate test_sci].
 
 Relation to the runtime record format: data consumer `FUN_004aaf00` (sci2) reads a serialized
 buffer at `DAT_0063697c`: packed u16 quads stride 8 (`{+0,+2,+4,+6}` via `>>0x10`) at **+0x170**
@@ -301,17 +302,17 @@ Family → component mapping (HANDLER_DIFF_AUDIT.md style; components per GAMEPL
 
 Ranked actionable deltas:
 
-1. **Camera dolly model**: port the timer B/C snapshot-swap (`FUN_00517b50/e30/f20/cc0` semantics
-   + commit trio writes to a `presentation::CameraTask` record; enables kickoff/goal camera moves
-   that today snap). Cost: one presentation component. Unblocks GAMEPLAY_PARITY §5.1 rank-1 fully.
-2. **Preset table installation**: byte-proven rows `DAT_00586046/4A..`, `DAT_00585FEA..`,
-   `DAT_005862D2..` + height table `DAT_0057FB82[2*idx]` → replace camera.cpp constants with the
-   real per-slot presets (angle/speed/height triples, 16.16 u16 units).
+1. **Camera dolly model** — **DONE (2026-11-08)**: `presentation::CameraTask` implements the timer
+   B/C snapshot-swap (`FUN_00517b50/e30/f20/cc0`, bit-15 carry rounding) + commit trio snaps;
+   `MatchCamera::glideTo/gliding` expose it, gate in `test_presentation`. Unblocks §5.1 rank-1.
+2. **Preset table installation** — **DONE (2026-11-08)**: byte-verified rows `DAT_00585FEA`
+   (h12), `DAT_00586046` (h14), `DAT_005862D2` (h28) + height table `DAT_0057FB82` (sentinels
+   −5/−4/−1 lanes, FUN_004a0790 prelude) installed in camera.cpp; sine `DAT_00585898` embedded.
 3. **Kickoff placement task**: h6 side-flip + spin ±`DAT_00656e08` dolly as `rules::kickoffPlace`
    scenario; closes the "poses" cosmetic note (GAMEPLAY_PARITY §5.6) with real behavior.
-4. **.SCI loader in tooling** (not runtime): record-stream parser per §6 for scene-data authoring +
-   parity tests (assert counts/heights against handler constants). Payload grammar is closed; the
-   loader-splitting [H] stays open — needs Win9x-env capture lane (SQF EULZ family blocker).
+4. **.SCI loader in tooling** (not runtime) — **DONE (2026-11-08)**: grammar refined across all 87
+   files (`formats/sci.cpp`, gate `test_sci`: header/magic survey, stride-12 tail + stride-8 trailer).
+   Loader-splitting [H] stays open — Win9x-env capture lane (SQF EULZ family blocker).
 5. **Quality-tier camera gate** (h23 `DAT_00644778` tiers) once presentation quality option lands.
 
 ## 8. Open items

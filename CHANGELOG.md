@@ -7,6 +7,14 @@ project goals.
 
 ## [Unreleased]
 ### Added
+- Camera dolly model + byte-proven preset tables in `presentation::CameraTask` /
+  `MatchCamera::glideTo`: timer B/C snapshot-swap (`FUN_00517b50/e30/f20/cc0`, bit-15 carry
+  rounding), commit trio, preset rows `DAT_00585FEA/586046/5862D2`, height table `DAT_0057FB82`
+  (sentinel lanes) and sine `DAT_00585898` installed; kickoff/goal camera moves no longer snap
+  (TASK_HANDLERS_WC98 §7 delta-1/2, gate in `test_presentation`; GAMEPLAY_PARITY §5.1 rank-1).
+- `.SCI` payload parser `formats/sci.cpp` + gate `test_sci`: header magic survey {0x201..0x204},
+  stride-16 record streams, stride-12 tail tables and trailing stride-8 relocation-pair lists —
+  all 87 `COMMON/*.SCI` files parse (TASK_HANDLERS_WC98 §6 grammar refined; delta-4).
 - Task-handler family dossier `docs/reverse-engineering/TASK_HANDLERS_WC98.md`: semantic map of the
   30 tabB task handlers (scene bindings via the `.SCI` descriptor table, camera/pitch-mesh/timer
   primitives, kickoff placement task), byte-proven `.SCI` payload grammar from `COMMON/*.SCI`, and a

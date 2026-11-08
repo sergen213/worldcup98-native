@@ -140,9 +140,12 @@ transitions, D receiver-capture contest, M AI spacing realism (qualitative vs or
    (goal/win/loss/inc/anc modules per descriptor map `{name,id,idx}`, array VA 0x580A9C);
    scheduler tick/dispatch = `FUN_004a0d80/0x4a0e50` (rec+8 index, flags bit2/bit4). All 30
    handlers decompiled (`analysis/pass12sci/TASK_HANDLERS.md`, `sci4.txt`). Wine captures were
-   byte-identical because the tables are never patched. Remaining rank-1 work: `.SCI` payload
-   format parse + semantic diff of the handler family vs port sim (match-flow/AI layer), now
-   statically tractable - no Win9x-env blocker.
+   byte-identical because the tables are never patched. **LANDED (2026-11-08)**: camera dolly +
+   preset/height tables installed (`presentation::CameraTask`, `MatchCamera::glideTo`; byte-verified
+   rows DAT_00585FEA/586046/5862D2 + height DAT_0057FB82, sine DAT_00585898), `.SCI` payload grammar
+   parsed across all 87 COMMON/*.SCI (`formats/sci.cpp`, gate `test_sci`). Remaining from §7: the
+   kickoff placement task (delta-3) and quality-tier camera gate (delta-5, pending a presentation
+   quality option); handler-family semantic diff = TASK_HANDLERS_WC98.md §7 delta table.
 2. ~~Per-handler WC98 vs FIFA-99 decompile diff audit~~ **CLOSED** (pass 11): the code half is
    now audited handler-by-handler - verdict table + ranked real differences in
    HANDLER_DIFF_AUDIT.md (`analysis/pass11/handlers/` evidence). The data-table half was already

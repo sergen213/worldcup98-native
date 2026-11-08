@@ -16,7 +16,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <numbers>
-#include <span>
+#include <iterator>
 
 namespace wc98::presentation {
 
@@ -247,7 +247,11 @@ void MatchCamera::tick(const MatchSnapshot& s, int frames) {
     const ModeParams& m = kModes[std::size_t(mode_)];
     // --- position (CamPos_follow 0x5448B8) ---
     int gx = smoothBall_.x + m.offX, gz = smoothBall_.z + m.offZ, yT = m.height;
-    if (m.posFlags & 2) {
+    const bool gliding = task_.dollyActive(); // WC98 timer C dolly owns the position lane (section 7 delta 1)
+    if (gliding) {
+        task_.advanceDolly(frames);      // FUN_00517be0: advance live counter, snap A = B on completion
+        eye_ = task_.eye();              // snapshot A + signed fixed-point products (FUN_00517f20)
+    } else if (m.posFlags & 2) {
         if (holder) side_ = holderDir >= 0 ? 1 : 0;
         std::span<const HeightKey> tab = side_ ? m.table1 : m.table0;
         int key = eye_.z, n = int(tab.size()), k = 1;
@@ -264,7 +268,10 @@ void MatchCamera::tick(const MatchSnapshot& s, int frames) {
     } else {
         eye_.y = m.height;
     }
-    if (reset_) {
+
+    if (gliding) {
+        velX_ = velZ_ = 0; // dolly handoff: no residual follow velocity when the task releases
+    } else if (reset_) {
         eye_ = {std::clamp(smoothBall_.x + m.offX, m.boxX0, m.boxX1), m.height, std::clamp(smoothBall_.z + m.offZ, m.boxZ0, m.boxZ1)};
         velX_ = velZ_ = 0;
     } else {
@@ -357,6 +364,196 @@ render::Camera MatchCamera::camera() const {
     return c;
 }
 
+// --- WC98 task-handler camera model (TASK_HANDLERS_WC98.md sections 1/4/5, section 7 deltas 1-2) --
+// Byte-proven static tables read from the FIFAWC.EXE image with the DGROUP mapping raw = VA - 0x55a000
+// + 0x158600 (pass-12cam dump; decompiles ghidra-scripts/GhidraWc98CamDolly.py).
+namespace {
+
+// DAT_00585898: quarter-wave sine, u32[256] with T[i] = sin(2*pi*i/1024)*65536 (pattern verified);
+// the 257th word VA 0x585898+0x400 = 0x10000 is the adjacent entry the quadrant fold indexes into.
+constexpr std::uint32_t kSineTable[257] = {
+    0x0000,0x0192,0x0324,0x04B6,0x0648,0x07DA,0x096C,0x0AFE,
+    0x0C8F,0x0E21,0x0FB2,0x1144,0x12D5,0x1466,0x15F6,0x1787,
+    0x1917,0x1AA7,0x1C37,0x1DC7,0x1F56,0x20E5,0x2273,0x2402,
+    0x2590,0x271D,0x28AA,0x2A37,0x2BC4,0x2D50,0x2EDB,0x3066,
+    0x31F1,0x337B,0x3505,0x368E,0x3817,0x399F,0x3B26,0x3CAD,
+    0x3E33,0x3FB9,0x413E,0x42C3,0x4447,0x45CA,0x474D,0x48CE,
+    0x4A50,0x4BD0,0x4D50,0x4ECF,0x504D,0x51CA,0x5347,0x54C3,
+    0x563E,0x57B8,0x5931,0x5AAA,0x5C22,0x5D98,0x5F0E,0x6083,
+    0x61F7,0x636A,0x64DC,0x664D,0x67BD,0x692D,0x6A9B,0x6C08,
+    0x6D74,0x6EDF,0x7049,0x71B1,0x7319,0x7480,0x75E5,0x774A,
+    0x78AD,0x7A0F,0x7B70,0x7CD0,0x7E2E,0x7F8B,0x80E7,0x8242,
+    0x839C,0x84F4,0x864B,0x87A1,0x88F5,0x8A48,0x8B9A,0x8CEA,
+    0x8E39,0x8F87,0x90D3,0x921E,0x9368,0x94B0,0x95F6,0x973C,
+    0x987F,0x99C1,0x9B02,0x9C42,0x9D7F,0x9EBC,0x9FF6,0xA12F,
+    0xA267,0xA39D,0xA4D2,0xA605,0xA736,0xA866,0xA994,0xAAC0,
+    0xABEB,0xAD14,0xAE3B,0xAF61,0xB085,0xB1A8,0xB2C8,0xB3E7,
+    0xB504,0xB620,0xB73A,0xB852,0xB968,0xBA7C,0xBB8F,0xBCA0,
+    0xBDAE,0xBEBC,0xBFC7,0xC0D0,0xC1D8,0xC2DE,0xC3E1,0xC4E3,
+    0xC5E3,0xC6E2,0xC7DE,0xC8D8,0xC9D1,0xCAC7,0xCBBB,0xCCAE,
+    0xCD9F,0xCE8D,0xCF7A,0xD064,0xD14D,0xD233,0xD318,0xD3FA,
+    0xD4DB,0xD5B9,0xD695,0xD770,0xD848,0xD91E,0xD9F2,0xDAC4,
+    0xDB94,0xDC61,0xDD2D,0xDDF6,0xDEBE,0xDF83,0xE046,0xE106,
+    0xE1C5,0xE282,0xE33C,0xE3F4,0xE4AA,0xE55E,0xE60F,0xE6BE,
+    0xE76B,0xE816,0xE8BF,0xE965,0xEA09,0xEAAB,0xEB4B,0xEBE8,
+    0xEC83,0xED1C,0xEDB2,0xEE46,0xEED8,0xEF68,0xEFF5,0xF080,
+    0xF109,0xF18F,0xF213,0xF294,0xF314,0xF391,0xF40B,0xF484,
+    0xF4FA,0xF56D,0xF5DE,0xF64D,0xF6BA,0xF724,0xF78B,0xF7F1,
+    0xF853,0xF8B4,0xF912,0xF96E,0xF9C7,0xFA1E,0xFA72,0xFAC5,
+    0xFB14,0xFB61,0xFBAC,0xFBF5,0xFC3B,0xFC7E,0xFCBF,0xFCFE,
+    0xFD3A,0xFD74,0xFDAB,0xFDE0,0xFE13,0xFE43,0xFE70,0xFE9B,
+    0xFEC4,0xFEEA,0xFF0E,0xFF2F,0xFF4E,0xFF6A,0xFF84,0xFF9C,
+    0xFFB1,0xFFC3,0xFFD3,0xFFE1,0xFFEC,0xFFF4,0xFFFB,0xFFFE,
+    0x10000}; // T[256] = sin(quarter turn) * 65536
+static_assert(kSineTable[1] == 0x192 && kSineTable[8] == 0x0C8F && kSineTable[255] == 0xFFFE);
+
+// DAT_0057FB82: packed task-height words; the tabA_pre prelude FUN_004a0790 reads
+// *(u32*)(&DAT_0057FB82 + idx*2) sign-shifted >> 16 = this table's u16 at idx+1. Sentinels
+// 0xfffb/-5 -> rec+0x78, 0xfffc/-4 -> rec+0x114, 0xffff/-1 -> mode constants (see tabATaskHeight).
+constexpr std::uint16_t kTaskHeights[32] = { // raw 0x17E182..; VA DAT_0057FB82
+    0x0,   0xcc0, 0xcc0, 0xcc0, 0xa00, 0xcc0, 0x880, 0xac0,
+    0xf00, 0xfffb, 0xcc0, 0xcc0, 0xfffc, 0x1100, 0xffff, 0x1280,
+    0x1280, 0x880, 0xfffb, 0x1540, 0xe40, 0x1a80, 0x1280, 0x1540,
+    0xf00, 0x1540, 0x8fc, 0xcc0, 0xcc0, 0xcc0, 0xcc0, 0x6163};
+
+// h12 fixed preset rows (DAT_00585FEA/EC/FEE/FF0; stride 10 bytes, {angle,speed,height,yawOff}):
+constexpr CameraPresetRow kH12Presets[2] = {{0x244c, 0xf000, 0x7b8, 0x30},   // row 0 (DAT_00649338 <= 0)
+                                            {0x5bab, 0xf000, 0x7b8, 0x30}};  // row 1 (> 0)
+// h14 per-slot preset rows (DAT_00586046/48/4A/4C; stride 10 bytes; slot = task record rec+0x60):
+constexpr CameraPresetRow kH14Presets[4] = {{0x0,    0xf000, 0x7b8, 0x30},   // slot 0: away base (yaw atan + 0x4000)
+                                            {0x7fa6, 0xf000, 0x7b8, 0x30},   // slot 1: home base (yaw atan pair)
+                                            {0x2000, 0xf000, 0x7b8, 0x30},   // slot 2
+                                            {0x4000, 0xf000, 0x7b8, 0x30}};  // slot 3
+// h28 singleton preset (DAT_005862D2/2D4/2D6/2D8 = {0x445c, 0xf3e8, 0x08fc, 0x0030}):
+constexpr CameraPresetRow kH28Preset = {0x445c, 0xf3e8, 0x8fc, 0x30};
+
+// Exe fixed-product rounding: (live * step) >> 16 with bit-15 carry (FUN_00517f20 pattern).
+std::int32_t fixedMulRound(std::uint32_t live, std::uint32_t step) {
+    const std::uint64_t v = static_cast<std::uint64_t>(live) * step;
+    return static_cast<std::int32_t>((v >> 16) + ((v & 0x8000u) ? 1u : 0u));
+}
+// Exe fixed-point division pattern (FUN_00517b50/e30): q*0x10000 + (r<<16)/d == num<<16/d.
+std::uint32_t fixedDiv(std::uint32_t num, int d) { return static_cast<std::uint32_t>((static_cast<std::uint64_t>(num) << 16) / unsigned(d)); }
+
+} // namespace
+
+int sineWc98(int i) { return int(kSineTable[i < 0 || i > 256 ? 0 : std::size_t(i)]); } // [port] bounds-guard for the gate
+
+// FUN_00497740 lane: quadrant-folded table sin with the exe's slope term
+// ((cosFold >> 2) * ((frac * 0x6487e) >> 9)) >> 21 (pass-12cam decompile, verified numerically).
+int sine16x16(int a) {
+    const unsigned idx = (unsigned(a) >> 6) & 0x3FF; // quadrant index, one turn = 65536 angle units
+    const int q = int(idx >> 8), f = int(idx & 0xff), frac = a & 0x3f;
+    const int tS = (q & 1) ? int(kSineTable[std::size_t(256 - f)]) : int(kSineTable[std::size_t(f)]);
+    const int sS = q >= 2 ? -tS : tS; // sine sign per quadrant
+    const int e = (q + 1) & 3;        // slope component: folded cosine = sine at quadrant + 1
+    const int tC = (e & 1) ? int(kSineTable[std::size_t(256 - f)]) : int(kSineTable[std::size_t(f)]);
+    const int sC = e >= 2 ? -tC : tC;
+    const int w = (frac * 0x6487e) >> 9;
+    return sS + (((sC >> 2) * w) >> 21);
+}
+
+int cosine16x16(int a) { return sine16x16(a + 0x4000); } // quarter-turn shift (FUN_004977b0 lane)
+
+int cameraPresetRowCount() { return 2; } // h12 rows; h14 has 4 (see cameraPresetH14)
+
+CameraPresetRow cameraPresetH12(int row) {
+    if (row < 0 || row >= int(std::size(kH12Presets))) return kH12Presets[0]; // [port] clamp: h12 gates on DAT_00649338>0
+    return kH12Presets[std::size_t(row)];
+}
+
+CameraPresetRow cameraPresetH14(int slot) {
+    if (slot < 0 || slot >= int(std::size(kH14Presets))) return kH14Presets[0]; // [port] clamp rec+0x60 range
+    return kH14Presets[std::size_t(slot)];
+}
+
+CameraPresetRow cameraPresetH28() { return kH28Preset; }
+
+int tabATaskHeight(int idx, int mode, bool liveRefPos, bool subMode3, int playerHeight, int camHeight) {
+    if (idx < 0 || std::size_t(idx + 1) >= std::size(kTaskHeights)) return camHeight; // [port] beyond dump: rec+0x114 lane
+    const unsigned w = static_cast<unsigned>(static_cast<int>(std::int16_t(kTaskHeights[std::size_t(idx) + 1]))); // packed >>16 sign-extended halfword
+    if (w == 0xfffffffbu) return playerHeight; // sentinel -5 -> rec+0x78
+    if (w == 0xfffffffcu) return camHeight;    // sentinel -4 -> rec+0x114
+    if (w == 0xffffffffu) {                    // sentinel -1 -> mode constants (DAT_00580df0)
+        switch (mode) {
+            case 1: return 0x1280;
+            case 2: return liveRefPos ? 0x1280 : 0x440; // DAT_00644858 > -1
+            case 3: return subMode3 ? 0x1980 : 0x1100;  // rec+0x10 == 3
+            default: return 0x1540;
+        }
+    }
+    return int(w); // plain height (the exe also passes -3/-2 straight through)
+}
+
+// --- CameraTask: timer B/C snapshot-swap model (FUN_00517b50/e30/f20/cc0/be0 semantics) ---------
+void CameraTask::startFade(int end) {
+    if (end < 1) return; // [port] exe divides by EBX unguarded
+    fadeEnd_ = end;      // rec+0x198
+    fadeLive_ = 0;       // rec+0x1a4
+    fadeStep_ = fixedDiv(0x10000u, end); // rec+0x1b0: step = 0x10000*0x10000/end (16.16)
+    fadeActive_ = true;  // rec+0x1bc bit0 |= 1
+}
+
+int CameraTask::advanceFade(int frames) {
+    if (!fadeActive_) return -1; // FUN_00517cc0 inactive path (returns 0xffffffff, *out = 0)
+    fadeLive_ += frames;         // rec+0x1a4 += EAX
+    const int remaining = fadeLive_ - fadeEnd_;
+    if (fadeLive_ >= fadeEnd_) { // completion: FUN_005176f0 clears the bit and snaps live = end
+        fadeActive_ = false;
+        fadeLive_ = fadeEnd_;
+    }
+    return remaining;
+}
+
+int CameraTask::fadeRamp16x16() const { return fixedMulRound(unsigned(fadeLive_), fadeStep_); }
+
+void CameraTask::startDolly(glm::ivec3 from, glm::ivec3 to, int durTicks) {
+    if (durTicks < 1) { // [port] degenerate duration: commit-snap semantics (A = B = target)
+        snapA_ = snapB_ = to;
+        dollyActive_ = false;
+        return;
+    }
+    snapA_ = from;      // snapshot A (+0xa0..): dolly start
+    snapB_ = to;        // snapshot B (+0xd0..): live target
+    dollyEnd_ = durTicks;   // rec+0x190
+    dollyLive_ = 0;         // rec+0x19c
+    const int dx = to.x - from.x, dy = to.y - from.y, dz = to.z - from.z;
+    signX_ = dx < 0 ? -1 : 1;
+    signY_ = dy < 0 ? -1 : 1;
+    signZ_ = dz < 0 ? -1 : 1;
+    stepX_ = fixedDiv(unsigned(dx < 0 ? -dx : dx), durTicks); // rec+0x1a8: |delta| << 16 / dur
+    stepZ_ = fixedDiv(unsigned(dz < 0 ? -dz : dz), durTicks); // rec+0x1c0
+    stepY_ = fixedDiv(unsigned(dy < 0 ? -dy : dy), durTicks); // [port] y lane: the exe dollies two axes per start call
+    dollyActive_ = true;                                       // rec+0x1b4 bit0 |= 1
+}
+
+bool CameraTask::advanceDolly(int frames) {
+    if (!dollyActive_) return false;
+    dollyLive_ += frames; // rec+0x19c += EAX (FUN_00517be0)
+    if (dollyLive_ >= dollyEnd_) {
+        dollyActive_ = false; // FUN_00517670: clear active, live = end, snap snapshot A = B
+        dollyLive_ = dollyEnd_;
+        snapA_ = snapB_;
+        return true;
+    }
+    return false;
+}
+
+glm::ivec3 CameraTask::eye() const {
+    if (!dollyActive_) return snapB_; // snapped: A == B after completion/commit
+    const std::uint32_t live = unsigned(dollyLive_);
+    return snapA_ + glm::ivec3(signX_ * fixedMulRound(live, stepX_), signY_ * fixedMulRound(live, stepY_),
+                               signZ_ * fixedMulRound(live, stepZ_)); // magnitudes x sign(B-A) (FUN_00517f20)
+}
+
+void CameraTask::commit(glm::ivec3 live) {
+    // Commit trio FUN_00517730/760/790: copy the scene live block to snapshot B, then the clear
+    // helpers snap A = B and idle both timers (rec+0x1b4 bit0 / rec+0x1bc bit0).
+    snapB_ = live;
+    snapA_ = live;
+    dollyActive_ = false;
+    fadeActive_ = false;
+}
 // --- Broadcast grid box (WC98 FIFAWC.EXE FUN_00501910 + init FUN_00500e60) --------------------
 // The exe keeps the box state in DAT_0058bcd4/bcd8, scale factors DAT_0058bcc4/bcc8 and cell sizes
 // DAT_0058bccc/bcd0; index = cellX + cellZ*13 with complement 298-index feeds camera-mode selection.

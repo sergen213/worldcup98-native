@@ -89,6 +89,93 @@ void pureLogic() {
         camGridBoxUpdate(g, true, {-100000, -100000}, {0, 0});
         CHECK(g.cellX == 0 && g.cellZ == 0);                                        // clamp min
     }
+    // --- WC98 task-handler camera model (TASK_HANDLERS_WC98.md section 7 deltas 1-2 gate) -----
+    // Byte-proven preset rows installed from the exe image (delta 2): h12 DAT_00585FEA/EC/FEE/FF0,
+    // h14 per-slot DAT_00586046/48/4A/4C, h28 singleton DAT_005862D2/2D4/2D6/2D8.
+    {
+        CHECK(cameraPresetRowCount() == 2); // h12 rows; h14 has 4
+        const auto r0 = cameraPresetH12(0), r1 = cameraPresetH12(1);
+        CHECK(r0.angle == 0x244c && r0.speed == 0xf000 && r0.height == 0x7b8 && r0.yawOff == 0x30);
+        CHECK(r1.angle == 0x5bab && r1.speed == 0xf000 && r1.height == 0x7b8 && r1.yawOff == 0x30);
+        const auto s0 = cameraPresetH14(0), s1 = cameraPresetH14(1), s2 = cameraPresetH14(2), s3 = cameraPresetH14(3);
+        CHECK(s0.angle == 0x0 && s1.angle == 0x7fa6 && s2.angle == 0x2000 && s3.angle == 0x4000);
+        CHECK(s1.speed == 0xf000 && s2.height == 0x7b8 && s3.yawOff == 0x30); // all h14 rows share the tail fields
+        const auto p28 = cameraPresetH28();
+        CHECK(p28.angle == 0x445c && p28.speed == 0xf3e8 && p28.height == 0x8fc && p28.yawOff == 0x30);
+    }
+    // tabA_pre height prelude FUN_004a0790 on DAT_0057FB82 u16[32]: value = H[idx+1] with the
+    // sentinel lanes -5 -> rec+0x78, -4 -> rec+0x114, -1 -> mode constants (pass-12cam).
+    {
+        CHECK(tabATaskHeight(0, 0, false, false, 0xe28, 0x114) == 0xcc0); // H[1]
+        CHECK(tabATaskHeight(3, 0, false, false, 0xe28, 0x114) == 0xa00); // H[4] (idx+1 read)
+        CHECK(tabATaskHeight(8, 0, false, false, 0xe28, 0x114) == 0xe28); // H[9]=0xfffb -> player height
+        CHECK(tabATaskHeight(11, 0, false, false, 0xe28, 0x114) == 0x114); // H[12]=0xfffc -> cam height
+        CHECK(tabATaskHeight(13, 1, false, false, 0, 0) == 0x1280);       // H[14]=0xffff: mode 1
+        CHECK(tabATaskHeight(13, 2, false, false, 0, 0) == 0x440);        // mode 2, liveRefPos off
+        CHECK(tabATaskHeight(13, 2, true, false, 0, 0) == 0x1280);        // mode 2, DAT_00644858 > -1
+        CHECK(tabATaskHeight(13, 3, false, true, 0, 0) == 0x1980);        // mode 3 + rec+0x10==3
+        CHECK(tabATaskHeight(13, 3, false, false, 0, 0) == 0x1100);       // mode 3 base
+        CHECK(tabATaskHeight(13, 7, false, false, 0, 0) == 0x1540);       // default lane
+    }
+    // Quarter-wave sine DAT_00585898 (T[i] = sin(2*pi*i/1024)*65536) + FUN_00497740 fold.
+    {
+        CHECK(sineWc98(1) == 0x192 && sineWc98(8) == 0x0C8F); // image bytes at raw 0x16DE98
+        CHECK(sineWc98(256) == 0x10000);                      // adjacent word the exe fold indexes into
+        CHECK(sine16x16(0) == 0 && sine16x16(0x4000) == 0x10000); // quarter-turn identity exact in table mode
+        CHECK(cosine16x16(0) == 0x10000 && sine16x16(-0x8000) == 0);
+    }
+    // Timer B fade (FUN_00517b50/cc0): step = 0x10000*0x10000/end, live counts up, snap at end.
+    {
+        CameraTask t;
+        CHECK(t.playerHeight() == 0xe28); // rec+0x78 pool-init default (FUN_004a0810)
+        t.setHandler(13);
+        CHECK(t.handler() == 13 && t.event() == 13); // rec+8 / rec+0xc written together by pool init
+        t.startFade(64);
+        CHECK(t.fadeActive());
+        CHECK(t.advanceFade(32) == -32);            // live-end at halfway
+        CHECK(t.fadeRamp16x16() == 0x8000);         // (live*step)>>16 midpoint
+        CHECK(t.advanceFade(32) == 0 && !t.fadeActive()); // completion snap: live = end, bit cleared
+        CHECK(t.fadeRamp16x16() == 0x10000);
+        CHECK(t.advanceFade(1) == -1);              // FUN_00517cc0 inactive path
+    }
+    // Timer C position dolly (FUN_00517e30/be0/f20 + commit trio 0x517730/760/790): per-axis steps
+    // |delta|<<16/dur, magnitudes x sign(B-A), completion snaps A = B. dur=48 divides all axes by 96
+    // so the midpoints are exact; fixed rounding (>>16 + bit-15 carry) keeps them integral.
+    {
+        CameraTask t;
+        t.startDolly({-2000, 300, -3500}, {2600, 900, 1800}, 48); // dx=4600 dy=600 dz=5300
+        CHECK(t.dollyActive());
+        for (int i = 0; i < 12; ++i)
+            CHECK(!t.advanceDolly(2)); // ticks of 2 frames: live = 24 at midpoint
+        CHECK(t.eye() == glm::ivec3(300, 600, -850)); // A + (delta/2): no snap, interpolation proven
+        CHECK(t.snapshotA() == glm::ivec3(-2000, 300, -3500) && t.snapshotB() == glm::ivec3(2600, 900, 1800));
+        for (int i = 0; i < 11; ++i)
+            CHECK(!t.advanceDolly(2));
+        CHECK(t.advanceDolly(2)); // live reaches end: completing frame
+        CHECK(!t.dollyActive() && t.eye() == glm::ivec3(2600, 900, 1800)); // A snapped to B
+        t.commit({400, 500, 600});                                          // commit trio: B = live, A = B
+        CHECK(t.snapshotA() == glm::ivec3(400, 500, 600) && t.snapshotB() == t.snapshotA());
+    }
+    // MatchCamera integration (delta 1): the transition interpolates instead of snapping. Deltas
+    // from the live eye are multiples of 96 so mid-glide eye is exactly halfway; ticks x frames = 2.
+    {
+        MatchCamera cam;
+        const MatchSnapshot s{};
+        cam.tick(s, 2); // seeds the follow state (initial snap)
+        const glm::ivec3 e0 = cam.eye();
+        const glm::ivec3 target = e0 + glm::ivec3(4608, 576, 4704);
+        cam.glideTo(target, 48);
+        CHECK(cam.gliding());
+        for (int i = 0; i < 12; ++i)
+            cam.tick(s, 2); // live = 24
+        CHECK(cam.eye() == e0 + glm::ivec3(2304, 288, 2352)); // halfway: no snap to target
+        CHECK(cam.gliding());
+        for (int i = 0; i < 12; ++i)
+            cam.tick(s, 2); // live = 48: completion snaps A = B
+        CHECK(!cam.gliding() && cam.eye() == target);
+        cam.tick(s, 2); // release: normal follow resumes from the dolly endpoint (no snap back)
+        CHECK(cam.task().snapshotA() == target && !cam.gliding()); // follow state lives at the endpoint, not snapped back
+    }
 
     // Shortest-arc angles: 1000 -> 8 goes forward through the 1024 wrap.
     CHECK(std::fabs(lerpAngle(1000, 8, 0.5f) - 1016.0f) < 0.01f); // midpoint across the 1024 wrap

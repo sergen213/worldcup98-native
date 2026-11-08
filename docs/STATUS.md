@@ -200,6 +200,11 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
   FALSIFIED: tabA/tabB handler tables are static image data (tabB = 30 goal/win/loss/inc vectors),
   .SCI descriptor array maps module ids -> tabB idx; all 30 handlers decompiled
   (`analysis/pass12sci/TASK_HANDLERS.md`; GAMEPLAY_PARITY §5.1 re-ranked, no Win9x-env blocker).
+- Landed (2026-11-08, pass-12sci integration): camera dolly model + byte-proven preset/height/sine
+  tables installed (`presentation::CameraTask`, `MatchCamera::glideTo`; TASK_HANDLERS_WC98 §7
+  delta-1/2 closed) and `.SCI` payload parser across all 87 COMMON files (`formats/sci.cpp`, gate
+  `test_sci`; delta-4). Suite ctest = 113/113. Remaining §7 deltas: kickoff placement task (3),
+  quality-tier camera gate (5, pending presentation quality option).
 - Landed (2026-11-08): commentary per-event preload + scheduler parity models wired
   (`app/commentary` SpeechPreload/EventDispatch/Scheduler; gates a-d in test_commentary).
 - Landed (2026-11-08, pass-12kick): kick-plan power clamp + slot-0 rect predicate ported

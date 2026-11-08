@@ -267,3 +267,22 @@ Method: disassemble each scene tick window (`raw = VA-0x400c00`), collect `cmp $
 | feflow87/91 (controller grids) | 0x467970../0x468b50.. | anchors only (`fe06 fe08? fe15 quit`) — grid interaction via generic row cursor |
 
 Semantics: `rand` = randomize zones; `strk` = start/launch tournament path; `stsc` = standings/stats view (FEFLOW20/35 grammar); `frwd` = forward anchor; `nglt/ngrt` = group page nav. Full sweep data files: `/mnt/1st4TB/WorldCup98/analysis/pass12/{wcfamily,rank2,keyloop}_tags.txt`.
+
+## 11. League-config family fidelity findings (FEFLOW72/74/75/76/78/79/80, pass-12 QA) [C]
+
+- Engine textID soup rule: widgets named `0000` (four share the name on feflow74 @x=60/245/445/475,y=110),
+  label families `tt*`/`ad*` (feflow80 grid) and `mt9x` carry textID into FC-bank indices whose DEFAULTS
+  are other contexts' captions ("Are you sure want to Quit?", "Mod SFX", controller labels). Composite
+  whitelists exclude them; the scene handler paints runtime content per mode. Verified by capture QA:
+  soup disappears, rows stay clean (gates fe_league_cfg*).
+- feflow72 header slots `t10x`/`t11x`: engine-composed at init via sprintf `%s%d` from FCDB tactics/strategy
+  (fourcc 't110'..'t112' FUN_004788b4 @0x45af41, strcat lane FUN_0049168e; formats "%s" @0x5637fc region).
+  Static tid=0 = bank #0 ("FCLG") soup -> excluded from lg72Visible_.
+- feflow72 buttons `b010..b012` captions: textid=233,4 measured in LAY; FCENG.BIN string #233 = "Art Director:"
+  (bank credits-section index reuse — the Windows original shows exactly this on the formation-budget screen).
+  Port paints shape bt10/bt20/bt30 + caption over the widget (composite skips objecttype-4 TEXTID content).
+- feflow76 popup at rest: '0000' slot default = "New Memory card inserted." prompt text; X/✓ buttons + s001
+  slider render as authored. Context captions remain engine-driven [H].
+- kitColor(): FCDB 5-bit shirt colour indices index analysis/fifa98edit/__init__.py hslCols VERBATIM in table
+  order (idx0=(242,165,237) pink ... idx19=(0,2,244) white, idx22=(0,0,40)). A rotated/fabricated table
+  painted Argentina/Brazil swatches magenta; verbatim copy fixes it (presentation/src/fe_screen.cpp kitColor).

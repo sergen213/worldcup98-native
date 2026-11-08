@@ -50,16 +50,6 @@ public:
         return useCapture_          ? captureName_.c_str()
                : leagueCfg_         ? cfgName_.c_str()
                : wcCfg_             ? cfgName_.c_str()
-PUT 108+:
-    // ---- World-cup family interactive screens (FEFLOW18/23/24/35; MENU_NAV_WC98.md rank-2) -----
-    // Keyloop RE analysis/pass12/wcfamily_notes.txt: feflow18 'rand' = staged random-draw refresh of
-    // the 32 tmNN zone slots (counter cap 99 -> auto-advance); feflow23/24 'strk'/'stsc' = bracket-board
-    // confirm/stats buttons (+0x44/DAT_0060b4c8 stores, no keyloop row grid); feflow35 'nglt'/'ngrt' =
-    // group-index mod-8 table repaint. openWcCfg opens one screen; drawWcFamily composites the scene-
-    // owned whitelist and paints tm/gm/qtm/ss dynamic content as overlays (TourneyModel + pool data).
-    bool openWcCfg(int screenId); // --fe-wc-cfg N gate; false = layout absent on this tree
-    [[nodiscard]] bool onWcCfg() const { return wcCfg_ > 0; }
-    presentation::FeDrawStats drawWcFamily(render::SpriteBatch& ui) const; // composite + row/bracket overlays
                : teamScreen_        ? "FEFLOW11"
                : leagueView_        ? "FEFLOW73"
                : setupScreen_       ? (setupPractise_ ? "FEFLOW50" : "FEFLOW09")
@@ -69,6 +59,16 @@ PUT 108+:
                : (haveHub_ && hubView_) ? "FEFLOW06"
                                         : "FEFLOW05";
     }
+
+    // ---- World-cup family interactive screens (FEFLOW18/23/24/35; MENU_NAV_WC98.md rank-2) -----
+    // Keyloop RE analysis/pass12/wcfamily_notes.txt: feflow18 'rand' = staged random-draw refresh of
+    // the 32 tmNN zone slots (counter cap 99 -> auto-advance); feflow23/24 'strk'/'stsc' = bracket-board
+    // confirm/stats buttons (+0x44/DAT_0060b4c8 stores, no keyloop row grid); feflow35 'nglt'/'ngrt' =
+    // group-index mod-8 table repaint. openWcCfg opens one screen; drawWcFamily composites the scene-
+    // owned whitelist and paints tm/gm/qtm/ss dynamic content as overlays (TourneyModel + pool data).
+    bool openWcCfg(int screenId); // --fe-wc-cfg N gate; false = layout absent on this tree
+    [[nodiscard]] bool onWcCfg() const { return wcCfg_ > 0; }
+    presentation::FeDrawStats drawWcFamily(render::SpriteBatch& ui) const; // composite + row/bracket overlays
 
     // Arbitrary-screen capture lane (--fe-screen NAME; "make all menus 1:1"): loads a chosen
     // LAYOUTS.BIG member and composites it through the main-menu art pipeline. The scene-ownership

@@ -182,8 +182,8 @@ transitions, D receiver-capture contest, M AI spacing realism (qualitative vs or
    data (docs/STATUS.md "Known limitations"); cosmetic A/B stays parked with the capture lane.
 7. ~~Coverage gaps B/C/D/E/F/G/H/K/L/M/N/P~~ (section 4): all gates landed - `self_test_gameplay`
    (§14 lane) covers B, C and D-placement with measured internal-state assertions; E/F/G/H/K/L/N/P
-   are fixed-seed scenarios in `test_sim_scenarios`. Remaining: A gait transitions, D capture
-   contest, M AI spacing realism (qualitative).
+   are fixed-seed scenarios in `test_sim_scenarios`. **CLOSED (pass-12air/13)**: A gait transitions
+   (`scenarioGaitTransitions`), D capture contest (`scenarioReceiverContest`). Remaining: M AI spacing realism (qualitative).
 8. **TeamAI decision-family re-verification** (pass 11 P1): WC98 rewrote the onBallAct/tryHeaderPass
    bodies (0x50CF50/0x50E740, byte ratio .20); `team_ai_ball.cpp`/`ai.cpp` logic re-verify against
    the pair dumps. Kick_plan WC98 constants are integrated (`kick.cpp` 0x502FC0, mapping table in

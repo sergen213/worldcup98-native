@@ -40,6 +40,10 @@ using namespace wc98::sim;
 namespace wc98::sim {
 // Internal simulation helper (player_helpers.cpp) used by the tackle duel gate.
 bool Player_ballAtContact_4BEA94(World&, int);
+// Internal simulation helpers (ball.cpp / kick.cpp) used by the spin + net-surface case-table gate.
+void Test_ballResolveCollision(World&, BallEntry&, int kind, const Vec3& p); // ball.cpp 0x4832EC wrapper
+void Test_netContact(World& w);                                              // ball.cpp 0x482AB0 wrapper
+int Kick_execute(World&, int pid);                                       // kick.cpp 0x4D07B0
 } // namespace wc98::sim
 
 namespace {
@@ -1395,6 +1399,170 @@ void scenarioGaitTransitions() {
     std::printf("gait transitions asserts %02d/%02d PASS\n", gChecks, gChecks);
 }
 
+// ---------------------------------------------------------------------------------------------
+// 23b. Gap I (§2 row 17 open note "spin magnitude model + net-surface case table not asserted"):
+// the spin magnitude fields on the ball record and the net-surface case rows of
+// Ball_resolveCollision. Provenance (no invented values):
+//  * Spin sign convention + RNG-generated magnitude ladder: kick.cpp Kick_execute_4D07B0 mode
+//    switch, spin = ((rng & 15) + 3) * 500 clamped to 25 * min(halfLength - |pos z|,
+//    halfWidth - |pos x|), sign row `(k.flags & 2) ? spin > 0 : spin < 0 -> -spin` (kick.cpp
+//    l.326-334). FIFA-99 v1.1 addresses are family-valid for WC98 per GAMEPLAY_PARITY.md §1 port
+//    lineage; the WC98 Kick_plan body itself is FUN_00502fc0 (analysis/pass12kick/
+//    KICK_PLAN_HELPERS.md, SIM_PORT_NOTES "Kick family").
+//  * Ball-record triple write b.spin(B+0x00) = b.kickSpin(T+0xB7C) = b.tspin(T+0xBCC) at kick:
+//    ball.cpp Ball_kick (0x475430); airborne decay tspin *= 0xf9db and the curve gain 0x2710 /
+//    drag 0xeb in Ball_integrateTrajectory = the 3-term kick constants documented WC98-verified
+//    in flight.cpp l.4-6 (GAMEPLAY_PARITY.md §3(b)) via Ball_buildSpinTable(w, 0xeb, 0xf9db, 0x2710).
+//  * Net-surface case rows: ball.cpp Ball_resolveCollision 0x4832EC kinds 5..10 -> netCase
+//    1 / {2,3} / 4 / 5 / {6,7} / 8 with contactMode = 2 and the entry-flag bits of kEntInNet
+//    (ball.hpp l.28-68 fields T+0xB5C/B60/B80, cited [C] in GAMEPLAY_PARITY.md §2 row 17). The
+//    exe-side net block addresses are the fifa99-family layout carried by the port (§1 lineage);
+//    no WC98 pass dossier re-derives the 0x483xxx block, so this gate asserts exactly the
+//    evidenced row structure (case mapping, flag bits, clamp constants) and nothing beyond it.
+//  * Net-contact transitions: netContact 0x482AB0 release test -> contactMode = 1 +
+//    contactTimer = 0x3c; Ball_integrateTrajectory decrements the timer to contactMode/netCase 0.
+void scenarioSpinNetSurface() {
+    gName = "spin-net-surface";
+    MatchData md = makeMd();
+    Options opt{};
+
+    // ---- lane A: explicit spin magnitude + sign-convention rows on the ball record.
+    auto runSpin = [&](Fixed spinArg, bool bit2, const auto& check) {
+        SimRunner r(md, opt, kSeed);
+        auto& w = r.world();
+        const int p = 15; // team-1 fielder (kick.cpp gate: phase != 0xb, possessor own side)
+        Ball_placeAt(w, {-60, 2, -800});
+        w.ball.possessor = p;
+        std::int32_t vec[4] = {0, 0, -0x40000, 0}; // straight at the -z goal (mode-1 velocity)
+        Kick_plan(w, p, vec, 1 /* mode: Ball_kickWithVelocity */, 0, nullptr, 0, 0, spinArg,
+                  5 /* kind: not a spin-generation kind, not the human-shot branch */, 0x10, 0, 0);
+        auto& k = w.players[static_cast<std::size_t>(p)].kick;
+        if (bit2) k.flags |= 2; else k.flags &= ~2u;
+        ck(Kick_execute(w, p) == 1, "the spin-mode kick was refused");
+        check(w);
+    };
+    // flags bit2 clear + negative spin -> the sign row flips it positive (kick.cpp l.334).
+    runSpin(-4096, false, [](World& w) {
+        ck(w.ball.spin == 4096 && w.ball.kickSpin == 4096, "the flipped kick spin is not the magnitude on B+0x00/T+0xB7C");
+        ck(w.ball.tspin > 0 && w.ball.tspin < 4096, "T+0xBCC tspin did not decay below the kicked magnitude (0xf9db row)");
+    });
+    // flags bit2 set + negative spin -> condition false: no flip, magnitude kept signed.
+    runSpin(-4096, true, [](World& w) {
+        ck(w.ball.spin == -4096 && w.ball.kickSpin == -4096, "the gated kick spin kept its sign on B+0x00/T+0xB7C");
+        ck(w.ball.tspin < 0 && w.ball.tspin > -4096, "T+0xBCC tspin did not decay in the negative direction (0xf9db row)");
+    });
+
+    // ---- lane B: RNG spin generation ladder for kinds 1/3 with spin == 0 (kick.cpp l.327-333).
+    {
+        auto runGen = [&](Fixed& outSpin, std::int32_t& m) {
+            SimRunner r(md, opt, kSeed);
+            auto& w = r.world();
+            const int p = 13; // shot geometry (scenario 3 recipe): ball on the -z attack lane
+            setPos(w, p, -60, -2450);
+            Ball_placeAt(w, {-60, 2, -2460});
+            w.ball.possessor = p;
+            std::int32_t vec[4] = {0, 0, -1200, 0}; // relative attack vector (coordMode 0)
+            Kick_plan(w, p, vec, 6 /* mode: Ball_kickToTarget */, 0, nullptr, 0, 0, 0 /* spin arg -> RNG row */,
+                      1 /* kind 1: the generation kind */, 0x10, 0, 0);
+            auto& k = w.players[static_cast<std::size_t>(p)].kick;
+            k.flags |= 2; // sign row: generated positive spin flips negative
+            ck(Kick_execute(w, p) == 1, "the RNG-lane kick was refused");
+            outSpin = w.ball.spin;
+            m = std::min(w.pitch.halfLength - iabs(w.ball.posI.z), w.pitch.halfWidth - iabs(w.ball.posI.x));
+        };
+        Fixed s1 = 0, s2 = 0;
+        std::int32_t m1 = 0, m2 = 0;
+        runGen(s1, m1);
+        runGen(s2, m2);
+        ck(s1 == s2 && m1 == m2, "the spin-generation ladder is not deterministic on the fixed seed");
+        const Fixed mag = s1 < 0 ? -s1 : s1;
+        ck(s1 < 0, "the generated kick spin did not follow the flags-bit2 sign row");
+        ck(mag >= 3 * 500 && mag <= 18 * 500, "the RNG spin magnitude left the ((rng&15)+3)*500 ladder");
+        // kick.cpp l.328-332: value = min(((rng&15)+3)*500, 25*min(halfLen-|z|, halfWid-|x|)).
+        ck(mag == 25 * m1 || (mag % 500 == 0 && mag > 25 * m1),
+           "the RNG spin magnitude is not a ladder step nor the 25*min-extent clamp row");
+    }
+
+    // ---- lane C: net-surface case table (Ball_resolveCollision kinds 5..10) + contact transitions.
+    {
+        SimRunner r(md, opt, kSeed);
+        auto& w = r.world();
+        // Goal geometry mirror of ball.cpp's ctor fields (public pitch/record accessors).
+        const std::int32_t post2 = w.pitch.postThickness >> 1;
+        const Fixed innerX = fxi(post2 + w.pitch.goalHalfWidth - w.ball.radius);
+        const Vec3 sentinel{7, 8, 9};
+        BallEntry e{};
+        auto freshNet = [&](int kind, const Vec3& tp, const Vec3& p, Fixed tvx) {
+            Ball_placeAt(w, {0, 0, 0}); // clears netCase/contactMode/stamps (Ball_kick zero tail)
+            e = {};
+            w.ball.tpos = tp;
+            w.ball.tvel.x = tvx;
+            w.ball.tprev = sentinel;
+            Test_ballResolveCollision(w, e, kind, p);
+        };
+        const Fixed hl16 = fxi(w.pitch.halfLength);
+        // kind 5 inner roof -> netCase 1, goal marked, flags 0x01010000 (roof-in-net row).
+        freshNet(5, {fxi(30), fxi(120), hl16 + fxi(40)}, {fxi(30), fxi(120), hl16 + fxi(40)}, 0);
+        ck(w.ball.netCase == 1 && w.ball.contactMode == 2, "inner roof did not set netCase 1 / contactMode 2");
+        ck((e.flags & 0x01010000u) == 0x01010000u, "inner roof entry flags lack the roof-in-net bit row (0x01010000)");
+        ck(w.ball.stamp[6] != -1, "inner roof did not mark the goal stamp (Ball_markGoal 0x483228)");
+        ck(w.ball.netPos.y == 0 && w.ball.netPrev.x == 7, "net contact did not flatten netPos / record netPrev");
+        // kind 6 inner side: sign split row same -> 3 (0x40000), !same -> 2 (0x20000).
+        freshNet(6, {fxi(100), fxi(50), hl16 + fxi(60)}, {fxi(100), fxi(50), w.ball.net[1] + 0x80000}, 0);
+        ck(w.ball.netCase == 3 && w.ball.contactMode == 2, "inner side (same sign) did not take netCase 3");
+        ck((e.flags & 0x01040000u) == 0x01040000u, "inner side same-sign flags lack the 0x40000 + in-net bits");
+        // sideNetZ clamp row: |tvel.z * 0.78125 + p z| > net[1] -> netPos.z = sign*(net[1]-0x20000).
+        ck(w.ball.netPos.z == w.ball.net[1] - 0x20000, "sideNetZ did not clamp past the net[1] row");
+        freshNet(6, {fxi(100), fxi(50), -hl16 - fxi(60)}, {fxi(100), fxi(50), -(hl16 - 0x40000)}, 0);
+        ck(w.ball.netCase == 2 && (e.flags & 0x01020000u) == 0x01020000u, "inner side (!same) netCase 2 / flag row");
+        ck(w.ball.netPos.z == -(hl16 + 0x20000), "sideNetZ did not clamp inside the goal-line row");
+        // kind 7 back net: in-range add row and the ±(innerX - 0x100000) overflow clamp.
+        freshNet(7, {hl16 + fxi(80), fxi(20), fxi(30)}, {0, fxi(20), hl16 + fxi(80)}, 0x8000);
+        ck(w.ball.netCase == 4 && w.ball.contactMode == 2, "back net did not set netCase 4 / contactMode 2");
+        ck((e.flags & 0x01080000u) == 0x01080000u, "back-net entry flags lack the 0x0108 in-net row");
+        ck(w.ball.netPos.x == fx(0x8000, 0x50000), "back net did not apply the tvel-scaled add row on netPos.x");
+        freshNet(7, {hl16 + fxi(80), fxi(20), fxi(30)}, {0, fxi(20), hl16 + fxi(80)}, fxi(400)); // overflow branch
+        ck(w.ball.netPos.x == innerX - 0x100000, "back net did not take the innerX overflow clamp row");
+        // kind 8 outer roof -> netCase 5 with the y -= 0x60000 rest offset.
+        freshNet(8, {fxi(40), fxi(170), hl16 + fxi(30)}, {fxi(40), fxi(170), hl16 + fxi(30)}, 0);
+        ck(w.ball.netCase == 5 && w.ball.contactMode == 2, "outer roof did not set netCase 5 / contactMode 2");
+        ck((e.flags & 0x01100000u) == 0x01100000u, "outer roof entry flags lack the 0x0110 in-net row");
+        ck(w.ball.netPos.y == fxi(170) - 0x60000, "outer roof netPos kept no y -= 0x60000 rest offset");
+        // kind 9 outer side: sign split same -> 7 (0x400000), !same -> 6 (0x200000); add row in band.
+        freshNet(9, {fxi(300), fxi(160), hl16 + fxi(90)}, {fxi(300), fxi(160), w.ball.net[2] - 0x80000}, 0);
+        ck(w.ball.netCase == 7 && (e.flags & 0x01400000u) == 0x01400000u, "outer side (same) netCase 7 / flag row");
+        freshNet(9, {fxi(300), fxi(160), -hl16 - fxi(90)}, {fxi(300), fxi(160), w.ball.net[2] - 0x80000}, 0);
+        ck(w.ball.netCase == 6 && (e.flags & 0x01200000u) == 0x01200000u, "outer side (!same) netCase 6 / flag row");
+        // kind 10 outer back -> netCase 8, netPos.z = ±net[3] (sign from p z).
+        freshNet(10, {fxi(50), fxi(140), hl16 + fxi(200)}, {fxi(50), fxi(140), hl16 + fxi(200)}, 0);
+        ck(w.ball.netCase == 8 && w.ball.contactMode == 2, "outer back did not set netCase 8 / contactMode 2");
+        ck((e.flags & 0x01800000u) == 0x01800000u, "outer back entry flags lack the 0x0180 in-net row");
+        ck(w.ball.netPos.x == fxi(50) && w.ball.netPos.z == w.ball.net[3], "outer back netPos did not take the ±net[3] row");
+        // landing = shr16(netPos) (setNetPos row): integer landing tracks the fixed-point rest point.
+        ck(iabs(w.ball.landing.x - (w.ball.netPos.x >> 16)) <= 1 && iabs(w.ball.landing.z - (w.ball.netPos.z >> 16)) <= 1,
+           "setNetPos did not mirror netPos into the integer landing point");
+        // netContact release row: a side-net hold with the ball back inside the plane leaves to
+        // contactMode 1 + timer 0x3c (ball.cpp l.628-632).
+        Ball_placeAt(w, {0, 0, 0});
+        w.ball.netCase = 2;
+        w.ball.contactMode = 2;
+        w.ball.tpos = {innerX / 2, fxi(50), hl16 + fxi(60)}; // inside the side plane
+        Test_netContact(w);
+        ck(w.ball.contactMode == 1 && w.ball.contactTimer == 0x3c, "side-net release did not set contactMode 1 / timer 0x3c");
+        // The 0x3c timer counts down to a clean record (Ball_integrateTrajectory l.970-974).
+        Ball_integrateTrajectory(w, 61);
+        ck(w.ball.contactMode == 0 && w.ball.netCase == 0, "the leaving-net timer did not clear contactMode/netCase");
+        // Deep back-net row: absZ beyond net[1] + 0x100000 keeps the hold (tested = false).
+        Ball_placeAt(w, {0, 0, 0});
+        w.ball.netCase = 4;
+        w.ball.contactMode = 2;
+        w.ball.absZ = w.ball.net[1] + 0x100001;
+        Test_netContact(w);
+        ck(w.ball.contactMode == 2, "the deep back-net row released the hold");
+    }
+    std::printf("spin + net-surface asserts %02d/%02d PASS\n", gChecks, gChecks);
+}
+
 
 // ---------------------------------------------------------------------------------------------
 // 23. Gap D (§4 "receiver capture vs opponent contest unasserted"): the pass-completion /
@@ -1568,5 +1736,6 @@ int main() {
     scenarioKickoffPlacement();
     scenarioGaitTransitions();
     scenarioReceiverContest();
+    scenarioSpinNetSurface();
     return 0;
 }

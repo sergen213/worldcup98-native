@@ -11,6 +11,11 @@ project goals.
   `[u16 n][ids][C(n,2) triples]` layout with the FUN_0048cc58 pair-index formula and directional
   head-to-head lookup; Brazil–Scotland (2,1,0) / Italy–Chile (1,0,1) dossier triples asserted
   (TOURNAMENT_MODULE_WC98 §2.5 marked [P via gate]).
+- Gap-I assert gate `scenarioSpinNetSurface` (in `test_sim_scenarios`): spin sign-convention row,
+  RNG magnitude ladder + 25*extent clamp, B+0x00/T+0xB7C/BCC triple write and 0xf9db/0x2710 decay
+  rows, plus the net-surface case table kinds 5..10 -> netCase/contactMode/flag/clamp rows with the
+  release/timer countdown (dossier constants cited; `Test_ballResolveCollision`/`Test_netContact`
+  test-only wrappers export the file-local helpers). Gap A/D doc lines closed in GAMEPLAY_PARITY.
 - Camera dolly model + byte-proven preset tables in `presentation::CameraTask` /
   `MatchCamera::glideTo`: timer B/C snapshot-swap (`FUN_00517b50/e30/f20/cc0`, bit-15 carry
   rounding), commit trio, preset rows `DAT_00585FEA/586046/5862D2`, height table `DAT_0057FB82`

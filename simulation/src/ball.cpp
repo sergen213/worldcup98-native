@@ -807,6 +807,14 @@ void possessionMarks(World& w, int pid) {
 
 } // namespace
 
+// Gate-exported entry points into the file-local collision/net-contact helpers (0x4832EC,
+// 0x482AB0): tests/unit/test_sim_scenarios.cpp scenarioSpinNetSurface drives the net-surface
+// case table directly; behavior of the helpers themselves is untouched.
+void Test_ballResolveCollision(World& w, BallEntry& e, int kind, const Vec3& p) {
+    Ball_resolveCollision(w, e, kind, p); // 0x4832EC
+}
+void Test_netContact(World& w) { netContact(w); } // 0x482AB0
+
 // ---------------------------------------------------------------- public
 
 void Ball_setSurface(World& w, int col) {

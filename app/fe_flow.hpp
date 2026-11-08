@@ -439,8 +439,8 @@ public:
     // domain is [canc|no, ok_1|yes]; popSel_ 0 = cancel slot (engine default focus [H]), 1 = confirm.
     formats::ScreenLayout pop10_, pop37_;
     bool havePop10_ = false, havePop37_ = false;
-    formats::ScreenLayout popIg_;      // igconsel/mesg/Feflow86 lazy member (openPopup)
-    int popKind_ = 0;                  // 10/37 FE popup, -42 igconsel, -43 mesg, -86 Feflow86 panel demo, 0 none
+    formats::ScreenLayout popIg_;      // igconsel/mesg/Feflow86/CONTROL1 lazy member (openPopup)
+    int popKind_ = 0;                  // 10/37 FE popup, -42 igconsel, -43 mesg, -86 Feflow86 panel demo, -44 CONTROL1 controller page (§H), 0 none
     std::string popName_;              // gate evidence label ("FEFLOW10"/"FEFLOW37"/"igconsel"/...)
     int popSel_ = 0;                   // focused button slot (two-axis cursor)
     bool popQuitCtx_ = false;          // hub 'quit' wedge context: confirm -> quitRequested_ (exit confirm)

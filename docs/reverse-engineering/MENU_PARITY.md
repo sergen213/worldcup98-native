@@ -169,7 +169,7 @@ Source: `analysis/pass11/screen_inventory.txt` (`== MEMBER` sections; authored-p
 | Feflow90.lay | 42 | **World-Cup history board** (hub wedge `fe33`): year cursor + arrows, finalist pair/scores fields, volume bars | **impl** (pass 13 interactive scene; classic-era FCDB ids 861..876 -> `F040..F045` flag art, e.g. F040/F041 decode byte-identical = original data duplicate for Ur/Arg 1930) |
 | Feflow91.lay | 57 | continuation board: two shields + qualifier rows ("goes to feflow90" comment) | **impl** (composite + FC captions; `fe91` Enter chain from feflow90, `fe06`/Esc exit) |
 | Feflow93.lay | 60 | lineups+score debug grid (classic family) **[H]** | cap |
-| INGAME.LAY | 5 | in-game menu frame: `titl/bxot/tlft/blft` shapes + `menu` type=16 widget; pairs with FE/INGAME/IGMENU.LAY overlay | miss (in-game popup not implemented) |
+| INGAME.LAY | 5 | in-game menu frame: `titl/bxot/tlft/blft` shapes + `menu` type=16 widget; pairs with FE/INGAME/IGMENU.LAY overlay | boundary (frame is scene-handler code-drawn: the LAY carries only invisible null.fsh placeholders, raw shapes=0 legit — no composite expected; the port draws its live HUD frame from INGAME.FSH chrome in `app/livematch.cpp`) |
 | fe.lst | n/a | member name list file, NOT a .LAY (size 3953) — LAYOUTS.BIG manifest | n/a |
 | feflow15.lay | 27 | options screen: tabs 1-4 (`tab*`/`tbb*`), option lists `lst1-4` type=17, save/default/back/fwd; captions "Game play options"/"audio options" comments | cap (interactive **miss**) |
 | feflow94.lay | 33 | credits roll: cr01-cr32 text rows at fixed slots | cap |
@@ -186,9 +186,9 @@ Dump: `wc98-extract FE/PACK/LAYOUTS/IGLAY.BIG` → "1 files, 30 BIG members" (`/
 
 | member | objs | purpose **[C]** (authored path + widgets) | port |
 |---|---|---|---|
-| CONTROL1.LAY | 27 | in-game controller scheme page: `ctx0-3` config texts, gravis button numbers, team name texts | miss |
-| IGCAMERA.LAY | 19 | camera options popup (box/typ/flg/nmb triples, menu/back/forw) | miss |
-| IGCAMSEL.LAY | 13 | camera-select list popup (menu widget) | miss |
+| CONTROL1.LAY | 27 | in-game controller scheme page: `ctx0-3` config texts, gravis button numbers, team name texts | **impl** (options-chain popup via `--fe-control N`: composite paints the grv*/ls*/*rs* bar art + npll/nplr nav pair; overlays FC#258 'Attacking' ctx caption, four scene-default percent bars from DAT_00632778 {80,80,80,80,65,80,1} with gold fill quads, live gamepad axis readout when a pad is open (fallback 'kbd'), tmtl/tmtr FC#4594 captions + team-mates counts; gate `fe_control_page`) |
+| IGCAMERA.LAY | 19 | camera options popup (box/typ/flg/nmb triples, menu/back/forw) | **impl** (live pause 'C' opens it: FC#353 CAMERA title + 5 key-assignment rows (FC 1468/1011/1545/1546/1104) with binding strings, flg/nmb pair cursor, forw/menu nav buttons; gate `fe_camera_pages`) |
+| IGCAMSEL.LAY | 13 | camera-select list popup (menu widget) | **impl** (forw nav from IGCAMERA opens the grid: FC#379 'Camera Select' + 7 camera names, row cursor quad, Enter applies a `MatchCamera` mode ("igcam: camera sideline"); gate `fe_camera_pages`) |
 | IGCHAT.LAY | 16 | chat overlay: input line + `chat/cha2/cha3` display boxes (netplay) | miss |
 | IGCONSEL.LAY | 2 | confirm-OK box (`okay`) | **impl** (`--fe-popup igconsel`: INGAME.FSH btnn/btnd chrome + "OK" caption over null.fsh region placeholders; gate `fe_igconsel`; FUN_00442000 stub = dismiss-only [C]) |
 | IGFLOW86.LAY | 7 | in-game confirm popup (`fe09`, txt0-2; authored `IGflow86.lay`) — mirrors FEFLOW86 | miss |
@@ -200,9 +200,9 @@ Dump: `wc98-extract FE/PACK/LAYOUTS/IGLAY.BIG` → "1 files, 30 BIG members" (`/
 | IGMENU.LAY | 14 | in-game pause menu: box1-5/typ/flg/nmb chrome + `menu` type=42 widget, name text — the popup the port lacks (Esc quits match directly) | **impl** (livematch Esc opens the composite; {Resume,Stats,Highlights,Management,Quit} rows bt0-bt4 chrome, Enter on Stats -> IGSTATS board, Highlights -> IGHILITE browser, Management -> IGTEAM page cycle (§E), quit row -> IGQUESHN confirm; gates `fe_igmenu`, `fe_igstats`, `fe_mgmt_pages`) |
 | IGMSG.LAY | 17 | message popup authored `igqueshn.lay`; ok button, lines (`bo25`) | miss (shares the igqueshn key FUN_00440830; renderable via capture lane) |
 | IGOPTN2.LAY | 21 | in-game options: tabs 1-4 + tab-button areas, option lists `lst1-4` type=17, back/fwrd; `textID=5`, help keys (78/81) — the ig\*optns trio lives here **[C]** captions "Match"/"Game play"/tab comments | miss |
-| IGPRAC1.LAY | 36 | practise-mode setup/stats popup | miss |
-| IGPRACT1.LAY | 37 | practise stats page (back/forw) | miss |
-| IGPRACT2.LAY | 22 | practise stats page variant | miss |
+| IGPRAC1.LAY | 36 | practise-mode setup/stats popup | **impl** (Esc from the live PRACT1 board opens it: on/off toggle rows + btn nav, keeper toggles; gate `fe_practise_pages`) |
+| IGPRACT1.LAY | 37 | practise stats page (back/forw) | **impl** (pause 'P' opens it over the live frame: FC#1249 'Number of Players' stepper (< > INGAME.FSH bt4n/bt5n), numPlayers readout, User/CPU Keeper rows FC 1920/374 with On/Off 1267/1263; RIGHT tabs to IGPRACT2, LEFT wraps; gate `fe_practise_pages`) |
+| IGPRACT2.LAY | 22 | practise stats page variant | **impl** (page-2 option grid composite + FC captions, back/forw nav pair; gate `fe_practise_pages`) |
 | IGQUESHN.LAY | 20 | yes/no question popup (`okay`+`canc`, lines) | **impl** (livematch pause 'quit' row -> IGQUESHN confirm; gate `fe_igmenu`; shared key FUN_00440830 + Esc response-callback contract §33) |
 | IGSCSUM.LAY | 36 | score-summary list (lst1-3, up/down) | **impl** (full-time board opened at match end: header + goal rows from `goalLog`, score/shields from match state; Enter pages to IGFLSUM; gate `fe_igscsum`) |
 | IGSTATS.LAY | 67 | in-game stats screen (stat grid ×33 texts, team columns) | **impl** (IGMENU 'Stats' row opens the composite over the live frame: two-page L/R axis — Possession/Corners Won/Caught Offside/Fouls Committed/CARDS + GOALS/Shots off Target from `TeamStats` + `possessionFrames`; FC captions 1382/516/392/758/354/781/1708; Esc = dismiss to menu; gate `fe_igstats`) |
@@ -264,7 +264,7 @@ Each entry: what's missing → RE blocker. Blockers reference handler slots §1;
 - SCENE registry rows: **66** (`grep -c "^SCENE "` on `menu5_scenemap_windowobj.txt`); unique scene names **56**; 55 primary rows + 11 second-pass sites (block 0x4481b5-0x4483d3).
 - LAYOUTS.BIG members: **101** (file header line 1; `grep -c "== MEMBER"` = 101) — includes `fe.lst` manifest, 32 single-widget stub members (`numobjects=1 [objects parsed: 1]`, grep count), 3 ig\*optns popups.
 - IGLAY.BIG members: **30** = 29 .LAY + `ingame.lst`; loose FE/INGAME tree: **29** `.LAY` files (+ LST/FSH/IGFLAGS); every member byte-identical to its loose-tree counterpart (`cmp -s`: 29+LST identical, diff=0).
-- Port interactive scenes (post-`65fbeda`): hub Feflow06, friendly/practise setup 09/50, team grid 11, league list 73, options feflow15, save-load Feflow89, credits feflow19, presentation boards 25/26/27/35, shared popup lane (FEFLOW10 ok/cancel + FEFLOW37 yes/no: blur+popp composite, nvicons button pair, FC captions + help pane, two-slot cursor, Enter/Esc close to caller; hub 'quit' wedge opens the confirm), in-game IGMENU+IGQUESHN overlay (`app/fe_flow.cpp` + `app/livematch.cpp`; gates §3). Capture lane covers every LAYOUTS.BIG member (`--fe-screen`).
+- Port interactive scenes (post-`65fbeda`): hub Feflow06, friendly/practise setup 09/50, team grid 11, league list 73, options feflow15, save-load Feflow89, credits feflow19, presentation boards 25/26/27/35, shared popup lane (FEFLOW10 ok/cancel + FEFLOW37 yes/no: blur+popp composite, nvicons button pair, FC captions + help pane, two-slot cursor, Enter/Esc close to caller; hub 'quit' wedge opens the confirm), in-game IGMENU+IGQUESHN overlay (`app/fe_flow.cpp` + `app/livematch.cpp`; gates §3), camera popups IGCAMERA/IGCAMSEL (IgBoards kinds 16/17, pause 'C' chain; gate `fe_camera_pages`), practise pages PRACT1/PRACT2/IGPRAC1 (kinds 18-20, pause 'P' page cycle + keeper toggles; gate `fe_practise_pages`), CONTROL1 controller page (options-chain popup lane, FC#258 caption + DAT_00632778 percent bars + live pad axis readout; gate `fe_control_page`). Capture lane covers every LAYOUTS.BIG member (`--fe-screen`).
 
 ## 6. Verification sweep + functional-parity evidence (run 2026-11-07, post commit `65fbeda`)
 

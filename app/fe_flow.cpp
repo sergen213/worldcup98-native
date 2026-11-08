@@ -10,6 +10,8 @@
 #include "wc98/config/settings.hpp"        // settings.ini [audio] volume rows (Phase 2)
 #include "wc98/audio/mixer.hpp"            // live master-gain updates from the options screen
 #include "wc98/formats/slot.hpp"           // slotFileName()
+// §H CONTROL1 controller page: live gamepad axis polling (SDL_GetGamepads = opened pads).
+#include <SDL3/SDL.h>
 
 #include <algorithm>
 #include <cstdio>
@@ -2609,6 +2611,7 @@ const char* FeFlow::popupButtonName(int slot) const {
         case 10: return slot == 0 ? "canc" : "ok_1"; // ok_2 = the standalone-ok context, not painted [H]
         case 37: return slot == 0 ? "no" : "yes";
         case -42: return "okay";                     // IGCONSEL dismiss-only box (FUN_00442000 stub)
+        case -44: return popSel_ == 0 ? "npll" : "nplr"; // CONTROL1 page-tab nav pair (§H)
         default: return "";                          // mesg/Feflow86 demo lanes carry no gated cursor pair
     }
 }
@@ -2630,9 +2633,10 @@ bool FeFlow::openPopup(std::string_view name, bool quitContext) {
         popVisible_ = {"blur", "popp", "no", "yes", "help"}; // same grammar, yes/no payload pair [C] §29
         return true;
     }
-    static constexpr std::pair<const char*, int> kKnown[] = {{"igconsel", -42}, {"mesg", -43}, {"feflow86", -86}};
+    static constexpr std::pair<const char*, int> kKnown[] = {{"igconsel", -42}, {"mesg", -43}, {"feflow86", -86}, {"control1", -44}}; // §H controller page
     for (auto [nm, kind] : kKnown) {
         if (n != nm) continue;
+        const std::string mem = n == "control1" ? "CONTROL1" : n; // IGLAY.BIG member is upper-case (sweep-ig dump names)
         // Lazy member load: same search order as the capture lane (loadCaptureScreen).
         static constexpr std::array<const char*, 2> archives = {"LAYOUTS.BIG", "IGLAY.BIG"};
         try {
@@ -2641,20 +2645,20 @@ bool FeFlow::openPopup(std::string_view name, bool quitContext) {
             bool found = false;
             for (const char* arc : archives) {
                 try {
-                    text = presentation::readLayout((tree_ / "FE/PACK/LAYOUTS" / arc).string() + "@" + n + ".LAY", d);
+                    text = presentation::readLayout((tree_ / "FE/PACK/LAYOUTS" / arc).string() + "@" + mem + ".LAY", d);
                     found = true;
                     break;
                 } catch (const std::exception&) { /* member absent in this archive: try the next */ }
             }
             if (!found) {
-                const fs::path loose = wc98::findCaseInsensitive(tree_, "FE/INGAME/" + n + ".LAY");
-                if (loose.empty()) throw std::runtime_error(n + ".LAY: no such layout member/file");
+                const fs::path loose = wc98::findCaseInsensitive(tree_, "FE/INGAME/" + mem + ".LAY");
+                if (loose.empty()) throw std::runtime_error(mem + ".LAY: no such layout member/file");
                 text = presentation::readLayout(loose.string(), d);
             }
             popIg_ = formats::ScreenLayout::build(n, formats::LayoutDocument::parse(std::string_view(text)), nullptr, nullptr, "PC");
         } catch (const std::exception& e) { lastError_ = std::string(name) + ": " + e.what(); return false; }
         popKind_ = kind;
-        popName_ = n == "feflow86" ? "FEFLOW86" : n; // gate evidence label (raw member name stays lowercase)
+        popName_ = n == "feflow86" ? "FEFLOW86" : n == "control1" ? "CONTROL1" : n; // gate evidence label (raw member name stays lowercase)
         popVisible_.clear(); // raw members: composite() paints every shown() object (capture-lane rule)
         return true;
     }
@@ -2702,6 +2706,33 @@ FeDrawStats FeFlow::drawPopup(render::SpriteBatch& ui) const {
             if (sh.tex) ui.draw(sh.tex, {float(o->x), float(o->y), float(sh.w), float(sh.h)}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu), ++st.shapes;
             else ++st.missing;
             if (text_ && text_->ready()) st.texts += paintCaption(*o, text_->stringAt(1256), ui); // FC bank "OK" (index 1256)
+        }
+    } else if (popKind_ == -44) {
+        // CONTROL1 controller page (§H, gate fe_control_page): ctx0-3 runtime strings + grv* Gravis bar
+        // slots. The exe's scene-default percent table DAT_00632778 = {80,80,80,80,65,80,1} seeds the four
+        // bars (idx 0,1,4,5). FC#258 'Attacking' is the config caption; npll/nplr = team-mates counts
+        // under the tmtl/tmtr (FC#4594) captions. Live pad axis polling opens the first connected gamepad
+        // once (SDL keeps one per device id), polls it per frame: ctx1 shows 'AX n%' or fallback 'kbd'.
+        static constexpr std::array<int, 4> kGrav{80, 80, 65, 80}; // DAT_00632778 scene defaults [C] pass7 pct table {80,80,80,80,65,80,1}
+        int axPct = -1;                                           // live axis magnitude in % (-1 = no pad)
+        static SDL_Gamepad* s_pad = nullptr;                      // opened once for the live axis readout (SDL keeps one per device id)
+        if (!s_pad) { int npads = 0; if (SDL_JoystickID* ids = SDL_GetGamepads(&npads)) { for (int i = 0; s_pad == nullptr && i < npads; ++i) s_pad = SDL_GetGamepadFromID(ids[std::size_t(i)]); SDL_free(ids); } }
+        if (s_pad) { const Sint16 ax = SDL_GetGamepadAxis(s_pad, SDL_GAMEPAD_AXIS_LEFTX); axPct = std::abs(int(ax)) * 100 / 32767; } // first gamepad, live poll per frame
+        if (text_ && text_->ready()) {
+            const auto paintAt = [&](const char* w, const std::string& s) { if (const formats::LayoutObject* o = sc->object(w)) st.texts += paintCaption(*o, s, ui); };
+            paintAt("ctx0", std::string(text_->stringAt(258))); // FC bank 'Attacking' (verified index 258)
+            paintAt("ctx1", axPct >= 0 ? std::format("AX {}%", axPct) : std::string{"kbd"});
+            for (int i = 0; i < 4; ++i) { // grv* bar numbers over the ls*/rs* art bars + gold fill quads at pct
+                const std::string gw = "grv" + std::to_string(i), lw = i % 2 == 0 ? "ls" + std::to_string(i / 2 + 1) : "rs" + std::to_string(i / 2 + 1);
+                paintAt(gw.c_str(), std::format("{}%", kGrav[std::size_t(i)]));
+                if (const formats::LayoutObject* bar = sc->object(lw)) { // fill width from the scene default pct
+                    const int w = std::max(4, (bar->width - 8) * kGrav[std::size_t(i)] / 100);
+                    ui.draw(0, {float(bar->x) + 4.f, float(bar->y) + bar->height / 2.f, float(w), 3.f}, {}, render::packRgba(255u, 236u, 90u, 255u));
+                    ++st.shapes;
+                }
+            }
+            paintAt("npll", "3"); // 'Num team mates left' runtime values (widget comments §H)
+            paintAt("nplr", "5");
         }
     }
     drawCursor(ui, st);

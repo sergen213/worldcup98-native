@@ -111,6 +111,7 @@ int run(int argc, char** argv) {
     int feLoad41 = -1;    // --fe-load-game N: feflow41 LOAD list over defaultSlotDir, rows +N
     int feSave42 = -1;    // --fe-save-manager N: feflow42 SAVE list + tick confirm, rows +N then Enter
     int feStad08 = -1;    // --fe-stadium08 N: friendly chain -> FEFLOW08 stadium select, tile cursor +N moves
+    int feControl = -1; // --fe-control N: CONTROL1 controller page from the options chain, nav cursor +N (§H)
     int feIgMode = 0;       // --fe-igoptns a|g|m: open the in-game option popup (igaoptns/iggoptns/igmoptns)
     std::string fePopupName; // --fe-popup NAME: shared popup lane gate (feflow10/37, igconsel/mesg/Feflow86)
     int fePopupKeys = 0;     // --fe-popup-keys N: scripted button-cursor presses before the capture frame
@@ -154,6 +155,7 @@ int run(int argc, char** argv) {
         else if (a == "--fe-stadium08") { feMode = true, smokeFrames = 1, feStad08 = std::stoi(next()); }  // FEFLOW08 stadium-select chain gate; N = tile-cursor moves
         else if (a == "--fe-mgmt-grid") { feMode = true, smokeFrames = 1, feMgmt43 = std::stoi(next()); }     // FEFLOW43 management grid gate; N = row-cursor moves
         else if (a == "--fe-load-game") { feMode = true, smokeFrames = 1, feLoad41 = std::stoi(next()); }      // feflow41 LOAD list gate; N = lstb row-cursor moves
+        else if (a == "--fe-control") { feMode = true, smokeFrames = 1, feControl = std::stoi(next()); }       // CONTROL1 controller-page gate; N = npll/nplr nav-cursor moves (§H)
         else if (a == "--fe-save-manager") { feMode = true, smokeFrames = 1, feSave42 = std::stoi(next()); }   // feflow42 SAVE confirm gate; N = row moves + Enter write
         else if (a == "--fe-igoptns") { // igoptns captions lane gate: a=audio g=game m=mouse popup
             feMode = true, smokeFrames = 1;
@@ -178,6 +180,8 @@ int run(int argc, char** argv) {
         else if (a == "--ig-hlite-smoke") { liveSmoke = std::stoi(next()); } // gates fe_highlite_browser/fe_hilsav_list: driver parses its own flags (§D highlights lane)
         else if (a == "--ig-hlsav-smoke") { liveSmoke = std::stoi(next()); }
         else if (a == "--ig-mgmt-smoke") { liveSmoke = std::stoi(next()); } // gate fe_mgmt_pages: IGTEAM72..80/89 management page cycle (§E), driver parses its own flag
+        else if (a == "--ig-camera-smoke") { liveSmoke = std::stoi(next()); }    // gate fe_camera_pages: IGCAMERA/IGCAMSEL popup chain (§G), driver parses its own flag
+        else if (a == "--ig-practise-smoke") { liveSmoke = std::stoi(next()); }  // gate fe_practise_pages: PRACT1/PRACT2/IGPRAC1 page cycle + keeper toggle (§G), driver parses its own flag
         else if (a == "--ig-manmarks-smoke") { liveSmoke = std::stoi(next()); } // gate fe_manmarks_grid: MANMARKS ratings board from igteam72 'M' (§E), driver parses its own flag
         else if (a == "--record-replay") { recordReplay = true; }
         else if (a == "--video-play") { videoPlay = next(); }
@@ -323,6 +327,11 @@ int run(int argc, char** argv) {
         }
         if (fe && feIgMode) { // --fe-igoptns gate frame: in-game option popup captions lane
             if (!fe->openIgOptns(feIgMode)) std::fprintf(stderr, "fe: igoptns popup unavailable\n");
+        }
+        if (fe && feControl >= 0) { // --fe-control N gate frame: CONTROL1 controller page over the options chain (§H)
+            fe->openOptions(); // FEFLOW15 options screen = the caller scene (Esc-back grammar)
+            if (!fe->openPopup("control1")) std::fprintf(stderr, "fe: control1 page unavailable\n");
+            else for (int i = 0; i < feControl; ++i) fe->move(+1); // npll/nplr nav cursor
         }
         if (fe && !fePopupName.empty()) { // --fe-popup NAME gate frame: popup lane over the hub (caller scene)
             if (!fe->openPopup(fePopupName)) std::fprintf(stderr, "fe: popup %s unavailable\n", fePopupName.c_str());
@@ -490,10 +499,11 @@ int main(int argc, char** argv) {
                       " [--fe-mgmt-grid N] [--fe-load-game N] [--fe-save-manager N]"
                       " [--fe-nav exhibition|league|tournament|tournament-load|practise] [--fe-team] [--fe-setup N] [--fe-league] [--fe-league-cfg N] [--fe-setup07 N] [--fe-stadium08 N] [--fe-screen NAME]"
                       " [--fe-wc-cfg N]"
-                      " [--fe-popup NAME] [--fe-popup-keys N] [--fe-popup-enter|--fe-popup-back]"
+                      " [--fe-popup NAME] [--fe-popup-keys N] [--fe-popup-enter|--fe-popup-back] [--fe-control N]"
                       " [--fe-cheats N]"
                       " [--fe-options|--fe-saveload|--fe-credits]"
                       " [--record-replay] [--lang eng|fre|ger|ita|spa|dut|dan|swe|jap]"
+                      " [--ig-camera-smoke N] [--ig-practise-smoke N]"
                       " [--fe-present]");
             return 0;
         }

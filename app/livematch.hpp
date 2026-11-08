@@ -99,6 +99,17 @@ struct IgTeamMgmt {
     std::array<int, 16> gx{}, gz{};             // live pitch coords [-128,128] (formation grid dots)
 };
 struct IgMgmtData { std::array<IgTeamMgmt, 2> teams{}; };
+// Camera popup rows (§G): the IGCAMERA option grid (FC ids 1468/1011/1545/1546/1104 key-assignment
+// rows) + IGCAMSEL selection grid (menu numItems=7 = FC camera names Action/Ball/Classic/End Zone/
+// Free/Stadium/Shoulder Cam). curRow = the active IGCAMSEL grid row (cursor); binds[] = per-option
+// key-assignment strings (Settings bindings / live pad axis readout).
+struct IgCamData { int curRow = 0; std::vector<std::string> binds{"Left Stick", "Right Stick", "Shoulder L", "Shoulder R", "Back"}; };
+
+// Practise pages (§G): igpract1 (number-of-players stepper + keeper toggles), igpract2 (page 2),
+// igprac1 (on/off option grid). Deterministic gate fixtures seed these values; the live practice
+// pause path mutates them through the same key grammar.
+struct IgPracData { int numPlayers = 7; bool userKeeper = true, cpuKeeper = false; };
+
 
 // The IGLAY.BIG presentation boards rendered from IgMatchData (stat/summary kinds) and from the
 // rply index rows (highlights browser/save-list kinds). Composite = scene-ownership visible
@@ -115,7 +126,7 @@ public:
     // ighilsav | ighilit1 | manmarks). False = absent.
     bool open(std::string_view name);
     [[nodiscard]] bool isOpen() const { return kind_ != 0; }
-    [[nodiscard]] int kind() const { return kind_; } // 1 igstats, 2 ighalf, 3 igflsum, 4 igscsum, 5 ighilite, 6 ighilsav, 7 ighilit1, 8..14 igteam72/73/74/75/79/80/89, 15 manmarks
+    [[nodiscard]] int kind() const { return kind_; } // 1 igstats, 2 ighalf, 3 igflsum, 4 igscsum, 5 ighilite, 6 ighilsav, 7 ighilit1, 8..14 igteam72/73/74/75/79/80/89, 15 manmarks, 16 igcamera, 17 igcamsel, 18 igpract1, 19 igpract2, 20 igprac1
     // Management-page row cursor (IGTEAM pages / MANMARKS squad rows): hub rows / sub-pair slots / pNNN grid.
     [[nodiscard]] int mgSel() const { return mgSel_; }
     void moveMgmtRow(int dir, int nRows) { mgSel_ = nRows > 0 ? (mgSel_ + dir + nRows) % nRows : 0; }
@@ -131,6 +142,13 @@ public:
     [[nodiscard]] int hlSel() const { return hlSel_; }
     void setHlSel(int i) { hlSel_ = i < 0 ? 0 : i; page_ = hlSel_ / 10; }
     void moveHl(int dir, int nRows); // slol/slor slot arrows: wrap over populated rows
+    // Camera popups (§G): igcamera (kind 16) option rows + forw/menu nav, igcamsel (kind 17)
+    // selection grid. camSel() = the focused IGCAMSEL row; moveCamRow pans it.
+    presentation::FeDrawStats draw(render::SpriteBatch& ui, const IgMatchData& d, const IgCamData& cam);
+    [[nodiscard]] int camSel() const { return mgSel_; } // IGCAMERA option / IGCAMSEL grid row cursor
+    void moveCamRow(int dir, int nRows) { mgSel_ = nRows > 0 ? (mgSel_ + dir + nRows) % nRows : 0; }
+    // Practise pages (§G): igpract1/igpract2/igprac1 (kinds 18/19/20), shared header pane + nav.
+    presentation::FeDrawStats draw(render::SpriteBatch& ui, const IgMatchData& d, const IgPracData& prac);
 
 private:
     std::filesystem::path tree_;
@@ -152,7 +170,7 @@ private:
 // user/rplyNNNN.dat + rplyindx.dat under the tree (docs/asset-formats/RPLY.md).
 int runLiveLoop(const std::filesystem::path& tree, const std::string& prefix, int smokeFrames,
                 platform::Window& window, render::Renderer& renderer, bool recordReplay = false,
-                bool igPauseSmoke = false, int boardScript = 0); // 1 stats tour / 2 half board / 3 full-time boards (gates fe_igstats/fe_ighalf/fe_igscsum/fe_igflsum) / 4 highlights browser / 5 save list (gates fe_highlite_browser/fe_hilsav_list) / 6 IGTEAM management page cycle + ab-swap + hub (gate fe_mgmt_pages, §E) / 7 manmarks ratings board from igteam72 'M' key (gate fe_manmarks_grid, §E)
+                bool igPauseSmoke = false, int boardScript = 0); // 1 stats tour / 2 half board / 3 full-time boards (gates fe_igstats/fe_ighalf/fe_igscsum/fe_igflsum) / 4 highlights browser / 5 save list (gates fe_highlite_browser/fe_hilsav_list) / 6 IGTEAM management page cycle + ab-swap + hub (gate fe_mgmt_pages, §E) / 7 manmarks ratings board from igteam72 'M' key (gate fe_manmarks_grid, §E) / 8 camera popup chain C->IGCAMERA->IGCAMSEL+mode apply (gate fe_camera_pages, §G) / 9 practise pages PRACT1<->PRACT2 tab cycle + keeper toggle (gate fe_practise_pages, §G)
 
 // CLI driver: --tree DIR [--live-match-smoke N] [--out-prefix P]. Standalone wrapper that owns its
 // window + Vulkan swapchain; "skip:" exits with 2 like the other tree gates.

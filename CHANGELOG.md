@@ -6,6 +6,19 @@ project goals.
 
 ## [Unreleased]
 ### Added
+- IGCAMERA/IGCAMSEL camera popups + practise page cycle + CONTROL1 controller page (`IgBoards` kinds 16-20,
+  `--ig-camera-smoke N`, `--ig-practise-smoke N`, `--fe-control N`, gates `fe_camera_pages`, `fe_practise_pages`,
+  `fe_control_page`; MENU_PARITY §2b rows): live pause 'C' opens IGCAMERA (FC#353 CAMERA title, 5 key-assignment
+  rows FC 1468/1011/1545/1546/1104 + binding strings, flg/nmb cursor, forw/menu nav), forw opens the IGCAMSEL grid
+  (FC#379 'Camera Select', 7 camera names; Enter applies a MatchCamera mode, evidence "igcam: camera sideline").
+  Pause 'P' opens PRACT1 over the live frame (FC#1249 'Number of Players' stepper via INGAME.FSH bt4n/bt5n art,
+  User/CPU Keeper rows FC 1920/374 + On/Off 1267/1263): btn-nav RIGHT tabs IGPRACT1->IGPRACT2 (page-2 option grid),
+  LEFT wraps, DOWN+Enter flips a keeper toggle, Esc opens IGPRAC1 (on/off rows). CONTROL1 rides the popup lane from
+  the options screen: composite grv*/ls*/*rs* bar art + npll/nplr nav pair, FC#258 'Attacking' ctx caption, four
+  Gravis percent bars from the exe scene-default table DAT_00632778 {80,80,80,80,65,80,1} with gold fill quads and a
+  live gamepad axis readout when a pad is open (keyboard fallback 'kbd'), tmtl/tmtr FC#4594 captions. INGAME.LAY
+  documented as a boundary: its frame is scene-handler code-drawn (raw shapes=0 legit, null.fsh placeholders).
+  Captures /tmp/wc98port-out/{cam_igcamera,cam_igcamsel,prac_igpract1,prac_igpract2,control1_fe00}.png.
 
 
 - Management grid + LOAD/SAVE list scenes (`FeFlow` FEFLOW43/41/42, `--fe-mgmt-grid N`, `--fe-load-game N`,

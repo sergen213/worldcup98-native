@@ -298,6 +298,15 @@ if(DEFINED WC98_TREE)
     # fe_manmarks_grid (§E): igteam72 'M' opens the MANMARKS ratings board over the seeded fixture: FCDB pNNN squad grid rows (shirt + name + kit swatch; row cursor pans a five-row window, sbar thumb), mm00..mm02 home-defender <-> away-forward pair captions.
     add_test(NAME fe_manmarks_grid COMMAND wc98-native --ig-manmarks-smoke 370 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/manmarks)
     set_tests_properties(fe_manmarks_grid PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "MANMARKS: shapes=[1-9]" FAIL_REGULAR_EXPRESSION "MANMARKS: shapes=0 |MANMARKS: texts=0$ ")
+    # fe_camera_pages (§G): live pause -> 'C' opens IGCAMERA (FC#353 title, 5 key-assignment rows FC 1468/1011/1545/1546/1104 + binding strings); RIGHT forw nav opens the IGCAMSEL selection grid (7 FC camera names), row cursor + Enter applies a MatchCamera mode; Esc x2 resumes.
+    add_test(NAME fe_camera_pages COMMAND wc98-native --ig-camera-smoke 360 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/cam)
+    set_tests_properties(fe_camera_pages PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "IGCAMSEL: shapes=[1-9][0-9]* texts=[1-9]" FAIL_REGULAR_EXPRESSION "IGCAMERA: shapes=0 |IGCAMSEL: shapes=0 |igcam: camera (nil|)$ ")
+    # fe_practise_pages (§G): live pause -> 'P' opens PRACT1 (FC#1249 stepper row + keeper toggles FC 1920/374, On/Off 1267/1263); btn-nav RIGHT tabs IGPRACT1->IGPRACT2, LEFT wraps back; DOWN+Enter flips the User Keeper row; Esc x2 resumes.
+    add_test(NAME fe_practise_pages COMMAND wc98-native --ig-practise-smoke 360 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/prac)
+    set_tests_properties(fe_practise_pages PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "IGPRACT1: shapes=[1-9][0-9]* texts=[1-9]" FAIL_REGULAR_EXPRESSION "IGPRACT1: shapes=0 |IGPRACT2: shapes=0 |IGPRAC1: shapes=0 ")
+    # fe_control_page (§H): options chain -> CONTROL1 controller page: FC#258 'Attacking' ctx caption, grv* Gravis bars from the DAT_00632778 scene-default percent table (+ live pad axis readout when a gamepad is open), npll/nplr team-mates numbers under tmtl/tmtr (FC#4594).
+    add_test(NAME fe_control_page COMMAND wc98-native --fe-control 2 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/control1)
+    set_tests_properties(fe_control_page PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "CONTROL1: shapes=[1-9][0-9]* texts=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 |texts=0$ ")
     # FEFLOW43 management grid (MENU_PARITY rows 29/30, pass13 §E): composite iNNn button chain + back
     # collage via FE/PACK/FEFLOW43; overlays paint FCDB squad rows ("#shirt name" + kit swatch on vNNN),
     # FC-bank position labels (GK=810 SW=1801 RB=1531 ... FW=751) and the aNNN icon columns from

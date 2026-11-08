@@ -22,7 +22,7 @@ All rows from the linear scan of `FUN_004479d0` **[C]**. Sites at 0x4481b5…0x4
 | 3 | 00447a32 | 0x56234c | feflow07 | 0x44a804 | 0x44ae94 | 0x44b114 | 0x44a770 | FEFLOW07.LAY | single-player match setup: team names, ball sprites, volume bars (`rb*/lb*`), qualification captions 432/433 | miss |
 | 4 | 00447a58 | 0x562358 | feflow08 | 0x44b878 | 0x44bc1c | 0x44bc9c | 0x44b858 | FEFLOW08.LAY | match/stadium select: `stad` `sare` `nslt/nsrt` (next score), `sint/wint/hint`, ball picker `mpx10` | miss |
 | 5 | 00447a7e | 0x562364 | feflow09 | 0x44c330 | 0x44c6c0 | 0x44c940 | 0x44c958 | FEFLOW09.LAY | friendly match config (8 rows × team pair, `ovr/lrp/rrp/alp/arp/arw/ctx`, "Final Match Qualifiers") | **impl** (`fe_flow_setup09`, `fe_nav_exhibition`) |
-| 6 | 00447aa4 | 0x562370 | feflow10 | 0x44d278 | 0x44d34c | 0x44d958 | — | FEFLOW10.LAY | modal confirm popup (blur/popp, ok/cancel, txt0-4) | miss |
+| 6 | 00447aa4 | 0x562370 | feflow10 | 0x44d278 | 0x44d34c | 0x44d958 | — | FEFLOW10.LAY | modal confirm popup (blur/popp, ok/cancel, txt0-4) | **impl** (popup lane: `--fe-popup feflow10`; gates `fe_popup_ok`, `fe_popup_dismiss_esc`) |
 | 7 | 00447ac3 | 0x56237c | feflow11 | 0x44d9c8 | 0x44dda0 | 0x44dfa8 (thunk→`FUN_0044a210`) | — | FEFLOW11.LAY | World-Cup team pick grid: map, big flag `tmfg`, group cells `tc/tt/ta/stf*`, scroll `sbar` | **impl** (`fe_render_tournament`, `fe_screen_capture_team`) |
 | 8 | 00447ae2 | 0x562388 | feflow13 | 0x44e440 | 0x44e578 | 0x44e580 (thunk→`FUN_0044a210`) | — | FEFLOW13.LAY | World-Cup competition config ("quit the game"/"quit world cup" buttons, same row grammar as feflow09) | cap |
 | 9 | 00447b06 | 0x562394 | feflow15 | 0x44f22c | 0x44f804 | 0x44fa7c | — | feflow15.lay | options screen, 4 tabs (`tab1-4`,`tbb1-4`,`lst1-4` = Match/Game play/Audio…, `save`/`deft`/`back`/`fwrd`) | cap (interactive **miss**) |
@@ -44,7 +44,7 @@ All rows from the linear scan of `FUN_004479d0` **[C]**. Sites at 0x4481b5…0x4
 | 25 | 00447d20 | 0x562454 | feflow33 | 0x457e68 | 0x457f8c | 0x457fa4 | 0x457e60 | FEFLOW33.LAY | two-player match config (both team names, ball shadows, volume bars) | cap |
 | 26 | 00447d46 | 0x562460 | feflow34 | 0x457fd8 | 0x45822c | 0x4582e8 | — | FEFLOW34.LAY | trivia bookmark page (pane `mttr`, prev/next buttons) | cap |
 | 27 | 00447d65 | 0x56246c | feflow35 | 0x45838c | 0x458714 | 0x45889c | — | Feflow35.lay (+ FEFLOW35.LAY board variant) | group standings table: `gpnm` group name, rows `ssn/ssp/ssw/ssd/ssl/ssf/ssa/sst`, stats buttons | **impl** (`fe_render_present`: "FE-PRESENT FEFLOW35"; `--fe-pick 35`) — uppercase board variant: cap |
-| 28 | 00447d84 | 0x562478 | feflow37 | 0x45922c | 0x4592f0 | 0x459220 | — | FEFLOW37.LAY (authored `Feflow86.lay`) | yes/no confirm popup (blur, popp, no/yes, txt×3) | miss |
+| 28 | 00447d84 | 0x562478 | feflow37 | 0x45922c | 0x4592f0 | 0x459220 | — | FEFLOW37.LAY (authored `Feflow86.lay`) | yes/no confirm popup (blur, popp, no/yes, txt×3) | **impl** (popup lane + hub quit-wedge confirm; gates `fe_popup_yesno`, `fe_popup_dismiss_enter`) |
 | 29 | 00447da3 | 0x562484 | feflow41 | 0x459420 | 0x4597ac | **0x0** | — | FEFLOW41.LAY | LOAD game list (blur, `lstb`+slider, "LOAD game" caption) | miss (port has WCT1 save slots, no scene UI) |
 | 30 | 00447dc2 | 0x562490 | feflow42 | 0x45979c | 0x4597ac | 0x459b98 | — | FEFLOW42.LAY | SAVE game list (tick/cross, `lstb`+slider) | miss |
 | 31 | 00447de1 | 0x56249c | feflow45 | 0x459d94 | 0x459df8 | 0x459e14 | — | FEFLOW45.LAY | dev test screen ("test button") | cap |
@@ -86,7 +86,7 @@ All rows from the linear scan of `FUN_004479d0` **[C]**. Sites at 0x4481b5…0x4
 
 Counts **[C]** (verified against `menu5_scenemap_windowobj.txt`): 66 SCENE rows = 55 primary registrations (#1–#55) + 11 second-pass sites in the 0x4481b5-0x4483d3 block; remap rows reuse the primary row's `#`. Unique scene names: **56** — feflow17 is registered only at site 0x4483d3 (no slot record in this scan); all other remap sites re-register scenes that carry their own primary row.
 
-Registry-internal totals: **impl** = 11 unique scenes interactive — feflow06 (main menu), 09, 11, 25, 26, 27, 35, 50, 73, 90, 91; **miss** = 6 — feflow07, 08, 10, 37, 41, 42 (no renderable lane wired: popups/scene UIs); **cap** = 39 — everything else, renderable via the `--fe-screen` lane only (includes stub scenes feflow00/feflow56 and feflow15, whose interactive option-list logic is missing).
+Registry-internal totals: **impl** = 13 unique scenes interactive — feflow06 (main menu), 09, 10, 11, 25, 26, 27, 35, 37, 50, 73, 90, 91; **miss** = 4 — feflow07, 08, 41, 42 (no renderable lane wired: scene UIs); **cap** = 39 — everything else, renderable via the `--fe-screen` lane only (includes stub scenes feflow00/feflow56 and feflow15, whose interactive option-list logic is missing).
 
 ## 2a. LAYOUTS.BIG members (101) — screen inventory
 
@@ -101,7 +101,7 @@ Source: `analysis/pass11/screen_inventory.txt` (`== MEMBER` sections; authored-p
 | FEFLOW07.LAY | 45 | single-player match setup (volume bars, balls, qualification captions 429-433) | cap |
 | FEFLOW08.LAY | 36 | stadium/match select + ball picker `mpx10`, HALF LENGTH context, next-game fields | cap |
 | FEFLOW09.LAY | 57 | friendly config rows (ovr/lrp/rrp/alp/arp/arw/ctx ×4 slots, "Final Match Qualifiers" 699) | **impl** |
-| FEFLOW10.LAY | 11 | confirm popup: blur+popp, ok×2/cancel, txt0-4 | miss (popup lane not implemented) |
+| FEFLOW10.LAY | 11 | confirm popup: blur+popp, ok×2/cancel, txt0-4 | **impl** (popup lane: composite + "Are you sure?" caption + help pane; two-button cursor, Enter/Esc close to caller) |
 | FEFLOW11.LAY | 74 | ZWCUP team pick grid (map, `tmfg` shield, group cells tc/tt/ta/stf, sbar) | **impl** |
 | FEFLOW12.LAY | 1 | null stub | cap (stub) |
 | FEFLOW13.LAY | 57 | world-cup competition config (quit-the-game variant of the row grammar) | cap |
@@ -127,7 +127,7 @@ Source: `analysis/pass11/screen_inventory.txt` (`== MEMBER` sections; authored-p
 | FEFLOW34.LAY | 18 | trivia page (`mttr` pane, prev/next sbln/sbrn) | cap |
 | FEFLOW35.LAY | 47 | knockout board variant (bar×4 hilight×2 family of feflow25 art) — distinct from lowercase `Feflow35.lay` standings | cap |
 | FEFLOW36.LAY | 1 | null stub | cap (stub) |
-| FEFLOW37.LAY | 8 | yes/no popup authored `Feflow86.lay` copy (blur, no/yes, txt×3) | miss (popup lane) |
+| FEFLOW37.LAY | 8 | yes/no popup authored `Feflow86.lay` copy (blur, no/yes, txt×3) | **impl** (popup lane; quit-confirm caption index 220 + hub 'quit' wedge wiring) |
 | FEFLOW38–40.LAY | 1 | null stubs | cap (stubs) |
 | FEFLOW41.LAY | 6 | LOAD game list: blur+overlay, "LOAD game", quit button, `lstb`+slider; caption id6="…and icons" leak | miss (no save UI scene) |
 | FEFLOW42.LAY | 7 | SAVE game list ("SAVE game", tick/cross buttons, `lstb`) | miss |
@@ -156,7 +156,7 @@ Source: `analysis/pass11/screen_inventory.txt` (`== MEMBER` sections; authored-p
 | FEFLOW83.LAY | 49 | lineups+score debug grid (scores with inc buttons) **[H]** dev | cap |
 | FEFLOW84.LAY | 60 | lineups+score grid with back/fwd — dev/debug pattern **[H]** | cap |
 | FEFLOW85.LAY | 6 | foot-test screen ("test button", `foot` full-screen shape); not in registry → FSH test **[H]** | miss (unregistered) |
-| FEFLOW86.LAY | 7 | confirm popup (txt0-2, fe09, footix; authored D:\wc98_pc…Feflow86.lay) | cap |
+| FEFLOW86.LAY | 7 | confirm popup (txt0-2, fe09, footix; authored D:\wc98_pc…Feflow86.lay) | **impl** (the shared `popp` backdrop panel painted by the popup lane; gate `fe_popup_feflow86`) |
 | FEFLOW87.LAY | 57 | controller-select grid: 4 slot overlays + controller pictures + gravis button numbers + "Num Team Mates" (4594) | cap |
 | FEFLOW88.LAY | 21 | "all time greats" page (`mtxl/mtxr` panes, titles 4311/4376) | cap |
 | FEFLOW97.LAY | 1 | null stub authored `feflow01.lay` (duplicate of #2) — the number is an authoring artifact **[H]** | cap (stub) |
@@ -190,7 +190,7 @@ Dump: `wc98-extract FE/PACK/LAYOUTS/IGLAY.BIG` → "1 files, 30 BIG members" (`/
 | IGCAMERA.LAY | 19 | camera options popup (box/typ/flg/nmb triples, menu/back/forw) | miss |
 | IGCAMSEL.LAY | 13 | camera-select list popup (menu widget) | miss |
 | IGCHAT.LAY | 16 | chat overlay: input line + `chat/cha2/cha3` display boxes (netplay) | miss |
-| IGCONSEL.LAY | 2 | confirm-OK box (`okay`) | miss |
+| IGCONSEL.LAY | 2 | confirm-OK box (`okay`) | **impl** (`--fe-popup igconsel`: INGAME.FSH btnn/btnd chrome + "OK" caption over null.fsh region placeholders; gate `fe_igconsel`; FUN_00442000 stub = dismiss-only [C]) |
 | IGFLOW86.LAY | 7 | in-game confirm popup (`fe09`, txt0-2; authored `IGflow86.lay`) — mirrors FEFLOW86 | miss |
 | IGFLSUM.LAY | 45 | full-match summary screen (typ/box stat grid) | miss |
 | IGHALF.LAY | 57 | half-time summary screen (stat grid, list widgets) | miss |
@@ -198,12 +198,12 @@ Dump: `wc98-extract FE/PACK/LAYOUTS/IGLAY.BIG` → "1 files, 30 BIG members" (`/
 | IGHILITE.LAY | 19 | highlights browser: rewd/paus/play/fast/slol/slor transport buttons, boxes | miss |
 | IGHILSAV.LAY | 22 | highlights save list (`lst1`, up/down) | miss |
 | IGMENU.LAY | 14 | in-game pause menu: box1-5/typ/flg/nmb chrome + `menu` type=42 widget, name text — the popup the port lacks (Esc quits match directly) | miss (**key parity gap**) |
-| IGMSG.LAY | 17 | message popup authored `igqueshn.lay`; ok button, lines (`bo25`) | miss |
+| IGMSG.LAY | 17 | message popup authored `igqueshn.lay`; ok button, lines (`bo25`) | miss (shares the igqueshn key FUN_00440830; renderable via capture lane) |
 | IGOPTN2.LAY | 21 | in-game options: tabs 1-4 + tab-button areas, option lists `lst1-4` type=17, back/fwrd; `textID=5`, help keys (78/81) — the ig\*optns trio lives here **[C]** captions "Match"/"Game play"/tab comments | miss |
 | IGPRAC1.LAY | 36 | practise-mode setup/stats popup | miss |
 | IGPRACT1.LAY | 37 | practise stats page (back/forw) | miss |
 | IGPRACT2.LAY | 22 | practise stats page variant | miss |
-| IGQUESHN.LAY | 20 | yes/no question popup (`okay`+`canc`, lines) | miss |
+| IGQUESHN.LAY | 20 | yes/no question popup (`okay`+`canc`, lines) | **impl** (livematch pause 'quit' row -> IGQUESHN confirm; gate `fe_igmenu`; shared key FUN_00440830 + Esc response-callback contract §33) |
 | IGSCSUM.LAY | 36 | score-summary list (lst1-3, up/down) | miss |
 | IGSTATS.LAY | 67 | in-game stats screen (stat grid ×33 texts, team columns) | miss |
 | IGTEAM72.LAY | 49 | in-game league match setup mirror of FEFLOW72 (`t100-112` igm titles, form rows) | miss |
@@ -214,7 +214,7 @@ Dump: `wc98-extract FE/PACK/LAYOUTS/IGLAY.BIG` → "1 files, 30 BIG members" (`/
 | IGTEAM80.LAY | 57 | custom-mode grid mirror (yel/red, players block, help= keys) | miss |
 | IGTEAM89.LAY | 17 | save/load menu mirror of Feflow89 (b000-b005 buttons, gofd/gobk) | miss |
 | MANMARKS.LAY | 59 | player-marker management screen (yel/red rows + players block) | miss |
-| MESG.LAY | 10 | message box yes/no authored `C:\fifa98.pc\source\FE.OLD\LAYOUTS\mesg.lay` — FIFA'98-era popup kept for in-game messages | miss |
+| MESG.LAY | 10 | message box yes/no authored `C:\fifa98.pc\source\FE.OLD\LAYOUTS\mesg.lay` — FIFA'98-era popup kept for in-game messages | cap (gate `fe_mesg`; FUN_004425e0 'yes ' payload grammar §32) |
 | ingame.lst | n/a | member name list (not a .LAY) | n/a |
 
 ## 2c. Loose FE/INGAME tree (29 .LAY + extras)
@@ -241,7 +241,7 @@ Columns: **ref** = reference captured (asset-level evidence, see rule above — 
 | In-game pause menu (IGMENU.LAY + IGQUESHN.LAY) | [C] tick=0x43FC40, tags 'gmnc'/'okay'; art FE/INGAME/INGAME.FSH bt*n/bt*d family | ✓ composite + FSH button shapes (LAY fname=null.fsh: scene installs art at init; RELEASED->*n, HILITED/PRESSED->*d) | ✓ Esc opens / closes-resume, arrows over {Resume,Quit}, Enter on quit -> IGQUESHN confirm ('quit'-tag path); sim frozen while open | ✓ `fe_igmenu` PASS "IGMENU: shapes=[1-9]" + _igmenu/_igquesn.png shots | ✗ | §4 rank 8 (runtime item captions from FC indices undecoded -> port domain {Resume,Quit}) |
 | Save/load scene UI (Feflow89 entry) | [C] LAYs + slot buttons b000..b005 (USER/SLOTnn.SAV) | ✓ FEFLOW89 composite slot list | ✓ hub fe41 wedge -> rows; Enter = WCT1 load when a file exists; Esc back | ✓ `fe_flow_saveload` PASS "FEFLOW89: shapes=[1-9]" | ✗ | §4 rank 6 (write path stays tournament-save fixture) |
 | Hub screen (Feflow06.lay, 13 wedges) + credits (feflow19 via cred wedge) | [C] §3 global-key table; buttons objecttype 6/32, help pane type=14 `help=NNN` FC captions | ✓ composite: hover/push/disabled shape states + FRAMES anim + help pane text; cursor cycles all 13 wedges (keyboard + mouse widgetHit) | ✓ fe07->friendly, fe11->team grid, fe32->practise, **fe33->feflow90 history board (+`fe91` chain to feflow91)**, quit->exit, fe15/fe41/cred -> views; fe90/fe04/fe02 disabled no-ops (documented) | ✓ `fe_hub` PASS "FEFLOW06: shapes=[1-9]" + `fe_credits` PASS "FEFLOW19: shapes=[1-9]" + `fe_history_select`/`fe_nav_history` PASS "FEFLOW90/91" | ✗ | §4 rank 10 partially landed (shootout/modem/network = no simulation in port; classic history presentation now open; repl highlights open) |
-Honest summary: **impl** = 11 registry scenes (incl. feflow90/91 history boards) + hub composite (Feflow06, 13 wedges live) + options/saveload/credits views + in-game pause (IGMENU/IGQUESHN); igoptns trio = captions lane (art proven absent §7); **cap** = all 156 layouts via the capture lane, every one asserted to render a real frame by `fe_screen_sweep` (visual only, no gate asserts pixel parity with Windows — cmp column is empty by design); in-game pack interactive = pause menu + option popups captions.
+Honest summary: **impl** = 13 registry scenes (incl. feflow90/91 history boards + shared popup lane feflow10/37) + hub composite (Feflow06, 13 wedges live) + options/saveload/credits views + in-game pause (IGMENU/IGQUESHN) + IGCONSEL box; igoptns trio = captions lane (art proven absent §7); **cap** = all 156 layouts via the capture lane, every one asserted to render a real frame by `fe_screen_sweep` (visual only, no gate asserts pixel parity with Windows — cmp column is empty by design); in-game pack interactive = pause menu + option popups captions + IG confirm boxes.
 
 ## 4. Missing features, ranked (user-reachable in the original main flow first)
 
@@ -254,7 +254,7 @@ Each entry: what's missing → RE blocker. Blockers reference handler slots §1;
 5. **Records/trivia/history bookmark family** — feflow28-31, 34, 88 (+ type=35 multitext panes). Blockers: `.TXT`/multitext resource resolver absent (bank sentinel `=TXT NOT AVAIL=` [C] FEFLOW00); ribbon/hilite screen-key painting (`HILITEDSHAPEIDON/OFF`, companion §2).
 6. **Save/load scene UI** — feflow41/42 (+57 replay-load, Feflow89 team-save menu). **[LANDED partial 2026-11-07: hub fe41 wedge -> FEFLOW89 slot list, WCT1 load on select; write path stays the tournament-save fixture.]** Port ships WCT1 slot codec with no menu surface. Blockers: window-object lazy loader `"fepack\%s.all"` path (`FUN_0047a12c`, companion §2), list box type=9 + slider painter, save-slot record parser beyond tournament slots.
 7. **League management family** — feflow72/74/75/76/79/80 (+ FEFLOW43 superseded grid, 78 popup). Blockers: kt/menu list widgets (objecttype 42/44) not in the compositor; per-row dynamic painter templates (`"tm%02d"` family exists [C] companion §5, row model for grids open); attributes +/- state machine.
-8. **In-game FE popups** — IGMENU pause menu, IGQUESHN/MESG/IGCONSEL confirm boxes, IGHALF/IGSCSUM/IGFLSUM/IGSTATS stats screens, IGHILITE/IGHILSAV highlights browser, IGTEAM72-89 mirrors. **[LANDED partial 2026-11-07: livematch Esc opens the IGMENU composite (INGAME.FSH bt*n/bt*d art), {Resume,Quit} rows, Enter quit -> IGQUESHN confirm, sim frozen while open; runtime item captions undecoded.]** Blockers: ingame scene-handler cluster (`ingame`/`igcntrol` ids); assets parsed/renderable (IGLAY dump §2b) — no format RE blocker remains, only code.
+8. **In-game FE popups** — IGMENU pause menu, IGQUESHN/MESG/IGCONSEL confirm boxes, IGHALF/IGSCSUM/IGFLSUM/IGSTATS stats screens, IGHILITE/IGHILSAV highlights browser, IGTEAM72-89 mirrors. **[LANDED partial 2026-11-07: livematch Esc opens the IGMENU composite (INGAME.FSH bt*n/bt*d art), {Resume,Quit} rows, Enter quit -> IGQUESHN confirm, sim frozen while open; runtime item captions undecoded. Confirm-box family landed same day via the shared popup lane (`--fe-popup`): FEFLOW10/37 FE modals + IGCONSEL/MESG/IGQUESHN grammar (§A null.fsh placeholders legit, INGAME.FSH btnn/btnd chrome via button->ingame alias); gates `fe_popup_ok/_yesno/_feflow86`, `fe_igconsel`, `fe_mesg`.]** Blockers: ingame scene-handler cluster (`ingame`/`igcntrol` ids); assets parsed/renderable (IGLAY dump §2b) — no format RE blocker remains, only code.
 9. **Netplay/modem family** — Feflow02/03 lobbies, FEFLOW04 (mnmcon)/FEFLOW05 (MNMSETUP)/FEFLOW14 (mnmdial), IGCHAT, FEFLOW00 net-test stubs. Blockers: whole netplay subsystem (modem + IPX code) undecoded; edit-box type=10 text input in compositor; out of LAN scope — rank last for parity goal if LAN is descoped [H].
   10. **Presentation-only leftovers** — credits feflow94, icon/key popup feflow95 (type=18 checkbox widget), classics Feflow90/91 + shootout path (Feflow06 `fe33` button), highlights (`repl`) + credits buttons on the menu hub. **[LANDED partial 2026-11-07: hub screen with all 13 wedges live; cred wedge opens feflow19; feflow95 cheats screen (rank-8 slice); fe33 wedge -> feflow90 World-Cup history board + feflow91 chain (pass 13). Remaining no-ops: fe90 shootout, fe04 modem, fe02 network — the port has no simulation of those modes; feflow94 roll = capture lane only.]** Blockers: tick decode pending.
 11. **Internal/debug-only** — feflow00/17/45/83/84/93, FEFLOW52/16 lineups, FEFLOW85 foot test, 26 stub members: no parity requirement; keep capture-lane coverage only.
@@ -264,15 +264,15 @@ Each entry: what's missing → RE blocker. Blockers reference handler slots §1;
 - SCENE registry rows: **66** (`grep -c "^SCENE "` on `menu5_scenemap_windowobj.txt`); unique scene names **56**; 55 primary rows + 11 second-pass sites (block 0x4481b5-0x4483d3).
 - LAYOUTS.BIG members: **101** (file header line 1; `grep -c "== MEMBER"` = 101) — includes `fe.lst` manifest, 32 single-widget stub members (`numobjects=1 [objects parsed: 1]`, grep count), 3 ig\*optns popups.
 - IGLAY.BIG members: **30** = 29 .LAY + `ingame.lst`; loose FE/INGAME tree: **29** `.LAY` files (+ LST/FSH/IGFLAGS); every member byte-identical to its loose-tree counterpart (`cmp -s`: 29+LST identical, diff=0).
-- Port interactive scenes (post-`65fbeda`): hub Feflow06, friendly/practise setup 09/50, team grid 11, league list 73, options feflow15, save-load Feflow89, credits feflow19, presentation boards 25/26/27/35, in-game IGMENU+IGQUESHN overlay (`app/fe_flow.cpp` + `app/livematch.cpp`; gates §3). Capture lane covers every LAYOUTS.BIG member (`--fe-screen`).
+- Port interactive scenes (post-`65fbeda`): hub Feflow06, friendly/practise setup 09/50, team grid 11, league list 73, options feflow15, save-load Feflow89, credits feflow19, presentation boards 25/26/27/35, shared popup lane (FEFLOW10 ok/cancel + FEFLOW37 yes/no: blur+popp composite, nvicons button pair, FC captions + help pane, two-slot cursor, Enter/Esc close to caller; hub 'quit' wedge opens the confirm), in-game IGMENU+IGQUESHN overlay (`app/fe_flow.cpp` + `app/livematch.cpp`; gates §3). Capture lane covers every LAYOUTS.BIG member (`--fe-screen`).
 
 ## 6. Verification sweep + functional-parity evidence (run 2026-11-07, post commit `65fbeda`)
 
 Method (goal §6): capture every screen via the proven `--fe-screen`/gate lanes, region-scan each PNG against its LAY-declared widget rectangles (`parity_cmp.py`: non-uniform pixels inside every rect = art drew; `fname=RECT fillcolour=` widgets legitimately render uniform color), compare against PAK/FSH asset sheets. Windows screenshots remain impossible on this host (Wine DirectDraw black [C]; QEMU present but Win9x guest needs licensed OS media) — reference basis stays asset-level, per goal §7 documentation rule.
 
 - Full LAYOUTS.BIG sweep (complete 101-member dump, `wc98-extract`): **100 members rendered (all incl. lowercase stubs + ig\*optns trio), 89 region-clean**. The 11 flagged are each explained [C]: FEFLOW00 dev-stub anchors; help panes in FEFLOW10/37/76/78/86/feflow95 (dynamic FC captions on hover only); INGAME raw HUD anchor widgets; FEFLOW76/78 `s001` league list rows (rank-7 painter slice, in progress); igoptns trio `ok/canc/defa` (IGICON.FSH gap, row below). Raw evidence: `/tmp/sweep-out/report.txt`.
-- Gate captures visual QA (viewed): hub (Feflow06 France '98 art + wedge rail + help-pane FC caption), options FEFLOW15 (`texts=42`, tabs tbb1-4, yellow help pane "Confirms selection and allows progression" = FC-bank stringAt), save/load Feflow89 ("Slot 0 (empty)"..`Slot 5 (empty)` bars + nav arrows), credits feflow19 (France map + stadium names + "Core Team …" caption rows), in-game pause over live match: IGMENU/HUD strip + IGQUESHN authentic prompt "Are you sure you wish to exit with points remaining?" — all region scans PASS.
-- Full suite at landing: **ctest 69/69 green** (incl. `fe_hub`, `fe_flow_options`, `fe_flow_saveload`, `fe_credits`, `fe_igmenu`, `test_fescenes` wedge-mapping pins; pre-existing FE nav gates unmodified).
+- Gate captures visual QA (viewed): hub (Feflow06 France '98 art + wedge rail + help-pane FC caption), options FEFLOW15 (`texts=42`, tabs tbb1-4, yellow help pane "Confirms selection and allows progression" = FC-bank stringAt), save/load Feflow89 ("Slot 0 (empty)"..`Slot 5 (empty)` bars + nav arrows), credits feflow19 (France map + stadium names + "Core Team …" caption rows), in-game pause over live match: IGMENU/HUD strip + IGQUESHN authentic prompt "Are you sure you wish to exit with points remaining?", popup lane captures (`/tmp/wc98port-out/pop10_fe00.png` red-italic "Are you sure?" + ok_1/canc nvicons pair + help pane stringAt(12); `pop37_fe00.png` "Are you sure you want to Quit?" (FC index 220) + yes/no pair + stringAt(13); `fes86_fe00.png` panel; `igcon_fe00.png` INGAME.FSH "OK" chrome over legit null boxes; `fesmesg_fe00.png` raw 85-line caption board) — all region scans PASS.
+- Full suite at landing: **ctest 95/95 green** (incl. `fe_hub`, `fe_flow_options`, `fe_flow_saveload`, `fe_credits`, `fe_igmenu`, `test_fescenes` wedge-mapping pins, popup lane `fe_popup_ok/_yesno/_dismiss_enter/_dismiss_esc/_feflow86`, `fe_igconsel`, `fe_mesg`; pre-existing FE nav gates unmodified).
 - Functional lanes [C]: mouse = `widgetHit` POINTS-polygon/box hit-testing wired into hub/options/save-load pointer activation (SDL LMB); keyboard = arrows/Enter/Esc per tag model (`quit`, `feNN`, 'back'/'deft'); controller = original polls legacy WINMM joystick (`joyGetNumDevs/joyGetPosEx`, Gravis/Sidewinder name tables [C] exe import scan) — port maps SDL gamepad buttons to the same arrow/Enter/Esc codes; audio = NO menu click sounds exist in the original [C AUDIO_RUNTIME], FE music .ASF loop + ambient bank already wired, options volume rows drive settings.ini + live mixer gain.
 - Resolution/timing: 640×480 virtual canvas, aspect-correct letterbox scaling (gates capture at native 640×480); animation advances on a millisecond clock (`animMs`), independent of render resolution/vsync; frame pacing per LAY FRAMES= ranges.
 - Captured IG option popups (`--fe-screen igaoptns/iggoptns/igmoptns`: shapes=5, texts=46/33/37): region scan flags `ok/canc/defa` + help pane rects **black** (mean 0) — the buttons reference cross-file art `vpath=..\ingame\ fname=igicon.fsh sname=chck`; ScreenArt resolves FEFLOW*.fsh/FE PAKs (+INGAME.FSH via vpath-stem fix), IGICON.FSH not in the set → shape missing. Fix = add `..\ingame\igicon.fsh` to the art resolution list (small, queued with rank-8 slice).

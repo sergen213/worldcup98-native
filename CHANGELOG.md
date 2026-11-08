@@ -7,6 +7,7 @@ project goals.
 ## [Unreleased]
 ### Added
 
+- Shared popup OK/CANCEL + YES/NO lane (`FeFlow::openPopup/movePopup/drawPopup`, `--fe-popup NAME`): FEFLOW10 (ok_1/canc) and FEFLOW37 (no/yes) modal confirms composite the blur backdrop (`FE/GLOBAL/BLUR.FSH`) + shared popp panel (`Feflow86.lay#back`, 368x230 @136,140) + the two-slot nvicons button pair with hover shape-chain; runtime captions resolve per focused widget `textID` via the FC bank ("Are you sure?", "Are you sure you want to Quit?" = index 220) and the help pane shows each button's `help=NNN` string. Two-axis cursor cycles the pair; Enter confirms / Esc cancels — both dismiss back to the caller (original: response callback + 'okcanc1'/'yesno' payload, FUN_00459220/FUN_004592f0). Hub 'quit' wedge now opens the FEFLOW37 confirm before exiting. IG boxes: `--fe-popup igconsel` paints the INGAME.FSH btnn/btnd "OK" chrome over the legit null.fsh region placeholders (§A rule); MESG/IGQUESHN share FUN_00440830/FUN_004425e0 grammar (livematch pause already wires IGQUESHN). Gates `fe_popup_ok`, `fe_popup_yesno`, `fe_popup_dismiss_enter`, `fe_popup_dismiss_esc`, `fe_popup_feflow86`, `fe_igconsel`, `fe_mesg`; evidence analysis/pass13/POPUP_LANE_SPEC.md.
 - `ScreenArt` stem alias `button -> ingame`: IG popup layouts reference `..\global\button.fsh`, which exists nowhere on
   disk; the referenced tags (`btnn/btnd/btn2`) live in `FE/INGAME/INGAME.FSH`. IGSTATS-family buttons now render
   (raw lane shapes=0 -> 4). Evidence: analysis/pass13/IG_FAMILIES_SPEC.md.

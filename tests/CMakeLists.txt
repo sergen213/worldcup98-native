@@ -218,6 +218,28 @@ if(DEFINED WC98_TREE)
     set_tests_properties(fe_history_select_1994 PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW90: shapes=[1-9][0-9]* texts=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 |texts=0 |cursors=0 ")
     add_test(NAME fe_nav_history COMMAND wc98-native --fe-nav-history 5 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/histnav)
     set_tests_properties(fe_nav_history PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW91: shapes=[1-9][0-9]* texts=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 |texts=0 |cursors=0 ")
+    # Shared popup lane (FEFLOW10/37 + IG boxes; analysis/pass13/POPUP_LANE_SPEC.md): blur+popp modal with
+    # the nvicons ok_1/canc and yes/no button pair, FC-bank runtime captions ("Are you sure you want to
+    # Quit?", index 220) + help pane (button help= indices 12/13). Scripted-key gates: two-axis cursor over
+    # the pair; Enter/Esc close to the caller scene (dismiss proof frames capture hub FEFLOW06 restored).
+    add_test(NAME fe_popup_ok COMMAND wc98-native --fe-popup feflow10 --fe-popup-keys 1 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/popok)
+    set_tests_properties(fe_popup_ok PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW10: shapes=[1-9][0-9]* texts=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 |texts=0 |cursors=0 ")
+    add_test(NAME fe_popup_yesno COMMAND wc98-native --fe-popup feflow37 --fe-popup-keys 2 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/popyes)
+    set_tests_properties(fe_popup_yesno PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW37: shapes=[1-9][0-9]* texts=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 |texts=0 |cursors=0 ")
+    add_test(NAME fe_popup_dismiss_enter COMMAND wc98-native --fe-popup feflow37 --fe-popup-keys 2 --fe-popup-enter --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/popdis)
+    set_tests_properties(fe_popup_dismiss_enter PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW06: shapes=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 |cursors=0 ")
+    add_test(NAME fe_popup_dismiss_esc COMMAND wc98-native --fe-popup feflow10 --fe-popup-back --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/popesc)
+    set_tests_properties(fe_popup_dismiss_esc PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW06: shapes=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 |cursors=0 ")
+    # Raw panel + IG-box captures (--fe-screen pattern gates; raw members legitimately paint 0 texts/0
+    # shapes — the full trio FAIL regex applies to the interactive lane above). fe_igconsel runs through
+    # --fe-popup: the 'okay' box paints INGAME.FSH btnn/btnd chrome + "OK" caption over null.fsh region
+    # placeholders (legit per IG_FAMILIES_SPEC §A), so shapes/texts>0 are provable there.
+    add_test(NAME fe_popup_feflow86 COMMAND wc98-native --fe-screen FEFLOW86 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/poppanel)
+    set_tests_properties(fe_popup_feflow86 PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" FAIL_REGULAR_EXPRESSION "FEFLOW86: shapes=0 ")
+    add_test(NAME fe_igconsel COMMAND wc98-native --fe-popup igconsel --fe-popup-keys 1 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/igconsel)
+    set_tests_properties(fe_igconsel PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "igconsel: shapes=[1-9][0-9]* texts=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 |texts=0 |cursors=0 ")
+    add_test(NAME fe_mesg COMMAND wc98-native --fe-screen mesg --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/mesg)
+    set_tests_properties(fe_mesg PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "mesg: .*texts=[1-9]" FAIL_REGULAR_EXPRESSION "texts=0 |cursors=0 ")
     # In-game option popups (igaoptns/iggoptns/igmoptns, analysis/pass13/IGOPTNS_ART.md): captions lane —
     # ROWS tuples + tab/help FC-bank captions painted; ok/canc/defa chck art is PROVEN ABSENT on this media,
     # so the widgets render as text captions (documented legit-missing slots), never invented art.

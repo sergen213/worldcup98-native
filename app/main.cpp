@@ -107,6 +107,9 @@ int run(int argc, char** argv) {
     int feHistoryYear = -1; // --fe-history N: open feflow90 (world-cup history board) at year row N (pass 13)
     int feNavHistory = -1;  // --fe-nav-history N: open feflow90, move year cursor to N, Enter -> feflow91 chain
     int feIgMode = 0;       // --fe-igoptns a|g|m: open the in-game option popup (igaoptns/iggoptns/igmoptns)
+    std::string fePopupName; // --fe-popup NAME: shared popup lane gate (feflow10/37, igconsel/mesg/Feflow86)
+    int fePopupKeys = 0;     // --fe-popup-keys N: scripted button-cursor presses before the capture frame
+    bool fePopupEnter = false, fePopupBack = false; // --fe-popup-enter / --fe-popup-back: dismiss proof frames
     std::string feScreenName; // --fe-screen NAME: arbitrary LAYOUTS.BIG member capture lane ("make all menus 1:1")
     bool feOptions = false, feSaveLoad = false, feCredits = false; // --fe-options/--fe-saveload/--fe-credits: open the hub scene-graph views (Phase 2/3/4 gates)
     std::string lang = "eng"; // --lang CODE: FC*.BIN UI-string bank (registry Language key)
@@ -148,6 +151,10 @@ int run(int argc, char** argv) {
             feIgMode = m == "a" ? 1 : m == "g" ? 2 : m == "m" ? 3 : 0;
             if (!feIgMode) throw std::invalid_argument("--fe-igoptns needs a|g|m");
         }
+        else if (a == "--fe-popup") { feMode = true, smokeFrames = 1, fePopupName = next(); } // popup-lane gate frame; NAME = feflow10|ok, feflow37|yesno, igconsel, mesg, feflow86
+        else if (a == "--fe-popup-keys") { fePopupKeys = std::stoi(next()); }                 // two-axis button cursor moves before the frame
+        else if (a == "--fe-popup-enter") { fePopupEnter = true; }                            // Enter on the focused button: closes to caller (payload semantics)
+        else if (a == "--fe-popup-back") { fePopupBack = true; }                              // Esc: cancel branch closes to caller
         else if (a == "--fe-screen") { feMode = true, smokeFrames = 1, feScreenName = next(); } // default capture 1 frame; --fe-smoke N overrides
         else if (a == "--fe-options")  { feMode = true, smokeFrames = 1, feOptions = true; }  // FEFLOW15 options view capture gate
         else if (a == "--fe-saveload") { feMode = true, smokeFrames = 1, feSaveLoad = true; } // Feflow89 slot-list capture gate
@@ -271,6 +278,14 @@ int run(int argc, char** argv) {
         }
         if (fe && feIgMode) { // --fe-igoptns gate frame: in-game option popup captions lane
             if (!fe->openIgOptns(feIgMode)) std::fprintf(stderr, "fe: igoptns popup unavailable\n");
+        }
+        if (fe && !fePopupName.empty()) { // --fe-popup NAME gate frame: popup lane over the hub (caller scene)
+            if (!fe->openPopup(fePopupName)) std::fprintf(stderr, "fe: popup %s unavailable\n", fePopupName.c_str());
+            else {
+                for (int i = 0; i < fePopupKeys; ++i) fe->move(+1); // button cursor cycle ('ok'/'cancel', 'yes'/'no')
+                if (fePopupEnter) fe->enter();                      // confirm/cancel both close to the caller -> hub frame
+                if (fePopupBack) fe->back();                        // Esc = cancel branch closes to the caller
+            }
         }
         if (fe && feOptions) fe->openOptions();   // --fe-options gate frame: FEFLOW15 composite
         if (fe && feSaveLoad) fe->openSaveLoad(); // --fe-saveload gate frame: Feflow89 slot list
@@ -429,6 +444,7 @@ int main(int argc, char** argv) {
                       " [--fe] [--tree DIR] [--out-prefix P] [--fe-smoke N] [--tournament-saveload N] [--fe-pick N]"
                       " [--fe-nav exhibition|league|tournament|tournament-load|practise] [--fe-team] [--fe-setup N] [--fe-league] [--fe-league-cfg N] [--fe-screen NAME]"
                       " [--fe-wc-cfg N]"
+                      " [--fe-popup NAME] [--fe-popup-keys N] [--fe-popup-enter|--fe-popup-back]"
                       " [--fe-cheats N]"
                       " [--fe-options|--fe-saveload|--fe-credits]"
                       " [--record-replay] [--lang eng|fre|ger|ita|spa|dut|dan|swe|jap]"

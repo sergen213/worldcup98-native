@@ -48,6 +48,7 @@ public:
     // save-load entry / "FEFLOW19" credits).
     [[nodiscard]] const char* screenName() const {
         return useCapture_          ? captureName_.c_str()
+               : popKind_           ? popName_.c_str()
                : leagueCfg_         ? cfgName_.c_str()
                : wcCfg_             ? cfgName_.c_str()
                : cheatsView_        ? "FEFLOW95"
@@ -214,6 +215,19 @@ public:
     [[nodiscard]] int historyYearIndex() const { return histYear_; }
     void moveHistory(int dir); // 'ysla'/'yslc' -1, 'ysrb' +1 bounded year cursor [C] FUN_00468728
     presentation::FeDrawStats drawHistory(render::SpriteBatch& ui) const;
+    // ---- Shared popup lane (FEFLOW10 ok/canc + FEFLOW37 yes/no + IG boxes; analysis/pass13/POPUP_LANE_SPEC.md) --
+    // The popups share one grammar: blur blackout (FE/GLOBAL/BLUR.FSH) + `popp` panel (feflow86.fsh#back,
+    // 368x230 @136,140) + two nvicons buttons (crs1/crs5 = cancel/no, tic1/tic5 = ok/yes) + txtNN captions.
+    // Handler evidence: feflow37 draw FUN_004592f0 label-setter x3 (FUN_004592d4) + popp page flip; the
+    // standard widget payload events carry names `ok`/`cancel`, `no`/`yes` (+ Esc = cancel branch, §25-29).
+    // IGCONSEL 'okay' box (FUN_00442000 stub: dismiss-only) paints INGAME.FSH btnn/btnd chrome on the
+    // widget geometry (button.fsh stem alias); null.fsh region boxes are legit placeholders (§A rule).
+    bool openPopup(std::string_view name, bool quitContext = false); // --fe-popup NAME / hub 'quit' wedge; false = layout absent
+    [[nodiscard]] bool onPopup() const { return popKind_ != 0; }     // popup shown over its caller scene
+    void movePopup(int dir);      // arrows cycle the two-button slot pair [C] payload names ok/cancel, yes/no
+    void activatePopup();         // Enter: confirm + cancel both close to the caller (payload semantics)
+    presentation::FeDrawStats drawPopup(render::SpriteBatch& ui) const; // composite + captions + help pane + chrome
+
 
     // ---- In-game option popups igaoptns/iggoptns/igmoptns (analysis/pass13/IGOPTNS_ART.md) --------
     // Captions lane: the trio ships list rows as inline `rows=N, tuples` data (FC-bank caption ids);
@@ -334,6 +348,18 @@ public:
     int histScreen_ = 0;             // active board: 90 feflow90, 91 continuation, 0 not shown
     int histYear_ = 0;               // year cursor over kWcFinals (init clamp [C] FUN_004688e8)
     std::vector<std::string> hist90Visible_, hist91Visible_;
+    // Shared popup lane (public API block above): FEFLOW10 ok_1/canc + FEFLOW37 yes/no loaded eagerly,
+    // IGCONSEL/MESG/Feflow86 lazy-loaded members for the capture-style gates. The two-button cursor
+    // domain is [canc|no, ok_1|yes]; popSel_ 0 = cancel slot (engine default focus [H]), 1 = confirm.
+    formats::ScreenLayout pop10_, pop37_;
+    bool havePop10_ = false, havePop37_ = false;
+    formats::ScreenLayout popIg_;      // igconsel/mesg/Feflow86 lazy member (openPopup)
+    int popKind_ = 0;                  // 10/37 FE popup, -42 igconsel, -43 mesg, -86 Feflow86 panel demo, 0 none
+    std::string popName_;              // gate evidence label ("FEFLOW10"/"FEFLOW37"/"igconsel"/...)
+    int popSel_ = 0;                   // focused button slot (two-axis cursor)
+    bool popQuitCtx_ = false;          // hub 'quit' wedge context: confirm -> quitRequested_ (exit confirm)
+    std::vector<std::string> popVisible_; // composite whitelist for the active popup
+    [[nodiscard]] const char* popupButtonName(int slot) const; // focused-slot widget name for the active popup
     [[nodiscard]] std::string wcTeamName(std::uint16_t id, const char* fallback) const; // FCDB fullName -> literal
     [[nodiscard]] std::string wcFlagFile(std::uint16_t id) const;                       // FNNN (record index), "" = no record
     // One caption through FeText at widget geometry, centred inside the widget box (the alignment=3

@@ -198,6 +198,22 @@ FeFlow::FeFlow(render::Renderer& r, fs::path tree, std::string lang) : tree_(std
                               "alp0", "alp1", "alp2", "alp3", "arp0", "arp1", "arp2", "arp3"};
         }
     }
+    // Shared popup lane (analysis/pass13/POPUP_LANE_SPEC.md): FEFLOW10.LAY = the generic ok/cancel modal,
+    // FEFLOW37.LAY = the yes/no confirm family (quit prompts). Both share popp=feflow86.fsh#back + blur.
+    {
+        const char* kSpec[] = {"FEFLOW10.LAY", "FEFLOW37.LAY"};
+        formats::ScreenLayout* tgt[] = {&pop10_, &pop37_};
+        bool* have[] = {&havePop10_, &havePop37_};
+        for (int i = 0; i < 2; ++i) {
+            try {
+                fs::path d;
+                const std::string t = presentation::readLayout((tree_ / "FE/PACK/LAYOUTS/LAYOUTS.BIG").string() + "@" + kSpec[i], d);
+                *tgt[i] = formats::ScreenLayout::build(std::string(kSpec[i]).substr(0, 8), formats::LayoutDocument::parse(std::string_view(t)), nullptr, nullptr, "PC");
+                *have[i] = true;
+            } catch (const std::exception&) { // popup art absent on this tree: that box stays closed
+            }
+        }
+    }
     // In-game option popups igaoptns/iggoptns/igmoptns (analysis/pass13/IGOPTNS_ART.md): captions lane.
     {
         const char* kSpec[] = {"igaoptns.lay", "iggoptns.lay", "igmoptns.lay"};
@@ -395,6 +411,7 @@ FeDrawStats FeFlow::drawCaptureScreen(render::SpriteBatch& ui) const {
 
 FeDrawStats FeFlow::drawCurrent(render::SpriteBatch& ui) const {
     if (useCapture_) return drawCaptureScreen(ui); // --fe-screen lane replaces the menu composite
+    if (popKind_) return drawPopup(ui); // shared popup lane over the caller scene (pass 13)
     if (teamScreen_) return drawTeams(ui);
     if (setupScreen_) return drawSetup(ui); // FEFLOW09/50 friendly/practise config screens
     if (leagueCfg_) return drawLeagueCfg(ui); // FEFLOW72/74/75/76/79/80 config family
@@ -558,6 +575,7 @@ void FeFlow::drawCursor(render::SpriteBatch& ui, presentation::FeDrawStats& st) 
 // alp{n} pane (the LAY's HILITECOLOUR analogue), the option index is kept per row for the match
 // model to consume when the config plumbing lands.
 void FeFlow::move(int delta) {
+    if (popKind_) { movePopup(delta); return; } // two-button cursor (ok/cancel, yes/no payload pair)
     if (wcCfg_) { // keyloop_notes.txt/wcfamily_notes.txt: 18 = tmNN row cursor [H]; 23/24 strk/stsc button
         // focus (engine mouse-only, port maps up/down to the two buttons); 35 = ssnN table rows.
         if (wcCfg_ == 18) wcRow_ = std::clamp(wcRow_ + delta, 0, 31);
@@ -656,6 +674,7 @@ void FeFlow::adjustValue(int dir) {
 // handler per-wedge tag compares (fe11 @0x449e29, fe07 @0x449e30, fe32 @0x449ce5, repl @0x449c01,
 // cred @0x449c11). Enter on hub = the wedge tag's scene edge (hubActivate below).
 bool FeFlow::enter() {
+    if (popKind_) { activatePopup(); return false; } // Enter = the focused button's payload event -> close to caller
     if (wcCfg_) { // Enter = the scenes' button press: feflow18 'rand' refreshes the draw (+ counter, cap 99)
         if (wcCfg_ == 18 && wcRandCount_ < 99) ++wcRandCount_;
         return false; // 23/24 strk/stsc + 35 stats-view: no launch edge from these boards
@@ -711,6 +730,7 @@ bool FeFlow::enter() {
 }
 
 void FeFlow::back() {
+    if (popKind_) { popKind_ = 0; return; } // Esc closes the popup to its caller scene (the 'cancel' branch)
     // Esc = the scenes' 'back'/'quit' widget tags (feflow15 tag 'back' @0x44f29a, feflow41 family
     // 'quit' @0x4595cc): every view closes to its parent; the hub has no parent scene.
     if (optsView_) { optsView_ = false; return; }
@@ -1479,7 +1499,14 @@ int FeFlow::hubActivate(int index) {
         if (haveSetup_) { setupScreen_ = true; setupPractise_ = true; return -1; } // feflow50 config first
         return int(FeEntry::Practise);
     }
-    if (n == "quit") { quitRequested_ = true; return -1; } // clean app exit (main.cpp loop check)
+    if (n == "quit") { // the Windows exit flow answers the 'quit' wedge with a yes/no confirm box
+        // (POPUP_LANE_SPEC.md "wire into existing confirm paths"): FEFLOW37 opens over the hub; Enter
+        // on yes sets quitRequested_ (main.cpp loop check), canc/Esc returns to the hub. No popup art
+        // on this tree: keep the pre-slice direct exit.
+        if ((havePop37_ && openPopup("feflow37", true)) || (havePop10_ && openPopup("feflow10", true))) return -1;
+        quitRequested_ = true;
+        return -1;
+    }
     if (n == "fe15") { openOptions(); return -1; }
     if (n == "fe41") { openSaveLoad(); return -1; }
     if (n == "cred") { openCredits(); return -1; }
@@ -1491,6 +1518,16 @@ int FeFlow::hubActivate(int index) {
 
 int FeFlow::pointerActivate() {
     using presentation::widgetHit;
+    if (popKind_) { // popup buttons under the pointer: focus + activate (payload name parity)
+        const formats::ScreenLayout& sc = popKind_ == 37 ? pop37_ : popKind_ == 10 ? pop10_ : popIg_;
+        for (int slot = 0; slot < 2; ++slot) {
+            const char* n = popupButtonName(slot);
+            if (!n) continue;
+            const formats::LayoutObject* o = sc.object(n);
+            if (o && widgetHit(*o, float(ptrX_), float(ptrY_))) { popSel_ = slot; activatePopup(); return -1; }
+        }
+        return -1; // clicks inside the popup panel never launch a match
+    }
     if (histScreen_) { // year buttons + nav icons (LAY widgets, help= panes); feflow91 fe07 -> back
         const formats::ScreenLayout& sc = histScreen_ == 90 ? hist90_ : hist91_;
         for (const char* n : {"yslb", "ysrb"}) {
@@ -1952,6 +1989,118 @@ FeDrawStats FeFlow::drawHistory(render::SpriteBatch& ui) const {
     drawCursor(ui, st);
     return st;
 }
+// ---- Shared popup lane (FEFLOW10/37 + IG boxes; analysis/pass13/POPUP_LANE_SPEC.md) -----------------
+// Widget grammar (/tmp/layd90 FEFLOW10/FEFLOW37 dumps): blur blackout (FE/GLOBAL/BLUR.FSH#blur, 640x480)
+// + popp panel feflow86.fsh#back 368x230 @136,140 + nvicons button pair: cancel = crs1/crs5 (help=13),
+// confirm = tic1/tic5 (help=12) — the composite hover path paints HILITEDSHAPE. txtNN slots ship textid=0;
+// captions are installed at runtime by callers (feflow37 label setter FUN_004592d4 x3, §27), so the FC-bank
+// strings paint as overlays. IGCONSEL/MESG: null.fsh region boxes legit placeholders (§A) + objecttype-45
+// buttons painting INGAME.FSH chrome over their geometry (button.fsh stem alias, IGMENU pattern).
+
+const char* FeFlow::popupButtonName(int slot) const {
+    switch (popKind_) {
+        case 10: return slot == 0 ? "canc" : "ok_1"; // ok_2 = the standalone-ok context, not painted [H]
+        case 37: return slot == 0 ? "no" : "yes";
+        case -42: return "okay";                     // IGCONSEL dismiss-only box (FUN_00442000 stub)
+        default: return "";                          // mesg/Feflow86 demo lanes carry no gated cursor pair
+    }
+}
+
+bool FeFlow::openPopup(std::string_view name, bool quitContext) {
+    std::string n(name);
+    std::transform(n.begin(), n.end(), n.begin(), [](unsigned char c) { return char(std::tolower(c)); });
+    popSel_ = 0;        // engine default focus: the cancel side [H]
+    popQuitCtx_ = quitContext;
+    if (n == "feflow10" || n == "ok") {
+        if (!havePop10_) { lastError_ = "FEFLOW10.LAY is absent from this tree"; return false; }
+        popKind_ = 10; popName_ = "FEFLOW10";
+        popVisible_ = {"blur", "popp", "canc", "ok_1", "help"}; // txt slots = runtime captions (overlay); ok_2 hidden
+        return true;
+    }
+    if (n == "feflow37" || n == "yesno") {
+        if (!havePop37_) { lastError_ = "FEFLOW37.LAY is absent from this tree"; return false; }
+        popKind_ = 37; popName_ = "FEFLOW37";
+        popVisible_ = {"blur", "popp", "no", "yes", "help"}; // same grammar, yes/no payload pair [C] §29
+        return true;
+    }
+    static constexpr std::pair<const char*, int> kKnown[] = {{"igconsel", -42}, {"mesg", -43}, {"feflow86", -86}};
+    for (auto [nm, kind] : kKnown) {
+        if (n != nm) continue;
+        // Lazy member load: same search order as the capture lane (loadCaptureScreen).
+        static constexpr std::array<const char*, 2> archives = {"LAYOUTS.BIG", "IGLAY.BIG"};
+        try {
+            fs::path d;
+            std::string text;
+            bool found = false;
+            for (const char* arc : archives) {
+                try {
+                    text = presentation::readLayout((tree_ / "FE/PACK/LAYOUTS" / arc).string() + "@" + n + ".LAY", d);
+                    found = true;
+                    break;
+                } catch (const std::exception&) { /* member absent in this archive: try the next */ }
+            }
+            if (!found) {
+                const fs::path loose = wc98::findCaseInsensitive(tree_, "FE/INGAME/" + n + ".LAY");
+                if (loose.empty()) throw std::runtime_error(n + ".LAY: no such layout member/file");
+                text = presentation::readLayout(loose.string(), d);
+            }
+            popIg_ = formats::ScreenLayout::build(n, formats::LayoutDocument::parse(std::string_view(text)), nullptr, nullptr, "PC");
+        } catch (const std::exception& e) { lastError_ = std::string(name) + ": " + e.what(); return false; }
+        popKind_ = kind;
+        popName_ = n == "feflow86" ? "FEFLOW86" : n; // gate evidence label (raw member name stays lowercase)
+        popVisible_.clear(); // raw members: composite() paints every shown() object (capture-lane rule)
+        return true;
+    }
+    lastError_ = "unknown popup screen '" + std::string(name) + "'";
+    return false;
+}
+
+void FeFlow::movePopup(int dir) {
+    if (!popKind_) return;
+    popSel_ = (popSel_ + dir + 2) % 2; // the two-slot pair wraps ('ok'/'cancel', 'yes'/'no' payloads [C])
+}
+
+void FeFlow::activatePopup() {
+    if (!popKind_) return;
+    // Payload semantics [C] §29: `ok`/`yes` confirm, `cancel`/`no` dismiss. Both branches close to the
+    // caller scene (the box is modal chrome, not a view chain); in the hub 'quit'-wedge context the
+    // confirm side requests the app exit — FEFLOW37 is that quit-confirm box.
+    if (popSel_ == 1 && popQuitCtx_) quitRequested_ = true;
+    popKind_ = 0;
+}
+
+FeDrawStats FeFlow::drawPopup(render::SpriteBatch& ui) const {
+    using namespace presentation;
+    const formats::ScreenLayout* sc = popKind_ == 37 ? &pop37_ : popKind_ == 10 ? &pop10_ : &popIg_;
+    auto* vis = popVisible_.empty() ? nullptr : const_cast<std::vector<std::string>*>(&popVisible_); // raw member lane: paint all shown()
+    FeUiState uist;
+    if (const char* bn = popupButtonName(popSel_); bn && *bn) uist.hover = bn; // keyboard cursor paints HILITEDSHAPE
+    uist.animMs = animTicks_ * 16u;                                              // FRAMES=46,49/51,54 button anim ranges
+    FeDrawStats st = composite(*sc, ui, const_cast<ScreenArt&>(art_), text_.get(), vis);
+    if (popKind_ == 10 || popKind_ == 37) {
+        // Runtime caption family: FEFLOW37 = the quit-confirm prompts ("Are you sure you want to Quit?",
+        // FC index 220 — the caller strings 213..232 are this popup's whole installed set); FEFLOW10 is
+        // the generic modal, painted with "Are you sure?" (index 232) [H].
+        if (text_ && text_->ready()) {
+            const std::string_view cap = text_->stringAt(popKind_ == 37 ? 220 : 232);
+            if (const formats::LayoutObject* o = sc->object("txt0")) st.texts += paintCaption(*o, cap, ui);
+            drawHelpPane(*sc, ui, st, popupButtonName(popSel_)); // focused button's help= index (12/13) [C]
+        }
+    } else if (popKind_ == -42) {
+        // IGCONSEL 'okay' box: shape chain over the widget geometry; RELEASED=btnn, HILITED/PUSHED=btnd
+        // (INGAME.FSH tags via the button.fsh stem alias — IGMENU row pattern, INGAME FSH scan §85-91).
+        if (const formats::LayoutObject* o = sc->object("okay")) {
+            const std::string vpath = o->prop("vpath") ? *o->prop("vpath") : std::string("..\\global\\");
+            const ScreenArt::Shape sh = const_cast<ScreenArt&>(art_).shape(vpath, "INGAME.FSH", popSel_ == 1 ? "btnd" : "btnn", -1);
+            if (sh.tex) ui.draw(sh.tex, {float(o->x), float(o->y), float(sh.w), float(sh.h)}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu), ++st.shapes;
+            else ++st.missing;
+            if (text_ && text_->ready()) st.texts += paintCaption(*o, text_->stringAt(1256), ui); // FC bank "OK" (index 1256)
+        }
+    }
+    drawCursor(ui, st);
+    return st;
+}
+
 
 // ---- In-game option popups igaoptns/iggoptns/igmoptns (analysis/pass13/IGOPTNS_ART.md) -----------
 // Inline `rows=N, label,mode,count,v...` tuples (prop ROWS): FC-bank caption ids per row + values.

@@ -195,6 +195,13 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
   (`analysis/pass12speech/SPEECH_PRELOAD_TABLE.md`), tournament schedule generation closed +
   ZWCUP/ZINTER triple semantics validated as pre-'98 finals H2H snapshot
   (`analysis/pass12tourn/{SCHEDULE_GEN,ZWCUP_TRIPLE}.md`; TOURNAMENT_MODULE §5 items 3/4 closed).
+- Landed (2026-11-08, pass-12sci): task scheduler model decoded (`FUN_004a0e50` frame dispatch,
+  `FUN_004a0d80` tick; rec+8 handler index, flags bit2/bit4) - the ".SCI runtime-install" premise
+  FALSIFIED: tabA/tabB handler tables are static image data (tabB = 30 goal/win/loss/inc vectors),
+  .SCI descriptor array maps module ids -> tabB idx; all 30 handlers decompiled
+  (`analysis/pass12sci/TASK_HANDLERS.md`; GAMEPLAY_PARITY §5.1 re-ranked, no Win9x-env blocker).
+- Landed (2026-11-08): commentary per-event preload + scheduler parity models wired
+  (`app/commentary` SpeechPreload/EventDispatch/Scheduler; gates a-d in test_commentary).
 
 ## Known limitations
 

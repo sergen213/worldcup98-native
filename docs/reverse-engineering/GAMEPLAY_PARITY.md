@@ -135,12 +135,14 @@ transitions, D receiver-capture contest, M AI spacing realism (qualitative vs or
 
 ## 5. Open differences & ranked next steps
 
-1. **.SCI bytecode VM unparsed = the AI script layer.** The per-scene task-handler tables
-   (0x57fbc8/0x57fc40) are zero-filled BSS at load; runtime captures under Wine show them byte-
-   identical to the image in all observed states (never patched), i.e. handler contents are installed
-   by a mechanism not yet found - GHIDRA_PASS6_AI.md, WINE_ORACLE_WC98.md. Rank 1: blocks true AI
-   parity beyond the reconstruction's data-driven layer; needs Win9x-era env debugger as the only
-   remaining route (SQF EULZ precedent, STATUS §Open).
+1. **.SCI layer - RE-RANKED (pass-12sci)**: the "runtime-installed task tables" premise is
+   FALSIFIED: `tabA @0x57FBC8` = stub vectors, `tabB @0x57FC40` = 30 static handler pointers
+   (goal/win/loss/inc/anc modules per descriptor map `{name,id,idx}`, array VA 0x580A9C);
+   scheduler tick/dispatch = `FUN_004a0d80/0x4a0e50` (rec+8 index, flags bit2/bit4). All 30
+   handlers decompiled (`analysis/pass12sci/TASK_HANDLERS.md`, `sci4.txt`). Wine captures were
+   byte-identical because the tables are never patched. Remaining rank-1 work: `.SCI` payload
+   format parse + semantic diff of the handler family vs port sim (match-flow/AI layer), now
+   statically tractable - no Win9x-env blocker.
 2. ~~Per-handler WC98 vs FIFA-99 decompile diff audit~~ **CLOSED** (pass 11): the code half is
    now audited handler-by-handler - verdict table + ranked real differences in
    HANDLER_DIFF_AUDIT.md (`analysis/pass11/handlers/` evidence). The data-table half was already

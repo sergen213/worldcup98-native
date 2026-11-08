@@ -158,8 +158,12 @@ transitions, D receiver-capture contest, M AI spacing realism (qualitative vs or
 4. ~~Difficulty behavior verification~~ **CLOSED**: `scenarioDifficulty` (`test_sim_scenarios`)
    asserts the exact ctrl1f4/ctrl1f8/ctrl1fc triples of `Team_setControlLevels_45159C` at aiAssist
    0 vs 2 and that consumers follow (claim range kRange[ctrl1f8], fatigue predicate, keeper ctrl1fc).
-5. **Referee positioning / advantage play**: exe-side RE map does not exist; whistle/clock grammar
-   ported [C]. Rank 5: needs a dedicated Ghidra pass on the referee task handler.
+5. **Referee positioning / advantage play**: exe-side string map (pass-12 refr): `refCard`
+   descriptor VA 0x5712BC raw 0x16F914 = {name 'refCard', id=1, alias ptr 'card'} (isolated
+   record; card-event registration), `RefCus` texture-pool tag consumed by tile-allocator
+   `FUN_0040e748` (`%s_T_d_P_%d_%d`, pool `DAT_0059e040`); whistle/clock grammar ported [C].
+   No referee handler code is statically reachable - task tables install at runtime (.SCI layer,
+   item 1), so positioning RE stays blocked on the same blocker; rank 5.
 6. **Kickoff first-second pose** (M7 scenario note: 1-2 s of "poses" at kickoff): documented as the
    faithful data path in docs/STATUS.md "Known limitations" (l.195-206) - no work expected; keep for
    cosmetic A/B once capture lane revives.

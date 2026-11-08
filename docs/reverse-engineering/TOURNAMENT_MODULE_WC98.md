@@ -209,8 +209,15 @@ struct StandingsRow {            // app-side (binary block NOT located, §2.4)
    (goals, venue-flag, goals) validated on Brazil–Scotland (2-1, '82/'98 identical line) and
    Italy–Chile (1-1); data = finals H2H history snapshot ~pre-'98 (all 1998 group fixtures are
    zero-recorded), ids map via FCDB.DBI + FCDB_ENG.DBI cross-index.
-5. **Knockout advancement writes**: node graph identified (§2.6) but per-round winner propagation
-   function chain (0x48f6xx–0x490xxx slot accessors) not individually decompiled; bracket record
-   numeric fields between +0x1C..+0xFF unproven.
+5. **Knockout advancement writes**: node graph identified (§2.6); accessor chain decompiled
+   (pass-12 knock, `/tmp/tourn_knock1.txt`): `FUN_0048f6a4/0x48fcc0` are post-event QUEUE-DRAIN
+   wrappers - state probe `FUN_0048f664` returns {status,handle}, branch 2 drains the full queue
+   (`FUN_004c4890` iterator) dispatching each item through `FUN_0048d0c0` (gate `DAT_0063241c`
+   = screen active -> `FUN_004e3330` handler table) and clearing the pending flag `[item+0x24]`;
+   bracket screen open/close pair `FUN_0048e6d0/0x48e300` (active flag `DAT_006325b4`, stride-0xc
+   record allocation, three queues reset on close via `FUN_004c4720`). Propagation is a
+   message-queue model: winner application lives in the per-item handler table (contents installed
+   at runtime - `.SCI` layer, GAMEPLAY_PARITY §5.1), not in static slot writes. Bracket record
+   fields +0x1C..+0xFF remain unproven.
 6. Mode 9 (`DAT_00640fb4==9`) exact FE entry (menu item 2 dynamic path via `FUN_004461b4`);
    ZINTER.RES consumer confirmed only by PTR array adjacency [R1].

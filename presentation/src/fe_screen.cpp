@@ -87,6 +87,20 @@ const formats::FshFile* ScreenArt::file(const std::string& vpath, const std::str
             if (!paths.empty()) found = paths.front();
         }
     }
+    // IG layouts reference ..\global\button.fsh which exists nowhere on disk; the tags
+    // (btnn/btnd/btn2) live in FE/INGAME/INGAME.FSH. Original engine resolves them from a
+    // shared global object cache — mirror that with an explicit stem alias.
+    static const std::pair<const char*, const char*> kStemAlias[] = {{"button", "ingame"}};
+    if (found.empty() && !root_.empty()) {
+        for (const auto& [from, to] : kStemAlias) {
+            if (lowered(fs::path(slashes(fname)).stem().string()) == from) {
+                if (auto it = byStem_.find(to); it != byStem_.end() && !it->second.empty()) {
+                    found = it->second.front();
+                    break;
+                }
+            }
+        }
+    }
 
     std::shared_ptr<const formats::FshFile> parsed;
     try {

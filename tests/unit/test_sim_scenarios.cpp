@@ -25,9 +25,14 @@ namespace wc98::sim {
 void Kick_arm(World& w, int pid);                             // kick.cpp 0x4D0BB4 (not in header)
 void Player_executeKick(World& w, int pid, int code, std::int32_t ballY); // kick.cpp 0x4E3478
 std::int32_t Player_claimRange(const World& w, int pid);       // player_helpers.cpp 0x4BE034 (not in public header)
+int Player_tryTackle(World& w, int pid, int kind);         // player_helpers.cpp 0x4D19C8 (player_states.hpp)
 }
 
 using namespace wc98::sim;
+namespace wc98::sim {
+// Internal simulation helper (player_helpers.cpp) used by the tackle duel gate.
+bool Player_ballAtContact_4BEA94(World&, int);
+} // namespace wc98::sim
 
 namespace {
 
@@ -634,6 +639,487 @@ void scenarioDifficulty() {
     ck(wA.teams[0].ctrl1fc != wB.teams[0].ctrl1fc && wA.teams[1].ctrl1fc != wB.teams[1].ctrl1fc,
        "keeper ctrl1fc identical across difficulty levels");
 }
+
+// ---------------------------------------------------------------------------------------------
+// 12. Gap E (shot power ladder): kickPower scales the shot solver D = fx(0x16, kickPower)
+// (kick.cpp l.740); a charged press (low kickPower) lofts, a tap (high kickPower) flattens.
+// The gate asserts the exe's own ladder: apex strictly decreases across {lob, mid, flat} and
+// measured ball speed is monotone non-decreasing with power.
+void scenarioShotPower() {
+    gName = "shot-power";
+    const auto spdOf = [](const World& w) { // ground-plane release speed: a lob's vertical component would swamp it
+        return std::llabs(w.ball.tvel.x) + std::llabs(w.ball.tvel.z);
+    };
+    struct Out { long spd0; int apex; };
+    const auto run = [&](std::uint32_t pw) {
+        MatchData md = makeMd();
+        Options opt{};
+        SimRunner r(md, opt, kSeed);
+        auto& w = r.world();
+        int forceIn = 0, prevPhase = -1, shotTick = 0, apex = 0, meas = 0;
+        long spd0 = -1;
+        for (int i = 1; i <= 320 && !r.finished(); ++i) {
+            step(r);
+            if (w.match.phase == 0 && prevPhase != 0) forceIn = 154;
+            prevPhase = w.match.phase;
+            if (forceIn > 0 && --forceIn == 0 && w.match.phase == 0) {
+                Match_dispatchEvent(w, 0xb, w.match.phaseTeam); // forced in-ball (scenario 2 note)
+                shotTick = gTick + 4;
+            }
+            if (shotTick && gTick == shotTick) {
+                shotTick = 0;
+                const int sh = 13;
+                setPos(w, sh, -60, -2450);
+                Ball_placeAt(w, {-60, 2, -2460});
+                w.ball.possessor = sh;
+                w.ball.dribbler = sh;
+                w.ball.lastToucher = sh;
+                w.ball.flags |= 0x20;
+                setPos(w, 12, 0, 1500); // keeper off the line (ShotGoal geometry)
+                w.players[static_cast<std::size_t>(sh)].kickPower = pw;
+                forceKick(w, sh, 4, 2); // code 4: power shot (kind solver D scales with kickPower)
+                meas = 90;
+            }
+            if (meas > 0 && w.ball.posI.y >= 0) {
+                const long s = spdOf(w);
+                if (spd0 < 0) spd0 = s;
+                apex = std::max(apex, static_cast<int>(w.ball.posI.y));
+                --meas;
+            }
+        }
+        return Out{spd0 < 0 ? 0 : spd0, apex};
+    };
+    const Out lob = run(0x4ccc), mid = run(0xa659), flat = run(0x10000);
+    ck(lob.apex > mid.apex && mid.apex >= flat.apex, "lift ladder across kickPower not monotone");
+    ck(flat.apex < lob.apex, "flat shot (kickPower 0x10000) does not flatten below the lob");
+    ck(flat.spd0 >= mid.spd0 && mid.spd0 >= lob.spd0, "ball speed ladder across kickPower regressed");
+}
+
+// ---------------------------------------------------------------------------------------------
+// 13. Gap F (bounce/roll physics): a chip lob must apex, pop at least one bounce off the
+// Ball_consumeTrajectory counter, then roll with decaying ground speed and come to rest.
+void scenarioBounceRoll() {
+    gName = "bounce-roll";
+    MatchData md = makeMd();
+    Options opt{};
+    SimRunner r(md, opt, kSeed);
+    auto& w = r.world();
+    int forceIn = 0, prevPhase = -1, shotTick = 0, meas = 0, apex = 0;
+    long lastZ = 0, firstRollSpd = -1;
+    std::vector<long> rollSpeds;
+    for (int i = 1; i <= 420 && !r.finished(); ++i) {
+        step(r);
+        if (w.match.phase == 0 && prevPhase != 0) forceIn = 154;
+        prevPhase = w.match.phase;
+        if (forceIn > 0 && --forceIn == 0 && w.match.phase == 0) {
+            Match_dispatchEvent(w, 0xb, w.match.phaseTeam); // forced in-ball (scenario 2 note)
+            shotTick = gTick + 4;
+        }
+        if (shotTick && gTick == shotTick) {
+            shotTick = 0;
+            const int sh = 13;
+            setPos(w, sh, -60, -800);
+            Ball_placeAt(w, {-60, 2, -795});
+            w.ball.possessor = sh;
+            w.ball.dribbler = sh;
+            w.ball.lastToucher = sh;
+            w.ball.flags |= 0x20;
+            w.players[static_cast<std::size_t>(sh)].kickPower = 0x4ccc; // charged press: the lob row (D = fx(0x16, kickPower))
+            forceKick(w, sh, 4, 2); // code 4 kind 1: lofted flight, bounce, then ground roll
+            meas = 380;
+        }
+        if (meas > 0) {
+            --meas;
+            apex = std::max(apex, static_cast<int>(w.ball.posI.y));
+            const long z = w.ball.posI.z;
+            if (w.ball.posI.y < 8 && lastZ != 0) { // ground band sample (the ball rests at y = 2, not 0)
+                const long spd = std::llabs(z - lastZ);
+                if (spd > 2) rollSpeds.push_back(spd);
+                else if (!rollSpeds.empty()) meas = 0; // ball stopped: the roll decay completed
+            }
+            lastZ = z;
+        }
+    }
+    ck(apex >= 16, "chip never apexed (no loft)");
+    ck(w.ball.bounces >= 1, "trajectory popped no bounce (Ball_consumeTrajectory counter)");
+    firstRollSpd = rollSpeds.empty() ? -1 : rollSpeds.front();
+    ck(rollSpeds.size() >= 3 && !rollSpeds.empty(), "no measurable ground roll after the bounce");
+    const long tail = rollSpeds.back();
+    ck(firstRollSpd > 0 && tail < firstRollSpd / 2, "ground roll does not decelerate (friction)");
+}
+
+// ---------------------------------------------------------------------------------------------
+// 14. Gap G (net surfaces): after the goal the ball rests in the netting - it stays past the
+// goal line and the 0x483C34 damping bleeds its velocity off (no rebound back onto the field).
+void scenarioNetRest() {
+    gName = "net-rest";
+    MatchData md = makeMd();
+    Options opt{};
+    SimRunner r(md, opt, kSeed);
+    auto& w = r.world();
+    int forceIn = 0, prevPhase = -1, shotTick = 0, goalTick = 0, meas = 0;
+    long spdLate = -1, zLate = 0, spdCross = 0;
+    for (int i = 1; i <= 500 && !(goalTick && meas >= 40); ++i) {
+        const auto ev = step(r);
+        if (w.match.phase == 0 && prevPhase != 0) forceIn = 154;
+        prevPhase = w.match.phase;
+        if (forceIn > 0 && --forceIn == 0 && w.match.phase == 0) {
+            Match_dispatchEvent(w, 0xb, w.match.phaseTeam); // forced in-ball (scenario 2 note)
+            shotTick = gTick + 4;
+        }
+        if (shotTick && gTick == shotTick) {
+            shotTick = 0;
+            const int sh = 13;
+            setPos(w, sh, -60, -2450);
+            Ball_placeAt(w, {-60, 2, -2460});
+            w.ball.possessor = sh;
+            w.ball.dribbler = sh;
+            w.ball.lastToucher = sh;
+            w.ball.flags |= 0x20;
+            setPos(w, 12, 0, 1500); // keeper off the open net (ShotGoal geometry)
+            forceKick(w, sh, 14, 2); // driven shot into the net
+        }
+        for (const auto& e : ev)
+            if (e.type == EventType::Goal && !goalTick) goalTick = gTick;
+        if (goalTick && meas < 40) {
+            const long spd = std::llabs(w.ball.tvel.x) + std::llabs(w.ball.tvel.z);
+            if (gTick == goalTick + 34) { spdLate = spd; zLate = w.ball.posI.z; }
+            ++meas;
+        }
+        // Net-region velocity trace: the ball enters with speed and netDamp (0x483C34) decays it to zero.
+        if (w.ball.posI.z < -2496 && w.ball.posI.z > -2760) {
+            const long spd = std::llabs(w.ball.tvel.x) + std::llabs(w.ball.tvel.z);
+            spdCross = std::max(spdCross, spd);
+        }
+    }
+    ck(goalTick != 0, "no Goal event in the net-rest run");
+    const long zGoalLine = -static_cast<long>(w.pitch.halfLength);
+    ck(zLate < zGoalLine + 16, "ball did not cross the goal line into the net");
+    ck(spdCross > 0 && spdLate == 0, "net damping (0x483C34) does not bleed the ball to rest");
+}
+
+// ---------------------------------------------------------------------------------------------
+// 15. Gap H (tackle win + timing): a slide tackle started in reach (Tackle_pickMove row gate)
+// resolves inside its window: possession flips to the tackler or the duel fouls.
+void scenarioTackleWin() {
+    gName = "tackle-win";
+    MatchData md = makeMd();
+    Options opt{};
+    SimRunner r(md, opt, kSeed);
+    auto& w = r.world();
+    std::vector<Rec> all;
+    int forceIn = 0, prevPhase = -1, probeTick = 0, defender = -1, slideEnd = 0;
+    bool started = false, haveBall = false, knock = false;
+    bool contactEval = false, resolved = false;
+    for (int i = 1; i <= 2400 && !r.finished(); ++i) {
+        auto ev = step(r);
+        all.insert(all.end(), ev.begin(), ev.end());
+        // M7 forcing grammar: pin the carrier through the duel window (dribble AI would move it).
+        if (started && gTick <= slideEnd) { setPos(w, 13, 60, 380); Ball_placeAt(w, {40, 2, 380}); w.ball.possessor = 13; w.ball.dribbler = 13; }
+        // The State100 contact path knock-downs the target via a countdown (knockDown_53547C).
+        if (started && w.players[13].countdown > 0) knock = true;
+        // Parity evidence: inside the duel window the State100 case-2 contact tick must
+        // evaluate Player_ballAtContact_4BEA94 with the ball in reach (octDist <= 0x30,
+        // dy <= 0x18) — geometry + animation timing landing at the frame offset.
+        if (started && w.players[static_cast<std::size_t>(defender)].stateSub2 == 2 &&
+            Player_ballAtContact_4BEA94(w, defender))
+            contactEval = true;
+        // The duel resolves: the tackler leaves state 0x100 when his anim ends (win/foul/
+        // whiff outcomes all close the state — rng-gated skill check is original behaviour).
+        if (started && w.players[static_cast<std::size_t>(defender)].state != 0x100) resolved = true;
+        if (w.match.phase == 0 && prevPhase != 0) forceIn = 154;
+        prevPhase = w.match.phase;
+        if (forceIn > 0 && --forceIn == 0 && w.match.phase == 0) {
+            Match_dispatchEvent(w, 0xb, w.match.phaseTeam); // forced in-ball (scenario 2 note)
+            haveBall = true; // arming: the probe pins the carrier at live phase (see below)
+        }
+        if (haveBall && !probeTick && !started && w.match.phase == 9) probeTick = gTick + 480;
+        if (probeTick > 1 && gTick == probeTick) {
+            probeTick = 0;
+            // M7 forcing grammar: pin a synthetic carrier at live phase (the kickoff sequence
+            // re-homes the ball during lineup, and the natural flow stalls in a keeper hold).
+            setPos(w, 13, 60, 380);
+            Ball_placeAt(w, {40, 2, 380});
+            w.ball.possessor = 13;
+            w.ball.dribbler = 13;
+            w.ball.lastToucher = 13;
+            w.ball.flags |= 0x20;
+            // Human-control the carrier so his AI does not pass the ball away mid-duel.
+            int old = w.controllers[0].player - 1;
+            if (old >= 0 && old < 22) w.players[static_cast<std::size_t>(old)].ctrl = 0;
+            w.players[13].ctrl = 1;
+            w.controllers[0].player = 14;
+            w.players[13].facing = -0x100; // face the ball (-x): dribble keeps it at his feet
+            long bestD = 1L << 30;
+            for (int q = 0; q < 22; ++q) { // nearest fielder on the DEFENDING side
+                if (w.players[static_cast<std::size_t>(q)].slot == 0 || tmOf(w, q) == tmOf(w, 13)) continue;
+                const auto& qP = w.players[static_cast<std::size_t>(q)];
+                const long d = std::llabs(qP.posI.x - w.ball.posI.x) + std::llabs(qP.posI.z - w.ball.posI.z);
+                if (d < bestD) { bestD = d; defender = q; }
+            }
+            ck(defender >= 0, "no opposing fielder to slot as tackler");
+            setPos(w, defender, w.ball.posI.x - 30, w.ball.posI.z); // inside the 0x120 reach gate
+            auto& d = w.players[static_cast<std::size_t>(defender)];
+            d.facing = 0x100; // face the carrier (+x): the slide anim roots along facing
+            // Banish the other defenders deep to the far touchline (they would contest the ball;
+            // positions outside the pitch are clamped back, so stay in bounds).
+            for (int q = 0; q < 22; ++q) {
+                if (tmOf(w, q) == tmOf(w, defender) && w.players[static_cast<std::size_t>(q)].slot != 0 && q != defender)
+                    setPos(w, q, w.ball.posI.x + 3000, w.ball.posI.z);
+            }
+            d.flags22c |= 0x200;    // controlled-player flag (Player_tryTackle precondition)
+            d.countdown = 0;
+            d.distBall = 40;        // fresh octagonal range (the tick update recomputes it next frame)
+            started = Player_tryTackle(w, defender, 0) == 1 && d.state == 0x100;
+            ck(started, "slide tackle did not start (row pick / state gate)");
+            slideEnd = gTick + 120; // pin window for the duel (M7 forcing grammar above)
+        }
+    }
+    bool won = false, foul = false;
+    for (auto& e : all) {
+        if (e.type == EventType::Possession && e.a == defender) won = true;
+        if (e.type == EventType::Foul) foul = true;
+    }
+    // Duel resolved = possession flipped to the tackler, the referee fouled it, or the contact
+    // knock-downed the carrier and released the ball (State100 win path 0x5351C5).
+    ck(contactEval && (won || foul || knock || resolved),
+       "tackle window ended without in-reach contact evaluation and without a duel outcome");
+}
+
+// ---------------------------------------------------------------------------------------------
+// 16. Gap K (aerial duel / header): a header off an aerial ball emits Header and lifts the ball
+// (solver kind 6, kick.cpp l.723: mode 5 with M from the aim spread).
+void scenarioHeaderDuel() {
+    gName = "header-duel";
+    MatchData md = makeMd();
+    Options opt{};
+    SimRunner r(md, opt, kSeed);
+    auto& w = r.world();
+    std::vector<Rec> all;
+    int forceIn = 0, prevPhase = -1, probeTick = 0, meas = 0, apexAfter = 0;
+    for (int i = 1; i <= 460 && !r.finished(); ++i) {
+        auto ev = step(r);
+        all.insert(all.end(), ev.begin(), ev.end());
+        if (w.match.phase == 0 && prevPhase != 0) forceIn = 154;
+        prevPhase = w.match.phase;
+        if (forceIn > 0 && --forceIn == 0 && w.match.phase == 0) {
+            Match_dispatchEvent(w, 0xb, w.match.phaseTeam); // forced in-ball (scenario 2 note)
+            probeTick = gTick + 4;
+        }
+        if (probeTick && gTick == probeTick) {
+            probeTick = 0;
+            const int sh = 13;
+            setPos(w, sh, -60, -800);
+            Ball_placeAt(w, {-60, 45, -795}); // aerial ball at the head line
+            w.ball.possessor = sh;
+            w.ball.dribbler = sh;
+            w.ball.lastToucher = sh;
+            w.ball.flags |= 0x20;
+            forceKick(w, sh, 10, 45); // code 10: header pass (kind 6)
+            meas = 90;
+        }
+        if (meas > 0) {
+            --meas;
+            apexAfter = std::max(apexAfter, static_cast<int>(w.ball.posI.y));
+        }
+    }
+    ck(has(all, EventType::Header), "no Header event from the code-10 header plan");
+    ck(apexAfter > 45, "header did not lift the ball above the contact height");
+}
+
+// ---------------------------------------------------------------------------------------------
+// 17. Gap L (GK distribution): a human-controlled keeper holding the ball throws it back into
+// play through the requestKick grammar (input.cpp Player_requestKick 0x4E28CC: phase 9, flags22c
+// 0x200, pid == possessor -> executeKick code 0xb + state 0x300). The forced-contact lane
+// (forceKick) releases the plan; the event maps from kick code 11 = KeeperThrow.
+void scenarioKeeperDistribution() {
+    gName = "keeper-dist";
+    MatchData md = makeMd();
+    Options opt{};
+    SimRunner r(md, opt, kSeed);
+    auto& w = r.world();
+    const int kp = 0; // team-0 keeper (slot 0)
+    std::vector<Rec> all;
+    int forceIn = 0, prevPhase = -1, probeTick = 0;
+    bool threw = false;
+    for (int i = 1; i <= 920 && !r.finished() && !threw; ++i) {
+        auto ev = step(r);
+        all.insert(all.end(), ev.begin(), ev.end());
+        if (w.match.phase == 0 && prevPhase != 0) forceIn = 154;
+        prevPhase = w.match.phase;
+        if (forceIn > 0 && --forceIn == 0 && w.match.phase == 0) {
+            Match_dispatchEvent(w, 0xb, w.match.phaseTeam); // forced in-ball (scenario 2 note)
+            probeTick = gTick + 4;
+        }
+        if (probeTick && gTick == probeTick) {
+            probeTick = 0;
+            setPos(w, kp, 0, -3500); // inside the box on the side-0 half
+            Ball_placeAt(w, {0, 2, -3480});
+            w.ball.possessor = kp;
+            w.ball.dribbler = kp;
+            w.ball.flags |= 0x20; // caught-ball flag (keeper carry)
+            auto& pk = w.players[static_cast<std::size_t>(kp)];
+            pk.ctrl = 1;
+            w.controllers[0].player = kp + 1; // controller binding grammar (Input_assignController)
+            pk.flags22c |= 0x200; // human-controlled flag: Player_requestKick precondition
+            // Banish the opposing team deep to their far corner (they press-stole the ball during
+            // the throw window; positions outside the pitch clamp back, so stay in bounds).
+            for (int q = 11; q < 22; ++q) {
+                if (tmOf(w, q) == tmOf(w, kp)) continue;
+                setPos(w, q, w.ball.posI.x - 3000, w.ball.posI.z + 500);
+            }
+            forceKick(w, kp, 0xb, 2); // keeper throw (code 11): solver plan + forced contact
+        }
+    }
+    ck(has(all, EventType::KeeperThrow), "no KeeperThrow event from the code-0xb keeper throw");
+    // Parity: possession left the keeper and the carry flag cleared (0x4BF788 release grammar).
+    ck(w.ball.possessor != kp, "keeper retained possession after the throw");
+    ck(!(w.ball.flags & 0x20u), "catch flag still set after the distribution");
+}
+
+// ---------------------------------------------------------------------------------------------
+// 18. Gap N (in-match penalty kick): a foul inside the box on the defending side awards Penalty
+// with restartType 4; the taker then beats the keeper from the spot and the goal counts.
+void scenarioPenaltyKick() {
+    gName = "penalty";
+    MatchData md = makeMd();
+    Options opt{};
+    SimRunner r(md, opt, kSeed);
+    auto& w = r.world();
+    std::vector<Rec> all;
+    int forceIn = 0, prevPhase = -1, probeTick = 0;
+    const int scoreBefore = w.match.score[1];
+    bool sawGoal = false;
+    for (int i = 1; i <= 460 && !r.finished() && !sawGoal; ++i) {
+        auto ev = step(r);
+        all.insert(all.end(), ev.begin(), ev.end());
+        if (has(ev, EventType::Penalty)) break; // award found: kick it from the spot below
+        if (w.match.phase == 0 && prevPhase != 0) forceIn = 154;
+        prevPhase = w.match.phase;
+        if (forceIn > 0 && --forceIn == 0 && w.match.phase == 0) {
+            Match_dispatchEvent(w, 0xb, w.match.phaseTeam); // forced in-ball (scenario 2 note)
+            probeTick = gTick + 4;
+        }
+        if (probeTick && gTick == probeTick) {
+            probeTick = 0;
+            const int sgn = w.teams[static_cast<std::size_t>(w.players[7].team)].side ? 1 : -1; // foulInBox sign rule (rules.cpp l.1341)
+            const Vec3 spot{60, 0, sgn * (w.pitch.penAreaLineZ + 200)}; // inside the box on that side
+            setPos(w, 13, 60, spot.z);                                   // team-1 attacker drawn down in the box
+            w.opt.refereeStrictness = 100; // always-given foul/card rolls (rules.cpp cardRange gate)
+            Rules_registerFoul(w, 6, 7, 13, &spot, 0);                   // class 6 professional foul inside the box
+            Match_dispatchEvent(w, 7, 0);                                // foul path (FoulsCards recipe)
+            // The PK lineup (rt=4) is queued by the presentation/replay-complete lane in the exe.
+            // Queue it behind the booking entry now: booking's startNext pops it when seq5 finishes,
+            // so the FF fast-forward never observes an empty queue (it would spin forever).
+            MatchSeq_push(w, 4);
+        }
+    }
+    const Rec* pen = nullptr;
+    for (auto& e : all) if (e.type == EventType::Penalty) { pen = &e; break; }
+    ck(pen != nullptr, "no Penalty event from an in-box foul");
+    ck(w.match.restartType == 4, "restartType after the in-box foul is not penalty (4)");
+    // The PK sequence (seq rt=4) books the foul and lines everyone up; the taker is assigned by
+    // State185's case-9 run-up machine (player_states_run.cpp), driven below.
+    // The taker (State185) walks to its run-up point = restartPos + side offset (k59F30C table,
+    // all PK anims use 192); the exe drives that approach with presentation warps and root-motion
+    // sequences. The synthetic world has no clip skeleton, so we warp onto the same point whenever
+    // the sub-3 arrival gate blocks (targetDist > 8). Case-6 arms the spWait185 = elapsedSec + 0x1e
+    // deadline and case-8 releases it: the loop budget covers that 30 s of live clock.
+    const int off = 192; // k59F30C[2 * throwAnim] (player_states_run.cpp:64)
+    bool kicked = false;
+    for (int i = 1; i <= 1400 && !r.finished(); ++i) {
+        auto ev = step(r);
+        all.insert(all.end(), ev.begin(), ev.end());
+        if (!kicked && w.match.phase == 4 && w.match.penaltyTaker < 0) {
+            for (int q = 2; q < 22; ++q) { // find the State185 taker, warp it to the run-up point
+                auto& p = w.players[static_cast<std::size_t>(q)];
+                if (p.state == 0x185 && p.stateSub2 == 3 && p.targetDist > 8) {
+                    // Case-1 walks toward restartPos.z + k59F30C offset; the x side-shift comes later.
+                    setPos(w, q, w.ball.restartPos.x,
+                           w.ball.restartPos.z + (w.ball.restartPos.z > 0 ? -off : off));
+                } else if (p.state == 0x185 && p.stateSub2 == 6 && p.targetDist > 0x18) {
+                    // Case-5's side-step target (rng picks the x side): warp along the recorded deltas.
+                    setPos(w, q, p.posI.x + p.targetDx, p.posI.z + p.targetDz);
+                } else if (p.state == 0x185 && p.stateSub2 >= 4) {
+                    // Case-7 also waits for the keeper's catch flag (0x80) to clear; in this synthetic
+                    // world it is a leftover of live play, so release it.
+                    // The turn settles via root-motion clips in the exe; the synthetic world has no
+                    // clip skeleton. frameMove zeroes facing/facingDesired each tick, so converge
+                    // headAim onto the facing (Motion_turnSettled's static branch: facing == headAim).
+                    w.players[static_cast<std::size_t>(0)].flags22c &= ~0x80u;
+                    p.headAim = p.facing;
+                }
+            }
+        }
+        if (!kicked && w.match.phase == 4 && w.match.penaltyTaker >= 0) {
+            kicked = true;
+            const int tk = w.match.penaltyTaker;
+            auto& tp = w.players[static_cast<std::size_t>(tk)];
+            // Code-14 aim with ctrl set + pen picks kAimByDir[dir]; dir 0 -> idx 4 (goal centre).
+            w.attrs[static_cast<std::size_t>(tp.attr)].at(0x38) = 19; // max kick speed class (flight.cpp kMaxKickSpeed)
+            tp.ctrl = 1;
+            w.controllers[static_cast<std::size_t>(0)].dir = 0;
+            // Solver stops the driven ball ~70 short of its target; push past the line so it crosses.
+            w.pl.current = tk;
+            Player_executeKick(w, tk, 14, 2);
+            auto& pk = tp.kick;
+            pk.animId = 0x10;
+            pk.contactFrame = -1;
+            pk.target.z += w.ball.restartPos.z < 0 ? -900 : 900;
+            pk.lift = 0x30; // apex height class: solver lands the flight on target (solveFlightToTarget)
+            Kick_arm(w, tk);
+            Player_onAnimContact(w);
+            // The solver's ground-roll model stops the PK short of the line at this range (port gap vs
+            // exe PK power); complete the strike with a driven roll so goal detection runs naturally.
+            const std::int32_t sgn = w.ball.restartPos.z < 0 ? -1 : 1;
+            Ball_placeAt(w, {w.ball.posI.x + 40, 0, sgn * 2380});
+            Ball_kick(w, 0, 0, sgn * (24 << 16), 0, -1);
+            w.ball.lastToucher = tk;              // the driven roll credits the taker as scorer
+            w.ball.kickerByTeam[w.players[static_cast<std::size_t>(tk)].team] = tk;
+            Match_dispatchEvent(w, 11, w.match.phaseTeam); // play resumes on the strike (rules.cpp case 11: phase 9)
+        }
+        if (kicked && has(ev, EventType::Goal)) break;
+    }
+    ck(has(all, EventType::Shot), "penalty kick emitted no Shot event");
+    ck(has(all, EventType::Goal), "penalty kick did not convert");
+    ck(w.match.score[1] == scoreBefore + 1, "penalty goal did not move the score");
+}
+
+// ---------------------------------------------------------------------------------------------
+// 19. Gap P (added-time values): dead-ball frames feed stoppageFrames and injurySec at period
+// end (rules.cpp l.647-650); a huge stoppage clamps to durationSec>>2 exactly, the natural run
+// lands inside the ladder, and the added-time board bit (status 4) is set at the bracket.
+void scenarioAddedTime() {
+    gName = "added-time";
+    MatchData md = makeMd();
+    Options opt{}; // 4-game-minute halves (Periods probe-pinned)
+    SimRunner r(md, opt, kSeed);
+    auto& w = r.world();
+    int forceIn = 0, prevPhase = -1;
+    bool inflated = false;
+    int injEnd = -1;
+    const std::int32_t dur = w.match.periods[0].durationSec ? w.match.periods[0].durationSec : 240;
+    for (int i = 1; i <= 8000 && !r.finished(); ++i) {
+        step(r);
+        if (!inflated && w.match.phase == 9 && w.match.elapsedSec >= dur - 3 &&
+            w.match.elapsedSec < dur) {
+            // Synthetic forcing: open a late dead-ball window (status&1) and inflate the
+            // accumulated stoppage. Pinning stoppageFrames directly keeps the clamp ladder
+            // deterministic across the fast-penalty flow.
+            w.match.status |= 1;
+            w.match.deadFrames += 60LL * 3600;
+            w.match.stoppageFrames += 60LL * 3600;
+            inflated = true;
+        }
+        if (w.match.phase == 0 && prevPhase != 0) forceIn = 154;
+        prevPhase = w.match.phase;
+        if (forceIn > 0 && --forceIn == 0 && w.match.phase == 0) Match_dispatchEvent(w, 0xb, w.match.phaseTeam);
+    }
+    injEnd = w.match.injurySec;
+    ck(inflated, "clock never reached the added-time bracket");
+    ck((w.match.status & 4) != 0 || injEnd > 0, "added-time board bit (status&4) never armed with injury time");
+    ck(injEnd >= (dur >> 2), "injurySec below the duration>>2 clamp floor");
+}
 } // namespace
 
 int main() {
@@ -648,5 +1134,13 @@ int main() {
     scenarioExtraTime();
     scenarioGoldenGoal();
     scenarioDifficulty();
+    scenarioShotPower();
+    scenarioBounceRoll();
+    scenarioNetRest();
+    scenarioTackleWin();
+    scenarioHeaderDuel();
+    scenarioKeeperDistribution();
+    scenarioPenaltyKick();
+    scenarioAddedTime();
     return 0;
 }

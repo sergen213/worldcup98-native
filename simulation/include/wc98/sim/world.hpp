@@ -86,6 +86,8 @@ struct World {
     std::array<PlayerAttr, 2 * kSquadMax> attrs{}; // 0x65E230 + t*0x60C (Players agent)
     PlayerShared pl{};                              // player-subsystem globals (Players agent)
     AnimShared anim{};                              // anim engine 0x65FFAC pool + clock (SpAnim, anim.hpp)
+    std::array<std::int32_t, kPlayers + 1> kickCode{}; // port-internal (not hashed): the kick code of
+                                                       //   each pending plan, kept for event mapping
     std::vector<SimEvent> events; // not hashed
 
     void emit(EventType t, int team = -1, int player = -1, std::int32_t a = 0, std::int32_t b = 0) {

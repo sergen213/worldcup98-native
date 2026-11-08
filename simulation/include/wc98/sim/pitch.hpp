@@ -121,6 +121,8 @@ struct Options {
     std::int32_t handicapMode = 0;      // DAT_0065EECC (1: FUN_0045564C balances team ratings)
     std::int32_t skillLevel = 0;        // DAT_0065EEF8 (EAX of FUN_0045564C)
     std::int32_t aiAssist = 0;          // DAT_0065EEFC 0..2 (Team_setControlLevels 0x45159C; added by TeamAI)
+    std::uint32_t kickAssist = 0;   // DAT_00641011 (WC98 live options block): bit 0x40 boosts team side-0,
+                                    // bit 0x80 side-1 kicker power by +50% in Kick_plan (WC98 FUN_00502fc0).
 };
 
 } // namespace wc98::sim

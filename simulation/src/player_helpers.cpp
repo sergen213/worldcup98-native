@@ -736,14 +736,16 @@ int Player_tryTackle(World& w, int pid, int kind) {
     return 1;
 }
 
-// 0x4E03E4 (EDX tackler): with flags278 bit 16, pid's current anim dodges the tackler's kind
-// (stand: 0x6C/0x73/0x7E/0x7F, slide: 0x73/0x74/0x75).
+// 0x4E03E4 (EDX tackler): with flags278 bit 16, pid's current anim dodges the tackler's kind.
+// WC98 FUN_005108b0 (HANDLER_DIFF_AUDIT pair 16): same shape, flag DAT_0064019e bit 0; the dodge
+// anim ids shift -2: stand {0x6C,0x73,0x7E,0x7F} -> {0x6C,0x71,0x7C,0x7D}, slide
+// {0x73,0x74,0x75} -> {0x71,0x72,0x73}. WC98 constants implemented.
 bool Player_dodgesTackle_4E03E4(const World& w, int pid, int tackler) {
     const int kind = Tackle_kindOf_4D221C(w, tackler);
     const int a = Player_animId(w, pid);
-    if (!(w.match.flags278 & 0x10000)) return false;
-    if (kind == 0) return a == 0x6c || a == 0x73 || a == 0x7e || a == 0x7f;
-    if (kind == 1) return a == 0x73 || a == 0x74 || a == 0x75;
+    if (!(w.match.flags278 & 0x10000)) return false; // WC98 DAT_0064019e & 1 (FIFA-99 DAT_0065f27a)
+    if (kind == 0) return a == 0x6c || a == 0x71 || a == 0x7c || a == 0x7d; // WC98 0x5108B0
+    if (kind == 1) return a == 0x71 || a == 0x72 || a == 0x73;              // WC98 0x5108B0
     return false;
 }
 

@@ -119,21 +119,19 @@ not planned [INFERENCE].
 | Dribble control | `test_sim_scenarios` DribbleOut; `interactive_match` | possession kept under pressure, bit5/bit6 flags | touch cadence unasserted |
 | Short / long pass | `test_sim_scenarios` Pass (+forced path note M7) | receiver arrival + kick window | - |
 | Through-ball / cross | `test_sim_scenarios` Pass chain; `self_test_gameplay` passing step; pad bits input gate `test_input` | kick released, M7 landing placement on the facing side, possession left the taker | receiver capture vs opponent contest unasserted (D) |
-| Shot power levels | `test_sim_scenarios` ShotGoal | goal result, Save/Post/Bar branch | power-ladder values **no gate** (E) |
-| Bounce / roll physics | `test_sim_core` fx rounding; `self_test_gameplay` physics step; ShotGoal transitively | shot arc apex + minGround measured on the live ball (flight + ground contact evidence) | bounce/roll distance **no gate** (F) |
-| Collisions (player-ball, post/crossbar/net) | `test_sim_scenarios` ShotGoal (PostHit/BarHit) | event branch | net-case surface table **no gate** (G) |
-| Tackle / interception | none dedicated (fouls via FoulsCards) | foul emission code | tackle win + timing **no gate** (H) |
-| Header / aerial duel | none | airAction/planAirKick/tryHeaderPass code | **no gate** (K) |
-| GK saves | `test_sim_scenarios` ShotGoal; `self_test_gameplay` goalkeeper step | Save in {Goal,Save,PostHit,BarHit}; keeper displacement off the line during shot flight > 0 | save distribution unasserted (L) |
+| Shot power levels | `test_sim_scenarios` ShotGoal + ShotPower (Gap E) | goal result, Save/Post/Bar branch; kickPower scales solver D = fx(0x16, kickPower), speed-class ladder asserted | - |
+| Bounce / roll physics | `test_sim_core` fx rounding; `self_test_gameplay` physics step; ShotGoal transitively; BounceRoll (Gap F) | shot arc apex + minGround measured on the live ball (flight + ground contact evidence); bounce count + roll decay asserted | - |
+| Collisions (player-ball, post/crossbar/net) | `test_sim_scenarios` ShotGoal (PostHit/BarHit) + NetRest (Gap G) | event branch; net-case rest position + containment asserted | net-case sub-branch table open |
+| Tackle / interception | `test_sim_scenarios` FoulsCards; TackleWin (Gap H) | foul emission; slide-tackle win timing via pickMove row gate, possession flip + card branch asserted | - |
+| Header / aerial duel | `test_sim_scenarios` HeaderDuel (Gap K) | Header event emits on air-ball contact, ball lifted by header vector; planAirKick/tryHeaderPass WC98 re-verify open (§5.2) | - |
+| GK saves + distribution | `test_sim_scenarios` ShotGoal + KeeperDistribution (Gap L); `self_test_gameplay` goalkeeper step | Save in {Goal,Save,PostHit,BarHit}; keeper displacement off the line during shot flight > 0; keeper throw-back re-enters play (rt/possessor) | - |
 | AI positioning | `test_sim_team` (grid arithmetic), scenarios team shape transitively | ball-zone cell math, G98PL slot targets | realism/spacing-vs-original **no gate** (M) |
-| Rules / restarts | `test_sim_scenarios` Kickoff, Offside, SetPieces (corner+throw-in), FoulsCards, Periods HT->FT, Shootout, ExtraTimeGoldenGoal | event chains, restart types, cards, shootout, golden goal | in-match PK kick (N); added-time values (P); difficulty behaviour (O) |
+| Rules / restarts | `test_sim_scenarios` Kickoff, Offside, SetPieces (corner+throw-in), FoulsCards, Periods HT->FT, Shootout, ExtraTimeGoldenGoal; PenaltyKick (Gap N); AddedTime (Gap P) | event chains, restart types, cards, shootout, golden goal; in-box foul -> PK lineup -> strike -> Goal with score move; injury-sec clamp + status&4 board bit | difficulty behaviour closed via scenarioDifficulty (O) |
 
-Gaps with no gate: **E** shot power ladder, **F** bounce/roll distances, **G** net surface cases,
-**H** tackle/interception timing, **K** aerial duel, **L** GK distribution (keeper reaction motion
-now measured by `self_test_gameplay`), **M** AI spacing realism, **N** in-match penalty kick
-(restartType 4), **O** difficulty ctrl-level behaviour, **P** injury-time added-time assertion.
-B/C are covered by the `self_test_gameplay` movement/sprint/turning windows; D's placement is
-asserted there (capture contest remains open).
+Gates: E/F/G/H/K/L/N/P are now fixed-seed scenarios in `test_sim_scenarios` (ShotPower,
+BounceRoll, NetRest, TackleWin, HeaderDuel, KeeperDistribution, PenaltyKick, AddedTime); B/C/D
+placement by the `self_test_gameplay` windows; O by scenarioDifficulty. Still open: A live gait
+transitions, D receiver-capture contest, M AI spacing realism (qualitative vs original).
 
 ## 5. Open differences & ranked next steps
 
@@ -143,11 +141,16 @@ asserted there (capture contest remains open).
    by a mechanism not yet found - GHIDRA_PASS6_AI.md, WINE_ORACLE_WC98.md. Rank 1: blocks true AI
    parity beyond the reconstruction's data-driven layer; needs Win9x-era env debugger as the only
    remaining route (SQF EULZ precedent, STATUS §Open).
-2. **Per-handler WC98 vs FIFA-99 decompile diff audit.** The data-table half is CLOSED: all ten
-   generated tables are now WC98-verified/re-dumped (§3(a'), SIM_TABLES_WC98.md - 7 arrays carried
-   real WC98 deltas, installed). The code half stays open: `simulation/src/*.cpp` cite FIFA-99 v1.1
-   addresses [C] and were never audited handler-by-handler against FIFAWC.EXE; the table diffs prove
-   per-handler drift is plausible (kActionTable/kLoco/kTurn/Skill all differ). Rank 2: pyghidra lane.
+2. ~~Per-handler WC98 vs FIFA-99 decompile diff audit~~ **CLOSED** (pass 11): the code half is
+   now audited handler-by-handler - verdict table + ranked real differences in
+   HANDLER_DIFF_AUDIT.md (`analysis/pass11/handlers/` evidence). The data-table half was already
+   closed (§3(a'), SIM_TABLES_WC98.md). The actionable P1 lanes opened from the audit are now
+   **CLOSED** too: WC98 Kick_plan (0x502FC0) constants re-extracted into `kick.cpp` and TeamAI
+   decision-family (0x50CF50/0x50E740) + pair-16 dodge ids installed per SIM_PORT_NOTES deltas.
+   Player/motion/kick record *layout* shifts (+0x3c kick flags, +0x5c dodge
+   fields, three heading slots) are layout-only: the port is a semantic model with named C++
+   fields, so no verbatim offset work; anim seqResolve ready bit 0x40-vs-0x80 is likewise
+   internal-bit naming (port gates on its own consistently-set producer/consumer bit).
 3. ~~Camera WC98 rederivation + broadcast grid box~~ **CLOSED**: the `FUN_00501910` 12x22
    broadcast grid box (scale DAT_0058bcc4/bcc8, index x+y*13, complement 298-index) is ported in
    presentation/src/camera.cpp with camera-param re-verification against FIFAWC.EXE; the live-match
@@ -160,11 +163,16 @@ asserted there (capture contest remains open).
 6. **Kickoff first-second pose** (M7 scenario note: 1-2 s of "poses" at kickoff): documented as the
    faithful data path in docs/STATUS.md "Known limitations" (l.195-206) - no work expected; keep for
    cosmetic A/B once capture lane revives.
-7. ~~Coverage gaps B/C/D/E/F/G/H/K/L/M/N/P~~ (section 4): `self_test_gameplay` (§14 lane) now
-   covers B, C and D-placement with measured internal-state assertions; remaining scenario gates
-   E/F/G/H/K/M/N/P: rank 7 = add in one batch (single test_sim_scenarios extension, fixed seeds).
-8. Commentary trigger site-map (45/46 sites) - COMMENTARY_WC98.md Open items; percent-table scene
-   levels [INFERENCE] from winedbg pass 7e; rank 8 = gate-able once site map lands.
+7. ~~Coverage gaps B/C/D/E/F/G/H/K/L/M/N/P~~ (section 4): all gates landed - `self_test_gameplay`
+   (§14 lane) covers B, C and D-placement with measured internal-state assertions; E/F/G/H/K/L/N/P
+   are fixed-seed scenarios in `test_sim_scenarios`. Remaining: A gait transitions, D capture
+   contest, M AI spacing realism (qualitative).
+8. **TeamAI decision-family re-verification** (pass 11 P1): WC98 rewrote the onBallAct/tryHeaderPass
+   bodies (0x50CF50/0x50E740, byte ratio .20); `team_ai_ball.cpp`/`ai.cpp` logic re-verify against
+   the pair dumps. Kick_plan WC98 constants are integrated (`kick.cpp` 0x502FC0, mapping table in
+   SIM_PORT_NOTES.md "Kick family WC98 deltas"); open sub-items listed there.
+9. Commentary trigger site-map (45/46 sites) - COMMENTARY_WC98.md Open items; percent-table scene
+   levels [INFERENCE] from winedbg pass 7e; rank 9 = gate-able once site map lands.
 
 ## Totals registry
 

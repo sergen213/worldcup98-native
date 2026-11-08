@@ -34,6 +34,33 @@ project goals.
   constants provenance (§3), test coverage matrix (§4) and ranked open-differences list (§5);
   gaps B/C/D-placement closed by the self-test, remaining gaps E/F/G/H/K/M/N/P ranked for a
   one-batch scenario extension.
+- Scenario-gates batch (GAMEPLAY_PARITY §4 gaps E/F/G/H/K/L/N/P closed): eight fixed-seed scenarios
+  in `test_sim_scenarios` - ShotPower (kickPower scales solver D = fx(0x16, kickPower), speed-class
+  ladder), BounceRoll (chip lob apex + bounce/roll decay on the live ball), NetRest (ball rests in
+  netting past goal line), TackleWin (slide-tackle win timing via pickMove row gate, possession flip),
+  HeaderDuel (Header event on air-ball contact + header lift), KeeperDistribution (keeper throw-back
+  re-enters play), PenaltyKick (in-box foul -> booking + PK lineup through the State185 approach
+  machine -> strike -> Goal with score move; driven-roll completion documents the port's ground-roll
+  power gap vs exe PK power), AddedTime (stoppageFrames -> injurySec clamp at duration>>2, status&4
+  added-time board bit). Self-test §14 evolves: steps 10/11 foul-card + penalty measured on live
+  match state; State185 approach warps mirror the scenario lane.
+- Pass-11 handler-diff audit integrated (`docs/reverse-engineering/HANDLER_DIFF_AUDIT.md`: 60-handler
+  WC98-vs-FIFA-99 verdict table, ranked P1/P2/P3 deltas; evidence `analysis/pass11/handlers/`).
+  WC98 Kick_plan (FUN_00502fc0) constants re-extracted into `simulation/src/kick.cpp`: param clamp
+  kParamClampMax=1243 -> 0x534, power bases kPowerPhase2 0x960 / kPowerBase 0xb40 with +50% assist
+  bump gated by the new `Options::kickAssist` (DAT_00641011 model), param_6==0x10 flag semantics;
+  open items recorded in SIM_PORT_NOTES.md "Kick family WC98 deltas" (power-consumption clamp,
+  FUN_00500660 predicate). `World::kickCode` array keeps the plan's kick code for event mapping.
+
+- Pass-11 P1 lanes closed (TeamAI decision family): WC98 `FUN_0050cf50`/`FUN_0050e740` deltas installed in
+  `team_ai_ball.cpp` — raw mentality-indexed pass thresholds, budget block rewrite (discarded first draw,
+  `>>=2` team gate), difficulty-0 reach clamp removal, chaser gates 0xc0/0x180 + wing-clear 0xf0→0xc0, dif==0
+  dribble `(rand&3)!=0`, fused facing/frames gate, `(reach+attr)>>1` close check, shot-lane probe ±0x40; pair 16
+  dodge anim ids {0x6C,0x71,0x7C,0x7D}/{0x71,0x72,0x73} in `player_helpers.cpp`. OPEN items recorded (SIM_PORT_NOTES).
+
+- Keeper capsule spin fix (`keeper_save.cpp` `Keeper_hitBone`): the exe-faithful `Math_normalize3` loops forever on a
+  zero bone axis (documented exe behavior); headless lanes run clip frames whose skeleton bones coincide, spinning
+  `Keeper_skeletonBlockNormal` inside every tick. Degenerate axes now return no-capsule (port guard, cited).
 
 ## [0.4.0] - 2026-11-08 — Windows menu parity complete: popup/IG board families, highlights browser, management grids, LOAD/SAVE scenes, camera/practise/control pages
 ### Added

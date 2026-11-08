@@ -134,6 +134,9 @@ int Keeper_hitBone(const World& w, const Vec3 bones[16], int i, int j, std::int3
     if (d.x == 0 && d.y == 0 && d.z == 0) return 0;
     const Vec3 p = bones[i], q = bones[j];
     Vec3 e{q.x - p.x, q.y - p.y, q.z - p.z};
+    // Port guard (exe-faithful Math_normalize3 loops forever on a zero vector, see player_helpers):
+    // headless lanes run clip frames whose skeleton bones coincide -> degenerate axis = no capsule.
+    if ((e.x | e.y | e.z) == 0) return 0;
     Math_normalize3(d, d);
     Math_normalize3(e, e);
     const Fixed reach = fxi(radius) + r16; // 0x543E8D

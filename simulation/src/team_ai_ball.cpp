@@ -551,7 +551,7 @@ constexpr std::uint8_t kPassThr96[5] = {0x46, 0x46, 0x46, 0x46, 0x46}; // 0x58B6
 constexpr std::uint8_t kPassThr9B[5] = {0x3c, 0x3c, 0x3c, 0x3c, 0x3c}; // 0x58B69B
 constexpr std::int32_t kDiffAdj[3] = {0x1e, 0x1e, 0};                  // 0x58B6A0
 constexpr std::int32_t kSectorReach[8] = {0x180, 0x150, 0x120, 0x120, 0xc0, 0x120, 0x120, 0x150}; // 0x58B6AC
-constexpr std::int32_t kSectorClose[8] = {0x120, 0x120, 0xf0, 0xf0, 0xc0, 0xf0, 0xf0, 0x120};     // 0x58B6CC
+[[maybe_unused]] constexpr std::int32_t kSectorClose[8] = {0x120, 0x120, 0xf0, 0xf0, 0xc0, 0xf0, 0xf0, 0x120}; // 0x58B6CC (WC98: superseded by reach>>1 gate)
 constexpr std::int32_t kDribbleBudget[20] = {1, 1, 2, 3, 3, 4, 4, 5, 6, 7, 8, 9, 0xb, 0xd, 0xf, 0x12, 0x13, 0x14, 0x15, 0x16}; // 0x590630
 
 // Kick spec lists 0x58B1D8 (16 bytes: u8 kind, ..., +0xC u32 anim class) selected by 0x4D175C via the
@@ -1120,10 +1120,12 @@ int TeamAI_onBallAct_4DD324(World& w, int pid) {
     t.f1b4 = -1;
     f(0x60) = (t.f1b8 != -1 && P(w, t.f1b8).ctrl != 0) ? 1 : 0;
     const std::uint32_t m = static_cast<std::uint32_t>(t.mentality);
-    const std::int32_t adj = kDiffAdj[ediDif];
-    f(0x40) = kPassThr91[m] + adj;
-    f(0x44) = kPassThr96[m] + adj;
-    f(0x48) = kPassThr9B[m] + adj;
+    // WC98 FUN_0050cf50 (pair 46) loads the pass thresholds RAW from DAT_0058bfd1/bfd6/bfdb:
+    // no +DAT_0058b6a0 formation-base addition that FIFA-99 applies. SIM_PORT_NOTES "TeamAI
+    // decision-family WC98 deltas".
+    f(0x40) = kPassThr91[m];
+    f(0x44) = kPassThr96[m];
+    f(0x48) = kPassThr9B[m];
     f(0x5c) = aiD32(0x59fc5c);
     f(0x58) = o.f1e4 != -1 ? Player_cachedDistance(w, pid, o.f1e4) : 0x960;
     if (o.flags & 1) f(0x5c) += 0x90;
@@ -1166,16 +1168,18 @@ int TeamAI_onBallAct_4DD324(World& w, int pid) {
     if (f(0x60) == 0) goto L_4dd9d6;
 L_4dd6ad: {
     const int a32 = Player_attr(w, pid, 0x32);
-    f(0x74) = kDribbleBudget[a32] << (ediDif == 2 ? 0 : 1);
-    if (f(0x28) != 0) f(0x74) += static_cast<std::int32_t>(w.rng.next() & 0x1f);
-    else if (f(0x24) != 0) f(0x74) += static_cast<std::int32_t>(w.rng.next() & 0xf);
-    if (t.f210 == 1) f(0x74) >>= 3;
+    w.rng.next(); // WC98 0x50CF50: first FUN_004f33e0() draw is discarded (FIFA-99 has none)
+    // WC98 0x50CF50 (pair 46): budget = table[attr] + (rand & 0xf) drawn unconditionally; the
+    // FIFA-99 difficulty scaling `<< (dif == 2 ? 0 : 1)` and the conditional 0x1f / 0xf draws are
+    // gone. The f210 branch gate becomes [team+0x144]==1 && formation != 0 with shift >>2
+    // (FIFA-99: t.f210 == 1 -> >>= 3).
+    f(0x74) = kDribbleBudget[a32] + static_cast<std::int32_t>(w.rng.next() & 0xf);
+    if (t.f210 == 1 && m != 0) f(0x74) >>= 2;
     std::int32_t d4 = (f(0x54) - p.facingDesired) & 0x3ff;
     if (d4 > 0x200) d4 -= 0x400;
     f(0x04) = d4;
     f(0x00) = ((d4 + 0x40) & 0x3ff) >> 7;
-    f(0x0c) = kSectorReach[f(0x00)];
-    if (ediDif == 0) f(0x0c) -= kSectorReach[f(0x00)] >> 2;
+    f(0x0c) = kSectorReach[f(0x00)]; // WC98 0x50CF50: the FIFA-99 difficulty-0 `-= reach >> 2` clamp is not present.
     if (f(0x20) != 0) f(0x0c) += static_cast<std::int32_t>(static_cast<std::uint32_t>(kSectorReach[f(0x00)]) >> 1);
     f(0x0c) += Player_attr(w, pid, 0x2f);
     if (p.distBall > p.distBallPrev) f(0x0c) += ((w.ball.speed - p.speed) << 6) >> 16;
@@ -1202,7 +1206,7 @@ L_4dd6ad: {
 L_4dd814:
     if (static_cast<std::int16_t>(p.pendingCode & 0xffff) < 0) goto L_4df000;
     ++w.pl.g67320c;
-    if ((p.pendingCode & 0xffff) == 0x73) goto L_4defa5;
+    if ((p.pendingCode & 0xffff) == 0x71) goto L_4defa5; // WC98 skill code (FIFA-99 0x73; anim ids shift -2)
     Player_setState(w, pid, 0x30d, 0, 0, false, true);
     return 1;
 L_4dd9d6: {
@@ -1414,7 +1418,7 @@ L_4de05e: // an opponent chases (+0x88)
     Motion_setTarget(w, pid, w.ball.posI);
     {
         const std::int32_t d = P(w, ch).distBall;
-        if (d < 0x150 || (d < 0x1b0 && f(0x00) == 0)) {
+        if (d < 0xc0 || (d < 0x180 && f(0x00) == 0)) { // WC98 0x50CF50: near-chaser dribble gate 0x150/0x1b0 -> 0xc0/0x180
             dribbleDir_4DC0D8(w, pid, ch, f(0x4c), f(0x54), f(0x34), F.ptr(0x9c));
             --w.pl.g67320c;
             goto L_4dd814;
@@ -1479,7 +1483,7 @@ L_4de3b8: { // the chaser is tackling
     if (f(0x20) != 0) goto L_4de6ce;
     if (static_cast<std::uint32_t>(t.humans) == 0 && t.f1b8 != -1) goto L_4de6ce;
     if (f(0x1c) != 0) goto L_4de6ce;
-    if (ediDif == 0 && (w.rng.next() & 1)) goto L_4de6e9;
+    if (ediDif == 0 && (w.rng.next() & 3)) goto L_4de6e9; // WC98: dif==0 && (rand & 3) -> dribble (FIFA-99 !(rand&1))
     if (P(w, ch).distBall >= 0x120) {
         dribbleDir_4DC0D8(w, pid, ch, f(0x4c), f(0x54), f(0x34), F.ptr(0x9c));
         goto L_4dd814;
@@ -1518,8 +1522,9 @@ L_4de559:
         f(0x10) = f(0x37c);
         goto L_4ddd92;
     }
-    if (f(0x18) >= 0 && f(0x4c) < aiD32(0x59fd18)) {
-        f(0x37c) = p.posI.z + (side == 1 ? -0x80 : 0x80) - P(w, ch).posI.z;
+    if (f(0x18) >= 0 && f(0x4c) < aiD32(0x59fd18)) { // WC98 gate global DAT_00595230
+        // WC98 0x50CF50 (pair 46): the shot-lane goal-side offset is +/-0x40, not FIFA-99's +/-0x80.
+        f(0x37c) = p.posI.z + (side == 1 ? -0x40 : 0x40) - P(w, ch).posI.z;
         if (s01(f(0x37c)) == side) goto L_4def38;
     }
 L_4de80d:
@@ -1527,7 +1532,7 @@ L_4de80d:
     if (!wingClear_4DB7CC(w, pid, F.ptr(0x9c))) goto L_4de946;
     t.flags |= 0x200;
     t.f1b4 = -1; // EBP = +0x2C (0): null
-    if (P(w, ch).distBall >= 0xf0) {
+    if (P(w, ch).distBall >= 0xc0) { // WC98 LAB_0050dff3: wing-clear chaser gate 0xf0 -> 0xc0
         Math_polarRecord(0x18, atan2i(f(0xa0), f(0xa4)), F.ptr(0x9c));
         if (f(0x28) == 0) Player_requestSprint(w, pid);
         goto L_4dd814;
@@ -1546,8 +1551,8 @@ L_4de946:
     }
     {
         int flag = 0; // ECX
-        if (static_cast<std::uint32_t>(f(0x74) + 0x1e) >= static_cast<std::uint32_t>(w.time.possessionFrames)) goto L_4deb5b;
-        if (wrapAbs(side == 0 ? p.facing - 0x200 : p.facing) < 0x55) goto L_4de6ce;
+        if (static_cast<std::uint32_t>(f(0x74) + 0xb4) >= static_cast<std::uint32_t>(w.time.possessionFrames)) goto L_4deb5b; // WC98 budget+0xb4 (FIFA-99 +0x1e)
+        if (wrapAbs(side == 0 ? p.facing - 0x200 : p.facing) < 0x55 || w.time.possessionFrames > 0x21c) goto L_4de6ce; // WC98 fused facing/frames gate
         f(0x37c) = wrapAbs(f(0x54) - 0x200 - p.facingDesired);
         std::int32_t c = static_cast<std::int32_t>((2 - ediDif) << 2) - 2;
         if (c < 0) c = 0;
@@ -1555,7 +1560,8 @@ L_4de946:
             const std::uint32_t mask = (1u << (c & 31)) - 1;
             if (!(w.rng.next() & mask)) flag = 1;
         }
-        if (static_cast<std::uint32_t>(w.time.possessionFrames) <= 0x5a && flag == 0) goto L_4deb5b;
+        // WC98 LAB_0050e... : the FIFA-99 `frames <= 0x5a && flag == 0` skip is gone, folded into
+        // the fused facing gate above; the mask-draw flag detection below stays an OPEN item.
         framePasses_4DD2BC(w, pid, F);
         f(0x37c) = f(0xac);
         if (f(0x44) <= F.recs[f(0x37c)].score && !(F.recs[f(0x37c)].r10 != 0 && f(0xac) == 0)) {
@@ -1573,7 +1579,8 @@ L_4de946:
         }
     }
 L_4deb5b:
-    if (static_cast<std::uint32_t>(P(w, ch).distBall) > static_cast<std::uint32_t>(kSectorClose[f(0x00)]) || (w.rng.next() & 0xf)) {
+    // WC98 LAB_0050e... (pair 46): the kSectorClose table gate is replaced by `(reach + attr [+half]) >> 1 < distBall`.
+    if (static_cast<std::int32_t>(f(0x0c) >> 1) < P(w, ch).distBall || (w.rng.next() & 0xf)) {
         if (f(0x74) > w.pl.g67320c) {
             dribbleDir_4DC0D8(w, pid, ch, f(0x4c), f(0x54), f(0x34), F.ptr(0x9c));
             goto L_4dd814;
@@ -1627,9 +1634,11 @@ bool TeamAI_tryHeaderPass_4DF2CC(World& w, int pid, std::int32_t h) {
     const int k32 = (t.f1b8 != -1 && P(w, t.f1b8).ctrl != 0) ? 1 : 0;
     const std::uint32_t m = static_cast<std::uint32_t>(t.mentality);
     std::int32_t k5e = (kShotThr[m] + 0x3c) >> 1;
-    const std::int32_t adj = kDiffAdj[t.ctrl1f4];
-    const std::int32_t k66 = kPassThr91[m] + adj, k62 = kPassThr9B[m] + adj;
-    const std::int32_t t96 = kPassThr96[m] + adj; // ESI
+    // WC98 FUN_0050e740 (pair 47) loads the pass thresholds as raw bytes from DAT_0058bfd1 /
+    // DAT_0058bfd6 / DAT_0058bfdb indexed by mentality; FIFA-99's `+ DAT_0058b6a0` formation-base
+    // addition is gone. SIM_PORT_NOTES "TeamAI decision-family WC98 deltas".
+    const std::int32_t k66 = kPassThr91[m], k62 = kPassThr9B[m];
+    const std::int32_t t96 = kPassThr96[m]; // ESI
     const int ch = o.f1cc;                         // EDI
     const int k36 = s01(p.posI.z - w.pitch.thirdLineZ[side]) == side ? 1 : 0;
     const int k2e = (s01(w.ball.posI.z) == side && Pitch_inPenaltyArea(w, w.ball.posI)) ? 1 : 0;
@@ -1773,7 +1782,8 @@ L_4df7fd:
     else Kick_planToPoint(w, pid, rel, nullptr, lift, -1, 0, kind, cls, p.posI.y > 0 ? 1 : 0, 2);
     rel[1] = iabs(rel[1]);
     rel[2] = iabs(rel[2]);
-    if (static_cast<std::uint32_t>(t.humans) == 0 && k56 != 0 && kind == 2 && rel[0] < 0xf0 && p.f014 == 6) t.f1b8 = pid;
+    if (static_cast<std::uint32_t>(t.humans) == 0 && k56 != 0 && kind == 2 && rel[0] < 0xf0 &&
+        (p.f014 == 5 || p.f014 == 6)) t.f1b8 = pid; // WC98: passback gate f014 in {5,6} (FIFA-99 == 6)
     return true;
 }
 

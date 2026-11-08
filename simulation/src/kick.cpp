@@ -1,6 +1,7 @@
 // Kick request pipeline (player+0x190): Kick_clearRequest 0x4D0750, Kick_clearPending 0x4D0770,
 // Kick_execute 0x4D07B0, Kick_arm 0x4D0BB4, Kick_planToPoint 0x4D0BF0, Kick_setRequestParams
-// 0x4D0C68, Kick_plan 0x4D0CFC, Kick_setAnimParams 0x4D1708 — ported from the disassembly.
+// 0x4D0C68, Kick_plan 0x4D0CFC (WC98: FUN_00502fc0 — HANDLER_DIFF_AUDIT.md pair 24; WC98 deltas in
+// SIM_PORT_NOTES.md "Kick family WC98 deltas"), Kick_setAnimParams 0x4D1708 — ported from the disassembly.
 #include "wc98/sim/anim.hpp"
 #include "wc98/sim/world.hpp"
 #include "player_states.hpp"
@@ -18,6 +19,13 @@ constexpr std::uint16_t kAnim180[20] = {269, 270, 283, 282, 285, 284, 287, 286, 
 constexpr std::uint16_t kAnim1A8[20] = {271, 272, 289, 288, 291, 290, 287, 286, 0, 0, 274, 275, 258, 257, 260, 259, 256, 255, 0, 0};
 // exe 0x58B1D0: random mask for the alternative volley anim by surface column
 constexpr std::uint8_t kVolleyMask[5] = {7, 7, 3, 3, 1};
+// Kick power (WC98 FUN_00502fc0 lines 49-61; FIFA-99 Kick_plan has no counterpart): phase base
+// DAT_0064015c == 2 -> 0x960, else 0xb40, +50% (>>1) when the kicker side's assist option bit
+// (DAT_00641011 0x40 / 0x80 -> w.opt.kickAssist) is set.
+constexpr std::int32_t kPowerPhase2 = 0x960, kPowerBase = 0xb40;
+// WC98 FUN_00502fc0: the short parameter stored at record +0x14 (KickVec angle slot) snaps to
+// 0x534 when it exceeds DAT_0056d148 = 1243.2 (double, read from the exe .bss image).
+constexpr std::int32_t kParamClampMax = 1243;
 
 bool zSide(const World& w, int pid, std::int32_t z) {
     const PlayerState& p = w.players[static_cast<std::size_t>(pid)];
@@ -34,8 +42,6 @@ EventType kickEvent(int kind) {
     case 3: return EventType::Cross;
     case 4: return EventType::Shot;
     case 9: case 10: return EventType::Header;
-    case 0xb: return EventType::KeeperThrow;
-    case 0xc: return EventType::KeeperKick;
     default: return EventType::Pass;
     }
 }
@@ -88,26 +94,43 @@ int Kick_plan(World& w, int pid, std::int32_t vec[4], int mode, int coordMode, c
     k.kicker = pid;
     k.receiver = T.f1e0;
     vec[0] = Math_length(vec[1], vec[2]);
+    if (vec[3] > kParamClampMax) vec[3] = 0x534; // WC98 FUN_00502fc0 clamp (DAT_0056d148); FIFA-99 none
     k.vec = {vec[0], vec[1], vec[2], vec[3]};
     Angle hd = atan2i(vec[1], vec[2]);
     const std::int32_t dist = vec[0];
-    if (animClass == 0x10) { // 0x4D16E3: no animation, armed at once
-        k.contactFrame = -1;
-        k.flags = (k.flags & 0xfau) | 4;
-        k.animOut44 = 0;
+    // Kick power gate (WC98 FUN_00502fc0 lines 49-65). The helper FUN_00500660 returns nonzero only
+    // for a slot-0 kicker passing FUN_0049eb60(dist) with team+0x138 == 0 (predicate not modelled —
+    // SIM_PORT_NOTES "Kick family WC98 deltas"), and the kind==1 branch keeps DAT_00641314 (pitch
+    // half-length) as power; every other path takes the phase base.
+    std::int32_t power = w.match.phase == 2 ? kPowerPhase2 : kPowerBase; // DAT_0064015c gate
+    if (p.slot == 0 && kind == 1) power = w.pitch.halfLength;            // FUN_00500660 != 0, param_5 == 1
+    // +50% assist bump gated by the team side byte (**(player+0x20)) vs DAT_00641011 bits.
+    if ((T.side == 0 && (w.opt.kickAssist & 0x40)) || (T.side == 1 && (w.opt.kickAssist & 0x80))) power += power >> 1;
+    static_cast<void>(power); // the dist>power vector clamp (FUN_004f3590 + FUN_004f34b0 offsetXZ, arg
+                              // registers hidden in the decompile) is an OPEN item — not applied.
+    if (animClass == 0x10) { // 0x4D16E3 / WC98 FUN_00502fc0 param_6 == 0x10: no animation, armed at once
+        k.contactFrame = -1; // iStack_28 = -1
+        k.flags |= 4;        // WC98 sets +0x3c bit 2 only (keeps contact/left bits); FIFA-99 cleared them
+        k.animOut44 = 0;     // uStack_30 = 0
         k.heading = static_cast<std::int16_t>(hd);
         k.kind = static_cast<std::uint8_t>(kind);
         k.animId = static_cast<std::uint16_t>(anim);
         k.side = 0;
         return 1;
     }
+    // WC98 FUN_00502fc0 lines 66-69: identical gate — posI.z sign (WC98 player+0xa8) vs team side byte.
     if (kind == 3 && animClass == 2 && static_cast<std::int32_t>(p.posI.z >= 0) == w.teams[static_cast<std::size_t>(p.team)].side) animClass = 1;
+    // WC98 takes the current facing from Motion_applyTurnAndRootPos FUN_004f3db4 (FIFA-99 direct field
+    // read); class 6 reads angleBall (WC98 player+0x100 == FIFA-99 +0x128). Port models p.facing.
     std::int32_t d = wrapA(hd - (animClass == 6 && !(kind == 3) ? p.angleBall : p.facing));
+    // WC98 lines 77-85 identical: d sign sets/clears record +0x3c bit 2 (target on the left).
     if (d > 0) k.flags &= ~2u;
     else k.flags |= 2;
     std::int32_t ad = d & 0x3ff;
     if (ad > 0x200) ad = 0x400 - ad;
+    // WC98 FUN_00502fc0 penalty ladder identical: wrapped |angle| vs 0x55 / 199 / 0x180 -> classes 0..3.
     side = ad < 0x55 ? 0 : ad < 0xc7 ? 1 : ad < 0x180 ? 2 : 3;
+    // WC98 reads the control-type byte at player+0x82 (FIFA-99 +0x9A); {2,3,4} = moving kick.
     const int ctlType = p.anim.type();
     if (ctlType != 2 && ctlType != 3 && ctlType != 4) moving = 0;
     const int left = (k.flags >> 1) & 1;
@@ -116,6 +139,8 @@ int Kick_plan(World& w, int pid, std::int32_t vec[4], int mode, int coordMode, c
     switch (animClass) {
     case 0:
         hd = p.facing;
+        // DAT_0064015c == 9 (WC98 phase global; FIFA-99 DAT_0065F22C): lines 110-114 re-map the kind to
+        // 0xe on side class 3 && dist < 0x1e0 (the special anims below are from the FIFA-99 full body).
         if (phase == 9) {
             if (moving == 1 && side == 2 && dist < 0x1e0) {
                 anim = left ? 0xf5 : 0xf7;
@@ -154,6 +179,8 @@ int Kick_plan(World& w, int pid, std::int32_t vec[4], int mode, int coordMode, c
             hd = p.facing;
             break;
         }
+        // WC98 lines 126-128: DAT_0064015c == 9 && side class 3 && dist < 0x1e0 -> kind 0xe. The one-touch/
+        // box branch above is subsumed by WC98 FUN_00508630 (identical to FIFA-99 per the audit table).
         if (phase != 9) moving = 1;
         else if (side == 3 && dist < 0x1e0) kind = 0xe;
         anim = kAnim158[idx()];
@@ -205,6 +232,7 @@ int Kick_plan(World& w, int pid, std::int32_t vec[4], int mode, int coordMode, c
         break;
     case 8:
         side = 0;
+        // WC98 gate reads DAT_00641314 == FIFA-99 DAT_0065F36C (pitch half-length), identical.
         anim = (dist > w.pitch.halfLength && Anim_clipUnavailable(w, 0xb9)) ? 0xb9 : 0xb7;
         break;
     case 9: side = 0; anim = 0xb8; break;
@@ -219,6 +247,8 @@ int Kick_plan(World& w, int pid, std::int32_t vec[4], int mode, int coordMode, c
     anim = Anim_resolveId(w, anim);
     k.contactFrame = static_cast<std::int16_t>(Anim_contactInfo(w, anim, 0, 0, -100, 1, &k.animOut44, &k.animHeading));
     const int m1 = Anim_markFrame1(w, anim);
+    // WC98 lines 201-213/234-236: tail = FUN_004fccd0 anim id, FUN_004fd320 contact frame, FUN_004fd760
+    // mark compare (flags bit 0 cleared then re-set); heading merge + zeroing identical to FIFA-99.
     k.flags = (k.flags & ~1u) | (k.contactFrame < m1 ? 1u : 0u);
     k.animHeading = wrapA(k.animHeading + hd);
     if (k.contactFrame < 0) k.animOut44 = k.animHeading = 0;
@@ -312,8 +342,15 @@ int Kick_execute(World& w, int pid) { // 0x4D07B0 (EAX = player+0x190)
             else Player_assignControlToReceiver(w, r, p);                                  // 0x4528C4
         }
     }
-    // kick sound 0x4A2F20 and commentary 0x4D54F8 are presentation
-    w.emit(kickEvent(k.kind), P.team, p, k.kind, k.mode);
+    // Kick sound 0x4A2F20 and commentary 0x4D54F8 are presentation. The exe classifies these by
+    // kick code (table 0x4E33AC): codes 9/10 = header/chest share solver kind 6 with code 11, and
+    // the keeper's distribution throw is code 0xb (State201 drop / requestKick), so the event lane
+    // maps those codes explicitly, falling back to the solver family for the rest.
+    const int code = w.kickCode[static_cast<std::size_t>(p)];
+    const EventType et = code == 9 || code == 10   ? EventType::Header
+                         : code == 0xb             ? EventType::KeeperThrow
+                                                    : kickEvent(k.kind);
+    w.emit(et, P.team, p, k.kind, k.mode);
     if (p == w.match.ai6731f4) w.time.timer673210 = 0x14;
     Kick_clearPending(w, pid);
     k.flags |= 0x10;
@@ -646,6 +683,7 @@ int Kick_aimTo(World& w, int pid, KickVec* vec, std::int32_t type, std::int32_t 
 void Player_executeKick(World& w, int pid, int code, std::int32_t ballY) {
     PlayerState& p = P(w, pid);
     TeamState& T = w.teams[static_cast<std::size_t>(p.team)];
+    w.kickCode[static_cast<std::size_t>(pid)] = code; // port-internal: event mapping (9/10 header)
     KickVec V{0, 0, 0, 0};
     std::int32_t L = 0, M = 0, H = 0, U = 0, mode = 6;
     int R = -1;

@@ -162,6 +162,9 @@ int run(int argc, char** argv) {
         else if (a == "--pad-smoke") { padSmoke = true; }
         else if (a == "--live-match-smoke") { liveSmoke = std::stoi(next()); }
         else if (a == "--ig-pause-smoke") { liveSmoke = std::stoi(next()); } // gate fe_igmenu: scripted pause tour (driver parses the flag itself)
+        else if (a == "--ig-stats-smoke") { liveSmoke = std::stoi(next()); } // gates fe_igstats/fe_ighalf/fe_igscsum/fe_igflsum: driver parses its own board flags
+        else if (a == "--ig-half-smoke") { liveSmoke = std::stoi(next()); }
+        else if (a == "--ig-full-smoke") { liveSmoke = std::stoi(next()); }
         else if (a == "--record-replay") { recordReplay = true; }
         else if (a == "--video-play") { videoPlay = next(); }
         else if (a == "--no-intro") { noIntro = true; }

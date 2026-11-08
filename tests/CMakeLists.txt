@@ -265,6 +265,17 @@ if(DEFINED WC98_TREE)
     # scripted Esc opens the composite, Enter on the quit row opens the confirm box (evidence lines).
     add_test(NAME fe_igmenu COMMAND wc98-native --ig-pause-smoke 200 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/igmenu)
     set_tests_properties(fe_igmenu PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "IGMENU: shapes=[1-9]" FAIL_REGULAR_EXPRESSION "IGMENU: shapes=0 ")
+    # IG presentation boards (IG_FAMILIES_SPEC.md §C): scripted livematch lanes open the composite scenes
+    # from last-match data. fe_igstats tours IGMENU's Stats row; fe_ighalf forces the half whistle via the
+    # exe period-end grammar; fe_igscsum/fe_igflsum run to full time and page the chain (PNGs per board).
+    add_test(NAME fe_igstats COMMAND wc98-native --ig-stats-smoke 380 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/igstats)
+    set_tests_properties(fe_igstats PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "IGSTATS: shapes=[1-9]" FAIL_REGULAR_EXPRESSION "IGSTATS: shapes=0 |texts=0 ")
+    add_test(NAME fe_ighalf COMMAND wc98-native --ig-half-smoke 5400 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/ighalf)
+    set_tests_properties(fe_ighalf PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "IGHALF: shapes=[1-9]" FAIL_REGULAR_EXPRESSION "IGHALF: shapes=0 |texts=0 ")
+    add_test(NAME fe_igscsum COMMAND wc98-native --ig-full-smoke 9000 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/igfull)
+    set_tests_properties(fe_igscsum PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "IGSCSUM: shapes=[1-9]" FAIL_REGULAR_EXPRESSION "IGSCSUM: shapes=0 |texts=0 ")
+    add_test(NAME fe_igflsum COMMAND wc98-native --ig-full-smoke 9000 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/igfull)
+    set_tests_properties(fe_igflsum PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "IGFLSUM: shapes=[1-9]" FAIL_REGULAR_EXPRESSION "IGFLSUM: shapes=0 |texts=0 ")
     # Between-round tournament presentation (FEFLOW35/25/26/27, LAY_COMPOSITOR_NOTES.md "Tournament
     # presentation scenes"): one stat line per screen; fails on zero shapes/texts/cursors.
     add_test(NAME fe_render_present COMMAND wc98-native --fe-smoke 1 --fe-present --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/present)

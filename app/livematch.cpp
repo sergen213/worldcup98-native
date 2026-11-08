@@ -46,6 +46,8 @@
 #include <atomic>
 #include <optional>
 #include <cstdint>
+#include <cctype>
+#include <format>
 #include <cstdlib>
 #include <iostream>
 #include <memory>
@@ -64,7 +66,7 @@ namespace {
 float fx(std::int32_t v) { return float(v) / 65536.0f; }
 
 // DAT_0065F1C8 seconds-in-period (plain int32 seconds; HUD clock format site): gate evidence view.
-double elapsedSecFloat(const sim::World& w) { return double(w.match.elapsedSec); }
+double elapsedSecFloat(const sim::World& w) { return double(w.match.totalSec); } // DAT_0065F1C8 cumulative (period resets make elapsedSec unusable across the half boundary)
 
 } // namespace
 
@@ -109,8 +111,10 @@ bool MatchBoot::init(const fs::path& root) {
     try {
         const formats::FcdbNames nm = formats::FcdbNames::parse(data->file("COMMON/FCDB_ENG.DBI"));
         for (int t = 0; t < 2; ++t)
-            if (std::size_t(teamIndex[std::size_t(t)]) < nm.teams.size())
+            if (std::size_t(teamIndex[std::size_t(t)]) < nm.teams.size()) {
                 abbrv[std::size_t(t)] = nm.teams[std::size_t(teamIndex[std::size_t(t)])].abbreviation;
+                names[std::size_t(t)] = nm.teams[std::size_t(teamIndex[std::size_t(t)])].fullName; // IG board typ1/typ2 captions
+            }
     } catch (const std::exception& e) { std::cout << "hud: no STR0 abbreviations (" << e.what() << ")\n"; }
 
     if (!sim::loadMatchAnimData(md, root)) { std::cerr << "skip: ANIM.MO clips unreadable\n"; return false; }
@@ -178,9 +182,178 @@ MatchSnapshot snapshotFromWorld(const sim::World& w, const sim::MatchData& md) {
     s.camera.mode = CameraMode::Tele;
     return s;
 }
+// ---- IG presentation boards (analysis/pass13/IG_FAMILIES_SPEC.md §C) ----------------------------
+// IGLAY.BIG members igstats/ighalf/igflsum/igscsum rendered from IgMatchData. Raw baselines:
+// /tmp/sweep-ig/report.txt (igstats texts=63, igflsum 42, igscsum 53, ighalf 0 = runtime rows).
+// Composite paints the scene-ownership visible whitelist; every caption/value is painted by this
+// file's overlay from FC-bank ids verified against COMMON/FCENG.BIN (FCLG index): title 28 'Match
+// Statistics' / 858 'HALF-TIME' / 776 'Full-Time' / 1553 'SCORE SUMMARY'; stat rows 1382 Possession,
+// 516 Corners Won, 392 Caught Offside, 758 Fouls Committed, 354 CARDS (page 0) + 781 GOALS,
+// 1708 Shots off Target (page 1); summary column headers 1862 'Time', 1351 'Player', 1603 'Score';
+// page buttons 1771 'Statistics' / 329 'Booking Summary'. Static textid soup slots (igstats
+// ty12..ty16 = engine-context captions, summary typ3..typ5/typ8/typ9/up/down) are EXCLUDED from the
+// whitelist per the f0f8109 composite rule; null.fsh box* placeholders stay legit invisible.
+namespace {
+std::string lowerName(std::string_view s) { std::string o(s); for (char& c : o) c = char(std::tolower(static_cast<unsigned char>(c))); return o; }
+const formats::LayoutObject* layObj(const formats::ScreenLayout& sc, std::string_view n) {
+    const std::string want = lowerName(n);
+    for (const auto& o : sc.objects)
+        if (lowerName(o.name) == want) return &o;
+    return nullptr;
+}
+// Centered caption painter (FeFlow::paintCaption pattern with explicit box width).
+int paintCentered(presentation::FeText* txt, render::SpriteBatch& ui, std::string_view s, float cx, float cy,
+                  float maxW, std::uint32_t rgba = render::packRgba(255u, 236u, 190u, 255u), int fontId = 4) {
+    if (!txt || !txt->ready() || s.empty()) return 0;
+    const formats::FfnFont* f = txt->face(fontId);
+    render::TextureId ftex = txt->faceTexture(fontId);
+    if (!f || !ftex) { f = txt->font(); ftex = txt->texture(); }
+    if (!f || !ftex) return 0;
+    const float sizePx = f->lineHeight ? float(f->lineHeight) : 16.f;
+    std::string str(s);
+    while (str.size() > 1 && presentation::textWidthPx(*f, str, sizePx) > maxW) str.pop_back();
+    int n = 0;
+    for (const auto& q : presentation::layoutTextCentered(*f, str, cx, cy, sizePx, rgba)) { ui.draw(ftex, q.dst, q.uv, q.rgba); ++n; }
+    return n;
+}
+std::string numStr(int v) { return std::to_string(v); }
+} // namespace
+
+IgBoards::IgBoards(render::Renderer& r, const fs::path& tree) : tree_(tree), art_(r, tree_, tree / "FE/INGAME") {
+    text_ = std::make_unique<presentation::FeText>(r, tree_); // FC*.BIN captions + FFN faces (non-throwing)
+}
+
+bool IgBoards::open(std::string_view name) {
+    const std::string n = lowerName(name);
+    static constexpr std::array<const char*, 2> archives = {"LAYOUTS.BIG", "IGLAY.BIG"}; // popup-lane search order
+    try {
+        fs::path d;
+        std::string text;
+        bool found = false;
+        for (const char* arc : archives) {
+            try { text = presentation::readLayout((tree_ / "FE/PACK/LAYOUTS" / arc).string() + "@" + n + ".LAY", d); found = true; break; }
+            catch (const std::exception&) {} // member absent in this archive: try the next
+        }
+        if (!found) {
+            const fs::path loose = wc98::findCaseInsensitive(tree_, "FE/INGAME/" + n + ".LAY");
+            if (loose.empty()) return false;
+            text = presentation::readLayout(loose.string(), d);
+        }
+        sc_ = formats::ScreenLayout::build(n, formats::LayoutDocument::parse(std::string_view(text)), nullptr, nullptr, "PC");
+    } catch (const std::exception&) { return false; }
+    kind_ = n == "igstats" ? 1 : n == "ighalf" ? 2 : n == "igflsum" ? 3 : n == "igscsum" ? 4 : 0;
+    page_ = 0;
+    return kind_ != 0;
+}
+
+void IgBoards::movePage(int dir) {
+    if (!kind_) return;
+    page_ = (page_ + dir + 2) % 2; // 'igbC' btn1..btn4 page switch [C] FUN_0043a3f4: two pages on the L/R axis
+}
+
+presentation::FeDrawStats IgBoards::draw(render::SpriteBatch& ui, const IgMatchData& d) {
+    using namespace presentation;
+    FeDrawStats st;
+    if (!kind_) return st;
+    // Scene-ownership whitelist: everything shown() except the static textid soup slots.
+    std::vector<std::string> excl;
+    if (kind_ == 1) excl = {"titl", "ty12", "ty13", "ty14", "ty15", "ty16", "typ8", "typ9"}; // ty12.. static engine captions
+    else if (kind_ >= 3) excl = {"titl", "typ3", "typ4", "typ5", "typ8", "typ9", "up", "down"}; // header soup + list arrows
+    std::vector<std::string> visible;
+    for (const auto& o : sc_.objects) {
+        if (!o.shown()) continue;
+        const std::string n = lowerName(o.name);
+        if (std::ranges::find(excl, n) != excl.end()) continue;
+        visible.push_back(n); // composite() applies the whitelist by name (duplicates included)
+    }
+    st = composite(sc_, ui, art_, text_.get(), &visible);
+    const auto cap = [&](std::size_t id) { return text_ && text_->ready() ? std::string(text_->stringAt(id)) : std::string(); };
+
+    // Title (box1 x=116 w=408): FC-bank caption centered across the header pane.
+    static constexpr int kTitle[5] = {0, 28, 858, 776, 1553}; // Match Statistics / HALF-TIME / Full-Time / SCORE SUMMARY
+    if (const formats::LayoutObject* t = layObj(sc_, "titl")) st.texts += paintCentered(text_.get(), ui, cap(std::size_t(kTitle[kind_])), 320.f, float(t->y) + 8.f, 400.f);
+
+    // Header block: team names (typ1/typ2), shields, then score numbers LAST (nmb1/nmb2 over the
+    // box4/box5 RECTs): the number slots sit inside the shield art's x-range on these layouts, so
+    // the digits must paint after the flag quads to stay legible.
+    for (int t = 0; t < 2; ++t) {
+        if (const formats::LayoutObject* o = layObj(sc_, t == 0 ? "typ1" : "typ2")) st.texts += paintCentered(text_.get(), ui, d.names[std::size_t(t)], float(o->x) + 50.f, float(o->y) + 8.f, 130.f);
+        if (const formats::LayoutObject* o = layObj(sc_, t == 0 ? "flg1" : "flg2"); o && !d.flags[std::size_t(t)].empty()) {
+            const ScreenArt::Shape sh = art_.shape("..\\global\\", d.flags[std::size_t(t)], "f000", -1); // FNNN record-index shields (FEFLOW11 rule)
+            if (sh.tex) { ui.draw(sh.tex, {float(o->x), float(o->y), float(sh.w), float(sh.h)}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu); ++st.shapes; }
+            else ++st.missing;
+        }
+    }
+    for (int t = 0; t < 2; ++t) {
+        const formats::LayoutObject* box = layObj(sc_, t == 0 ? "box4" : "box5");
+        if (const formats::LayoutObject* o = layObj(sc_, t == 0 ? "nmb1" : "nmb2")) {
+            const float cx = box ? float(box->x) + 13.f : float(o->x) + 6.f; // box4/5 width 26 (ighalf type-0 slot: same geometry)
+            st.texts += paintCentered(text_.get(), ui, numStr(d.score[std::size_t(t)]), cx, float(o->y) + 7.f, 24.f);
+        }
+    }
+
+    if (kind_ <= 2) { // stat grid: 5 rows x 2 pages on the typ3..ty11 label slots
+        static constexpr std::array<int, 5> kPage0Ids{1382, 516, 392, 758, 354}; // Possession / Corners Won / Caught Offside / Fouls Committed / CARDS
+        static constexpr std::array<int, 5> kPage1Ids{781, 1708, 0, 0, 0};       // GOALS / Shots off Target (rows 3..5 stay blank)
+        const bool p0 = page_ == 0;
+        const auto& ids = p0 ? kPage0Ids : kPage1Ids;
+        const int nRows = p0 ? 5 : 2;
+        static constexpr std::array<const char*, 5> kLabelSlots{"typ3", "typ4", "typ5", "ty10", "ty11"};
+        const float homeCx = kind_ == 1 ? 232.f : 218.f, awayCx = kind_ == 1 ? 460.f : 463.f; // bo15 x=212 / ty17 slot x (dumped)
+        for (int row = 0; row < nRows; ++row) {
+            const formats::LayoutObject* lab = layObj(sc_, kLabelSlots[std::size_t(row)]);
+            if (!lab) continue;
+            const float cy = float(lab->y) + 8.f;
+            st.texts += paintCentered(text_.get(), ui, cap(std::size_t(ids[row])), (homeCx + awayCx) * 0.5f, cy, 190.f);
+            for (int t = 0; t < 2; ++t) {
+                const auto& s = d.stats[std::size_t(t)];
+                std::string val;
+                if (!p0) val = ids[row] == 781 ? numStr(s.goals) : numStr(s.shotsWide);
+                else switch (row) {
+                    case 0: val = numStr(d.possessionPct[std::size_t(t)]) + '%'; break;
+                    case 1: val = numStr(s.corners); break;
+                    case 2: val = numStr(s.offsides); break;
+                    case 3: val = numStr(s.fouls); break;
+                    default: val = numStr(s.cards); break;
+                }
+                st.texts += paintCentered(text_.get(), ui, val, t == 0 ? homeCx : awayCx, cy, 44.f);
+            }
+        }
+        // Page button captions + active-page chrome (btn1 = page 0 top-left, btn2 = page 1 below).
+        static constexpr std::size_t kPageCap[2] = {1771, 329}; // 'Statistics' / 'Booking Summary'
+        for (int p = 0; p < 2; ++p) {
+            const formats::LayoutObject* box = layObj(sc_, p == 0 ? "box6" : "box7");
+            if (box) st.texts += paintCentered(text_.get(), ui, cap(kPageCap[std::size_t(p)]), float(box->x) + 84.f, float(box->y) + 8.f, 170.f,
+                                               p == page_ ? render::packRgba(255u, 236u, 90u, 255u) : render::packRgba(255u, 236u, 190u, 255u));
+            if (p == page_) { // pressed chrome on the active page button ('igbC' grammar: btnd over btnn)
+                if (const formats::LayoutObject* b = layObj(sc_, p == 0 ? "btn1" : "btn2")) {
+                    const ScreenArt::Shape sh = art_.shape("..\\global\\", "INGAME.FSH", "btnd", -1); // button.fsh stem alias
+                    if (sh.tex) { ui.draw(sh.tex, {float(b->x), float(b->y), float(sh.w), float(sh.h)}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu); ++st.shapes; }
+                }
+            }
+        }
+    } else { // summary list: Time / Player / Score columns over lst1..lst3 (objecttype 9)
+        static constexpr std::array<const char*, 3> kCols{"lst1", "lst2", "lst3"};
+        static constexpr std::size_t kHeadIds[3] = {1862, 1351, 1603}; // 'Time' / 'Player' / 'Score'
+        for (int c = 0; c < 3; ++c) {
+            const formats::LayoutObject* lst = layObj(sc_, kCols[std::size_t(c)]);
+            if (!lst) continue;
+            st.texts += paintCentered(text_.get(), ui, cap(kHeadIds[std::size_t(c)]), float(lst->x) + float(std::max(45, lst->width)) * 0.5f, 143.f, 120.f);
+            std::vector<std::string> rows;
+            for (const auto& g : d.goals) {
+                if (c == 0) rows.push_back(std::format("{}'", g.minute));
+                else if (c == 1) rows.push_back(std::format("#{}{}", g.shirtNo, g.penalty ? " pen" : g.ownGoal ? " og" : ""));
+                else rows.push_back(std::format("{}-{}", g.scoreAfter[0], g.scoreAfter[1]));
+            }
+            if (!rows.empty()) paintListRows(ui, *lst, rows, -1, *text_, 4, st);
+        }
+    }
+    return st;
+}
+
 
 int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames,
-                platform::Window& window, render::Renderer& renderer, bool recordReplay, bool igPauseSmoke) {
+                platform::Window& window, render::Renderer& renderer, bool recordReplay, bool igPauseSmoke, int boardScript) {
     MatchBoot boot;
     if (!boot.init(tree)) return 2;
 
@@ -215,6 +388,7 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
     // Native replay recording (--record-replay): every controller-0 tick streams into the recorder;
     // sealed with the final world state hash on loop exit.
     ReplayRecorder rec;
+    if (boardScript >= 2) boot.opt.halfLengthMinutes = 1; // IGHALF/IGSCSUM gates: fast-forward to half/full time
     std::uint32_t recTick = 0;
     sim::SimRunner runner(boot.md, boot.opt, 0x2E7A);
     auto& w = runner.world();
@@ -273,11 +447,85 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
     } catch (const std::exception&) {}
     presentation::ScreenArt igArt(renderer, tree, tree / "FE/INGAME");
     auto igText = std::make_unique<presentation::FeText>(renderer, tree); // FC*.BIN captions for the LAY textid slots
-    enum class IgPause { Off, Menu, QuitAsk };
+    enum class IgPause { Off, Menu, QuitAsk, Board }; // + IG presentation boards (IG_FAMILIES_SPEC.md §C)
     IgPause pause = IgPause::Off;
-    int igSel = 0;                       // menu rows: 0 Resume, 1 Quit
+    int igSel = 0;                       // menu rows: 0 Resume, 1 Stats, 2 Quit (original item set is code-driven, undecoded captions)
     bool igReported = false, iqReported = false, iqShot = false;
     std::int64_t prevSim = int(w.time.simFrames); // camera delta source (DAT_0065F1E0 frames/tick)
+    // IG presentation boards: composite over the live/paused frame from last-match data. igstats opens
+    // from the IGMENU Stats row, ighalf at half-time whistle, full time = igscsum then igflsum [C]; Esc
+    // dismisses/resumes (payload grammar ESC=0x65), L/R moves pages ('igbC' btn1..btn4 FUN_0043a3f4).
+    std::unique_ptr<IgBoards> boards;
+    int boardSrc = 0;                    // open source: 1 stats menu, 2 half-time, 3 full-time chain
+    bool boardReported[5] = {}, halfShown = false, ftShown = false;
+    int boardShotAt = -1;                // capture frame of the current board (gate auto-script pacing)
+    static constexpr std::array<const char*, 5> kBoardName{"", "IGSTATS", "IGHALF", "IGFLSUM", "IGSCSUM"};
+    const int initPeriod = w.match.periodIndex; // DAT_0065F224: 0 -> >=1 transition marks the half whistle
+    std::array<std::int64_t, 2> possAcc{};      // per-team possessionFrames deltas (DAT_0065f264 + owning team DAT_0065f250)
+    std::int32_t lastPoss = w.time.possessionFrames;
+    const bool wantHalfBoard = boardScript == 2 || (boardScript == 0 && !smokeFrames);   // interactive play / fe_ighalf gate
+    const bool wantFullBoards = boardScript >= 3 || (boardScript == 0 && !smokeFrames);  // interactive play / fe_igscsum + fe_igflsum gates
+    auto buildIgData = [&]() {
+        IgMatchData d;
+        d.names = boot.names;            // FCDB STR0 fullName on the typ1/typ2 slots
+        char ff[8];
+        std::snprintf(ff, sizeof ff, "F%03u", unsigned(boot.teamIndex[0])); d.flags[0] = ff; // FNNN record-index shields (FEFLOW11 rule)
+        std::snprintf(ff, sizeof ff, "F%03u", unsigned(boot.teamIndex[1])); d.flags[1] = ff;
+        d.score = {w.match.score[0], w.match.score[1]}; // MatchState::score DAT_0065E050
+        for (int t = 0; t < 2; ++t) {
+            const auto& s = w.match.stats[std::size_t(t)]; // TeamStats block DAT_0065E1FC.. (rules.hpp fields)
+            d.stats[t] = {s.corners, s.offsides, s.fouls, s.cards, s.goals, s.shotsWide};
+        }
+        const std::int64_t sum = possAcc[0] + possAcc[1];  // Possession row: accumulator over possessionFrames ticks
+        if (sum > 0) {
+            int p = int((possAcc[0] * 100 + sum / 2) / sum);
+            if (p < 1) p = 1;
+            if (p > 99) p = 99;
+            d.possessionPct = {p, 100 - p};
+        }
+        std::array<int, 2> sc{0, 0};     // running score column from goalLog order (DAT_0065E058 count)
+        const int n = std::min(w.match.goalCount, int(std::size(w.match.goalLog)));
+        for (int i = 0; i < n; ++i) {    // DAT_0065E06C: byte0 flags (bit0 team, bit1 og, bit2 pen), byte1 shirt, u16 time seconds
+            const std::uint32_t e = w.match.goalLog[std::size_t(i)];
+            if (!e) continue;
+            IgGoalRow g;
+            const int fl = int(e & 0xFFu);
+            g.team = fl & 1;
+            g.ownGoal = (fl & 2) != 0;
+            g.penalty = (fl & 4) != 0;
+            g.shirtNo = int((e >> 8) & 0xFFu);
+            const int timeSec = int((e >> 16) & 0xFFFFu);
+            g.minute = timeSec / 60;
+            g.second = timeSec % 60;
+            if (g.ownGoal) sc[std::size_t(1 - g.team)] += 1;
+            else sc[std::size_t(g.team)] += 1;
+            g.scoreAfter = sc;
+            d.goals.push_back(g);
+        }
+        return d;
+    };
+    auto openBoard = [&](std::string_view nm, int src) {
+        if (!boards) boards = std::make_unique<IgBoards>(renderer, tree); // lazy: layouts + FC bank load once
+        boardSrc = src;
+        boardShotAt = -1;
+        pause = IgPause::Board;
+        if (!boards->open(nm)) { // layout absent on this tree: fall back to the caller semantics
+            std::cerr << "live: igboard open failed: " << nm << '\n';
+            if (src == 1) pause = IgPause::Menu;
+            else if (src == 3) quit = true;
+            else pause = IgPause::Off;
+        }
+    };
+    auto dismissBoard = [&]() {
+        switch (boardSrc) {
+            case 1: pause = IgPause::Menu; break; // IGSTATS from the menu: return to IGMENU
+            case 2: pause = IgPause::Off; break;  // half-time board: Esc resumes the match [C] ESC=0x65 resume callback
+            default:                              // full-time chain: IGSCSUM -> IGFLSUM page, then exit
+                if (boards && boards->kind() == 4) openBoard("igflsum", 3);
+                else quit = true;
+                break;
+        }
+    };
 
     { // Snap the camera to its tele target once (demo passes a huge frame count per capture; live
       // smoothing climbs eye.y only +/-frames units per tick, so starting at 0 crawls for seconds).
@@ -297,19 +545,47 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
         if (igPauseSmoke && presented == 136) key(SDL_SCANCODE_RETURN, false);
         if (igPauseSmoke && presented == 145) key(SDL_SCANCODE_ESCAPE, true);   // Esc: QuitAsk back to Menu
         if (igPauseSmoke && presented == 160) key(SDL_SCANCODE_ESCAPE, true);   // Esc closes the menu: match resumes
+        // IG board gate scripts. Mode 1 = stats tour through IGMENU (Esc opens, Down -> Stats row, Enter
+        // opens the IGSTATS composite, Esc closes to menu, Esc resumes). Modes 2/3 auto-dismiss/auto-advance
+        // N frames after each board capture (boardShotAt pacing below).
+        if (boardScript == 1) {
+            if (presented == 200) key(SDL_SCANCODE_ESCAPE, true);   // IGMENU opens after kickoff progress
+            if (presented == 215) key(SDL_SCANCODE_DOWN, true);     // cursor -> Stats row
+            if (presented == 216) key(SDL_SCANCODE_DOWN, false);
+            if (presented == 222) { key(SDL_SCANCODE_RETURN, true); } // Enter: IGSTATS board
+            if (presented == 223) key(SDL_SCANCODE_RETURN, false);
+            if (presented == 340) key(SDL_SCANCODE_ESCAPE, true);   // Esc: board -> menu
+            if (presented == 350) key(SDL_SCANCODE_ESCAPE, true);   // Esc: resume
+        }
+        if (boardScript == 3 && presented % 120 == 40) key(SDL_SCANCODE_D, true); // gate lane: mash Shoot so the match can score (IGSCSUM/IGFLSUM goal rows need real goals)
+        if (boardScript == 3 && presented % 120 == 52) key(SDL_SCANCODE_D, false);
+        if (boardScript >= 2 && pause == IgPause::Board && boardShotAt >= 0) {
+            const int bk = boards ? boards->kind() : 0;
+            const bool fire = (boardScript == 2 && presented == boardShotAt + 30) ||
+                              (boardScript == 3 && ((bk == 4 && presented == boardShotAt + 50) || (bk == 3 && presented == boardShotAt + 60)));
+            if (fire) key(bk == 4 && boardScript == 3 ? SDL_SCANCODE_RETURN : SDL_SCANCODE_ESCAPE, true); // Enter: IGSCSUM -> IGFLSUM; Esc: dismiss / quit
+        }
 
         for (SDL_Event e; SDL_PollEvent(&e);) { // keyboard + gamepad transitions into the ported layer
             if (e.type == SDL_EVENT_QUIT) quit = true;
             else if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat && e.key.scancode == SDL_SCANCODE_ESCAPE) {
                 // Esc opens/leaves IGMENU (global-key hub parity); no IG art on this tree -> direct exit.
-                if (!haveIgm) quit = true;
+                if (pause == IgPause::Board) dismissBoard(); // ESC=0x65 grammar: resume / dismiss to caller [C]
+                else if (!haveIgm) quit = true;
                 else pause = pause == IgPause::Off ? IgPause::Menu : pause == IgPause::QuitAsk ? IgPause::Menu : IgPause::Off;
             } else if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat && pause != IgPause::Off) {
-                switch (e.key.scancode) { // list cursor INC EDX @0x43FCD0: two-row port domain {Resume, Quit}
-                    case SDL_SCANCODE_UP: igSel = igSel > 0 ? igSel - 1 : 1; break;
-                    case SDL_SCANCODE_DOWN: igSel = igSel < 1 ? igSel + 1 : 0; break;
+                switch (e.key.scancode) { // list cursor INC EDX @0x43FCD0: port domain {Resume, Stats, Quit}
+                    case SDL_SCANCODE_UP: igSel = (igSel + 2) % 3; break;
+                    case SDL_SCANCODE_DOWN: if (pause == IgPause::Board && boards) boards->movePage(-1); else igSel = (igSel + 1) % 3; break; // L/R axis pages the 'igbC' btn1..btn4 pair [C] FUN_0043a3f4
+                    case SDL_SCANCODE_LEFT: if (pause == IgPause::Board && boards) boards->movePage(-1); break;
+                    case SDL_SCANCODE_RIGHT: if (pause == IgPause::Board && boards) boards->movePage(1); break;
                     case SDL_SCANCODE_RETURN: case SDL_SCANCODE_KP_ENTER: case SDL_SCANCODE_SPACE:
-                        if (pause == IgPause::Menu && igSel == 1) { if (haveIq) pause = IgPause::QuitAsk; else quit = true; } // 'quit' row: IGQUESHN box, no box -> exit
+                        if (pause == IgPause::Board) { // Enter advances the full-time chain IGSCSUM -> IGFLSUM [C]
+                            if (boards && boards->kind() == 4) openBoard("igflsum", 3);
+                            else dismissBoard();
+                        }
+                        else if (pause == IgPause::Menu && igSel == 1) openBoard("igstats", 1); // Stats row: live last-match data board
+                        else if (pause == IgPause::Menu && igSel == 2) { if (haveIq) pause = IgPause::QuitAsk; else quit = true; } // 'quit' row: IGQUESHN box, no box -> exit
                         else pause = IgPause::Off;                                          // resume / canc
                         break;
                     default: break;
@@ -332,9 +608,17 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
                     sawPassBit = true;
                     std::cout << "live: input->sim pass bit 0x20 reached controller 0 pad word\n";
                 }
+                if (boardScript == 3) { // gate lane: strike whenever the controlled player owns the ball;
+                    const int p = w.ball.possessor;    // a real goal fills goalLog -> IGSCSUM/IGFLSUM rows
+                    if (p >= 0 && w.players[std::size_t(p)].ctrl == 1 && (w.time.simFrames % 90u) < 8u)
+                        c.padBits |= input::actionBit(config::Action::Shoot);
+                }
                 runner.setController(0, c);
                 if (recordReplay) rec.append(recTick++, c); // recorded input word for this tick
-                if (!runner.tick()) { quit = true; break; } // match ended (DAT_0057c604 == 2)
+                if (!runner.tick()) { // match ended (DAT_0057c604 == 2)
+                    if (wantFullBoards && !ftShown) { ftShown = true; openBoard("igscsum", 3); } // full time opens IGSCSUM, then the IGFLSUM page [C]
+                    else { quit = true; break; }
+                }
                 // Center-spot restarts (phase 0) wait for the taker's kick: pulse Pass (key S, bit 0x20),
                 // and deliver the exe's "restart taken" event 0xb to Match_onEvent case 11 (0x470F98).
                 if (w.match.phase == 0 && prevPhase != 0) { kickIn = smokeFrames ? 40 : 90; forceIn = smokeFrames ? 90 : 150; }
@@ -345,6 +629,28 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
                     std::cout << "live: restart forced via Match_dispatchEvent(0xb)\n";
                     sim::Match_dispatchEvent(w, 0xb, w.match.phaseTeam);
                 }
+                // Possession row source: World.time.possessionFrames (DAT_0065f264) deltas credited to the
+                // owning team (DAT_0065f250); no sim-side accumulator exists.
+                if (w.time.possessionFrames != lastPoss) {
+                    const std::int32_t delta = w.time.possessionFrames - lastPoss;
+                    if (delta > 0 && delta < (1 << 20) && w.time.possessingTeam >= 0 && w.time.possessingTeam < 2)
+                        possAcc[std::size_t(w.time.possessingTeam)] += delta;
+                    lastPoss = w.time.possessionFrames;
+                }
+                // Forced half/full-time whistle for the IG board gates + interactive play: the natural
+                // MatchClock end path needs clean-ball conditions a scripted smoke match cannot meet.
+                // Arm the phase-9 period-end sequence with the exe's own grammar (rules.cpp 0x471F30):
+                // status |= 8, Match_requestPeriodEnd(whistle=1, next, team), event 9 = whistle sound.
+                // Friendly periods end with nextPhase 0xe -> half; the last one takes 0x10 -> match end
+                // (status |= 0x10 in requestPeriodEnd: seq9 emits MatchEnd, SimRunner sees DAT_0057C604=2).
+                if ((boardScript == 2 || boardScript == 3) && w.match.phase == 9 && !(w.match.status & (8u | 0x20u)) &&
+                    static_cast<std::int32_t>(w.match.elapsedSec) + 5 >= w.match.durationSec + w.match.injurySec) {
+                    const bool full = boardScript == 3 && w.match.periodIndex > initPeriod; // second period ends the match [C] IGSCSUM at full time
+                    w.match.status |= 8u;
+                    sim::Match_requestPeriodEnd(w, 1, full ? 0x10 : 0xe, 2);
+                    sim::Match_dispatchEvent(w, 9, 0); // whistle: the original plays it exactly when IGHALF/IGSCSUM opens [C]
+                }
+                if (wantHalfBoard && !halfShown && w.match.periodIndex > initPeriod) { halfShown = true; openBoard("ighalf", 2); } // original opens IGHALF at the half-time whistle [C]
             }
         } else {
             last = now; acc = 0.0; // keep the clock honest so resuming does not burst-tick
@@ -383,11 +689,22 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
         // ("are you sure" ok/canc pair; 'quit'-tag path of IGMENU init 0x4401A4).
         bool igShotPending = false;
         render::SpriteBatch ov; // outlives scene.build(): pushOverlay stores a pointer consumed there
-        if (pause != IgPause::Off) {
+        bool boardShot = false;          // first draw of the current IG board -> prefix__ig*.png evidence capture
+        if (pause == IgPause::Board && boards && boards->isOpen()) {
+            FeDrawStats bd = boards->draw(ov, buildIgData());
+            const int bk = boards->kind();
+            if (!boardReported[std::size_t(bk)]) { // gate evidence line + PNG (legible stat rows)
+                boardReported[std::size_t(bk)] = true;
+                std::cout << kBoardName[std::size_t(bk)] << ": shapes=" << bd.shapes << " texts=" << bd.texts << '\n';
+                boardShotAt = presented; // gate auto-script pacing (loop head)
+                boardShot = true;
+            }
+            scene.pushOverlay(ov); // consumed by the build() below
+        } else if (pause != IgPause::Off) {
             FeDrawStats ig = pause == IgPause::Menu ? composite(*igMenu, ov, igArt, igText.get())
                                                      : composite(*igQues, ov, igArt, igText.get());
             if (pause == IgPause::Menu) {
-                for (int row = 0; row <= 1; ++row) { // the port's two-row domain {Resume, Quit}
+                for (int row = 0; row <= 2; ++row) { // the port's three-row domain {Resume, Stats, Quit}
                     std::string tag = "bt"; tag += char('0' + row); tag += row == igSel ? 'd' : 'n';
                     const ScreenArt::Shape sh = igArt.shape("..\\global\\", "INGAME.FSH", tag, -1);
                     if (sh.tex) { ov.draw(sh.tex, {176.f, 138.f + 24.f * float(row), float(sh.w), float(sh.h)}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu); ++ig.shapes; }
@@ -402,6 +719,7 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
 
         const render::Frame& frame = scene.build(snap, camera.camera(), /*enhanced=*/true);
         if (igShotPending) savePng(renderer, frame, prefix + "_igmenu.png");
+        if (boardShot && boards) { std::string nm(lowerName(kBoardName[std::size_t(boards->kind())])); for (char& c : nm) c = char(std::tolower(static_cast<unsigned char>(c))); savePng(renderer, frame, prefix + "_" + nm + ".png"); }
         if (igPauseSmoke && pause == IgPause::QuitAsk && !iqShot) { savePng(renderer, frame, prefix + "_igquesn.png"); iqShot = true; }
 
         if (smokeFrames && presented == 0) { // gate evidence: the scene drew geometry and the HUD strip
@@ -449,12 +767,16 @@ int runLiveMatch(int argc, char** argv) {
     std::string prefix = "/tmp/wc98port-out/live";
     bool record = false; // --record-replay (parsed by main too, consumed here in live mode)
     bool igScript = false; // --ig-pause-smoke N: scripted Esc/Enter pause tour (gate fe_igmenu)
+    int boardScript = 0; // --ig-stats-smoke 1 / --ig-half-smoke 2 / --ig-full-smoke 3 (gates fe_igstats/fe_ighalf/fe_igscsum/fe_igflsum)
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         if (a == "--tree" && i + 1 < argc) root = argv[++i];
         else if (a == "--live-match-smoke") smoke = std::atoi(argv[++i]);
         else if (a == "--out-prefix" && i + 1 < argc) prefix = argv[++i];
         else if (a == "--ig-pause-smoke") { smoke = std::atoi(argv[++i]); igScript = true; } // gate fe_igmenu
+        else if (a == "--ig-stats-smoke") { smoke = std::atoi(argv[++i]); boardScript = 1; } // gate fe_igstats: IGMENU Stats-row tour -> IGSTATS composite
+        else if (a == "--ig-half-smoke") { smoke = std::atoi(argv[++i]); boardScript = 2; }   // gate fe_ighalf: 1-min halves, IGHALF opens at the half whistle
+        else if (a == "--ig-full-smoke") { smoke = std::atoi(argv[++i]); boardScript = 3; }   // gates fe_igscsum/fe_igflsum: full time -> IGSCSUM Enter -> IGFLSUM
         else if (a == "--record-replay") record = true;
         // Flags owned by other modes of the same CLI pass through untouched.
     }
@@ -493,7 +815,7 @@ int runLiveMatch(int argc, char** argv) {
     vcfg.drawableSize = [&] { return window->pixelSize(); };
 
     auto renderer = render::createVulkanRenderer(vcfg, settings);
-    const int rc = runLiveLoop(root, prefix, smoke, *window, *renderer, record, igScript);
+    const int rc = runLiveLoop(root, prefix, smoke, *window, *renderer, record, igScript, boardScript);
     renderer.reset(); // drain validation messages before the verdict (render-demo pattern)
     if (*messages && rc == 0) { std::cerr << *messages << " validation message(s)\n"; return 3; }
     return rc;

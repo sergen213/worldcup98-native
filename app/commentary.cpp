@@ -54,6 +54,8 @@ constexpr std::uint32_t kRecordSize = 20; // 20-byte phrase record || payload (N
 Commentary::Commentary(audio::Mixer* mixer) : mixer_(mixer) {
     q_.onStart([this](int slot, std::uint16_t id) { onStart(slot, id); });
     q_.onComplete([this](int slot) { return onComplete(slot); });
+    // Pass-12 dispatcher cluster model (FUN_0048f4b0 family): shares this instance's queue + gate.
+    dispatch_.reset(new SpeechEventDispatch{q_, preload_});
 }
 
 bool Commentary::loadBank(std::shared_ptr<const std::vector<std::uint8_t>> phrsBytes) {
@@ -162,6 +164,8 @@ bool Commentary::onComplete(int slot) {
 void Commentary::pump(int frames) {
     for (int f = 0; f < frames; ++f) {
         q_.pump(1);
+        // Pass-12 scheduler queue-depth gate FUN_004c4af0 tracks this instance's phrase ring.
+        scheduler_.setQueueDepth(q_.queued());
         const bool active = q_.sentenceStatus() == audio::SpeechQueue::kSentenceSpeaking && q_.queued() > 0;
         if (active != prevSpeaking_) {
             gain_.ramp(active ? volume_ : 0, kRampTicks);

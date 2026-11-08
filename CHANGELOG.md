@@ -7,6 +7,17 @@ project goals.
 
 ## [Unreleased]
 ### Added
+- Commentary adapter aligned to the pass-12 per-event speech architecture (`app/commentary.hpp`
+  `SpeechPreload` / `SpeechEventDispatch` / `SpeechScheduleRecord` + `SpeechScheduler`, wired into
+  `Commentary`): preload enable/disable gate semantics (scene-enabled precondition, once-only gate
+  transition, `SNDbankcreate('BNkl')` bank handle as the phrase-id source), event-byte switch
+  dispatch (`[obj+0x20]&0x3f`, cases 0..7) with per-record `SNDphraseadd(id, overlap=0)` + queue-slot
+  write-back into record+6 (overflow -13 stored verbatim) and exit-label `SNDsentencestart`, and the
+  RNG-gated match-clock scheduler (`t*100/60` conversions, `{sceneId, delay 0x7f/0x4a, t0, priority
+  sceneBase+3, start/end}` fields, `%5==0` echo variant with `%200 + t0 + 400` jitter, per-frame sweep
+  rewrite `(paceA*0x20 - paceB*7)*4/60`) — deterministic under a fixed seed. New ctest gates in
+  `test_commentary`: `preloadGate`, `eventDispatchGates`, `schedulerGates`, `schedulerWiring`;
+  COMMENTARY_WC98.md gains the port-side VA->symbol mapping table.
 - Commentary per-event speech preload table decoded (pass 12 ghidra dossier
   `analysis/pass12speech/SPEECH_PRELOAD_TABLE.md`): event-byte switch dispatcher at
   `0x48f45c/0x48f4b0`, preload enable/disable family (`FUN_0048d378/0x48d3f4`) creating a

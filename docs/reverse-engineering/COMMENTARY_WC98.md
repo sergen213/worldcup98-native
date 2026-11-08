@@ -234,3 +234,64 @@ Setter breakpoints armed at process **entry** via `winedbg FIFAWC.EXE` launch-un
   AV SEH-loop thread floods unpaced debugger streams - launch-under-debugger + pacing is the
   working recipe. Port keeps full-open defaults; no code change required (measured values are
   the same 80/65/1 set the port models).
+
+## Per-event speech preload + scheduler (pass 12, 2026-11-08)
+
+Dossier: `/mnt/1st4TB/WorldCup98/analysis/pass12speech/SPEECH_PRELOAD_TABLE.md` (+ raw decompiles
+`speech_pick*.txt` in that dir). Closes SPEECH_PHRASES.md §3 open item 2 (phrase selection source):
+there is **no static event->phrase table**. Per-event objects carry {event byte `@+0x20 & 0x3f`,
+phrase-id candidate field `@+0xE`, SNDphraseadd queue-slot result write-back `@+6`}; timing,
+priority and jitter are generated at runtime by the scheduler family with RNG gates.
+
+### Confirmed (exe-side)
+- **Dispatcher cluster** `FUN_0048f4b0..0x48f790`: pre-dispatch hook `FUN_0048f2d8` fills candidate
+  records for cases {2,4,6} via the bank iterator `FUN_0048d070` (high nibble `event>>6` selects the
+  bank) and case 7 via `FUN_0048f290`; event byte (`[obj+0x20] & 0x3f`, `CMP AL,0x7 / JA`) indexes
+  jump table `0x48f45c`. Per-case body: `MOV EDX,[rec+0xE]; XOR EBX,EBX (overlap=0); CALL 0x48d2f0;
+  CALL SNDphraseadd; MOV [rec+6],EAX`. Exit label `0x48f4ea` = `SNDsentencestart` + return 1 — fires
+  for every dispatched event, including the >7 fallthrough. Scene-handler loop `FUN_0048987d`: on
+  queue count == `DAT_0057e3e0` -> sentencestart + pump `FUN_004906f8`, clear `DAT_0057e37c`, set
+  `_DAT_0057e3e4=1`. Overflow reject (-13) is stored verbatim into record+6.
+- **Preload gate family** (gate `DAT_0063241c`): enable `FUN_0048d378` requires `FUN_00490674() != 0`
+  AND cleared gate; sets gate once, drains the qadd queue (`FUN_004c46a0` loop to `&DAT_006324b4`),
+  size calc `n*4+0x14`, arena via reservememadr `FUN_0049f5a0 -> DAT_00632424`, bank handle =
+  SNDbankcreate `FUN_004e33c0` ('BNkl' fourcc, byte@+4=4, u16 numpatches@+6, slots@+0x14, max 0x50
+  banks in the `DAT_00659de8` table) -> `DAT_00632420`. Disable `FUN_0048d3f4`: gate=0, qdel flush,
+  arena release via hook `FUN_004e37cc`, clears `DAT_00632424` (the handle global is not cleared).
+  Phrase-id accessor `FUN_0048d2f0`: gate ? `DAT_00632420` : 0 — the EAX source at every phraseadd site.
+- **Scheduler family** (gate `DAT_006324b4`, set by init chain `FUN_00490728 -> ... -> FUN_0048dfc4`
+  @0x48e071): core `FUN_0048d7ec` gates on `FUN_004906d0() > 0` and queue depth `FUN_004c4af0() < 2`;
+  converts match clocks `t*100/60`; allocates via `FUN_004c4e70` the subrecord `{+8 sceneId, +0xc
+  delay=0x7f, +0x10 t0, +0x14 priority = DAT_00636a14+3, +0x18 start = DAT_00636a14+t0+durC, +0x1c
+  end = start+durB}`; RNG-gated echo variant `FUN_004c321c() % 5 == 0` (sceneId != 2 only) patches the
+  primary delay to `0x4a` and adds a second record `{delay 0x7f, t0 = rng%200 + t0 + 400, +0x18/0x1c/
+  0x14 as above}`. Per-frame sweep `FUN_0048d9e0` rewrites `+0x1c = DAT_00636a14 + (EAX*0x20 - EDI*7)*4/60`
+  (pace-modulated duration) then emits (`FUN_0048d6fc`) per record.
+- RNG `FUN_004c321c`: generator body not decoded yet (function-listed at pass3 dump line 2738; used by
+  tournament shuffle, menu anim counters `% 0x28`, and this scheduler). Port-side stand-in LCG keeps the
+  scheduling deterministic under a fixed seed. **Hypothesis.**
+
+### Gate
+`test_commentary`: `preloadGate()` (a) scene-enabled precondition + once-only gate transition + bank
+handle = phrase-id source; `eventDispatchGates()` (b) all cases route phraseadd with overlap=0 and the
+slot-index write-back into record+6, candidates for {2,4,6}, -13 overflow write-back verbatim, >7
+fallthrough sentence-start, 0x3f mask; `schedulerGates()` (c) exact field semantics for fixed-seed
+inputs (t*100/60 conversions, priority sceneBase+3, sweep rewrite `(paceA*0x20 - paceB*7)*4/60`),
+(d) the second variant fires iff seeded `%5==0`, and never for sceneId 2; `schedulerWiring()` binds
+the FUN_004c4af0 depth gate to the live phrase ring through `Commentary::pump`.
+
+### Port-side mapping (original VA -> port symbol)
+| Original | Port (`wc98::app`) |
+|---|---|
+| `FUN_0048d378` preload enable | `SpeechPreload::enable` |
+| `FUN_0048d3f4` preload disable | `SpeechPreload::disable` |
+| `FUN_0048d2f0` phrase-id accessor (DAT_0063241c/DAT_00632420) | `SpeechPreload::phraseId` / `enabled` / `bankHandle` |
+| `FUN_004e33c0` SNDbankcreate ('BNkl', 0x50 banks) | `SpeechPreload::banksCreated`, `kMaxBanks` |
+| event object fields `[obj+0x20]&0x3f`, record `+0xE`, `+6` | `SpeechEventRecord{phraseId, queueSlot}` + `dispatch(eventByte,...)` |
+| dispatcher cluster `FUN_0048f4b0..0x48f790` (jump table 0x48f45c) | `SpeechEventDispatch::dispatch` (+exit-label sentence start) |
+| pre-dispatch hook `FUN_0048f2d8`, bank iterator `FUN_0048d070`, case-7 filler `FUN_0048f290` | `SpeechEventDispatch::setCandidate/clearCandidates` (caller-supplied candidates) |
+| scene init flag `FUN_0048dfc4` @0x48e071 (DAT_006324b4=1) | `SpeechScheduler::start` |
+| scheduler core `FUN_0048d7ec` record `{+8,+0xc,+0x10,+0x14,+0x18,+0x1c}` | `SpeechScheduler::scheduleEvent`, `SpeechScheduleRecord` |
+| per-frame sweep `FUN_0048d9e0` (+ emit `FUN_0048d6fc`) | `SpeechScheduler::sweepPace` / `emits` |
+| gates `FUN_004906d0` (level), `FUN_004c4af0` (depth) | `setSpeechLevel`, `setQueueDepth` (+ `Commentary::pump` ring feed) |
+| scene clock `DAT_00636a14`; RNG `FUN_004c321c` | `setSceneBase`; `randAdvance`/`setRandSeed` (Hypothesis LCG) |

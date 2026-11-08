@@ -561,11 +561,17 @@ void locoPass(AnimData& a) { // 0x4CBEA0
     std::memcpy(a.turnR, kTurnR, sizeof a.turnR);
     std::memcpy(a.skillA, kSkillA, sizeof a.skillA);
     std::memcpy(a.skillB, kSkillB, sizeof a.skillB);
+    // The tables' "no clip" filler is the end of the loaded seq table in both families (FIFA-99
+    // uses 0x1c4 with a 452-entry table; WC98's TBI carries 534 records so its filler id is 534).
+    // Normalize to the 0x1c4 sentinel the consumers test (anim.cpp l.841) and keep every resolved
+    // id inside a.seqs (locoPass runs before any clip load, on the raw table ids).
+    const std::uint16_t kSeqEnd = static_cast<std::uint16_t>(a.seqs.size());
+    auto res = [&](std::uint16_t v) { return v < kSeqEnd ? seqResolve(a, v) : 0x1c4; };
     for (int r = 0; r < 6; ++r)
         for (int j = 0; j < 11; ++j) {
-            a.turnL[r][j] = static_cast<std::uint16_t>(seqResolve(a, a.turnL[r][j]));
-            a.turnR[r][j] = static_cast<std::uint16_t>(seqResolve(a, a.turnR[r][j]));
-            const int id = seqResolve(a, a.loco[r][j][0]);
+            a.turnL[r][j] = static_cast<std::uint16_t>(res(a.turnL[r][j]));
+            a.turnR[r][j] = static_cast<std::uint16_t>(res(a.turnR[r][j]));
+            const int id = res(a.loco[r][j][0]);
             std::int32_t dist = 0, ang = 0;
             const std::int32_t frames = contactInfoData(a, id, 0, 0, -97, 0, &dist, &ang);
             const std::int64_t num = static_cast<std::int64_t>(dist) << 16, den = static_cast<std::int64_t>(frames) << 16;
@@ -581,15 +587,17 @@ void locoPass(AnimData& a) { // 0x4CBEA0
     for (int r = 0; r < 6; ++r)
         for (int j = 0; j < 11; ++j) { // the exe never advances the skillB pointer (esi): kept
             std::uint16_t& sa = a.skillA[r][j];
-            if (sa != 0x1c4) {
-                sa = static_cast<std::uint16_t>(seqResolve(a, sa));
+            if (sa != kSeqEnd && sa != 0x1c4) {
+                sa = static_cast<std::uint16_t>(res(sa));
                 if (a.seqs[sa].flags & 1) sa = 0x1c4;
-            }
+            } else
+                sa = 0x1c4;
             std::uint16_t& sb = a.skillB[r][0];
-            if (sb != 0x1c4) {
-                sb = static_cast<std::uint16_t>(seqResolve(a, sb));
+            if (sb != kSeqEnd && sb != 0x1c4) {
+                sb = static_cast<std::uint16_t>(res(sb));
                 if (a.seqs[sb].flags & 1) a.skillA[r][j] = 0x1c4;
-            }
+            } else
+                a.skillB[r][0] = 0x1c4;
         }
 }
 

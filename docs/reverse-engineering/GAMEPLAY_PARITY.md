@@ -42,7 +42,7 @@ ported-unverified (implemented, evidence cited, no dedicated assertion), **P** =
 
 | # | System | Implementation (file:symbol) | St | Evidence (exe addr / doc) | Gate(s) | Open-difference notes |
 |---|---|---|---|---|---|---|
-| 1 | Locomotion: gait select, accel/decel curves, turning | motion.cpp `updatePlayerSpeed` accel/decel via `p.accel/accelRecip/decel/decelRecip` (l.143-194); anim.cpp `Anim_selectLocomotion_4CC028` (l.720), `locoPass_4CBEA0` (l.557) | PV | gait/turn tables exe 0x59f81c/0x59f918/0x59fa20/0x59faa4 (anim_tables.inc headers); movement params 0x4BBBF8 + runtime tables 0x4CFF94 (test_sim_players header) | `test_sim_players`, `test_anim` | gait-type table is FIFA-99 dump; WC98 re-capture of the 252-byte block pending (§3) |
+| 1 | Locomotion: gait select, accel/decel curves, turning | motion.cpp `updatePlayerSpeed` accel/decel via `p.accel/accelRecip/decel/decelRecip` (l.143-194); anim.cpp `Anim_selectLocomotion_4CC028` (l.720), `locoPass_4CBEA0` (l.557) | PV | gait/turn tables exe 0x59f81c/0x59f918/0x59fa20/0x59faa4 (anim_tables.inc headers); movement params 0x4BBBF8 + runtime tables 0x4CFF94 (test_sim_players header) | `test_sim_players`, `test_anim` | WC98-verified via pass10 (SIM_TABLES_WC98.md): kGaitType byte-identical, the five u16 loco/turn/skill tables re-dumped from FIFAWC.EXE and installed; self-test dribble-lag calibration §5.2 |
 | 2 | Stamina & attribute influence | player.cpp attr build 0x478B08 + FE expansion 0x5202B0 (WC98 nibble layout per SIM_PORT_NOTES §4); fatigue 0x479028; kSkillA/kSkillB tables exe 0x59faa4/0x59fbac | PV | test_sim_players asserts attr arithmetic + fatigue (header l.2-6) | `test_sim_players`, `test_fcdb` (FCDB attrs) | live in-match speed decay from fatigue not asserted by any gate [INFERENCE] |
 | 3 | Momentum / inertia | motion.cpp turn-class speed caps `kSpeedCap[turnClass]` + decel integration (l.457-496); `Player_warpTo` (player_states_idle.cpp) | PU | kTurnClass[3][2] {171,455}/{114,455}/{114,398} (team_ai_ball.cpp l.~50 block); warp grammar SIM_PORT_NOTES §7 (M7 note 2) | none dedicated (`test_sim_scenarios` pass-warp uses it transitively) | no accel/stop-distance measurement gate (§4 gap B) |
 | 4 | Dribbling & possession (ball flags bit5/bit6) | ball.hpp `kEntInPossession` bit5/bit6 (l.23-28, T+0x198 field); team_ai_ball.cpp `TeamAI_onBallWon_4DC614` (l.883), `dribbleDir_4DC0D8` (l.678); anim.cpp `dribbleBone` callback (l.671) | PV | GHIDRA_PASS5_IG.md (ball entity/possession grammar); exe 0x4DC614 | `test_sim_scenarios` DribbleOut, `interactive_match` | dribble-touch cadence vs original untouched; quality not asserted |
@@ -67,21 +67,21 @@ ported-unverified (implemented, evidence cited, no dedicated assertion), **P** =
 
 Three provenance classes, by generated-table header comments and SIM_PORT_NOTES:
 
-**(a) Byte-exact exe dumps via `tools/sim-tables/dump.py` - source binary is FIFA99.EXE v1.1
-DGROUP** (headers state "byte-exact copy of FIFA99.EXE v1.1"; SIM_PORT_NOTES §1 records the
-verbatim copy). Addresses in headers are FIFA-99 DGROUP addresses:
-
-| Table | Header address | Consumer |
-|---|---|---|
-| ball_tables.inc (drag triple, gravity pair) | 0x57f45c / 0x57f464 / 0x57f468 + kick constants | flight.cpp l.4-6, ball.cpp rollUpdate |
-| anim_tables.inc kGaitType | exe 0x59f81c (252 x u8) | anim.cpp locoPass_4CBEA0 |
-| anim_tables.inc kLoco | exe 0x59f918 (132 x u16) | Anim_selectLocomotion_4CC028 |
-| anim_tables.inc kTurnL / kTurnR | exe 0x59fa20 / 0x59faa4 (66 x u16) | motion.cpp turn handling |
-| anim_tables.inc kSkillA / kSkillB | exe 0x59fb28 / 0x59fbac (66 x u16) | skill-mode tables |
-| input_tables.inc kButtonMask / kCtxTable / kActionTable / kCtxKeep | FIFA99 exe 0x58BAE8 / 0x58C648 / 0x58BE48 / 0x58CC30 (header l.1 "pending" WC98 re-dump) | input/src/input.cpp pad word |
-
-Consequence: any table not cross-verified below carries FIFA-99-era values that need WC98
-re-verification against FIFAWC.EXE DGROUP (raw 0x158600, VA 0x55a000; AUDIO_RUNTIME.md §1 layout).
+**(a' [CLOSED 2026-11-08]) Byte-exact exe dumps - WC98 re-dump COMPLETE.** The FIFA-99 v1.1
+tables were located in WC98 FIFAWC.EXE DGROUP by exact byte-signature + structural scans and
+xref-confirmed (capstone consumer sites); method, evidence files and per-table verdicts:
+`docs/reverse-engineering/SIM_TABLES_WC98.md`, `analysis/pass10/simtables/`.
+Byte-identical families (data unchanged; headers now cite WC98 VAs): kGaitType **0x59159c**,
+kButtonMask **0x58c7b4**, kCtxTable **0x58d314**, kCtxKeep **0x58d8fc** - WC98's DGROUP mirrors
+FIFA-99's layout deltas exactly. Differed families were re-dumped from WC98 bytes and installed:
+kActionTable @ 0x58cb14 (162/2048 entries differ), kLoco @ 0x591698 (74/132 - WC98 clip ids match
+the ANIM.MO set, max ~534), kTurnL/kTurnR/kSkillA/kSkillB @ 0x5917a0/…/0x59192c (66/66 each),
+kActionQueueAllowed @ 0x58c752 (48/98). **kActionQueueable has no WC98 equivalent** (the mirrored
+FIFA-99 slot holds dword-structured data); FIFA-99 bytes kept with an explicit absent note.
+This closes the silent-drift risk for these arrays: gates `test_input`, `test_anim`,
+`test_sim_players`, `test_gen4tbls` re-ran green on WC98 data.
+Ball-tables (drag/gravity/kick constants) remain class-(b) verified; remaining per-handler
+decompile diff audit is §5.2.
 
 **(b) Cross-verified against WC98 FIFAWC.EXE** (values confirmed identical in the reference binary):
 
@@ -143,16 +143,18 @@ asserted there (capture contest remains open).
    by a mechanism not yet found - GHIDRA_PASS6_AI.md, WINE_ORACLE_WC98.md. Rank 1: blocks true AI
    parity beyond the reconstruction's data-driven layer; needs Win9x-era env debugger as the only
    remaining route (SQF EULZ precedent, STATUS §Open).
-2. **Per-handler WC98 vs FIFA-99 decompile diff audit.** All `simulation/src/*.cpp` comments cite
-   FIFA 99 v1.1 addresses [C] SIM_PORT_NOTES preamble; the shared-family assumption is spot-checked
-   (ball pair, tick dt, FCDB nibbles) but never audited handler-by-handler against FIFAWC.EXE. Rank 2:
-   cheap Ghidra lane (pyghidra pattern in repo), high risk of silent physics/AI drift.
+2. **Per-handler WC98 vs FIFA-99 decompile diff audit.** The data-table half is CLOSED: all ten
+   generated tables are now WC98-verified/re-dumped (§3(a'), SIM_TABLES_WC98.md - 7 arrays carried
+   real WC98 deltas, installed). The code half stays open: `simulation/src/*.cpp` cite FIFA-99 v1.1
+   addresses [C] and were never audited handler-by-handler against FIFAWC.EXE; the table diffs prove
+   per-handler drift is plausible (kActionTable/kLoco/kTurn/Skill all differ). Rank 2: pyghidra lane.
 3. ~~Camera WC98 rederivation + broadcast grid box~~ **CLOSED**: the `FUN_00501910` 12x22
    broadcast grid box (scale DAT_0058bcc4/bcc8, index x+y*13, complement 298-index) is ported in
    presentation/src/camera.cpp with camera-param re-verification against FIFAWC.EXE; the live-match
    framing gates cover the behavior. FIFA-99-exe param values remain [C] (shared family).
-4. **Difficulty behavior verification** (`Team_setControlLevels_45159C`, kShotThr offsets): no gate
-   (gap O). Rank 4: one-scenario harness at 2 ctrl levels, cheap.
+4. ~~Difficulty behavior verification~~ **CLOSED**: `scenarioDifficulty` (`test_sim_scenarios`)
+   asserts the exact ctrl1f4/ctrl1f8/ctrl1fc triples of `Team_setControlLevels_45159C` at aiAssist
+   0 vs 2 and that consumers follow (claim range kRange[ctrl1f8], fatigue predicate, keeper ctrl1fc).
 5. **Referee positioning / advantage play**: exe-side RE map does not exist; whistle/clock grammar
    ported [C]. Rank 5: needs a dedicated Ghidra pass on the referee task handler.
 6. **Kickoff first-second pose** (M7 scenario note: 1-2 s of "poses" at kickoff): documented as the

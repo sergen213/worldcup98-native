@@ -21,6 +21,15 @@ project goals.
   ctrl1f4/ctrl1f8/ctrl1fc triples of `Team_setControlLevels_45159C` for aiAssist 0 vs 2 (human vs AI
   sides) and that consumers follow — claim range kRange[ctrl1f8] {0x55,0x42,0x2f}, fatigue-tick
   predicate, keeper ctrl1fc — closing gap O.
+- WC98 simulation-table verification pass (pass10): the shipped FIFA-99 dumps of the locomotion and
+  input action families were re-dumped from FIFAWC.EXE by byte-signature scan + consumer xrefs
+  (`docs/reverse-engineering/SIM_TABLES_WC98.md`, `analysis/pass10/simtables/`): kButtonMask/kCtxTable/
+  kCtxKeep proven byte-identical, kGaitType byte-identical; the five u16 loco/turn/skill tables and the
+  action/context tables (162/2048 entries differ) installed in `simulation/src/anim_tables.inc` +
+  `input_tables.inc`. `locoPass` normalizes the WC98 seq-table filler id (534, the TBI record count) to
+  the 0x1c4 sentinel and bounds every resolved id inside the loaded seq table (fixed five live-match
+  gate segfaults). Self-test sprint window re-anchors on the controlled carrier via M7 warp; dribble
+  lag assertion recalibrated to the WC98-measured ~95-unit sprint ramp (was ~43 FIFA-99).
 - `docs/reverse-engineering/GAMEPLAY_PARITY.md`: complete gameplay systems inventory (goal §1),
   constants provenance (§3), test coverage matrix (§4) and ranked open-differences list (§5);
   gaps B/C/D-placement closed by the self-test, remaining gaps E/F/G/H/K/M/N/P ranked for a

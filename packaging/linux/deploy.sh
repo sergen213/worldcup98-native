@@ -21,6 +21,7 @@ LINUXDEPLOY_URL="https://github.com/linuxdeploy/linuxdeploy/releases/download/co
 LINUXDEPLOY_SHA256="df908b19f1ed1cdafa79508d415aa12d6c56ce4d56d4149aa8c09286718706e5"
 APPIMAGETOOL_URL="https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage"
 APPIMAGETOOL_SHA256="ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0"
+RUNTIME_SHA256="617aa77314d57c8b8e4fae9c3f0b35af7b30d5529cb69e98f64f92510ed98a46" # type2-runtime continuous runtime-x86_64; pinned in tools-v1 mirror tag
 
 BUILD=${1:-$REPO_ROOT/build/release}
 OUT_DIR=${2:-$REPO_ROOT/dist}
@@ -40,19 +41,45 @@ QTPATHS=$(command -v qtpaths6 || true)
 [ -x "$QTPATHS" ] || QTPATHS=/usr/lib/x86_64-linux-gnu/qt6/bin/qtpaths6
 [ -x "$QTPATHS" ] || { echo "deploy: qtpaths6 not found (install Qt 6)" >&2; exit 1; }
 
+TOOLS_MIRROR_URL="https://codeload.github.com/sergen213/worldcup98-native/tar.gz/refs/tags/tools-v1"
+CACHE=${XDG_CACHE_HOME:-$HOME/.cache}/wc98-packaging
+
 fetch_cached() { # fetch_cached <url> <sha256> <dest>: download+verify unless cached and matching
     local url=$1 sha=$2 dest=$3
-    if [ -f "$dest" ] && [ "$(sha256sum "$dest" | cut -d' ' -f1)" = "$sha" ]; then return; fi
+    [ -f "$dest" ] && [ "$(sha256sum "$dest" | cut -d' ' -f1)" = "$sha" ] && return 0
     command -v curl >/dev/null || { echo "deploy: curl required to fetch $url" >&2; exit 1; }
     mkdir -p "$(dirname "$dest")"
     echo "deploy: fetching $(basename "$dest")"
     curl -fL --retry 10 --retry-delay 15 --connect-timeout 15 -o "$dest.tmp" "$url" && mv "$dest.tmp" "$dest"
     [ "$(sha256sum "$dest" | cut -d' ' -f1)" = "$sha" ] || { echo "deploy: SHA-256 mismatch for $dest" >&2; exit 1; }
 }
-CACHE=${XDG_CACHE_HOME:-$HOME/.cache}/wc98-packaging
-fetch_cached "$LINUXDEPLOY_URL" "$LINUXDEPLOY_SHA256" "$CACHE/linuxdeploy-x86_64.AppImage"
-fetch_cached "$APPIMAGETOOL_URL" "$APPIMAGETOOL_SHA256" "$CACHE/appimagetool-x86_64-1.9.1.AppImage"
-# curl downloads land 0644; the tools are exec'd directly (extracted mode).
+
+# Primary: pinned in-repo mirror (tag tools-v1, served by codeload). Fallback: upstream releases.
+fetch_from_mirror() { # fetch_from_mirror <sha> <basename> -> 0 on success
+    local sha=$1 name=$2 tmp="$CACHE/.mirror.tar.gz"
+    curl -fsL --retry 6 --retry-delay 10 --connect-timeout 15 -o "$tmp" "$TOOLS_MIRROR_URL" || return 1
+    mkdir -p "$CACHE/tmp-extract"
+    tar xzf "$tmp" -C "$CACHE/tmp-extract" --strip-components=1 || { rm -f "$tmp"; return 1; }
+    rm -f "$tmp"
+    [ -f "$CACHE/tmp-extract/$name" ] && [ "$(sha256sum "$CACHE/tmp-extract/$name" | cut -d' ' -f1)" = "$sha" ] || { rm -rf "$CACHE/tmp-extract"; return 1; }
+    mv -f "$CACHE/tmp-extract/$name" "$CACHE/$name"
+    rm -rf "$CACHE/tmp-extract"
+}
+mkdir -p "$CACHE"
+if [ "$(sha256sum "$CACHE/linuxdeploy-x86_64.AppImage" 2>/dev/null | cut -d' ' -f1)" != "$LINUXDEPLOY_SHA256" ]; then
+    fetch_from_mirror "$LINUXDEPLOY_SHA256" linuxdeploy-x86_64.AppImage \
+        || fetch_cached "$LINUXDEPLOY_URL" "$LINUXDEPLOY_SHA256" "$CACHE/linuxdeploy-x86_64.AppImage"
+fi
+if [ "$(sha256sum "$CACHE/appimagetool-x86_64-1.9.1.AppImage" 2>/dev/null | cut -d' ' -f1)" != "$APPIMAGETOOL_SHA256" ]; then
+    fetch_from_mirror "$APPIMAGETOOL_SHA256" appimagetool-x86_64-1.9.1.AppImage \
+        || fetch_cached "$APPIMAGETOOL_URL" "$APPIMAGETOOL_SHA256" "$CACHE/appimagetool-x86_64-1.9.1.AppImage"
+fi
+RUNTIME_FILE="$CACHE/runtime-x86_64"
+if [ "$(sha256sum "$RUNTIME_FILE" 2>/dev/null | cut -d' ' -f1)" != "$RUNTIME_SHA256" ]; then
+    fetch_from_mirror "$RUNTIME_SHA256" runtime-x86_64 \
+        || { echo "deploy: runtime-x86_64 unavailable (mirror + upstream both failed)" >&2; exit 1; }
+fi
+# downloads land 0644; the tools are exec'd directly (extracted mode).
 chmod +x "$CACHE"/*.AppImage 2>/dev/null || true
 
 WORK=$(mktemp -d)
@@ -128,7 +155,7 @@ fi
 mkdir -p "$OUT_DIR"
 OUT="$OUT_DIR/$NAME_G-linux-x86_64-$VERSION.AppImage"
 rm -f "$OUT"
-ARCH=x86_64 sh "$ATX/squashfs-root/AppRun" --no-appstream "$APPDIR" "$OUT"
+ARCH=x86_64 sh "$ATX/squashfs-root/AppRun" --no-appstream --runtime-file "$RUNTIME_FILE" "$APPDIR" "$OUT"
 ( cd "$(dirname "$OUT")" && sha256sum -- "$(basename "$OUT")" >"$(basename "$OUT").sha256" )
 printf 'v%s\n' "$VERSION" >"$OUT.version"
 echo "built: $OUT"

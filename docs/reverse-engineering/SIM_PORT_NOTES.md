@@ -193,9 +193,15 @@ never ported verbatim. Mapping as implemented:
 
 **OPEN items (not derivable from the decompile alone; do not fake):**
 
-- Pair 43 (`TeamAI_onBallWon_4DC614`) and pair 44 (`TeamAI_planAirKick_4DCAC8`): audit laneA/laneB
-  empty / only a 5-const laneB candidate at 0x50CC35; no WC98 body was extractable. The ports stay
-  at FIFA-99 semantics (audit rows "TeamAI_onBallWon: laneA=[] laneB=[] consts=0").
+- Pair 43 (`TeamAI_onBallWon_4DC614`) / pair 44 (`TeamAI_planAirKick_4DCAC8`): **CLOSED 2026-11-08** -
+  the bodies were located via xrefs into the WC98 mentality-threshold byte tables (the audit's constant
+  lanes missed them because the bodies carry no rare literals): `FUN_0050c820` = onBallWon,
+  `FUN_0050cc70` = planAirKick (`analysis/pass12air/ai2_xref_tables.txt`, pass-12 air2). Divergences installed:
+  thresholds RAW (no formation/difficulty base add); onBallWon gate id `state == 0x281` (FIFA-99 0x201),
+  clearance lane = rand + offsetXZ point only (nearest-player target lane, dz+(dist>>4) nudge,
+  (od>>3)+(od>>4) lift and the 0x72 min-clamp all GONE), tail code bands `>=0x3c1 -> 8 / >=0x1e1 -> 9 /
+  else 10` with the 0x72/0x8e lift clamps removed; planAirKick clearance = atan2+offsetXZ rel only, no
+  target lane, receiver stays -1, kick power from the rel vector (register args hidden [P]).
 - Pair 45 (`TeamAI_replanShot_4DCE94`): the audit candidate `0x4F4380` is a velocity-clamp/aim
   family routine (reads record +0xd8 flags, clamps 0x68000/0x40000/0x18000, writes kick vectors at
   +0x1C..+0x30) whose structure bears no relation to the FIFA-99 body (team+0x1E0 lookup ->

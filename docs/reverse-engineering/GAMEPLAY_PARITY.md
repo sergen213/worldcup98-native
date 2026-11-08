@@ -113,17 +113,17 @@ not planned [INFERENCE].
 
 | Validation category | Gate(s) | Asserted content | Gap |
 |---|---|---|---|
-| Walk/sprint gait & movement params | `test_sim_players` | accel/decel/speed from attrs, fx arithmetic | live gait transitions unasserted (A) |
+| Walk/sprint gait & movement params | `test_sim_players`; `scenarioGaitTransitions` (Gap A) | accel/decel/speed from attrs, fx arithmetic; live pad-driven gait ladder: selector rows follow speed bands 1-9 on ticked windows (0x4CC028 mirror), monotonic walk->sprint climb + loco-table clip consistency asserted | - |
 | Accel/stop distance | `self_test_gameplay` movement + sprint windows | carrier path / sprint segment covered under a live moveReq (pad->request->ramp), measured per tick on the real match | stop-distance value ladder open |
 | Direction change / turn class | `self_test_gameplay` turning window; kSpeedCap[turnClass] code | heading bend between orthogonal pad segments >= 90 deg | - |
 | Dribble control | `test_sim_scenarios` DribbleOut; `interactive_match` | possession kept under pressure, bit5/bit6 flags | touch cadence unasserted |
 | Short / long pass | `test_sim_scenarios` Pass (+forced path note M7) | receiver arrival + kick window | - |
-| Through-ball / cross | `test_sim_scenarios` Pass chain; `self_test_gameplay` passing step; pad bits input gate `test_input` | kick released, M7 landing placement on the facing side, possession left the taker | receiver capture vs opponent contest unasserted (D) |
+| Through-ball / cross | `test_sim_scenarios` Pass chain; `self_test_gameplay` passing step; pad bits input gate `test_input`; TackleWin contest lane (Gap D) | kick released, M7 landing placement on the facing side, possession left the taker; receiver capture under opponent contest: in-reach contact eval + duel outcome (flip/foul/knockdown/resolve) asserted | - |
 | Shot power levels | `test_sim_scenarios` ShotGoal + ShotPower (Gap E) | goal result, Save/Post/Bar branch; kickPower scales solver D = fx(0x16, kickPower), speed-class ladder asserted | - |
 | Bounce / roll physics | `test_sim_core` fx rounding; `self_test_gameplay` physics step; ShotGoal transitively; BounceRoll (Gap F) | shot arc apex + minGround measured on the live ball (flight + ground contact evidence); bounce count + roll decay asserted | - |
 | Collisions (player-ball, post/crossbar/net) | `test_sim_scenarios` ShotGoal (PostHit/BarHit) + NetRest (Gap G) | event branch; net-case rest position + containment asserted | net-case sub-branch table open |
 | Tackle / interception | `test_sim_scenarios` FoulsCards; TackleWin (Gap H) | foul emission; slide-tackle win timing via pickMove row gate, possession flip + card branch asserted | - |
-| Header / aerial duel | `test_sim_scenarios` HeaderDuel (Gap K) | Header event emits on air-ball contact, ball lifted by header vector; planAirKick/tryHeaderPass WC98 re-verify open (§5.2) | - |
+| Header / aerial duel | `test_sim_scenarios` HeaderDuel (Gap K) | Header event emits on air-ball contact, ball lifted by header vector; planAirKick/onBallWon WC98 bodies installed from `FUN_0050cc70`/`FUN_0050c820` (pass-12air), tryHeaderPass constants per pairs 46-48 | - |
 | GK saves + distribution | `test_sim_scenarios` ShotGoal + KeeperDistribution (Gap L); `self_test_gameplay` goalkeeper step | Save in {Goal,Save,PostHit,BarHit}; keeper displacement off the line during shot flight > 0; keeper throw-back re-enters play (rt/possessor) | - |
 | AI positioning | `test_sim_team` (grid arithmetic), scenarios team shape transitively | ball-zone cell math, G98PL slot targets | realism/spacing-vs-original **no gate** (M) |
 | Rules / restarts | `test_sim_scenarios` Kickoff, Offside, SetPieces (corner+throw-in), FoulsCards, Periods HT->FT, Shootout, ExtraTimeGoldenGoal; PenaltyKick (Gap N); AddedTime (Gap P) | event chains, restart types, cards, shootout, golden goal; in-box foul -> PK lineup -> strike -> Goal with score move; injury-sec clamp + status&4 board bit | difficulty behaviour closed via scenarioDifficulty (O) |

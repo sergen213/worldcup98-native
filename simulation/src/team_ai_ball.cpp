@@ -881,16 +881,18 @@ void frameKick_4DD070(World& w, int pid, ActFrame& F) {
 
 // 0x4DC614 (EDX kick code): kick on taking the ball (keeper distribution 0x201, clearances): best pass
 // over the mentality threshold, else a clearance up field (kick-off: to the nearest team-mate); state 0x300.
+// 0x50C820 (WC98 FUN_0050c820, pass-12 air2 dossier): same tri-table select as FIFA-99 0x4DC614 but the
+// thresholds load RAW from DAT_0058bfd1/bfd6/bfdb - the formation/difficulty base addition is GONE (pair 43).
 void TeamAI_onBallWon_4DC614(World& w, int pid, int code) {
     PlayerState& p = P(w, pid);
     TeamState& t = T(w, p);
     t.f1e0 = -1;
     const std::uint32_t m = static_cast<std::uint32_t>(t.mentality);
-    const int f201 = p.state == 0x201 ? 1 : 0;
+    // WC98 gate constant: player record slot +0x44 == 0x281 (FIFA-99 +0x48 == 0x201; WC98 state-id family).
+    const int f201 = p.state == 0x281 ? 1 : 0;
     std::int32_t thr;
     if (s01(p.posI.z + w.pitch.thirdLineZ[t.side]) != t.side || f201) thr = kPassThr96[m];
     else thr = s01(p.posI.z - w.pitch.thirdLineZ[t.side]) == t.side ? kPassThr91[m] : kPassThr9B[m];
-    thr += kDiffAdj[t.ctrl1f4];
     if (static_cast<std::uint32_t>(t.humans) == 0 && pid == t.f1b8) t.f1b8 = -1;
     const int skip = s01(p.posI.z - w.pitch.thirdLineZ[t.side]) == t.side ? 2 : 3;
     PassRec recs[11];
@@ -928,34 +930,24 @@ void TeamAI_onBallWon_4DC614(World& w, int pid, int code) {
             t.f1e0 = n;
         }
         lift = (od[0] >> 5) + (od[0] >> 6);
-    } else { // 0x4DC990: clear up field toward a random point halfLength ahead
+    } else { // 0x50C897 (WC98 FUN_0050c820): clear up field toward a random point halfLength ahead - the
+        // Team_nearestPlayer target lane, the dz+(dist>>4) nudge and the >>3+>>4 lift scale are GONE:
+        // offsetXZ writes dx/dz, distance flows raw to the mode gate (register args hidden [P]).
         const Angle a = (t.side == 1 ? 0x200 : 0) + 0x40 - static_cast<std::int32_t>(w.rng.next() & 0x7f);
-        const Vec3 S = offsetInDirection(w.ball.posI, w.pitch.halfLength, a); // 0x4BB0D0 (x/z; y stale)
-        std::int32_t dd = 0;
-        const int n = Team_nearestPlayer_4523E4(w, S, p.team, p.curSlot, &dd);
-        if (n != -1) {
-            const OctDist d = octDistance(w.ball.posI, P(w, n).posI);
-            od[1] = d.dx;
-            od[2] = d.dz + (d.dist >> 4);
-            od[0] = octLength(od[1], od[2]);
-            t.f1e0 = n;
-        } else {
-            const OctDist d = octDistance(w.ball.posI, S);
-            od[0] = d.dist;
-            od[1] = d.dx;
-            od[2] = d.dz;
-            t.f1e0 = -1;
-        }
-        lift = (od[0] >> 3) + (od[0] >> 4);
-        if (lift < 0x72) lift = 0x72;
+        const Vec3 S = offsetInDirection(w.ball.posI, w.pitch.halfLength, a); // FUN_004f3590 offsetXZ (y stale)
+        const OctDist d = octDistance(w.ball.posI, S);
+        od[1] = d.dx;
+        od[2] = d.dz;
+        od[0] = octLength(d.dx, d.dz);
+        t.f1e0 = -1;
+        lift = od[0]; // iVar3 = offsetXZ distance return value [P]
     }
-    if (f201) { // 0x4DC7D2
-        if (lift < 0x72) lift = 0x72;
-        if (od[0] > 0x780) {
+    if (f201) { // 0x50C9F0 (WC98): code-select lane only - FIFA-99's lift min-clamps (0x72 / 0x8e bump) are
+        // GONE, and the distance thresholds move 0x781 -> 0x3c1, 0x2d1 -> 0x1e1.
+        if (od[0] >= 0x3c1) {
             code = 8;
-        } else if (od[0] > 0x2d0) {
+        } else if (od[0] >= 0x1e1) {
             code = 9;
-            if (lift < 0x8e) lift = 0x8e;
         } else {
             code = 0xa;
         }
@@ -980,8 +972,9 @@ void TeamAI_planAirKick_4DCAC8(World& w, int pid) {
     PlayerState& p = P(w, pid);
     TeamState& t = T(w, p);
     const std::uint32_t m = static_cast<std::uint32_t>(t.mentality);
-    const std::int32_t adj = kDiffAdj[t.ctrl1f4];
-    const std::int32_t A = kPassThr96[m] + adj, B = kPassThr9B[m] + adj;
+    // WC98 FUN_0050cc70 (pass-12 air2): thresholds RAW from DAT_0058bfd6/bfdb - the FIFA-99 formation/
+    // difficulty base addition is GONE.
+    const std::int32_t A = kPassThr96[m], B = kPassThr9B[m];
     t.f1e0 = -1;
     PassRec recs[11], shots[5];
     std::int32_t best[3][2], out[2];
@@ -997,24 +990,19 @@ void TeamAI_planAirKick_4DCAC8(World& w, int pid) {
         lift = shots[si].r10;
     } else {
         if (A <= recs[best[0][1]].score) i = best[0][1];
-        if (B > recs[i].score) { // 0x4DCCD1: clear toward goal from the y=142 descent point
+        if (B > recs[i].score) { // 0x50CCF3 (WC98 FUN_0050cc70): clear toward goal from the y=142 descent
+            // point - the Team_nearestPlayer target lane, dz+(dist>>4) nudge and (rel[0]>>3)+0x8e lift are
+            // GONE: atan2 + offsetXZ write rel dx/dz only; the receiver stays cleared at entry (-1), and the
+            // kick power is derived from the rel vector by Kick_plan (register args hidden [P]).
             rel[1] = -p.posI.x;
             rel[2] = -w.pitch.goalLineZ[t.side] - p.posI.z;
             const Vec3 S = offsetInDirection(w.ball.cross142Pos, aiD32(0x59fc4c), atan2i(rel[1], rel[2])); // y stale
-            std::int32_t dd = 0;
-            const int n = Team_nearestPlayer_4523E4(w, S, p.team, p.curSlot, &dd);
-            if (n != -1) {
-                const OctDist d = octDistance(w.ball.cross142Pos, P(w, n).posI);
-                rel[2] += d.dist >> 4;
-                rel[0] = octLength(rel[1], rel[2]);
-            } else {
-                const OctDist d = octDistance(w.ball.cross142Pos, S);
-                rel[0] = d.dist;
-                rel[1] = d.dx;
-                rel[2] = d.dz;
-            }
-            t.f1e0 = n;
-            lift = (rel[0] >> 3) + 0x8e;
+            const OctDist d = octDistance(w.ball.cross142Pos, S);
+            rel[1] = d.dx;
+            rel[2] = d.dz;
+            rel[0] = octLength(d.dx, d.dz); // offsetXZ distance output [P]
+            t.f1e0 = -1;
+            lift = 0;
         } else {
             const OctDist d = octDistance(p.posI, recs[i].target);
             rel[0] = d.dist;

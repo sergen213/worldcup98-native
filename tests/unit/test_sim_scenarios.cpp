@@ -16,10 +16,16 @@
 #include "wc98/sim/sim.hpp"
 #include "wc98/sim/world.hpp"
 
+// Byte-verified WC98 locomotion tables (gait/loco/turn/skill rows, exe DGROUP 0x59159c.. block)
+// for the gait-transition gate's test-local table install below.
+#include "../../simulation/src/anim_tables.inc"
+
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <string>
 #include <vector>
+#include <algorithm>
 
 namespace wc98::sim {
 void Kick_arm(World& w, int pid);                             // kick.cpp 0x4D0BB4 (not in header)
@@ -74,6 +80,36 @@ MatchData makeMd() {
         md.anim.seqs[i].flags = 0x81;
     }
     return md;
+}
+
+// anim.cpp `locoPass` 0x4CBEA0 install lane, test-local (the exe runs it inside loadMatchAnimData;
+// the synthetic world has no ANIM.MO clips, so this scenario installs the byte-verified WC98 rows
+// itself): memcpy of the gait/loco/turn/skill tables + the documented "no clip" normalization. The
+// filler id in both families is the end of the seq table (WC98's TBI carries 534 records), mapped
+// to the 0x1c4 sentinel the consumers test; per-clip root speeds need ANIM.MO contact data, absent
+// here, so they stay raw (0). Skill rows: synthetic flags carry bit 0, so every row resolves to
+// the sentinel (locoPass l.587-601 semantics on this data).
+void installWc98LocoTables(AnimData& a) {
+    constexpr std::uint16_t kWc98SeqEnd = 534; // WC98 AISEQS.TBI record count (AISEQS_TBI.md)
+    a.seqs.resize(kWc98SeqEnd);
+    for (std::size_t i = 0; i < a.seqs.size(); ++i) {
+        a.seqs[i].id = std::uint16_t(i);
+        a.seqs[i].flags = 0x81; // ground player anims, "not loaded" (makeMd grammar)
+    }
+    std::memcpy(a.gaitType, kGaitType, sizeof a.gaitType);
+    std::memcpy(a.loco, kLoco, sizeof a.loco);
+    std::memcpy(a.turnL, kTurnL, sizeof a.turnL);
+    std::memcpy(a.turnR, kTurnR, sizeof a.turnR);
+    for (int r = 0; r < 6; ++r)
+        for (int j = 0; j < 11; ++j) {
+            if (a.loco[r][j][0] >= kWc98SeqEnd) a.loco[r][j][0] = 0x1c4;
+            if (a.turnL[r][j] >= kWc98SeqEnd) a.turnL[r][j] = 0x1c4;
+            if (a.turnR[r][j] >= kWc98SeqEnd) a.turnR[r][j] = 0x1c4;
+        }
+    for (int r = 0; r < 6; ++r) {
+        for (int j = 0; j < 11; ++j) a.skillA[r][j] = 0x1c4;
+        a.skillB[r][0] = 0x1c4;
+    }
 }
 
 void setPos(World& w, int pid, int x, int z) {
@@ -1219,6 +1255,231 @@ void scenarioKickoffPlacement() {
     ck(r2.world().ball.posI == Vec3{0, 0, 0}, "kickoff placement did not land on the centre spot");
     std::printf("kickoff placement asserts %02d/%02d PASS\n", gChecks, gChecks);
 }
+// ---------------------------------------------------------------------------------------------
+// 22. Gap A (§4 "live gait transitions unasserted"): the locomotion selector (Anim_selectLocomotion
+// 0x4CC028) switches its gait row as the carrier's speed ramps across the band thresholds. Lane 1
+// probes the table lane directly: speed band index (M.speed + 0x8000) >> 16 selects the anim type
+// row gaitType[0] and the loco clip kLoco[row][type], so walk/jog/sprint rows are distinct clips.
+// Lane 2 drives a real match: pad-driven sprint run (ControllerState padBits, self-test grammar),
+// sampling speed + selector state per tick; asserts the observed band/selector ladder climbs with
+// monotonic evidence and that every sampled selection is table-consistent at runtime.
+void scenarioGaitTransitions() {
+    gName = "gait-transitions";
+    MatchData md = makeMd();
+    installWc98LocoTables(md.anim); // exe 0x4CBEA0 lane: WC98 gait/loco rows (anim_tables.inc)
+    Options opt{};
+
+    // ---- lane 1: deterministic speed-band -> selector-row probe on a fresh seeded world.
+    {
+        SimRunner rp(md, opt, kSeed);
+        auto& wp = rp.world();
+        const int q = 13; // team-1 fielder (AI-controlled; the probe writes only his M fields)
+        auto& M = wp.players[static_cast<std::size_t>(q)];
+        M.anim.req = 0;                       // straight-run lane: row 0 of the loco table
+        M.turnClass = 0;
+        M.turnDelta = 0;
+        M.facingDesired = M.facing;
+        std::vector<int> ids, types;
+        for (int band = 1; band <= 9; ++band) {
+            M.anim.type() = 0;                // base row gaitType[0] (turn class 0 lane)
+            M.speed = band << 16;             // band index = (speed + 0x8000) >> 16
+            const int id = Anim_selectLocomotion(wp, q);
+            const int nt = md.anim.gaitType[0][band];
+            ck(id == md.anim.loco[0][nt][0], "the gait band's loco clip is not the table row entry");
+            ck(M.anim.type() == nt, "the selector type is not the gait-row value for its speed band");
+            ids.push_back(id);
+            types.push_back(nt);
+        }
+        // Sub-threshold walk: (speed + 0x8000) >> 16 == 0 && speed > 0x4ccc -> the band-1 row.
+        M.anim.type() = 0;
+        M.speed = 0x4ccd;
+        ck(Anim_selectLocomotion(wp, q) == md.anim.loco[0][md.anim.gaitType[0][1]][0],
+           "the >0x4ccc walk speed does not map to the band-1 loco clip");
+        // Monotonic ladder: walk -> jog -> sprint rows ascend as the speed bands climb.
+        for (std::size_t i = 1; i < ids.size(); ++i)
+            ck(types[i] >= types[i - 1] && ids[i] >= ids[i - 1], "the gait row ladder is not monotonic by speed band");
+        int distinct = 0;
+        for (std::size_t i = 0; i < ids.size(); ++i)
+            if (i == 0 || ids[i] != ids[i - 1]) ++distinct;
+        ck(distinct >= 3, "no walk/jog/sprint clip rows across the speed bands");
+        ck(ids.back() > ids.front(), "the sprint row does not sit above the walk row");
+    }
+
+    // ---- lane 2: pad-driven live ramp inside a real match (fixed seed).
+    SimRunner r(md, opt, kSeed);
+    auto& w = r.world();
+    Input_assignController(w, 0, 1, 0); // kickoff-taker side binding (self-test grammar)
+    int forceIn = 0, prevPhase = -1;
+    bool live = false;
+    for (int i = 1; i <= 420 && !r.finished() && !live; ++i) {
+        step(r);
+        if (w.match.phase == 0 && prevPhase != 0) forceIn = 154;
+        prevPhase = w.match.phase;
+        if (forceIn > 0 && --forceIn == 0 && w.match.phase == 0) {
+            Match_dispatchEvent(w, 0xb, w.match.phaseTeam); // forced in-ball (scenario 2 note)
+            forceIn = -1;
+        }
+        if (w.match.phase == 9 && forceIn < 0) live = true;
+    }
+    ck(live, "the gait window never opened inside live play");
+
+    const int q = 13; // the measured carrier (M7 forcing grammar, cf. scenario 15): pin him as
+                      // controller 0's player so control hand-offs cannot steal the window
+    for (int p = 0; p < 22; ++p) w.players[static_cast<std::size_t>(p)].ctrl = (p == q) ? 1 : 0;
+    w.players[static_cast<std::size_t>(q)].flags22c |= 0x200; // controlled-player flag (scenario 15 grammar)
+    // Open space: every fielder banished deep to a corner (positions outside the pitch clamp back,
+    // so stay in bounds); the carrier sits alone mid-pitch.
+    const int bx = w.pitch.halfWidth - 80, bz = -(w.pitch.halfLength - 80);
+    for (int p = 0; p < 22; ++p)
+        if (p != q && w.players[static_cast<std::size_t>(p)].slot != 0) setPos(w, p, bx, bz);
+    const Vec3 start{0, 0, 1600};
+    Motion_warpTo(w, q, &start, nullptr); // positioning grammar (self-test lane)
+    w.players[static_cast<std::size_t>(q)].facing = -0x200; // face the run direction (-z)
+
+    const std::uint32_t kSprint = 0x100; // sprint button bit (ControllerState padBits comment)
+    auto drive = [&](std::uint32_t bits) {
+        w.controllers[0].padBits = bits;
+        w.players[static_cast<std::size_t>(q)].ctrl = 1;
+        w.controllers[0].player = q + 1;
+        // pass-12air (pair 43/44) possession/clearance semantics move the AI kick lanes under this
+        // seed. The controlled movement lane gates on ball proximity (phase-9 distBall < 0x5a0 sets
+        // the live-request flag), so re-anchor an aerial loose ball at the carrier's head line every
+        // tick: the pad request stays alive, ground-contact possession never fires in-window.
+        Ball_placeAt(w, {0, 45, 1600});
+        w.ball.possessor = -1;
+        w.ball.dribbler = -1;
+        w.ball.flags |= 0x20; // aerial ball (HeaderDuel grammar)
+        step(r);
+    };
+    for (int i = 0; i < 40 && !r.finished(); ++i) drive(0); // absorb the kickoff control lock
+
+    // The synthetic world carries no ANIM.MO clips, so Motion_rootMotionStep refuses locomotion
+    // (its clip-unavailable gate zeroes the speed cap): root motion never travels players here and
+    // every other scenario pins positions per tick (M7 forcing grammar). The gait ladder is pure
+    // state, so the scripted drive feeds each band's speed through the public velocity primitive
+    // while the pad button combo is held down, one settle window of live ticks per band.
+    std::vector<int> ladder;
+    for (int band = 1; band <= 9 && !r.finished(); ++band) {
+        Motion_setVelocity(w, q, Fixed(band) << 16, -0x200); // scripted ramp: the band's speed
+        for (int i = 0; i < 4; ++i) drive(2 | kSprint);       // live ticks with the request held
+        auto& M = w.players[static_cast<std::size_t>(q)];
+        Motion_setVelocity(w, q, Fixed(band) << 16, -0x200); // re-anchor for the sample tick
+        ck(M.moveReq != 0, "the scripted move request went dead inside the gait window");
+        const int prevT = M.anim.type(); // selector state entering the sample tick
+        const int id = Anim_selectLocomotion(w, q);
+        const std::uint32_t req = M.anim.req;
+        ck(M.turnDelta >= -0x1c && M.turnDelta <= 0x1c, "the straight run drifted into a turn lane");
+        const int row = (req & 0x100f) == 0 ? 0
+                      : (req & 4)            ? 2
+                      : (req & 1)            ? 4
+                      : (req & 2)            ? 5
+                      : (req & 0x1000)       ? 3
+                                             : 1;
+        const int nt = M.anim.type(); // the selector the tick settled on
+        // Mirror of 0x4CC028's ladder: row base is the entering selector type, and the stamp30
+        // re-select window canonicalises it to gaitType[0]; both are exe-legal moves per band.
+        ck(nt == md.anim.gaitType[prevT][band] || nt == md.anim.gaitType[0][band],
+           "the live gait selector did not follow the speed band");
+        ck((id == 7 && (req & 0x100)) || id == md.anim.loco[row][nt][0],
+           "the runtime loco clip is not the table row entry for the band");
+        ladder.push_back(nt);
+    }
+    // Monotonic live evidence: walk -> jog -> sprint rows, climbed across the ticked bands.
+    for (std::size_t i = 1; i < ladder.size(); ++i)
+        ck(ladder[i] >= ladder[i - 1], "the live gait selector ladder is not monotonic");
+    int distinct = 0;
+    for (std::size_t i = 0; i < ladder.size(); ++i)
+        if (i == 0 || ladder[i] != ladder[i - 1]) ++distinct;
+    ck(distinct >= 3, "the live carrier never crossed three gait rows during the scripted ramp");
+    ck(ladder.back() > ladder.front(), "the live selector did not climb from the walk row to the sprint row");
+    std::printf("gait transitions asserts %02d/%02d PASS\n", gChecks, gChecks);
+}
+
+// ---------------------------------------------------------------------------------------------
+// 24. Gap D (§4 "receiver capture vs opponent contest unasserted"): the set-piece pass lane
+// (scenario 2 geometry) aimed at an intended receiver while a defending-side player stands inside
+// reach of the catch point, i.e. the interception branch's natural trigger geometry is live. The
+// gate asserts the completion side: Pass event, possession transfer to the intended receiver, no
+// defending-side ball win anywhere in the window (interception branch NOT taken), and that the
+// fixed seed replays the identical branch outcome (deterministic completion, not interception).
+void scenarioReceiverContest() {
+    gName = "receiver-contest";
+    MatchData md = makeMd();
+    Options opt{};
+    const int recv = 16; // intended receiver (team-1 fielder)
+    const int mark = 4;  // the contesting team-0 fielder
+    std::int32_t passerId = -1;
+    auto runOnce = [&](std::vector<Rec>& out, std::int32_t& finalOut, bool& cleanOut) {
+        SimRunner r(md, opt, kSeed);
+        auto& w = r.world();
+        int forceIn = 0, prevPhase = -1, window = 0;
+        std::int32_t passer = -1;
+        cleanOut = true; finalOut = -1;
+        for (int i = 1; i <= 500 && !r.finished(); ++i) {
+            auto ev = step(r);
+            if (window > 0) { out.insert(out.end(), ev.begin(), ev.end()); --window; }
+            if (w.match.phase == 0 && prevPhase != 0) forceIn = 150; // kickoff lineup settles (scenario 2 probe)
+            prevPhase = w.match.phase;
+            if (forceIn > 0 && --forceIn == 0 && w.match.phase == 0) Match_dispatchEvent(w, 0xb, w.match.phaseTeam);
+            if (passer < 0 && forceIn == 0 && w.ball.possessor >= 0 && tmOf(w, w.ball.possessor) == 1) {
+                passer = w.ball.possessor;
+                setPos(w, passer, 0, 50); // centre-spot geometry: the seeded aim target is stable (scenario 2)
+                Ball_placeAt(w, {0, 2, 35});
+                w.ball.possessor = passer;
+                w.ball.dribbler = passer;
+                w.ball.flags |= 0x20;
+                w.pl.current = passer;
+                Player_executeKick(w, passer, 1, 2); // code 1 kind 1: the set-piece pass lane
+                auto& k = w.players[static_cast<std::size_t>(passer)].kick;
+                ck(k.kind == 1, "plan kind not 1");
+                // The intended receiver stands on the aim point; every other team-1 fielder parks
+                // deep so only he can win. One team-0 defender contests at reach distance.
+                setPos(w, recv, k.target.x, k.target.z);
+                for (int pid = 13; pid <= 21; ++pid)
+                    if (pid != passer && pid != recv) setPos(w, pid, 0, 950);
+                setPos(w, mark, k.target.x + 60, k.target.z - 60); // the contest at the catch point
+                for (int pid = 1; pid <= 9; ++pid)
+                    if (pid != mark) setPos(w, pid, -700 + 80 * pid, 950);
+                const int dxm = iabs(w.players[static_cast<std::size_t>(mark)].posI.x - k.target.x);
+                const int dzm = iabs(w.players[static_cast<std::size_t>(mark)].posI.z - k.target.z);
+                ck(dxm <= 100 && dzm <= 100, "the contest is not inside reach of the catch point");
+                k.animId = 0x10;
+                k.contactFrame = -1;
+                Kick_arm(w, passer);
+                window = 350;
+                ck(Player_onAnimContact(w) == 1, "kick release refused");
+            }
+            if (window > 0 && w.ball.possessor >= 0 && tmOf(w, w.ball.possessor) == 0) cleanOut = false;
+        }
+        finalOut = w.ball.possessor;
+        passerId = passer; // captured by reference for the outside assertions
+    };
+    std::vector<Rec> evts;
+    std::int32_t finalPoss = -1;
+    bool clean = true;
+    runOnce(evts, finalPoss, clean);
+    const Rec* pass = nullptr;
+    for (auto& e : evts)
+        if (e.type == EventType::Pass && e.a == 1) { pass = &e; break; }
+    ck(pass != nullptr, "no Pass event on the contested lane");
+    ck(pass->team == 1 && pass->player == passerId, "pass team/player wrong");
+    std::int32_t gainer = -1;
+    for (auto& e : evts)
+        if (e.type == EventType::Possession && e.a >= 11 && e.a != passerId) { gainer = e.a; break; }
+    ck(gainer == recv, "possession did not transfer to the intended receiver under contest");
+    ck(clean, "the defending side intercepted the contested pass (interception branch fired)");
+    ck(finalPoss == recv, "the receiver did not hold the ball at window close");
+    // Deterministic branch: the fixed seed replays the identical completion outcome.
+    std::vector<Rec> evts2;
+    std::int32_t fp2 = -1;
+    bool clean2 = true;
+    runOnce(evts2, fp2, clean2);
+    ck(clean2 == clean && fp2 == finalPoss, "the contested-pass branch is not deterministic on the fixed seed");
+    ck(evts2.size() == evts.size(), "the replayed event stream diverges from the first run");
+    for (std::size_t i = 0; i < std::min(evts.size(), evts2.size()); ++i)
+        ck(evts2[i].type == evts[i].type && evts2[i].player == evts[i].player, "the replayed event stream diverges");
+    std::printf("receiver contest asserts %02d/%02d PASS\n", gChecks, gChecks);
+}
 } // namespace
 
 int main() {
@@ -1243,5 +1504,7 @@ int main() {
     scenarioPenaltyKick();
     scenarioAddedTime();
     scenarioKickoffPlacement();
+    scenarioGaitTransitions();
+    scenarioReceiverContest();
     return 0;
 }

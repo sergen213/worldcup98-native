@@ -7,6 +7,10 @@ project goals.
 
 ## [Unreleased]
 ### Added
+- Task-handler family dossier `docs/reverse-engineering/TASK_HANDLERS_WC98.md`: semantic map of the
+  30 tabB task handlers (scene bindings via the `.SCI` descriptor table, camera/pitch-mesh/timer
+  primitives, kickoff placement task), byte-proven `.SCI` payload grammar from `COMMON/*.SCI`, and a
+  ranked parity-delta table vs the port simulation (GAMEPLAY_PARITY §5.1 rank-1 unblocked).
 - Commentary adapter aligned to the pass-12 per-event speech architecture (`app/commentary.hpp`
   `SpeechPreload` / `SpeechEventDispatch` / `SpeechScheduleRecord` + `SpeechScheduler`, wired into
   `Commentary`): preload enable/disable gate semantics (scene-enabled precondition, once-only gate

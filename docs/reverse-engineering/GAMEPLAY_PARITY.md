@@ -60,8 +60,8 @@ ported-unverified (implemented, evidence cited, no dedicated assertion), **P** =
 | 16 | Match flow / stoppages / restarts (kickoff, goals, offside, fouls/free kicks, penalties, throw-ins, corners, goal kicks, cards, subs, clock/injury time/HT/ET/shootout/golden goal) | rules.cpp full seq grammar: `Match_onEvent` case 7 -> `Rules_checkBallOut` (restartType map), cases 0x12-0x15 offside + `Rules_checkOffside_4A6D8C`, seqSubstitution/`Team_removeInjured_4F9684`, yellow/red card code, injury-time added time in MatchClock_update; team_phase.cpp restart placement/taker (FUN_00452D10 family) | PV | exe 0x4A6D8C/0x4F9684/0x452D10..; M7_REGRESSIONS.md scenario list | `test_sim_scenarios` Kickoff, Offside, SetPieces, FoulsCards, Periods, Shootout, ExtraTimeGoldenGoal; `tournament_progression` (bracket flow) | in-match **penalty kick** (restartType 4 from box foul) implemented (`Rules_checkBallOut`/foul path) but no dedicated PK-kick gate (§4 gap N); clock-driven substitution not asserted (M7 "no substitutions observed" note); added-time value asserts pending (M7 §3 verify items) |
 | 17 | Ball physics: mass/momentum, friction/roll drag pair, bounce/restitution, air drag/gravity, spin, deflections, post/crossbar/net | flight.cpp gravity+drag triple `fx(fx(g,t),kDrag)` constants 0x2f5c0/0xeab/0xc391/0x61c8 (header l.4-6); ball.cpp `rollUpdate` pair constants at l.754/771 (SIM_PORT_NOTES §7); net state fields ball.hpp `kEntInNet` 0x01000000, contactMode/netCase/netPos (l.28-68); PostHit/BarHit events | PV | WC98 cross-verified: gravity pair **FIFAWC FUN_004b1f30 l.37**, drag pair **FUN_004b1f30 l.25** (GHIDRA_PASS5_IG.md l.60-61) | `test_sim_core` (fx rounding), `test_sim_scenarios` ShotGoal (PostHit/BarHit in result set) | spin magnitude model + net-surface case table not asserted (§4 gap I); bounce restitution values inherited dump (§3) |
 | 18 | Animation system: ANIM.MO clips, AISEQS.TBI sequences, instance/keyframe model, transitions/cancel, anim-ball sync | anim.cpp engine `alloc_45FA10`/`advance_460050`/`keys_45FC30`/`bone_45FEBC`/`playBlend_460674` (l.74-339), `parseAnimSeqTable` AISEQS.TBI (l.461), `seqResolve_4CC984` (l.497), blendPass 0x4CBDD4, `Players_animate_4CC8F4`; kick.cpp contact frames (`Player_onAnimContact` l.791; clip marks[0]/marks[1]); dribbleBone anim-ball callback | PV | engine range 0x45F000..0x461000 + layer 0x4CBD9C..0x4CDD54 (anim.cpp l.1); AISEQS.TBI stride-20 records [C] AI_SEQS_TBI.md; skeleton eval 0x460ACC | `test_anim` (ANIM.MO/TBI parse), `interactive_match` (players animate live) | transition/cancel matrix beyond blend frames not asserted; FIFA-era clip ids vs WC98 ANIM.MO data verified at parse level only |
-| 19 | Camera: broadcast grid box, follow modes | presentation/src/camera.cpp per-mode init params (CamRot_init* 0x4C3BAC.., CamPos_init* 0x544FAC.., FOV i16 0x57FAD8) + height/lead tables; match_scene.cpp camera-follow snap (livematch l.1018, smoothing-per-render l.1314) | P | params read from **FIFA99.EXE v1.1** [C] camera.cpp l.5-7; WC98 grid box `FUN_00501910` 12x22 clamp, index x+y*13, complement 298-index, scale DAT_0058bcc4/bcc8 (GHIDRA_PASS6_AI.md l.47-48) **not ported** - no grid-box code in presentation/ | `match_demo_frames`, `interactive_match` render the follow camera; `fe_camera_pages` = IG camera-select board only | WC98 rederivation of cam init addresses is a documented follow-up (camera.cpp l.3); libm vs exe quarter-wave table 0x582EB4 last-ulp drift [C] camera.cpp l.8-10 |
-| 20 | Audio events: whistle / commentary / crowd / kick sfx | app/game_audio.cpp `kWhistleSlot=81`, `kKickSlot=23` (l.17-19), CROWD.BNK slot 2/3 ambience loop; trigger seam on KickOff/PeriodEnd/MatchEnd + Shot (livematch l.1296 event 9); commentary SpeechQueue audio/speechqueue.cpp, phrs banks formats/phrs | PV | CHANGELOG.md l.183-186 (GAME00.BNK whistle #81 / kick slot 23; OpenAL loopback asserts audible >=1 s); AUDIO_RUNTIME.md + COMMENTARY_WC98.md gate grammar | `test_gameaudio`, `test_commentary`, `test_speechqueue`, `test_phrs` | commentary **trigger site-map** (45/46 gate sites) open - COMMENTARY_WC98.md "Open items"; scene percent levels [INFERENCE] (winedbg pass 7e; STATUS §Open commentary lane) |
+| 19 | Camera: broadcast grid box, follow modes | presentation/src/camera.cpp per-mode init params (CamRot_init* 0x4C3BAC.., CamPos_init* 0x544FAC.., FOV i16 0x57FAD8) + height/lead tables; broadcast grid box `FUN_00501910` ported (camera.cpp l.613+, scale DAT_0058bcc4/bcc8, index x+y*13); match_scene.cpp camera-follow snap (livematch l.1018, smoothing-per-render l.1314) | PV | params read from **FIFA99.EXE v1.1** [C] camera.cpp l.5-7; WC98 grid box clamp ported + gate; GHIDRA_PASS6_AI.md l.47-48 | `match_demo_frames`, `interactive_match` render the follow camera; `fe_camera_pages` = IG camera-select board only | FIFA-99-exe param values remain [C] (shared family); libm vs exe quarter-wave table 0x582EB4 last-ulp drift [C] camera.cpp l.8-10 |
+| 20 | Audio events: whistle / commentary / crowd / kick sfx | app/game_audio.cpp `kWhistleSlot=81`, `kKickSlot=23` (l.17-19), CROWD.BNK slot 2/3 ambience loop; trigger seam on KickOff/PeriodEnd/MatchEnd + Shot (livematch l.1296 event 9); commentary SpeechQueue audio/speechqueue.cpp, phrs banks formats/phrs | PV | CHANGELOG.md l.183-186 (GAME00.BNK whistle #81 / kick slot 23; OpenAL loopback asserts audible >=1 s); AUDIO_RUNTIME.md + COMMENTARY_WC98.md gate grammar | `test_gameaudio`, `test_commentary`, `test_speechqueue`, `test_phrs` | commentary **trigger site-map** CLOSED pass-13 (band = FE scene-install builders; COMMENTARY_WC98 §Open item 1); scene percent levels stay [INFERENCE] (winedbg pass 7e) |
 
 ## 3. Physics / animation constants provenance
 
@@ -187,22 +187,26 @@ transitions, D receiver-capture contest, M AI spacing realism (qualitative vs or
 8. **TeamAI decision-family re-verification** (pass 11 P1): WC98 rewrote the onBallAct/tryHeaderPass
    bodies (0x50CF50/0x50E740, byte ratio .20); `team_ai_ball.cpp`/`ai.cpp` logic re-verify against
    the pair dumps. Kick_plan WC98 constants are integrated (`kick.cpp` 0x502FC0, mapping table in
-   SIM_PORT_NOTES.md "Kick family WC98 deltas"); open sub-items listed there.
-9. Commentary trigger site-map (45/46 sites) - COMMENTARY_WC98.md Open items; percent-table scene
-   levels [INFERENCE] from winedbg pass 7e; rank 9 = gate-able once site map lands.
+   **CLOSED (pass-13)**: pairs 43/44 WC98 bodies installed (`analysis/pass12kick/KICK_PLAN_HELPERS.md`,
+   SIM_PORT_NOTES pass-12air row); pair-45 resolved as fused into onBallAct (SIM_PORT_NOTES pair-45
+   entry); all Kick_plan caller sites enumerated. Remaining qualitative notes stay in SIM_PORT_NOTES.
+9. Commentary trigger site-map: **CLOSED (pass-13)** - the band 0x452af0..0x458cf0 is the FE-flow
+   scene-install builder region (EAX = feflowNN name string into FUN_004893ec seam; `analysis/pass13/
+   cmtband.txt`), NOT commentary event firing; event mapping = pass-12speech dispatcher cluster, wired +
+   gated (`test_commentary`). Percent-table scene levels stay [INFERENCE] (pass 7e); rank closed.
 
 ## Totals registry
 
-systems (20 rows): **ported-verified=11** (locomotion, stamina/attrs, dribble+possession, passing
-family, GK saves, formations/tactics, team AI, match flow/restarts, ball physics, animation, audio
-events), **ported-unverified=4** (momentum/inertia, trapping, jump/aerial, difficulty),
-**partial=5** (shooting family, tackling family, physical interaction/fall-recovery, referee,
-camera), **missing=0** - no system is entirely absent; open sub-items are listed per row and in §4.
+systems (20 rows): **ported-verified=12** (locomotion, stamina/attrs, dribble+possession, passing
+family, GK saves, formations/tactics, team AI, match flow/restarts, ball physics, animation, camera,
+audio events), **ported-unverified=4** (momentum/inertia, trapping, jump/aerial, difficulty),
+**partial=4** (shooting family, tackling family, physical interaction/fall-recovery, referee),
+**missing=0** - no system is entirely absent; open sub-items are listed per row and in §4.
 Gates: named ctest gates cited = **21** (`test_sim_core`, `test_sim_players`, `test_sim_team`,
 `test_sim_scenarios`, `match_demo_frames`, `replay_record_play`, `interactive_match`,
 `self_test_gameplay`, `fe_igmenu`, `fe_ighalf`, `fe_igscsum`, `fe_igflsum`, `test_hud`,
 `test_input`, `test_anim`, `test_gen4tbls`, `test_fcdb`, `test_phrs`, `test_speechqueue`,
-`test_commentary`, `test_gameaudio`); suite total 111/111 green at v0.4.0 (HEAD 9e23838), plus the
+`test_commentary`, `test_gameaudio`); suite total 114/114 green at HEAD 52e9e88 (docs pass-13 on top), plus the
 goal §14 lane `wc98-native --self-test FILE.json` (`self_test_gameplay`) driving a real exhibition
 match with scripted pad words: movement/sprint/turning/dribbling/passing/shooting/physics/AI/
 goalkeeper/match-state all measured on internal sim state, JSON report written, exit code verdict.

@@ -123,13 +123,24 @@ Per-slot write census for the node/bracket block (`DAT_006324b4..0x6327xx`, from
 node team-slot fill by the fixture chain in 0x48f6xx–0x492xxx (per-fixture menu writers of
 `FUN_0045b0fc` family, FE region 0x45a7xx). Exact per-round propagation not decompiled — see §5.
 
-### 2.7 Schedule generation order
-- Deterministic modes (1/2) cycle global counters `DAT_0057e930/e934` mod per-block counts while
-  the loader walks `.HIS` grid rows ⇒ saved-fixture ordering is reproducible from the two counters
-  [P4 L537–553]. Mode 0 (runtime) uses RNG draws — schedule order = draw sequence.
-- `FUN_0048be5c` sorts exactly **17** items by u16 key (+0xE) into a linked list before the FE
-  bracket pass [P4 L274–337]; 17 ≈ group-stage rounds per pool cycle — mapping to the 64-match
-  order (incl. third-place) NOT proven; see §5.
+### 2.7 Schedule generation order **[DECODED pass 12, `analysis/pass12tourn/SCHEDULE_GEN.md`]**
+- Generator `FUN_0048c0bc` (mode = `DAT_0057e92c`): mode 0 = RNG LCG
+  (`FUN_004c321c`) Fisher–Yates draw over the 3 seed slots; mode 1/2 = global
+  counters `DAT_0057e934` / `DAT_0057e930` cycling `% per-block count`, mode 2
+  carries the quotient into the pick's high u16. Per-round loop runs exactly 3
+  blocks (exit via `FUN_004cfa70`). FE builder `FUN_0048ace4` registers 20 pool
+  fixtures + per-pool 5-slot blocks from grid stride-7 tables
+  (`DAT_0063172f..734 * DAT_0057e928`) gated by venue table `DAT_0057e69c`
+  (stride 10/pool), then sorts **17** items by u16 key node+0xE
+  (`FUN_0048be5c`, selection sort, tie-break = first unused).
+- Fixture adder `FUN_0048afb8` writes record stride 0x20 @`DAT_006307dc`:
+  type@+4, date ticks @+8/+0xc from bases `DAT_0057e614/618[type*8]` plus
+  pool-count venue bands (`DAT_0057e7c8` x1 /x2 /+half), venue-pattern pair
+  table `DAT_0057e6d8[pool*8 + tourn*0x28]`, flag byte record+0x18 |= 1, grid
+  bookkeeping at `DAT_00631762` (byte, stride pool*6 + tourn*0x66) and
+  `DAT_00631766` (u16 date, tourn*0x33 + pool*3).
+- BracketRecord field copies prove the layout: full cap 0xFF @+0x000, shortname
+  cap 0x7F @+0x100, label3/4/5 cap 0x7F @+0x180/+0x200/+0x280 (was hyp §4).
 
 ## 3. String inventory → flow states
 FE screen/layout names (0x564dd0..0x564edc, [P1 `tourn_strings.txt` L283–319]):
@@ -170,7 +181,7 @@ struct BracketRecord {           // §2.1 [P4]
     char shortname[128];         // +0x100
     char label3[128];            // +0x180
     char label4[128];            // +0x200
-    char label5[128];            // +0x280  (field meanings 3-5 = hyp)
+    char label5[128];            // +0x280  (fields proven by pass-12 copy loops, §2.7)
 };
 struct ZwcupRes {                // §2.5 [R1][H]
     uint16_t pool_size;          // 40
@@ -189,11 +200,15 @@ struct StandingsRow {            // app-side (binary block NOT located, §2.4)
 2. **Tiebreaker evaluation order**: enum vocabulary exists (§3 slot order) but no comparator code
    site proven; MOST_GOALS_ENCOUNTERS implies head-to-head mini-table — implement configurable
    chain, verify vs wine oracle screenshots of `wcstand1`.
-3. **64-match schedule generation order** incl. third-place: counters/sort pass mapped (§2.7) but
-   exact round-robin + knockout slot assignment permutation not decompiled (`FUN_0048ace4` body,
-   fixture chain 0x45a7xx).
-4. **ZWCUP triple semantics**: (goals, venue, goals) hypothesis [H]; validate against known 1998
-   results for a few id pairs (ids ↔ names map needs the TRI pool scan from TOURNAMENT_WC98.md).
+3. **64-match schedule generation order** incl. third-place — **[CLOSED pass 12]**
+   `FUN_0048c0bc` mode generator (RNG draw / counter cycles w/ carry), FE builder
+   `FUN_0048ace4`, fixture adder `FUN_0048afb8` record stride 0x20, venue tables + grid
+   bookkeeping: see §2.7 and `analysis/pass12tourn/SCHEDULE_GEN.md`. Knockout slot
+   assignment (fixture chain 0x45a7xx UI writers) remains for per-round propagation (§5.5).
+4. **ZWCUP triple semantics — [CLOSED pass 12, `analysis/pass12tourn/ZWCUP_TRIPLE.md`]**:
+   (goals, venue-flag, goals) validated on Brazil–Scotland (2-1, '82/'98 identical line) and
+   Italy–Chile (1-1); data = finals H2H history snapshot ~pre-'98 (all 1998 group fixtures are
+   zero-recorded), ids map via FCDB.DBI + FCDB_ENG.DBI cross-index.
 5. **Knockout advancement writes**: node graph identified (§2.6) but per-round winner propagation
    function chain (0x48f6xx–0x490xxx slot accessors) not individually decompiled; bracket record
    numeric fields between +0x1C..+0xFF unproven.

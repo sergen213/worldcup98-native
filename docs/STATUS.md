@@ -189,6 +189,12 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
   settings.ini/mixer), save/load entry (Feflow89 -> WCT1 load), credits roll (feflow19). In-game pause: Esc opens the IGMENU.LAY
   composite over the live match (INGAME.FSH bt*n/bt*d art, {Resume,Quit}, IGQUESHN confirm; sim frozen). Gates `fe_hub`,
   `fe_flow_options`, `fe_flow_saveload`, `fe_credits`, `fe_igmenu` (`--ig-pause-smoke N`).
+- Landed (2026-11-08, gameplay parity lanes): scenario gates E/F/G/H/K/M/N/P + difficulty A/B gate,
+  keeper-save cascade guard, `--self-test` rebalanced to 12/12 deterministic steps (fixed seed
+  0x2E7A; ctest suite 112/112). RE pass 12: commentary per-event speech preload table decoded
+  (`analysis/pass12speech/SPEECH_PRELOAD_TABLE.md`), tournament schedule generation closed +
+  ZWCUP/ZINTER triple semantics validated as pre-'98 finals H2H snapshot
+  (`analysis/pass12tourn/{SCHEDULE_GEN,ZWCUP_TRIPLE}.md`; TOURNAMENT_MODULE §5 items 3/4 closed).
 
 ## Known limitations
 

@@ -49,6 +49,17 @@ public:
     [[nodiscard]] const char* screenName() const {
         return useCapture_          ? captureName_.c_str()
                : leagueCfg_         ? cfgName_.c_str()
+               : wcCfg_             ? cfgName_.c_str()
+PUT 108+:
+    // ---- World-cup family interactive screens (FEFLOW18/23/24/35; MENU_NAV_WC98.md rank-2) -----
+    // Keyloop RE analysis/pass12/wcfamily_notes.txt: feflow18 'rand' = staged random-draw refresh of
+    // the 32 tmNN zone slots (counter cap 99 -> auto-advance); feflow23/24 'strk'/'stsc' = bracket-board
+    // confirm/stats buttons (+0x44/DAT_0060b4c8 stores, no keyloop row grid); feflow35 'nglt'/'ngrt' =
+    // group-index mod-8 table repaint. openWcCfg opens one screen; drawWcFamily composites the scene-
+    // owned whitelist and paints tm/gm/qtm/ss dynamic content as overlays (TourneyModel + pool data).
+    bool openWcCfg(int screenId); // --fe-wc-cfg N gate; false = layout absent on this tree
+    [[nodiscard]] bool onWcCfg() const { return wcCfg_ > 0; }
+    presentation::FeDrawStats drawWcFamily(render::SpriteBatch& ui) const; // composite + row/bracket overlays
                : teamScreen_        ? "FEFLOW11"
                : leagueView_        ? "FEFLOW73"
                : setupScreen_       ? (setupPractise_ ? "FEFLOW50" : "FEFLOW09")
@@ -226,6 +237,16 @@ public:
     int biasVal_ = 4;              // FEFLOW79 s001 attack-bias: slider position domain [0,8] [H]
     int cfgTeamPool_ = 0;          // pool index of the team painted on the grids (lbNN arrows)
     std::vector<std::string> lg72Visible_, lg74Visible_, lg75Visible_, lg76Visible_, lg78Visible_, lg79Visible_, lg80Visible_;
+    // World-cup family screens (analysis/pass12/wcfamily_notes.txt). Whitelists = scene-owned art only:
+    // the tm/gm/qtm/tf/qf/ssN dynamic cells (objecttype 0/4, shapeID null) are engine content painted as
+    // overlays; chat/masc runtime surfaces and the gpnm textid=514 caption slot stay hidden.
+    formats::ScreenLayout wc18_, wc23_, wc24_, wc35_;
+    bool haveWc_ = false;          // at least one family layout loaded
+    int wcCfg_ = 0;                // active screen (18/23/24/35, 0 = none)
+    int wcRow_ = 0;                // FEFLOW18 tm row cursor / 23-24 strk-stsc focus / 35 table row [H]
+    int wcGroup_ = 0;              // FEFLOW35 group page (nglt/ngrt mod 8, decoded 1:1)
+    int wcRandCount_ = 0;          // feflow18 'rand' press counter (engine cap 99 -> auto-advance)
+    std::vector<std::string> wc18Visible_, wc23Visible_, wc24Visible_, wc35Visible_;
     int sel_ = 0;
     std::unique_ptr<presentation::FeText> text_; // FFN face + FC*.BIN strings, loaded once (fe_screen.hpp)
     bool teamScreen_ = false;              // true = team-select list, false = FEFLOW05 main menu

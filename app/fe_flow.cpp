@@ -106,12 +106,12 @@ FeFlow::FeFlow(render::Renderer& r, fs::path tree, std::string lang) : tree_(std
         // netplay chat widgets (chat/cha2/cha3), the animseq placeholder rows (pNN + ptop/pbot) and
         // runtime surfaces (plyr portrait, tt20 edit box). kt/menu rows keep their shape art here;
         // captions/swatches paint as overlays in drawLeagueCfg.
+        // t1xx header slots are engine-composed at runtime (sprintf %s%d from FCDB tactics/strategy,
+        // fourcc 't110'..'t112' @0x45af41); their static tid=0 caption = bank #0 soup ("Art Director").
         lg72Visible_ = {"back", "bnnr", "titl", "vit0", "vit1",
                         "lb00", "lb01", "lb02", "lb03",
-                        "t100", "t101", "t102", "t110", "t111", "t112",
                         "b000", "b001", "v000", "b002", "b003", "v001", "b004", "b005", "v002",
                         "tmf0", "tmf1", "tmf2", "tmf3", "gobk", "gofd", "help"};
-        // '0000' + attb = engine-driven caption slots (four widgets share the name; FC-bank
         // defaults are other contexts' strings, e.g. quit prompts) — hidden at rest by the scene.
         lg74Visible_ = {"back", "bnnr", "titl", "sbar", "vit0", "lb00", "lb01",
                         "ab00", "ab01", "tmf0", "tmf1", "tmf2", "tmf3", "gobk", "gofd", "help"};

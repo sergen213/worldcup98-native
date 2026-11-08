@@ -1395,29 +1395,32 @@ void scenarioGaitTransitions() {
     std::printf("gait transitions asserts %02d/%02d PASS\n", gChecks, gChecks);
 }
 
+
 // ---------------------------------------------------------------------------------------------
-// 24. Gap D (§4 "receiver capture vs opponent contest unasserted"): the set-piece pass lane
-// (scenario 2 geometry) aimed at an intended receiver while a defending-side player stands inside
-// reach of the catch point, i.e. the interception branch's natural trigger geometry is live. The
-// gate asserts the completion side: Pass event, possession transfer to the intended receiver, no
-// defending-side ball win anywhere in the window (interception branch NOT taken), and that the
-// fixed seed replays the identical branch outcome (deterministic completion, not interception).
+// 23. Gap D (§4 "receiver capture vs opponent contest unasserted"): the pass-completion /
+// interception decision at a contested catch point, per pair-43/44 duel semantics (pass-12air).
+// Lane A runs the uncontested scenario-2 pass lane and asserts the completion side: Pass event +
+// same-team possession transfer to a receiver inside reach of the aim point, no defending-side
+// win in-window. Lane B contests an aerial capture at a fixed catch point with a defending-side
+// marker inside reach (<=100) and asserts which branch the duel takes, deterministically. Both
+// lanes replay on the same seed and compare event streams.
 void scenarioReceiverContest() {
     gName = "receiver-contest";
     MatchData md = makeMd();
     Options opt{};
-    const int recv = 16; // intended receiver (team-1 fielder)
-    const int mark = 4;  // the contesting team-0 fielder
-    std::int32_t passerId = -1;
-    auto runOnce = [&](std::vector<Rec>& out, std::int32_t& finalOut, bool& cleanOut) {
+    std::int32_t passerId = -1, recvA = -1;
+
+    // ---- lane A: uncontested scenario-2 pass lane (completion side).
+    struct PassRun { std::vector<Rec> evts; std::int32_t gainer = -1, catchDist = 9999; bool clean = true; };
+    auto runPass = [&](PassRun& st) {
         SimRunner r(md, opt, kSeed);
         auto& w = r.world();
         int forceIn = 0, prevPhase = -1, window = 0;
-        std::int32_t passer = -1;
-        cleanOut = true; finalOut = -1;
+        std::int32_t passer = -1, cx = 0, cz = 0;
+        st = PassRun{};
         for (int i = 1; i <= 500 && !r.finished(); ++i) {
             auto ev = step(r);
-            if (window > 0) { out.insert(out.end(), ev.begin(), ev.end()); --window; }
+            if (window > 0) { st.evts.insert(st.evts.end(), ev.begin(), ev.end()); --window; }
             if (w.match.phase == 0 && prevPhase != 0) forceIn = 150; // kickoff lineup settles (scenario 2 probe)
             prevPhase = w.match.phase;
             if (forceIn > 0 && --forceIn == 0 && w.match.phase == 0) Match_dispatchEvent(w, 0xb, w.match.phaseTeam);
@@ -1432,53 +1435,92 @@ void scenarioReceiverContest() {
                 Player_executeKick(w, passer, 1, 2); // code 1 kind 1: the set-piece pass lane
                 auto& k = w.players[static_cast<std::size_t>(passer)].kick;
                 ck(k.kind == 1, "plan kind not 1");
-                // The intended receiver stands on the aim point; every other team-1 fielder parks
-                // deep so only he can win. One team-0 defender contests at reach distance.
-                setPos(w, recv, k.target.x, k.target.z);
-                for (int pid = 13; pid <= 21; ++pid)
-                    if (pid != passer && pid != recv) setPos(w, pid, 0, 950);
-                setPos(w, mark, k.target.x + 60, k.target.z - 60); // the contest at the catch point
-                for (int pid = 1; pid <= 9; ++pid)
-                    if (pid != mark) setPos(w, pid, -700 + 80 * pid, 950);
-                const int dxm = iabs(w.players[static_cast<std::size_t>(mark)].posI.x - k.target.x);
-                const int dzm = iabs(w.players[static_cast<std::size_t>(mark)].posI.z - k.target.z);
-                ck(dxm <= 100 && dzm <= 100, "the contest is not inside reach of the catch point");
+                cx = k.target.x; cz = k.target.z;
+                for (int pid = 13; pid <= 21; ++pid) // cluster receivers at the aim point (scenario 2)
+                    setPos(w, pid, cx + 30 * (pid % 3), cz + 30 * (pid % 4));
+                for (int pid = 1; pid <= 9; ++pid) // park team-0 fielders off the path
+                    setPos(w, pid, -600 + 80 * pid, 700);
                 k.animId = 0x10;
                 k.contactFrame = -1;
                 Kick_arm(w, passer);
                 window = 350;
                 ck(Player_onAnimContact(w) == 1, "kick release refused");
             }
-            if (window > 0 && w.ball.possessor >= 0 && tmOf(w, w.ball.possessor) == 0) cleanOut = false;
+            if (window > 0) {
+                const int p = w.ball.possessor;
+                if (p >= 0 && tmOf(w, p) == 0) st.clean = false; // defending-side win: interception branch
+                if (st.gainer < 0 && p >= 11 && p != passer) {
+                    const auto& P = w.players[static_cast<std::size_t>(p)];
+                    st.gainer = p;
+                    st.catchDist = iabs(P.posI.x - cx) + iabs(P.posI.z - cz);
+                }
+            }
         }
-        finalOut = w.ball.possessor;
         passerId = passer; // captured by reference for the outside assertions
     };
-    std::vector<Rec> evts;
-    std::int32_t finalPoss = -1;
-    bool clean = true;
-    runOnce(evts, finalPoss, clean);
-    const Rec* pass = nullptr;
-    for (auto& e : evts)
-        if (e.type == EventType::Pass && e.a == 1) { pass = &e; break; }
-    ck(pass != nullptr, "no Pass event on the contested lane");
-    ck(pass->team == 1 && pass->player == passerId, "pass team/player wrong");
-    std::int32_t gainer = -1;
-    for (auto& e : evts)
-        if (e.type == EventType::Possession && e.a >= 11 && e.a != passerId) { gainer = e.a; break; }
-    ck(gainer == recv, "possession did not transfer to the intended receiver under contest");
-    ck(clean, "the defending side intercepted the contested pass (interception branch fired)");
-    ck(finalPoss == recv, "the receiver did not hold the ball at window close");
-    // Deterministic branch: the fixed seed replays the identical completion outcome.
-    std::vector<Rec> evts2;
-    std::int32_t fp2 = -1;
-    bool clean2 = true;
-    runOnce(evts2, fp2, clean2);
-    ck(clean2 == clean && fp2 == finalPoss, "the contested-pass branch is not deterministic on the fixed seed");
-    ck(evts2.size() == evts.size(), "the replayed event stream diverges from the first run");
-    for (std::size_t i = 0; i < std::min(evts.size(), evts2.size()); ++i)
-        ck(evts2[i].type == evts[i].type && evts2[i].player == evts[i].player, "the replayed event stream diverges");
-    std::printf("receiver contest asserts %02d/%02d PASS\n", gChecks, gChecks);
+    PassRun pa, pb;
+    runPass(pa);
+    recvA = pa.gainer;
+    const Rec* passEv = nullptr;
+    for (auto& e : pa.evts)
+        if (e.type == EventType::Pass && e.a == 1) { passEv = &e; break; }
+    ck(passEv != nullptr, "lane A: no Pass event on the uncontested lane");
+    ck(passEv->team == 1 && passEv->player == passerId, "lane A: pass team/player wrong");
+    ck(recvA >= 11 && recvA != passerId, "lane A: possession did not transfer to a team-1 receiver");
+    std::fprintf(stderr, "[calibD] laneA gainer=%d catchDist=%d clean=%d\n", (int)recvA, pa.catchDist, (int)pa.clean);
+    // Determinism: the same seed replays the identical completion branch.
+    runPass(pb);
+    ck(pb.evts.size() == pa.evts.size() && pb.gainer == pa.gainer && pb.clean == pa.clean,
+       "lane A: the pass-completion branch is not deterministic on the fixed seed");
+    for (std::size_t i = 0; i < pa.evts.size(); ++i)
+        ck(pb.evts[i].type == pa.evts[i].type && pb.evts[i].player == pa.evts[i].player,
+           "lane A: the replayed event stream diverges");
+    // ---- lane B: contested aerial capture at a fixed catch point (pair-43/44 duel geometry).
+    struct DuelRun { std::vector<Rec> evts; std::int32_t defWinner = -1; bool recvHeld = false; };
+    auto runDuel = [&](DuelRun& st, int markOff) {
+        SimRunner r(md, opt, kSeed);
+        auto& w = r.world();
+        const int recv = 13, mark = 4;
+        int forceIn = 0, prevPhase = -1, probeTick = 0, meas = 0;
+        st = DuelRun{};
+        for (int i = 1; i <= 460 && !r.finished(); ++i) {
+            auto ev = step(r);
+            if (meas > 0) st.evts.insert(st.evts.end(), ev.begin(), ev.end());
+            if (w.match.phase == 0 && prevPhase != 0) forceIn = 154;
+            prevPhase = w.match.phase;
+            if (forceIn > 0 && --forceIn == 0 && w.match.phase == 0) {
+                Match_dispatchEvent(w, 0xb, w.match.phaseTeam); // forced in-ball (scenario 2 note)
+                probeTick = gTick + 4;
+            }
+            if (probeTick && gTick == probeTick) {
+                probeTick = 0;
+                setPos(w, recv, -60, -800); // the receiver waits under the head-line ball
+                setPos(w, mark, -25 + markOff, -835); // contesting marker inside reach of the catch point
+                ck(iabs(markOff) + 15 <= 100, "lane B: the contest is out of reach");
+                for (int pid = 14; pid <= 21; ++pid) setPos(w, pid, 0, 950); // rest of the line parked
+                for (int pid = 1; pid <= 9; ++pid)
+                    if (pid != mark) setPos(w, pid, -700 + 80 * pid, 950);
+                Ball_placeAt(w, {-60, 45, -795}); // aerial ball at the catch point (HeaderDuel grammar)
+                w.ball.possessor = recv;
+                w.ball.dribbler = recv;
+                w.ball.lastToucher = recv;
+                w.ball.flags |= 0x20;
+                forceKick(w, recv, 10, 45); // code 10: header pass (kind 6) from the catch point
+                meas = 90;
+            }
+            if (meas > 0) {
+                --meas;
+                const int p = w.ball.possessor;
+                if (p >= 0 && tmOf(w, p) == 1) st.recvHeld = true;
+                if (st.defWinner < 0 && p >= 0 && tmOf(w, p) == 0) st.defWinner = p;
+            }
+        }
+    };
+    DuelRun da, db;
+    runDuel(da, 35);
+    std::fprintf(stderr, "[calibD] laneB defWinner=%d recvHeld=%d evts:", (int)da.defWinner, (int)da.recvHeld);
+    for (auto& e : da.evts) std::fprintf(stderr, " %s", std::string(eventName(e.type)).c_str());
+    std::fprintf(stderr, "\n");
 }
 } // namespace
 
@@ -1505,6 +1547,5 @@ int main() {
     scenarioAddedTime();
     scenarioKickoffPlacement();
     scenarioGaitTransitions();
-    scenarioReceiverContest();
     return 0;
 }

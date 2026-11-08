@@ -202,11 +202,17 @@ never ported verbatim. Mapping as implemented:
   (od>>3)+(od>>4) lift and the 0x72 min-clamp all GONE), tail code bands `>=0x3c1 -> 8 / >=0x1e1 -> 9 /
   else 10` with the 0x72/0x8e lift clamps removed; planAirKick clearance = atan2+offsetXZ rel only, no
   target lane, receiver stays -1, kick power from the rel vector (register args hidden [P]).
-- Pair 45 (`TeamAI_replanShot_4DCE94`): the audit candidate `0x4F4380` is a velocity-clamp/aim
-  family routine (reads record +0xd8 flags, clamps 0x68000/0x40000/0x18000, writes kick vectors at
-  +0x1C..+0x30) whose structure bears no relation to the FIFA-99 body (team+0x1E0 lookup ->
-  Kick_planToPoint/Kick_plan). The match is a false positive; `TeamAI_replanShot_4DCE94` in
-  `simulation/src/ai.cpp` is unchanged, WC98 location unknown.
+- Pair 45 (`TeamAI_replanShot_4DCE94`): RESOLVED pass-13 (ghidra `wc98`, Repl1 sweep). WC98 has NO
+  standalone replanShot: Kick_plan (FUN_00502fc0) caller set is complete = {onBallWon 0x50c820,
+  planAirKick 0x50cc70, onBallAct 0x50cf50, tryHeaderPass 0x50e740, camera-dolly 0x513bd0,
+  set-piece placement 0x5146c0}; no function entry exists in the gap [0x50cd00,0x50cf50). The FIFA-99
+  body is fused into `FUN_0050cf50` (onBallAct): entry gate loads difficulty threshold bytes from
+  DAT_0058bfcc/bfd1/bfd6/bfdb indexed by [team+0x13c] with `base+0x3c+(2-[team+0x124])*-8`, and the
+  shot-select lane L_50d24b carries the replanShot math (atan2 wrap `(d+0x40)&0x3ff>>7` -> angle-sector
+  table DAT_0058bfe0, `>>1` widen when local_70, goal-front guard DAT_00640188 bands <0x1e/>0xb4).
+  Earlier audit candidate `0x4F4380` remains a false positive (velocity-clamp/aim family: reads record
+  +0xd8 flags, clamps 0x68000/0x40000/0x18000, writes kick vectors at +0x1C..+0x30). Port keeps the
+  FIFA-99 body in `simulation/src/ai.cpp`; fusion noted as a WC98 shape difference only.
 - onBallAct flag detection: FIFA-99's wrapAbs + mask-draw block (`(1<<((2-dif)<<2-2))-1`) plus the
   `frames <= 0x5a && !flag` skip became a budget/counter lane in WC98 (framePasses outputs
   local_3c/local_50 pointer args, compared against DAT_006561dc counter < local_84/local_78) with

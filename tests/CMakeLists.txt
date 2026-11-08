@@ -194,6 +194,14 @@ if(DEFINED WC98_TREE)
         add_test(NAME fe_league_cfg${_lq} COMMAND wc98-native --fe-league-cfg ${_lq} --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/lcfg${_lq})
         set_tests_properties(fe_league_cfg${_lq} PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW${_lq}: shapes=[1-9][0-9]* texts=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 ")
     endforeach()
+    # World-cup family interactive screens (MENU_NAV_WC98.md rank-2; analysis/pass12/wcfamily_notes.txt):
+    # --fe-wc-cfg N opens FEFLOW18 (zones draw, tmNN rows + 'rand'), FEFLOW23/24 (R16 bracket boards,
+    # strk/stsc) and FEFLOW35 (standings board, nglt/ngrt group pages). Dynamic cells paint through the
+    # app overlays (pool names / TourneyModel), so texts>0 proves the row content renders.
+    foreach(_wq 18 23 24 35)
+        add_test(NAME fe_wc_cfg${_wq} COMMAND wc98-native --fe-wc-cfg ${_wq} --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/wcfg${_wq})
+        set_tests_properties(fe_wc_cfg${_wq} PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW${_wq}: shapes=[1-9][0-9]* texts=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 ")
+    endforeach()
     # Hub screen (Feflow06.lay, MENU_NAV_WC98.md §3 global-key table): the 13-wedge menu hub becomes
     # the main-menu composite when present; help pane paints FC captions -> texts>0.
     add_test(NAME fe_hub COMMAND wc98-native --fe-smoke 1 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/hub)

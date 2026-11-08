@@ -121,7 +121,8 @@ public:
     static constexpr int kTourneyRounds = 4; // group stage, R16, QF, final boundaries -> 35/25/26/27
     struct TourneyModel;                     // deterministic schedule/standings/bracket (fe_flow.cpp)
     bool ensureTourney();                    // lazy: pool -> model + layouts FEFLOW35/25/26/27 (non-throwing)
-    presentation::FeDrawStats drawStandings(render::SpriteBatch& ui, const formats::ScreenLayout& sc) const;   // FEFLOW35 overlay
+    presentation::FeDrawStats drawStandings(render::SpriteBatch& ui, const formats::ScreenLayout& sc, int group) const; // FEFLOW35 overlay (group = table page)
+    [[nodiscard]] std::vector<int> wcZones() const; // FEFLOW18 deterministic zones order (pool indices, re-shuffled per 'rand' press)
     presentation::FeDrawStats drawBracketBoard(render::SpriteBatch& ui, int round) const;                       // 25/26/27 overlays
     void loadTeams(); // ZWCUP.RES pool + FCDB STR0 names (non-throwing; empty = no team-select)
     presentation::FeDrawStats drawTeamsGrid(render::SpriteBatch& ui) const; // FEFLOW11 composite + dynamic rows

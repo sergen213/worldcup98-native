@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <charconv>   // row-tuple parsing (parseOptionRows)
 #include <cctype>
 #include <format>
@@ -670,9 +671,11 @@ FeDrawStats FeFlow::drawLeague(render::SpriteBatch& ui) const {
     // Roster rows (open item: league fixtures are saved-game (.WCF) state the port does not
     // simulate; FCDB squad data is a static source and paints here). Page = pn cursor / 9.
     const int page = leagueSel_ / 9;
-    for (int i = 0; i < 9; ++i)
-        if (const formats::LayoutObject* row = league73_.object("pn" + std::format("{:02d}", i)))
-            paintRosterRow(*row, ui, page * 9 + i, (leagueSel_ % 9) == i, st);
+    for (int i = 0; i < 9; ++i) {
+        const formats::LayoutObject* row = league73_.object("pn" + std::format("{:02d}", i));
+        if (getenv("WC98DBG")) std::fprintf(stderr, "PROBE-LOOP pn%02d obj=%p\n", i, (const void*)row);
+        if (row) paintRosterRow(*row, ui, page * 9 + i, (leagueSel_ % 9) == i, st);
+    }
     return st;
 }
 
@@ -681,6 +684,7 @@ FeDrawStats FeFlow::drawLeague(render::SpriteBatch& ui) const {
 // through presentation::kitColor (fifa98edit hslCols palette table).
 void FeFlow::paintRosterRow(const formats::LayoutObject& row, render::SpriteBatch& ui, int rosterIdx,
                             bool hilited, FeDrawStats& st) const {
+    if (getenv("WC98DBG")) std::fprintf(stderr, "PROBE-ENT %s idx=%d fcdb=%d\n", row.name.c_str(), rosterIdx, (int)!!fcdb_);
     if (!fcdb_) return; // no FCDB data on this tree: rows stay shape-only (pre-slice behaviour)
     const formats::FcdbTeam* team = cfgTeam();
     if (!team) return;
@@ -707,7 +711,11 @@ void FeFlow::paintRosterRow(const formats::LayoutObject& row, render::SpriteBatc
 // parity per analysis/pass12/keyloop_notes.txt: up/down = row cursor / s001 value, left/right =
 // gofd/gobk screen chain, Enter activates (alok applies on 76), Esc backs out to FEFLOW73.
 const formats::FcdbTeam* FeFlow::cfgTeam() const {
-    if (!fcdb_ || poolIds_.empty()) return nullptr;
+    if (!fcdb_) return nullptr;
+    // FEFLOW73 opens directly from the main menu (no pool screen ran): poolIds_ is empty there.
+    // The original paints the first national team into pn rows in that state, so fall back to the
+    // FCDB head team instead of blank rows.
+    if (poolIds_.empty()) return fcdb_->teams.empty() ? nullptr : &fcdb_->teams.front();
     const std::size_t i = std::size_t(cfgTeamPool_) % poolIds_.size();
     const auto it = std::ranges::find(fcdb_->teams, poolIds_[i], &formats::FcdbTeam::id);
     return it == fcdb_->teams.end() ? nullptr : &*it;
@@ -869,141 +877,6 @@ int FeFlow::rosterSize() const {
         if (id != 0) ++n; // 0 = empty squad slot
     return n;
 }
-// ---- World-cup family screens (FEFLOW18/23/24/35; MENU_NAV_WC98.md rank-2) -------------------------
-// Keyloop RE in analysis/pass12/wcfamily_notes.txt. FEFLOW18 is the finals-draw board: 32 tmNN zone slots
-// (two columns x=40/x=285, y=128..413) + gmNN group cells; the 'rand' button runs a staged random draw
-// (FUN_004cf150 + per-slot visibility refresh, counter cap 99 -> auto-advance). The tm/gm cells are
-// objecttype 0/4 shapeID-null dynamic widgets: engine-painted content, so the port overlays pool names
-// and group letters at the LAY's own slots (drawTeamsGrid pattern) with a row-cursor pane. FEFLOW23/24
-// are R16 bracket boards over TourneyModel; FEFLOW35 is the 8-group standings board, nglt/ngrt = mod-8
-// group page cursor (decoded 1:1).
-bool FeFlow::openWcCfg(int screenId) {
-    if (!haveWc_) return false;
-    const formats::ScreenLayout* sc = screenId == 18 ? (wc18_.object("tm00") ? &wc18_ : nullptr)
-                          : screenId == 23 ? (wc23_.object("strk") ? &wc23_ : nullptr)
-                          : screenId == 24 ? (wc24_.object("strk") ? &wc24_ : nullptr)
-                          : screenId == 35 ? (wc35_.object("nglt") ? &wc35_ : nullptr) : nullptr;
-    if (!sc) return false; // layout absent from this tree: the scene stays closed
-    wcCfg_ = screenId;
-    cfgName_ = "FEFLOW" + std::to_string(screenId);
-    wcRow_ = 0;
-    return true;
-}
-
-// Deterministic zones order for FEFLOW18: the ZWCUP pool in draw order, re-shuffled per 'rand' press
-// (the engine's random draw is a live RNG; the port uses fixed seeds so gate captures stay stable [H]).
-std::vector<int> FeFlow::wcZones() const {
-    std::vector<int> idx(std::min<std::size_t>(32, poolIds_.size()));
-    for (int i = 0; i < int(idx.size()); ++i) idx[std::size_t(i)] = i;
-    std::mt19937 rng(0x98C0DE5u ^ (static_cast<std::uint32_t>(wcRandCount_) + 1u) * 0x9E3779B9u);
-    std::ranges::shuffle(idx, rng);
-    return idx;
-}
-
-presentation::FeDrawStats FeFlow::drawWcFamily(render::SpriteBatch& ui) const {
-    using namespace presentation;
-    const formats::ScreenLayout* sc = nullptr;
-    const std::vector<std::string>* vis = nullptr;
-    switch (wcCfg_) {
-        case 18: sc = &wc18_; vis = &wc18Visible_; break;
-        case 23: sc = &wc23_; vis = &wc23Visible_; break;
-        case 24: sc = &wc24_; vis = &wc24Visible_; break;
-        case 35: sc = &wc35_; vis = &wc35Visible_; break;
-        default: return {};
-    }
-    FeUiState uist; // nav-icon hover/press state (widgetHit geometry, composite shape-state chain)
-    ++animTicks_;
-    uist.animMs = animTicks_ * 16u;
-    for (const auto& o : sc->objects)
-        if (o.shown() && widgetHit(o, float(ptrX_), float(ptrY_))) { uist.hover = o.name; break; }
-    if (ptrDown_) uist.pressed = uist.hover;
-    FeDrawStats st = composite(*sc, ui, const_cast<ScreenArt&>(art_), text_.get(), vis, &uist);
-
-    auto lineAt = [&](const formats::LayoutObject* o, std::string_view s, float px, std::uint32_t rgba) {
-        if (!o || s.empty() || !text_ || !text_->ready() || !text_->font()) return;
-        for (const auto& q : layoutText(*text_->font(), s, float(o->x), float(o->y), px, rgba))
-            ui.draw(text_->texture(), q.dst, q.uv, q.rgba);
-        ++st.texts;
-    };
-    const std::uint32_t kWhite = render::packRgba(235, 235, 235, 255);
-    const std::uint32_t kGold = render::packRgba(255, 224, 96, 255);
-    // strk/stsc/rand buttons: LAY releasedshapeid=null placeholders; the engine shows the hilited/pushed
-    // shape on press. The port paints the hilited art as the resting face (flat quad when absent [H]).
-    const auto button = [&](const char* name, std::string_view tag) {
-        const formats::LayoutObject* o = sc->object(name);
-        if (!o) return;
-        std::string stem = o->fname;
-        if (const auto dot = stem.find_last_of('.'); dot != std::string::npos) stem = stem.substr(0, dot);
-        std::transform(stem.begin(), stem.end(), stem.begin(), [](unsigned char c) { return char(std::tolower(c)); });
-        const std::string vpath = o->prop("vpath") ? *o->prop("vpath") : std::string();
-        const ScreenArt::Shape sh = const_cast<ScreenArt&>(art_).shape(vpath, stem, std::string(tag), -1);
-        const float x = float(o->x), y = float(o->y);
-        const float w = float(o->width > 0 ? o->width : sh.w), h = float(o->height > 0 ? o->height : sh.h);
-        if (sh.tex) { ui.draw(sh.tex, {x, y, w, h}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu); ++st.shapes; }
-        else ui.draw(0, {x, y, w, h}, {}, render::packRgba(40, 52, 96, 200)); // flat button plate [H]
-    };
-    const auto pane = [&](const formats::LayoutObject* o) { // row-cursor hilite (league-family pane model)
-        if (!o) return;
-        ui.draw(0, {float(o->x), float(o->y), float(o->width > 0 ? o->width : 100),
-                    float(o->height > 0 ? o->height : 19)}, {}, render::packRgba(255, 224, 96, 48));
-    };
-
-    if (wcCfg_ == 18) {
-        const auto zones = wcZones();
-        for (int i = 0; std::size_t(i) < zones.size(); ++i) {
-            lineAt(sc->object("tm" + std::format("{:02d}", i)), poolName(poolIds_[std::size_t(zones[std::size_t(i)])]), 14.f, kWhite);
-            lineAt(sc->object("gm" + std::format("{:02d}", i)), std::string(1, char('A' + i / 4)), 14.f, kGold);
-        }
-        pane(sc->object("tm" + std::format("{:02d}", wcRow_)));
-        button("rand", "btup"); // 'rand' = the draw-refresh control (decoded press semantics)
-    }
-    if (wcCfg_ == 23 || wcCfg_ == 24) {
-        if (!haveTourney_) const_cast<FeFlow*>(this)->ensureTourney(); // lazy model (bracket data source)
-        if (haveTourney_) {
-            const auto& m = *tourney_;
-            for (int n = 0; n < 8; ++n) { // R16: pair tmN(x=140)/tm(N+8)(x=439), flags tfNN, winner qtmN
-                const tournament::BracketNode& node = m.bracket.node(std::size_t(n));
-                lineAt(sc->object("tm" + std::format("{:02d}", n)), poolName(node.teamA), 14.f, kWhite);
-                lineAt(sc->object("tm" + std::format("{:02d}", n + 8)), poolName(node.teamB), 14.f, kWhite);
-                const auto flag = [&](const char* slot, std::uint32_t id) {
-                    const formats::LayoutObject* o = sc->object(slot);
-                    if (!o || id == tournament::kNoTeam) return;
-                    const std::string ff = flagFileForTeam(id);
-                    if (ff.empty()) { ++st.missing; return; }
-                    const ScreenArt::Shape sh = const_cast<ScreenArt&>(art_).shape("..\\global\\", ff, "f000", -1);
-                    if (sh.tex) { ui.draw(sh.tex, {float(o->x), float(o->y), float(sh.w), float(sh.h)}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu); ++st.shapes; }
-                    else ++st.missing;
-                };
-                flag("tf" + std::format("{:02d}", n), node.teamA);
-                flag("tf" + std::format("{:02d}", n + 8), node.teamB);
-                const std::uint32_t w = m.winners[std::size_t(n)];
-                lineAt(sc->object("qtm" + std::to_string(n)), poolName(w), 14.f, kGold);
-                flag("qf" + std::format("{:02d}", n), w);
-            }
-        }
-        button("strk", "hic1"); // 'strk' = start-competition press; 'stsc' = stats view (decoded stores)
-        button("stsc", "hic2");
-        if (const formats::LayoutObject* f = sc->object(wcRow_ == 0 ? "strk" : "stsc")) { // port focus ring [H]
-            const float x = float(f->x), y = float(f->y), w = float(f->width > 0 ? f->width : 79), h = float(f->height > 0 ? f->height : 48);
-            ui.draw(0, {x, y, w, 2.f}, {}, kGold), ui.draw(0, {x, y + h - 2.f, w, 2.f}, {}, kGold);
-            ui.draw(0, {x, y, 2.f, h}, {}, kGold), ui.draw(0, {x + w - 2.f, y, 2.f, h}, {}, kGold);
-        }
-    }
-    if (wcCfg_ == 35) {
-        if (!haveTourney_) const_cast<FeFlow*>(this)->ensureTourney(); // standings model + nglt/ngrt domain
-        if (haveTourney_) {
-            const FeDrawStats ov = drawStandings(ui, *sc, wcGroup_); // group caption + ssnN/ss{p..a}NN rows
-            st.shapes += ov.shapes; st.texts += ov.texts; st.missing += ov.missing;
-        }
-        pane(sc->object("ssn" + std::to_string(wcRow_))); // table row cursor (port [H])
-        button("strk", "hic1"); // feflow35 'strk' is an ack-only press (decoded no-op), art stays visible
-        button("stsc", "hic2");
-    }
-    drawHelpPane(*sc, ui, st, uist.hover); // context help captions (help= FC keys), same model as the hub
-    drawCursor(ui, st);
-    return st;
-}
-
 // FEFLOW09/50 composite: art whitelist + the dynamic layer the original paints from live state —
 // the two team shields (ltfg/rtfg, same FNNN record-index flag shapes as the pick grid) and the team names in
 // the tltx/trtx slots. Row option captions (ctx{n}/grv{n}) are engine-driven strings the port has
@@ -1179,7 +1052,7 @@ presentation::FeDrawStats FeFlow::drawTourneyPresent(render::SpriteBatch& ui, in
     presentation::FeDrawStats st =
         presentation::composite(presScreens_[std::size_t(round)], ui, art_, text_.get());
     const presentation::FeDrawStats ov =
-        round == 0 ? drawStandings(ui, presScreens_[0]) : drawBracketBoard(ui, round);
+        round == 0 ? drawStandings(ui, presScreens_[0], tourney_->userGroup) : drawBracketBoard(ui, round);
     st.shapes += ov.shapes; st.texts += ov.texts; st.cursors += ov.cursors; st.missing += ov.missing;
     drawCursor(ui, st);
     return st;
@@ -1194,7 +1067,7 @@ std::string FeFlow::poolName(std::uint32_t id) const {
 
 // FEFLOW35: standings table for the user team's group. Row slots ssnN (name), ssp/ssw/ssd/ssl
 // (P W D L), ssf/ssa (GF GA), sst (points); suffix 0..3 = row, measured grid analysis/pass8.
-presentation::FeDrawStats FeFlow::drawStandings(render::SpriteBatch& ui, const formats::ScreenLayout& sc) const {
+presentation::FeDrawStats FeFlow::drawStandings(render::SpriteBatch& ui, const formats::ScreenLayout& sc, int group) const {
     presentation::FeDrawStats st;
     if (!text_ || !text_->ready() || !text_->font()) return st;
     auto line = [&](std::string_view s, float x, float y, std::uint32_t rgba) {
@@ -1203,9 +1076,9 @@ presentation::FeDrawStats FeFlow::drawStandings(render::SpriteBatch& ui, const f
             ++st.texts;
         }
     };
-    const auto& table = tourney_->tables[std::size_t(tourney_->userGroup)];
+    const auto& table = tourney_->tables[std::size_t(group)];
     if (const formats::LayoutObject* gpnm = sc.object("gpnm"))
-        line(std::string("GROUP ") + char('A' + tourney_->userGroup), float(gpnm->x), float(gpnm->y),
+        line(std::string("GROUP ") + char('A' + group), float(gpnm->x), float(gpnm->y),
              render::packRgba(255, 235, 96, 255));
     for (int pos = 0; std::size_t(pos) < table.size(); ++pos) {
         const auto& row = table[std::size_t(pos)];
@@ -1313,6 +1186,147 @@ presentation::FeDrawStats FeFlow::drawBracketBoard(render::SpriteBatch& ui, int 
     }
     return st;
 }
+// ---- World-cup family screens (FEFLOW18/23/24/35; MENU_NAV_WC98.md rank-2) -------------------------
+// Keyloop RE in analysis/pass12/wcfamily_notes.txt. FEFLOW18 is the finals-draw board: 32 tmNN zone slots
+// (two columns x=40/x=285, y=128..413) + gmNN group cells; the 'rand' button runs a staged random draw
+// (FUN_004cf150 + per-slot visibility refresh, counter cap 99 -> auto-advance). The tm/gm cells are
+// objecttype 0/4 shapeID-null dynamic widgets: engine-painted content, so the port overlays pool names
+// and group letters at the LAY's own slots (drawTeamsGrid pattern) with a row-cursor pane. FEFLOW23/24
+// are R16 bracket boards over TourneyModel; FEFLOW35 is the 8-group standings board, nglt/ngrt = mod-8
+// group page cursor (decoded 1:1).
+bool FeFlow::openWcCfg(int screenId) {
+    if (!haveWc_) return false;
+    const formats::ScreenLayout* sc = screenId == 18 ? (wc18_.object("tm00") ? &wc18_ : nullptr)
+                          : screenId == 23 ? (wc23_.object("strk") ? &wc23_ : nullptr)
+                          : screenId == 24 ? (wc24_.object("strk") ? &wc24_ : nullptr)
+                          : screenId == 35 ? (wc35_.object("nglt") ? &wc35_ : nullptr) : nullptr;
+    if (!sc) return false; // layout absent from this tree: the scene stays closed
+    wcCfg_ = screenId;
+    cfgName_ = "FEFLOW" + std::to_string(screenId);
+    wcRow_ = 0;
+    return true;
+}
+
+// Deterministic zones order for FEFLOW18: the ZWCUP pool in draw order, re-shuffled per 'rand' press
+// (the engine's random draw is a live RNG; the port uses fixed seeds so gate captures stay stable [H]).
+std::vector<int> FeFlow::wcZones() const {
+    std::vector<int> idx(std::min<std::size_t>(32, poolIds_.size()));
+    for (int i = 0; i < int(idx.size()); ++i) idx[std::size_t(i)] = i;
+    std::mt19937 rng(0x98C0DE5u ^ (static_cast<std::uint32_t>(wcRandCount_) + 1u) * 0x9E3779B9u);
+    std::ranges::shuffle(idx, rng);
+    return idx;
+}
+
+presentation::FeDrawStats FeFlow::drawWcFamily(render::SpriteBatch& ui) const {
+    using namespace presentation;
+    const formats::ScreenLayout* sc = nullptr;
+    const std::vector<std::string>* vis = nullptr;
+    switch (wcCfg_) {
+        case 18: sc = &wc18_; vis = &wc18Visible_; break;
+        case 23: sc = &wc23_; vis = &wc23Visible_; break;
+        case 24: sc = &wc24_; vis = &wc24Visible_; break;
+        case 35: sc = &wc35_; vis = &wc35Visible_; break;
+        default: return {};
+    }
+    FeUiState uist; // nav-icon hover/press state (widgetHit geometry, composite shape-state chain)
+    ++animTicks_;
+    uist.animMs = animTicks_ * 16u;
+    for (const auto& o : sc->objects)
+        if (o.shown() && widgetHit(o, float(ptrX_), float(ptrY_))) { uist.hover = o.name; break; }
+    if (ptrDown_) uist.pressed = uist.hover;
+    FeDrawStats st = composite(*sc, ui, const_cast<ScreenArt&>(art_), text_.get(), vis, &uist);
+
+    auto lineAt = [&](const formats::LayoutObject* o, std::string_view s, float px, std::uint32_t rgba) {
+        if (!o || s.empty() || !text_ || !text_->ready() || !text_->font()) return;
+        for (const auto& q : layoutText(*text_->font(), s, float(o->x), float(o->y), px, rgba))
+            ui.draw(text_->texture(), q.dst, q.uv, q.rgba);
+        ++st.texts;
+    };
+    const std::uint32_t kWhite = render::packRgba(235, 235, 235, 255);
+    const std::uint32_t kGold = render::packRgba(255, 224, 96, 255);
+    // strk/stsc/rand buttons: LAY releasedshapeid=null placeholders; the engine shows the hilited/pushed
+    // shape on press. The port paints the hilited art as the resting face (flat quad when absent [H]).
+    const auto button = [&](const char* name, std::string_view tag) {
+        const formats::LayoutObject* o = sc->object(name);
+        if (!o) return;
+        std::string stem = o->fname;
+        if (const auto dot = stem.find_last_of('.'); dot != std::string::npos) stem = stem.substr(0, dot);
+        std::transform(stem.begin(), stem.end(), stem.begin(), [](unsigned char c) { return char(std::tolower(c)); });
+        const std::string vpath = o->prop("vpath") ? *o->prop("vpath") : std::string();
+        const ScreenArt::Shape sh = const_cast<ScreenArt&>(art_).shape(vpath, stem, std::string(tag), -1);
+        const float x = float(o->x), y = float(o->y);
+        const float w = float(o->width > 0 ? o->width : sh.w), h = float(o->height > 0 ? o->height : sh.h);
+        if (sh.tex) { ui.draw(sh.tex, {x, y, w, h}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu); ++st.shapes; }
+        else ui.draw(0, {x, y, w, h}, {}, render::packRgba(40, 52, 96, 200)); // flat button plate [H]
+    };
+    const auto pane = [&](const formats::LayoutObject* o) { // row-cursor hilite (league-family pane model)
+        if (!o) return;
+        ui.draw(0, {float(o->x), float(o->y), float(o->width > 0 ? o->width : 100),
+                    float(o->height > 0 ? o->height : 19)}, {}, render::packRgba(255, 224, 96, 48));
+    };
+
+    if (wcCfg_ == 18) {
+        const auto zones = wcZones();
+        for (int i = 0; std::size_t(i) < zones.size(); ++i) {
+            lineAt(sc->object("tm" + std::format("{:02d}", i)), poolName(poolIds_[std::size_t(zones[std::size_t(i)])]), 14.f, kWhite);
+            lineAt(sc->object("gm" + std::format("{:02d}", i)), std::string(1, char('A' + i / 4)), 14.f, kGold);
+        }
+        pane(sc->object("tm" + std::format("{:02d}", wcRow_)));
+        button("rand", "btup"); // 'rand' = the draw-refresh control (decoded press semantics)
+    }
+    if (wcCfg_ == 23 || wcCfg_ == 24) {
+        if (!haveTourney_) const_cast<FeFlow*>(this)->ensureTourney(); // lazy model (bracket data source)
+        if (haveTourney_) {
+            const auto& m = *tourney_;
+            for (int n = 0; n < 8; ++n) { // R16: pair tmN(x=140)/tm(N+8)(x=439), flags tfNN, winner qtmN
+                const tournament::BracketNode& node = m.bracket.node(std::size_t(n));
+                // Flags first, team names last: the stf* kit shapes are full shield cards (like the
+                // pick-grid overlays) that paint over the tm/qtm slots; the engine keeps the name layer
+                // above them. Slot plates are light silver, so ink is dark navy [H].
+                const std::uint32_t kInk = render::packRgba(12, 18, 48, 255);
+                const auto flag = [&](std::string_view slot, std::uint32_t id) {
+                    const formats::LayoutObject* o = sc->object(slot);
+                    if (!o || id == tournament::kNoTeam) return;
+                    const std::string ff = flagFileForTeam(id);
+                    if (ff.empty()) { ++st.missing; return; }
+                    const ScreenArt::Shape sh = const_cast<ScreenArt&>(art_).shape("..\\global\\", ff, "f000", -1);
+                    if (sh.tex) { ui.draw(sh.tex, {float(o->x), float(o->y), float(sh.w), float(sh.h)}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu); ++st.shapes; }
+                    else ++st.missing;
+                };
+                flag("tf" + std::format("{:02d}", n), node.teamA);
+                flag("tf" + std::format("{:02d}", n + 8), node.teamB);
+                const std::uint32_t w = m.winners[std::size_t(n)];
+                flag("qf" + std::format("{:02d}", n), w);
+                lineAt(sc->object("tm" + std::format("{:02d}", n)), poolName(node.teamA), 14.f, kInk);
+                lineAt(sc->object("tm" + std::format("{:02d}", n + 8)), poolName(node.teamB), 14.f, kInk);
+                lineAt(sc->object("qtm" + std::to_string(n)), poolName(w), 14.f,
+                       render::packRgba(120, 16, 24, 255)); // winner names: dark red on light plate [H]
+            }
+        }
+        button("strk", "hic1"); // 'strk' = start-competition press; 'stsc' = stats view (decoded stores)
+        button("stsc", "hic2");
+        if (const formats::LayoutObject* f = sc->object(wcRow_ == 0 ? "strk" : "stsc")) { // port focus ring [H]
+            const float x = float(f->x), y = float(f->y), w = float(f->width > 0 ? f->width : 79), h = float(f->height > 0 ? f->height : 48);
+            ui.draw(0, {x, y, w, 2.f}, {}, kGold), ui.draw(0, {x, y + h - 2.f, w, 2.f}, {}, kGold);
+            ui.draw(0, {x, y, 2.f, h}, {}, kGold), ui.draw(0, {x + w - 2.f, y, 2.f, h}, {}, kGold);
+        }
+    }
+    if (wcCfg_ == 35) {
+        if (!haveTourney_) const_cast<FeFlow*>(this)->ensureTourney(); // standings model + nglt/ngrt domain
+        if (haveTourney_) {
+            const FeDrawStats ov = drawStandings(ui, *sc, wcGroup_); // group caption + ssnN/ss{p..a}NN rows
+            st.shapes += ov.shapes; st.texts += ov.texts; st.missing += ov.missing;
+        }
+        pane(sc->object("ssn" + std::to_string(wcRow_))); // table row cursor (port [H])
+        button("strk", "hic1"); // feflow35 'strk' is an ack-only press (decoded no-op), art stays visible
+        button("stsc", "hic2");
+    }
+    drawHelpPane(*sc, ui, st, uist.hover); // context help captions (help= FC keys), same model as the hub
+    drawCursor(ui, st);
+    return st;
+}
+
+
 // ================================================================================================
 // Hub screen (Phase 1) + options/save-load/credits views (Phases 2-4). Evidence: Feflow06.lay
 // widget table (button objectnames objects 6..19, help= FC captions, helppaneid=help), the global-

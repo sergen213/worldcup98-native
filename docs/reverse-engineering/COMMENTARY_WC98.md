@@ -57,11 +57,14 @@ starts playback via the voice records (8-voice pool). autovol = per-word volume 
   four sentence-state globals; `FUN_004d9250` = play-status passthrough (SNDphrasestatus backend).
 
 ## Open items
-1. Site map (run `analysis/pass7/eventmap.txt`): of the 46 gate call sites, **45 sit inside
-   undecomposed chunks** (`-noanalysis` DB — getFunctionContaining = None) in the match-director band
-   0x452af0..~0x458cf0 (the 7 builder-caller functions above cover the same band); the only resolved
-   function caller is **FUN_0045948c @ site 0x459715 = save/load screen** → commentary fires on load.
-   Disassembly of that band + alignment with M6 sim event ids remains open.
+1. **RESOLVED** (pass-13, run `analysis/pass13/cmtband.txt`, GhidraWc98CmtBand{1,3}.py): the band
+   0x452af0..~0x458cf0 is NOT match-director code — it is the FE-flow scene-handler builder region
+   (feflow20 = 0x452af0..0x452f34, feflow21 = 0x453f58..0x454298, per pass-12 keyloop_notes). Each of
+   the 45 sites passes EAX = a scene-name string (`feflow06/20/37/41/89/81/82/15/86`, decoded from
+   DGROUP raw 0x158600) into `FUN_004893ec` = **scene-install seam**, i.e. per-scene registration, not
+   commentary event firing. The commentary event mapping is the pass-12speech dispatcher cluster
+   (FUN_0048f4b0..790 + SNDphraseadd sites 0x48987d/0x48f4xx), already wired in `app/commentary`.
+   Site FUN_0045948c@0x459715 (feflow86) = save/load screen install; commentary-on-load stays as noted.
 2. **RESOLVED** (see Sentence assembly section): builder = event-flag scan + `FUN_0048d0dc` phrase pick
    + `FUN_0048d1f8` enqueue; flush = cancel-thunk walk at item+0x10. Remaining sub-item: FCLG id cross-map
    (NOTES §5.3) for what the picked bank ids index in the per-language commentary tables.

@@ -100,7 +100,7 @@ CACHE=${XDG_CACHE_HOME:-$HOME/.cache}/wc98-packaging
 TOOL=$CACHE/appimagetool-x86_64-1.9.1.AppImage
 if [ ! -f "$TOOL" ] || [ "$(sha256sum "$TOOL" | cut -d' ' -f1)" != "$APPIMAGETOOL_SHA256" ]; then
     mkdir -p "$CACHE"
-    curl -fsSL -o "$TOOL.part" "$APPIMAGETOOL_URL"
+    curl -fL --retry 5 --retry-delay 2 --connect-timeout 15 -o "$TOOL.part" "$APPIMAGETOOL_URL"
     [ "$(sha256sum "$TOOL.part" | cut -d' ' -f1)" = "$APPIMAGETOOL_SHA256" ] || die "appimagetool sha256 mismatch"
     mv -f "$TOOL.part" "$TOOL"
 fi

@@ -153,6 +153,10 @@ transitions, D receiver-capture contest, M AI spacing realism (qualitative vs or
    closed (§3(a'), SIM_TABLES_WC98.md). The actionable P1 lanes opened from the audit are now
    **CLOSED** too: WC98 Kick_plan (0x502FC0) constants re-extracted into `kick.cpp` and TeamAI
    decision-family (0x50CF50/0x50E740) + pair-16 dodge ids installed per SIM_PORT_NOTES deltas.
+   Pairs 46-48 of the WC98 `FUN_0050CF80`/`FUN_0050e740` pair diffs were re-decompiled and
+   installed 2026-11-08 (dossier `analysis/pass12ai/ai1_decomp.txt`: unconditional shot-eval lanes,
+   budget scratch high-half lane, flag-gated counter tests, header-pass skip-lane restructure with
+   the k26 return test; STATUS.md pass-12ai row).
    Player/motion/kick record *layout* shifts (+0x3c kick flags, +0x5c dodge
    fields, three heading slots) are layout-only: the port is a semantic model with named C++
    fields, so no verbatim offset work; anim seqResolve ready bit 0x40-vs-0x80 is likewise

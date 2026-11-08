@@ -118,6 +118,16 @@ project goals.
 - Keeper capsule spin fix (`keeper_save.cpp` `Keeper_hitBone`): the exe-faithful `Math_normalize3` loops forever on a
   zero bone axis (documented exe behavior); headless lanes run clip frames whose skeleton bones coincide, spinning
   `Keeper_skeletonBlockNormal` inside every tick. Degenerate axes now return no-capsule (port guard, cited).
+- TeamAI WC98 divergences pairs 46-48 (pass-12ai, dossier `analysis/pass12ai/`): unconditional shot
+  eval + threshold lanes (0x50cfab/0x50d137), rand mask &1 (0x50d6dd), FIFA-99 extra draw removed in
+  LAB_0050d9c8, ball-y constant 0x72, budget high-half scratch lane + dual shift, two flag-gated
+  counter tests vs f(0x34)/f(0x24) (0x50ded2/def5), high-half draw threshold replacing the global
+  lane (0x50dee6..def0), give-and-go arm set f014 {5,6}, header-pass skip-lane restructure (shot-score
+  gate, local_50 forced cross-lift, deep test iabs(z), return test k26>0x3c0). ctest 114/114.
+- RE closure (sci9/sci12): scene-install producer functions decompiled (`FUN_004aa148/1ba/267/2fc/485`
+  mode-selector writes, kit/side-gated camera zeroing, unfreeze sweep `FUN_004aa432`) and the loader
+  field-split layout proven at code level (`FUN_004aaf00`: count nibbles +0x232, stride-8 triple arrays
+  +0x170/+0x1c8 >>10, u16 pairs +0x220..+0x22e); TASK_HANDLERS_WC98 §8 closed.
 
 ## [0.4.0] - 2026-11-08 — Windows menu parity complete: popup/IG board families, highlights browser, management grids, LOAD/SAVE scenes, camera/practise/control pages
 ### Added

@@ -226,6 +226,16 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
 - Landed (2026-11-08, pass-12sci §7): h18 `sideCamera` (lane thresholds 0x1e0/-0x1df, far/near
   ±(zEdge+0x140), rec+0x110 mid band + forced-near guard, DAT_00644794-0x10 polar lane) and h20
   `overheadCamera` (-xEdge polar, 0x90) modeled; gates in test_presentation; §7 edge/tier row closed.
+- Landed (2026-11-08, pass-12ai): TeamAI decision-family WC98 divergences pairs 46-48 in
+  `team_ai_ball.cpp`: unconditional shot eval + threshold (0x50cfab/0x50d137), rand mask &1
+  (0x50d6dd), no FIFA-99 extra draw in LAB_0050d9c8, ball-y constant 0x72 (DAT_00646920<0x73),
+  budget high-half scratch lane + dual shift, two flag-gated counter tests vs f(0x34)/f(0x24)
+  (0x50ded2/def5), high-half draw threshold replacing the global lane (0x50dee6..def0),
+  give-and-go arm set f014 {5,6}, header-pass skip-lane restructure (shot-score gate, local_50
+  forced cross-lift, deep test on iabs(z), return test k26>0x3c0). Suite ctest = 114/114.
+- Landed (2026-11-08, sci9/sci12): scene-install producer sites (FUN_004aa148/1ba/267/2fc/485
+  mode-selector writes, kit/side-gated camera zeroing, task unfreeze sweep FUN_004aa432) and the
+  loader field-split layout proven at code level (FUN_004aaf00); TASK_HANDLERS_WC98 §8 closed.
 
 ## Known limitations
 

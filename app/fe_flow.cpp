@@ -315,7 +315,8 @@ FeDrawStats FeFlow::drawCaptureScreen(render::SpriteBatch& ui) const {
     return st;
 }
 
-FeDrawStats FeFlow::drawCurrent(render::SpriteBatch& ui) const {    if (useCapture_) return drawCaptureScreen(ui); // --fe-screen lane replaces the menu composite
+FeDrawStats FeFlow::drawCurrent(render::SpriteBatch& ui) const {
+    if (useCapture_) return drawCaptureScreen(ui); // --fe-screen lane replaces the menu composite
     if (teamScreen_) return drawTeams(ui);
     if (setupScreen_) return drawSetup(ui); // FEFLOW09/50 friendly/practise config screens
     if (leagueCfg_) return drawLeagueCfg(ui); // FEFLOW72/74/75/76/79/80 config family
@@ -671,11 +672,9 @@ FeDrawStats FeFlow::drawLeague(render::SpriteBatch& ui) const {
     // Roster rows (open item: league fixtures are saved-game (.WCF) state the port does not
     // simulate; FCDB squad data is a static source and paints here). Page = pn cursor / 9.
     const int page = leagueSel_ / 9;
-    for (int i = 0; i < 9; ++i) {
-        const formats::LayoutObject* row = league73_.object("pn" + std::format("{:02d}", i));
-        if (getenv("WC98DBG")) std::fprintf(stderr, "PROBE-LOOP pn%02d obj=%p\n", i, (const void*)row);
-        if (row) paintRosterRow(*row, ui, page * 9 + i, (leagueSel_ % 9) == i, st);
-    }
+    for (int i = 0; i < 9; ++i)
+        if (const formats::LayoutObject* row = league73_.object("pn" + std::format("{:02d}", i)))
+            paintRosterRow(*row, ui, page * 9 + i, (leagueSel_ % 9) == i, st);
     return st;
 }
 
@@ -684,7 +683,6 @@ FeDrawStats FeFlow::drawLeague(render::SpriteBatch& ui) const {
 // through presentation::kitColor (fifa98edit hslCols palette table).
 void FeFlow::paintRosterRow(const formats::LayoutObject& row, render::SpriteBatch& ui, int rosterIdx,
                             bool hilited, FeDrawStats& st) const {
-    if (getenv("WC98DBG")) std::fprintf(stderr, "PROBE-ENT %s idx=%d fcdb=%d\n", row.name.c_str(), rosterIdx, (int)!!fcdb_);
     if (!fcdb_) return; // no FCDB data on this tree: rows stay shape-only (pre-slice behaviour)
     const formats::FcdbTeam* team = cfgTeam();
     if (!team) return;

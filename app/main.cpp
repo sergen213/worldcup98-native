@@ -228,7 +228,12 @@ int run(int argc, char** argv) {
     bool prevLmb = false; // mouse button edge state for widgetHit activation (Phase 1)
         if (fe && feTeam) { fe->selectNav(int(app::FeEntry::Tournament)); fe->enter(); } // hub wedge fe11 -> team-select grid (FEFLOW11)
         if (fe && feSetup >= 0) { fe->selectNav(feSetup); fe->enter(); } // friendly/practise -> FEFLOW09/50 config screen
-        if (fe && feLeague) { fe->selectNav(int(app::FeEntry::LeaguePlay)); fe->enter(); } // League Play -> FEFLOW73 list (hub wedge direct)
+        if (fe && feLeague) { // League Play -> FEFLOW73 list. On the hub, selectNav opens the list directly (case 1);
+            // enter() would re-activate the DEFAULT wedge (friendly setup, feflow09) which preempts drawCurrent's
+            // league branch, so only the FEFLOW05 fallback menu needs the Enter press.
+            fe->selectNav(int(app::FeEntry::LeaguePlay));
+            if (!fe->onHub()) fe->enter();
+        }
         if (fe && feLeagueCfg) { // selectNav(league) opens FEFLOW73 directly; the requested config grid/popup opens over it
             fe->selectNav(int(app::FeEntry::LeaguePlay));
             if (!fe->openLeagueCfg(feLeagueCfg)) std::fprintf(stderr, "fe: league config %d unavailable\n", feLeagueCfg);

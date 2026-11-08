@@ -31,8 +31,9 @@ jobs:
         run: |
           sudo apt-get install -y libx11-dev libxcursor-dev libxrandr-dev libxi-dev \
             libxext-dev libxss-dev libxkbcommon-dev libwayland-dev wayland-protocols libasound2-dev
-          wget -q --tries=5 --timeout=30 https://github.com/libsdl-org/SDL/releases/download/release-3.2.10/SDL3-3.2.10.tar.gz
-          tar xf SDL3-3.2.10.tar.gz
+          wget -q --tries=5 --timeout=30 https://github.com/libsdl-org/SDL/releases/download/release-3.2.10/SDL3-3.2.10.tar.gz \
+            || wget -q --tries=3 --timeout=60 -O SDL3-3.2.10.tar.gz https://codeload.github.com/libsdl-org/SDL/tar.gz/refs/tags/release-3.2.10
+          mkdir -p SDL3-3.2.10 && tar xzf SDL3-3.2.10.tar.gz -C SDL3-3.2.10 --strip-components=1
           cmake -G Ninja -S SDL3-3.2.10 -B sdl3-build -DCMAKE_BUILD_TYPE=Release -DSDL_TESTS=OFF
           cmake --build sdl3-build
           sudo cmake --install sdl3-build
@@ -59,8 +60,9 @@ jobs:
         run: |
           sudo apt-get install -y libx11-dev libxcursor-dev libxrandr-dev libxi-dev \
             libxext-dev libxss-dev libxkbcommon-dev libwayland-dev wayland-protocols libasound2-dev
-          wget -q --tries=5 --timeout=30 https://github.com/libsdl-org/SDL/releases/download/release-3.2.10/SDL3-3.2.10.tar.gz
-          tar xf SDL3-3.2.10.tar.gz
+          wget -q --tries=5 --timeout=30 https://github.com/libsdl-org/SDL/releases/download/release-3.2.10/SDL3-3.2.10.tar.gz \
+            || wget -q --tries=3 --timeout=60 -O SDL3-3.2.10.tar.gz https://codeload.github.com/libsdl-org/SDL/tar.gz/refs/tags/release-3.2.10
+          mkdir -p SDL3-3.2.10 && tar xzf SDL3-3.2.10.tar.gz -C SDL3-3.2.10 --strip-components=1
           cmake -G Ninja -S SDL3-3.2.10 -B sdl3-build -DCMAKE_BUILD_TYPE=Release -DSDL_TESTS=OFF
           cmake --build sdl3-build
           sudo cmake --install sdl3-build && sudo ldconfig

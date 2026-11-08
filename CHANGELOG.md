@@ -7,6 +7,17 @@ project goals.
 ## [Unreleased]
 ### Added
 
+- IGTEAM management mirrors (`IgBoards` kinds 8-14, `--ig-mgmt-smoke`, gate `fe_mgmt_pages`): the IGMENU
+  'Management' row (five-row domain {Resume, Stats, Highlights, Management, Quit}, bt0-bt4 INGAME.FSH chrome)
+  opens the §E page cycle over a deterministic seed-0x2E7A fixture match — IGTEAM72 pNNN pitch grid + tNNN
+  formation tiles from FCDB lineup shirt numbers/positions; IGTEAM73 kt00..08 kit row + lin squad rows with
+  the ab00/ab01 sub pair (Enter swaps starter<->bench, `igmgmt: swap` evidence line on real players);
+  IGTEAM74/80 card rows (pr/red/yel) + vit stamina from sim booking state; IGTEAM75/79 s001 attack-bias
+  slider with the UP/DOWN ±10 keyloop grammar painted live into the header pair. gobk/gofd (L/R) cycle
+  {72,73,74,75,79,80}; 'B' (tmf3 icon) opens the IGTEAM89 hub whose b000..b005 rows are the FC-bank captions
+  Formation/Substitutions/Positioning/Attack Bias/Man Marking/Kick Takers — Enter enters the mapped page,
+  Esc returns to IGMENU (§E grammar). Scene-ownership whitelisted composite (soup slots excluded per the
+  f0f8109 rule), FC captions via fcBankText; evidence analysis/pass13/IG_FAMILIES_SPEC.md §E, MENU_PARITY rows.
 - Highlights browser + save list (`IgBoards` kinds 5-7, `--ig-hlite-smoke/--ig-hlsav-smoke`): the IGMENU
   'Highlights' row opens the IGHILITE browser over the shipped `user/rplyindx.dat` 100x25B index — FC#899
   "INSTANT REPLAY" title on the box3 video pane, selected slot filename + `SLOT NNNN` readouts in the white

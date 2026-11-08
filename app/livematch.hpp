@@ -84,6 +84,22 @@ struct IgMatchData {
 struct IgHlRow { int number = 0; std::string name; bool populated = false; };
 struct IgHlData { std::vector<IgHlRow> rows; const IgMatchData* hdr = nullptr; };
 
+// IGTEAM management mirror pages (IG_FAMILIES_SPEC.md §E, IGteam72..80/89): one FCDB/sim row per
+// squad entry (shirt number + STR1 name + stamina% from PlayerAttr::stamina18) for the formation
+// grid, sub pair swap rows, kick-taker/kit rows and team-bar captions. The sim is frozen while a
+// management page is open, so IgMgmtData is built once on entry and mutated in place by swaps.
+struct IgMgmtRow { int shirt = 0; std::string name; int staminaPct = 100; };
+struct IgTeamMgmt {
+    std::string teamName, flagFile{"F000"};
+    formats::FcdbKit1998 kit{};                 // home kit: paintRowLabel swatches + kt row colors
+    std::vector<IgMgmtRow> lineup, subs;        // first 11 squad rows (roster order) / bench rows
+    int attackBias = 50, booked = 0;            // s001 slider value / team card count
+    int fitPct = 100;                           // avg stamina18 of the starting XI (team-bar caption)
+    int yellows = 0, reds = 0;                  // PlayerAttr status +0x40 booked / sent-off flags
+    std::array<int, 16> gx{}, gz{};             // live pitch coords [-128,128] (formation grid dots)
+};
+struct IgMgmtData { std::array<IgTeamMgmt, 2> teams{}; };
+
 // The IGLAY.BIG presentation boards rendered from IgMatchData (stat/summary kinds) and from the
 // rply index rows (highlights browser/save-list kinds). Composite = scene-ownership visible
 // whitelist (null.fsh placeholder widgets are legit invisible; static textid soup slots —
@@ -99,7 +115,13 @@ public:
     // ighilsav | ighilit1). False = absent.
     bool open(std::string_view name);
     [[nodiscard]] bool isOpen() const { return kind_ != 0; }
-    [[nodiscard]] int kind() const { return kind_; } // 1 igstats, 2 ighalf, 3 igflsum, 4 igscsum, 5 ighilite, 6 ighilsav, 7 ighilit1
+    [[nodiscard]] int kind() const { return kind_; } // 1 igstats, 2 ighalf, 3 igflsum, 4 igscsum, 5 ighilite, 6 ighilsav, 7 ighilit1, 8..14 igteam72/73/74/75/79/80/89
+    // Management-page row cursor (IGTEAM pages): hub rows / sub-pair slots; UP/DOWN moves it.
+    [[nodiscard]] int mgSel() const { return mgSel_; }
+    void moveMgmtRow(int dir, int nRows) { mgSel_ = nRows > 0 ? (mgSel_ + dir + nRows) % nRows : 0; }
+    // Management pages: composite the IGteam* layout over the frozen match, then paint FCDB/sim
+    // rows (lineup names, kit swatches, formation shirt numbers, stamina bars, hub captions).
+    presentation::FeDrawStats draw(render::SpriteBatch& ui, const IgMgmtData& d);
     void movePage(int dir);                           // 'igbC' btn1..btn4 page switch (L/R axis) [C] FUN_0043a3f4; kinds 5/6 = btlt/btrt slot pages (10 rows/page over the 100-slot table)
     presentation::FeDrawStats draw(render::SpriteBatch& ui, const IgMatchData& d);
 
@@ -117,6 +139,7 @@ private:
     int kind_ = 0;
     int page_ = 0;
     int hlSel_ = 0; // highlights browser/save-list slot cursor
+    int mgSel_{0};   // IGTEAM page row cursor (hub rows / sub-pair index; swap-pair A/B on 73)
 };
 
 // The real-time match loop. window/renderer are caller-owned: the FE shell passes its own windowed
@@ -128,7 +151,7 @@ private:
 // user/rplyNNNN.dat + rplyindx.dat under the tree (docs/asset-formats/RPLY.md).
 int runLiveLoop(const std::filesystem::path& tree, const std::string& prefix, int smokeFrames,
                 platform::Window& window, render::Renderer& renderer, bool recordReplay = false,
-                bool igPauseSmoke = false, int boardScript = 0); // 1 stats tour / 2 half board / 3 full-time boards (gates fe_igstats/fe_ighalf/fe_igscsum/fe_igflsum) / 4 highlights browser / 5 save list (gates fe_highlite_browser/fe_hilsav_list)
+                bool igPauseSmoke = false, int boardScript = 0); // 1 stats tour / 2 half board / 3 full-time boards (gates fe_igstats/fe_ighalf/fe_igscsum/fe_igflsum) / 4 highlights browser / 5 save list (gates fe_highlite_browser/fe_hilsav_list) / 6 IGTEAM management page cycle + ab-swap + hub (gate fe_mgmt_pages, §E)
 
 // CLI driver: --tree DIR [--live-match-smoke N] [--out-prefix P]. Standalone wrapper that owns its
 // window + Vulkan swapchain; "skip:" exits with 2 like the other tree gates.

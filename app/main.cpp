@@ -167,6 +167,7 @@ int run(int argc, char** argv) {
         else if (a == "--ig-full-smoke") { liveSmoke = std::stoi(next()); }
         else if (a == "--ig-hlite-smoke") { liveSmoke = std::stoi(next()); } // gates fe_highlite_browser/fe_hilsav_list: driver parses its own flags (§D highlights lane)
         else if (a == "--ig-hlsav-smoke") { liveSmoke = std::stoi(next()); }
+        else if (a == "--ig-mgmt-smoke") { liveSmoke = std::stoi(next()); } // gate fe_mgmt_pages: IGTEAM72..80/89 management page cycle (§E), driver parses its own flag
         else if (a == "--record-replay") { recordReplay = true; }
         else if (a == "--video-play") { videoPlay = next(); }
         else if (a == "--no-intro") { noIntro = true; }

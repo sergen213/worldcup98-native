@@ -4,7 +4,7 @@ All notable changes. Versioning: `0.x.y` pre-1.0; 1.0 = full World Cup
 tournament playable natively, per the definition of success in the
 project goals.
 
-## [Unreleased]
+## [0.4.0] - 2026-11-08 — Windows menu parity complete: popup/IG board families, highlights browser, management grids, LOAD/SAVE scenes, camera/practise/control pages
 ### Added
 - IGCAMERA/IGCAMSEL camera popups + practise page cycle + CONTROL1 controller page (`IgBoards` kinds 16-20,
   `--ig-camera-smoke N`, `--ig-practise-smoke N`, `--fe-control N`, gates `fe_camera_pages`, `fe_practise_pages`,

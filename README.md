@@ -36,7 +36,7 @@ is cited.
 
 ## Download
 
-The current pre-release is [v0.3.2](https://github.com/sergen213/worldcup98-native/releases/tag/v0.3.2):
+The current pre-release is [v0.4.0](https://github.com/sergen213/worldcup98-native/releases/tag/v0.4.0):
 a self-contained x86_64 AppImage `wc98-native-linux-x86_64-<version>.AppImage` with a `.sha256`
 sidecar, shipping the game **and** the Qt6 launcher (the launcher is the default entry; unknown
 flags pass through to the game). It needs only a Vulkan-capable driver on the host — the loader and
@@ -53,8 +53,8 @@ smoke-tests the new build, swaps it in atomically and keeps the previous file as
 rollback; it never touches game files, saves or `~/.config/wc98-native`:
 
 ```sh
-packaging/update.sh --check ~/apps/wc98-native-linux-x86_64-0.3.2.AppImage
-packaging/update.sh         ~/apps/wc98-native-linux-x86_64-0.3.2.AppImage
+packaging/update.sh --check ~/apps/wc98-native-linux-x86_64-0.4.0.AppImage
+packaging/update.sh         ~/apps/wc98-native-linux-x86_64-0.4.0.AppImage
 ```
 
 Repackage locally after a build with `packaging/linux/build-appimage.sh` (downloads pinned

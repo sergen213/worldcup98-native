@@ -5,6 +5,13 @@ tournament playable natively, per the definition of success in the
 project goals.
 
 ## [Unreleased]
+### Changed
+
+- `--fe-league` gate: hub `selectNav(LeaguePlay)` opens FEFLOW73 directly; the follow-up `enter()` call leaked
+  into the default wedge (friendly setup) and preempted the league composite in `drawCurrent`. `enter()` now runs
+  only on the FEFLOW05 fallback menu. `cfgTeam()` falls back to the FCDB head team when `poolIds_` is empty, so
+  FEFLOW73 pn rows paint roster captions + kit swatches (capture: texts=85, "#8 Simeone" .. "#15 Zanetti").
+
 ### Added
 
 - World-cup family interactive screens (FEFLOW18 finals-draw board, FEFLOW23/24 R16 bracket boards, FEFLOW35

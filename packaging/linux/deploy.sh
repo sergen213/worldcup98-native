@@ -46,7 +46,7 @@ fetch_cached() { # fetch_cached <url> <sha256> <dest>: download+verify unless ca
     command -v curl >/dev/null || { echo "deploy: curl required to fetch $url" >&2; exit 1; }
     mkdir -p "$(dirname "$dest")"
     echo "deploy: fetching $(basename "$dest")"
-    curl -fL --retry 5 --retry-delay 2 --connect-timeout 15 -o "$dest.tmp" "$url" && mv "$dest.tmp" "$dest"
+    curl -fL --retry 10 --retry-delay 15 --connect-timeout 15 -o "$dest.tmp" "$url" && mv "$dest.tmp" "$dest"
     [ "$(sha256sum "$dest" | cut -d' ' -f1)" = "$sha" ] || { echo "deploy: SHA-256 mismatch for $dest" >&2; exit 1; }
 }
 CACHE=${XDG_CACHE_HOME:-$HOME/.cache}/wc98-packaging

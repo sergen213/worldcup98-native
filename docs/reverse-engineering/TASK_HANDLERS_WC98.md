@@ -323,10 +323,22 @@ Ranked actionable deltas:
 
 ## 8. Open items
 
-- Loader field-splitting proof (`FUN_004aaf00` producer of `DAT_0063697c`) — runtime capture lane
-  blocked (SQF/EULZ negative result, memory rule: do not re-attempt wine EULZ lanes).
+- Loader field-splitting proof (`FUN_004aaf00` producer of `DAT_0063697c`) — **CLOSED at code level
+  (sci9, `analysis/pass12sci/sci9_scene_setup.txt`)**: the producer fills the caller's param blocks
+  from the scene block base `DAT_0063697c`: u16 count word @+0x232 (low nibble = triple count A,
+  high nibble count B), stride-8 entry arrays at +0x170 (positions broadcast to `{x,y,z}` with
+  `>>10` fixed-point scaling) and +0x1c8 (second array → camera vectors), u16 pairs @+0x220..+0x22e,
+  flags byte via `FUN_004b1ef0`. The runtime-capture half stays blocked (SQF/EULZ negative result,
+  memory rule: do not re-attempt wine EULZ lanes).
 - h19 trampoline table contents — CLOSED (sci8 dump, §5 h19).
-- `DAT_00580df0` producer sites per scene — CLOSED (scene-install region raw 0x4AA1xx, §1;
-  Ghidra-unanalyzed functions: force-analyze them in a future pass for exact rec+8 writers).
+- `DAT_00580df0` producer sites per scene — **CLOSED (sci12, function-level)**: the unanalyzed
+  scene-install functions are now created + decompiled
+  (`analysis/pass12sci/sci12_scene_install.txt`): `FUN_004aa148/1ba/267/2fc/485` write
+  `DAT_00580df0` (mode selector, arg) + `DAT_00580de8` and gate task kill (`FUN_004a0c90`) on scene
+  ids {7, 0xd, 0xf, 0x15, 0x17} via `FUN_004a0be0`; `FUN_004aa2fc` also gates the kit/side table
+  `(&DAT_0063c858)[side*0x1fd]` (with `DAT_00640160 == 1`) to zero the live camera triple
+  `DAT_00580de0/4`; `FUN_004aa432` sweeps every task record clearing flag-byte bit1 (`& 0xfd`,
+  unfreeze-all on scene switch) and sets `DAT_00580df4 = 1`. Scene registry lane unchanged
+  (wrapper `FUN_0047aa48` → driver 0x47aa8e).
 - tabA tick bodies (`FUN_004c9e60/4ca870/...`) share handler semantics; individual decompiles not
   included here — follow-up if a slot's tick behavior matters for parity.

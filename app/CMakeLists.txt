@@ -1,4 +1,4 @@
-add_executable(wc98-native main.cpp fe_flow.cpp match_demo.cpp livematch.cpp replay.cpp commentary.cpp game_audio.cpp tournament_demo.cpp saveload.cpp video.cpp)
+add_executable(wc98-native main.cpp fe_flow.cpp match_demo.cpp livematch.cpp selftest.cpp replay.cpp commentary.cpp game_audio.cpp tournament_demo.cpp saveload.cpp video.cpp)
 
 # .DCT movie player (docs/asset-formats/VIDEO.md): --gate decodes + uploads every frame of
 # VIDEO/*.DCT through the Vulkan renderer, printing "VIDEO frames=N size=WxH fps=F".

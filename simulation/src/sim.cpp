@@ -47,6 +47,7 @@ void territory(World& w) {
 
 } // namespace
 
+
 void Sim_frame(World& w, Fixed simDt, Fixed clockDt) {
     FrameTime& t = w.time;
     accumulateTotalFrames(w, simDt);
@@ -110,7 +111,6 @@ void Sim_frame(World& w, Fixed simDt, Fixed clockDt) {
     }
     if (w.opt.gameMode != 1 && w.opt.gameMode != 3) Team_aiSubstitutions_453E58(w); // 0x455283
     Match_frameFlags(w);
-    if (owner >= 0) t.possessingTeam = owner / kPlayersPerTeam;
     // EDX = owner team, else team of player DAT_0065f2a0, else 2 (0x4553BE).
     int possTeam = 2;
     if (owner >= 0) possTeam = owner / kPlayersPerTeam;

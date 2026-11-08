@@ -1,3 +1,4 @@
+#include <cstdio>
 // Outfield restart / presentation states 0x180-0x18D (kick-off, throw-in, corners, free kicks,
 // goal kicks, penalties, substitutions, bench idling, walk-offs) and the sequence-anim helpers
 // 0x535870..0x535B0C — owner: SimPorter2. Ported from FIFA99.EXE v1.1 0x535870..0x538760 and

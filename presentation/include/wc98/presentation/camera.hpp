@@ -6,6 +6,7 @@
 // between ticks.
 #include "wc98/presentation/snapshot.hpp"
 #include "wc98/renderer/renderer.hpp"
+#include <utility> // std::pair (camGridBoxUpdate)
 
 namespace wc98::presentation {
 
@@ -18,6 +19,19 @@ namespace wc98::presentation {
 [[nodiscard]] glm::vec3 cameraForward(int yaw16, int pitch16);
 // Horizontal half-angle (65536/turn) -> vertical FOV in degrees of the 4:3 picture (Proj_setFocal 0x47F8B0).
 [[nodiscard]] float verticalFovDeg4x3(int fovHalf16);
+// --- Broadcast grid box (WC98 FIFAWC.EXE FUN_00501910, init FUN_00500e60) -------------------
+// The exe tracks the ball in a 13x23 broadcast cell grid over the arena: cell state DAT_0058bcd4/bcd8
+// (clamped to [0..12] x [0..22]), scale factors DAT_0058bcc4/bcc8, cell sizes DAT_0058bccc/bcd0.
+// Emits index = cellX + cellZ*13 and its complement 298-index (feed for camera-mode selection).
+struct CamGridBox {
+    int cellX = 6, cellZ = 11;                     // DAT_0058bcd4/bcd8 box state
+    std::int32_t scaleFX = 0x10000, scaleFZ = 0x10000; // DAT_0058bcc4/bcc8: Fixed(11/arenaW), Fixed(21/arenaH)
+    int sizeX = 1, sizeZ = 1;                      // DAT_0058bccc/bcd0: arenaW/11, arenaH/21 units per cell
+};
+void camGridBoxInit(CamGridBox& g, int arenaW, int arenaH);           // FUN_00500e60 (DAT_006412cc/d)
+// follow=false -> recompute unconditionally; true -> only when the point leaves the box rectangle
+// around camPos (the exe's EBX flag). pitch/cam positions are game units. {index, complement}.
+std::pair<int, int> camGridBoxUpdate(CamGridBox& g, bool follow, glm::ivec2 pitchPos, glm::ivec2 camPos);
 
 class MatchCamera {
 public:

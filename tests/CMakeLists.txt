@@ -166,6 +166,12 @@ if(DEFINED WC98_TREE)
     # input drives the ported pad path (FUN_0047836c bit writes) proving the input->sim chain.
     add_test(NAME interactive_match COMMAND wc98-native --live-match-smoke 150 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/live)
     set_tests_properties(interactive_match PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" FAIL_REGULAR_EXPRESSION "shapes=0 ")
+    # Automated gameplay self-test (goal §14, app/selftest.cpp): real playable match via the
+    # exhibition bootstrap, scripted pad words drive controller 0; steps measure internal sim
+    # state (movement/sprint/turn/dribble/pass/shoot/physics/AI/keeper/clock) and write the JSON
+    # report. Exit code is the verdict: 0 all-pass, 1 any failure, 2 tree skip.
+    add_test(NAME self_test_gameplay COMMAND wc98-native --self-test /tmp/wc98port-out/selftest.json --tree ${WC98_TREE})
+    set_tests_properties(self_test_gameplay PROPERTIES SKIP_RETURN_CODE 2 TIMEOUT 300 ENVIRONMENT "WC98_TREE=${WC98_TREE};QT_QPA_PLATFORM=offscreen")
     # Authentic team-select fidelity (FEFLOW11.LAY pick grid, LAY_COMPOSITOR_NOTES.md): render the
     # screen via --fe-team; the shell asserts shapes/texts/cursors > 0 and this gate fails on zero counts.
     add_test(NAME fe_render_tournament COMMAND wc98-native --fe-smoke 2 --fe-team --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/feteam)

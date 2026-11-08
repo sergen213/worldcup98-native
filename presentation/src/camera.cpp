@@ -357,4 +357,35 @@ render::Camera MatchCamera::camera() const {
     return c;
 }
 
+// --- Broadcast grid box (WC98 FIFAWC.EXE FUN_00501910 + init FUN_00500e60) --------------------
+// The exe keeps the box state in DAT_0058bcd4/bcd8, scale factors DAT_0058bcc4/bcc8 and cell sizes
+// DAT_0058bccc/bcd0; index = cellX + cellZ*13 with complement 298-index feeds camera-mode selection.
+void camGridBoxInit(CamGridBox& g, int arenaW, int arenaH) { // FUN_00500e60 (DAT_006412cc/d inputs)
+    g.scaleFX = static_cast<std::int32_t>(static_cast<std::int64_t>(11) * 0x10000 / arenaW); // Fixed(11/w)
+    g.scaleFZ = static_cast<std::int32_t>(static_cast<std::int64_t>(21) * 0x10000 / arenaH); // Fixed(21/h)
+    g.sizeX = arenaW / 11;
+    g.sizeZ = arenaH / 21;
+}
+
+std::pair<int, int> camGridBoxUpdate(CamGridBox& g, bool follow, glm::ivec2 pitchPos, glm::ivec2 camPos) {
+    // Guard rectangle in units domain: pos must lie inside [(cell-1)*size - 0x50, cell size + 0x50]
+    // relative to the box footprint anchored at camPos (exe compares ball<<16 vs these <<16).
+    const long cx = static_cast<long>(g.cellX - 1) * g.sizeX - camPos.x;
+    const long cz = static_cast<long>(g.cellZ - 1) * g.sizeZ - camPos.y;
+    const bool outX = pitchPos.x <= cx - 0x50 || static_cast<long>(g.sizeX) + cx + 0x50 <= pitchPos.x;
+    const bool outZ = pitchPos.y <= cz - 0x50 || static_cast<long>(g.sizeZ) + cz + 0x50 <= pitchPos.y;
+    if (!follow || outX || outZ) {
+        // exe: (ball<<16 * scale >> 16 + carry + off) >> 16 + 1. The carry bit is the LSB-1 of the
+        // Fixed product; with an integer scale and a <<16 ball it is always zero, so in units domain
+        // cell = (pos*scale + off) / 65536 + 1 (off 0x58000 -> x-grid half-height 5.5 cells, etc.).
+        const std::int64_t vx = static_cast<std::int64_t>(pitchPos.x) * g.scaleFX + 0x58000;
+        g.cellX = static_cast<int>(vx >> 16) + 1;
+        const std::int64_t vz = static_cast<std::int64_t>(pitchPos.y) * g.scaleFZ + 0xa8000;
+        g.cellZ = static_cast<int>(vz >> 16) + 1;
+    }
+    g.cellX = std::clamp(g.cellX, 0, 0xc);
+    g.cellZ = std::clamp(g.cellZ, 0, 0x16);
+    const int idx = g.cellX + g.cellZ * 0xd;
+    return {idx, 0x12a - idx};
+}
 } // namespace wc98::presentation

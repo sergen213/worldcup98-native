@@ -6,6 +6,7 @@
 #include "fe_flow.hpp"
 #include "match_demo.hpp" // headless capture driver (gates) — runMatchDemo
 #include "livematch.hpp" // M10 interactive playable match (runLiveLoop / --live-match-smoke)
+#include "selftest.hpp" // automated gameplay self-test (--self-test FILE.json)
 #include "saveload.hpp"
 #include "tournament_demo.hpp"
 #include "game_audio.hpp" // FE menu music + shared runtime-audio helpers
@@ -93,6 +94,7 @@ int run(int argc, char** argv) {
     int navEntry = -1; // --fe-nav target (exhibition/league/tournament/practise), simulated after the frames
     int presentGate = 0; // --fe-present: draw each between-round presentation screen, print stat lines
     bool padSmoke = false; // --pad-smoke: headless gamepad startup gate (SDL dummy driver)
+    std::string selfTestPath; // --self-test FILE.json: scripted-input match self-test (goal §14).
     int liveSmoke = 0; // --live-match-smoke N: M10 headless playable-match gate (driver owns window).
     bool recordReplay = false; // --record-replay: live match records user/rplyNNNN.dat + rplyindx.dat
 
@@ -173,6 +175,7 @@ int run(int argc, char** argv) {
         else if (a == "--fe-credits")  { feMode = true, smokeFrames = 1, feCredits = true; }  // FEFLOW19 credits view capture gate
         else if (a == "--pad-smoke") { padSmoke = true; }
         else if (a == "--live-match-smoke") { liveSmoke = std::stoi(next()); }
+        else if (a == "--self-test") { selfTestPath = next(); } // gameplay self-test: writes JSON, exits 0/1/2
         else if (a == "--ig-pause-smoke") { liveSmoke = std::stoi(next()); } // gate fe_igmenu: scripted pause tour (driver parses the flag itself)
         else if (a == "--ig-stats-smoke") { liveSmoke = std::stoi(next()); } // gates fe_igstats/fe_ighalf/fe_igscsum/fe_igflsum: driver parses its own board flags
         else if (a == "--ig-half-smoke") { liveSmoke = std::stoi(next()); }
@@ -190,6 +193,7 @@ int run(int argc, char** argv) {
     }
 
     if (saveloadSlot >= 0) return app::runTournamentSaveLoad(saveloadSlot, app::defaultSlotDir());
+    if (!selfTestPath.empty()) return app::runSelfTest(tree, selfTestPath); // headless sim-only lane
     if (padSmoke) { // headless gamepad gate: graceful startup with no pads present (SDL dummy driver).
         if (!platform::initGamepads()) return 2; // pad subsystem unavailable here: skip, not fail
         std::cout << "gamepads=" << platform::connectedGamepadCount() << '\n';
@@ -504,7 +508,7 @@ int main(int argc, char** argv) {
                       " [--fe-options|--fe-saveload|--fe-credits]"
                       " [--record-replay] [--lang eng|fre|ger|ita|spa|dut|dan|swe|jap]"
                       " [--ig-camera-smoke N] [--ig-practise-smoke N]"
-                      " [--fe-present]");
+                      " [--fe-present] [--self-test FILE]");
             return 0;
         }
     }

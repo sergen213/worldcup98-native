@@ -2,6 +2,7 @@
 // Presentation core: snapshot interpolation, camera names, kit file selection, face composite rule.
 #include "check.hpp"
 #include "wc98/presentation/kits.hpp"
+#include "wc98/presentation/camera.hpp" // CamGridBox broadcast grid box gate
 #include "wc98/presentation/snapshot.hpp"
 
 #include "wc98/presentation/fe_screen.hpp"
@@ -69,6 +70,25 @@ void pureLogic() {
     CHECK(pitchDimensions(2) == glm::vec2(3648, 5088));
     CHECK(pitchDimensions(3) == glm::vec2(3600, 4800));
     CHECK(pitchDimensions(9) == pitchDimensions(2));
+    // Broadcast grid box (WC98 FIFAWC.EXE FUN_00501910 + init FUN_00500e60). Arena 5760x7680 signed
+    // from centre: scale FX=Fixed(11/w)=125, FZ=Fixed(21/h)=179; cell sizes w/11=523, h/21=365. The
+    // origin (0,0) is the arena centre -> cell (6, 11); edges clamp to [0..12] x [0..22].
+    {
+        CamGridBox g;
+        camGridBoxInit(g, 5760, 7680);
+        CHECK(g.scaleFX == 125 && g.scaleFZ == 179);
+        CHECK(g.sizeX == 523 && g.sizeZ == 365);
+        const auto [idx, comp] = camGridBoxUpdate(g, false, {0, 0}, {0, 0});
+        CHECK(idx == 149 && comp == 149); // 6 + 11*13 and the symmetric complement 298-idx
+        // Guard rectangle around the box footprint anchored at camPos: ball (0,0) with the box based
+        // there stays put on follow=true (cell state preserved from the recompute that seeded it).
+        const auto r2 = camGridBoxUpdate(g, true, {0, 0}, {2615, 3650});
+        CHECK(r2.first == idx && g.cellX == 6 && g.cellZ == 11);
+        const auto [ix2, ic2] = camGridBoxUpdate(g, true, {100000, 100000}, {0, 0}); // far corner
+        CHECK(g.cellX == 0xc && g.cellZ == 0x16 && ix2 + ic2 == 298);               // clamp max
+        camGridBoxUpdate(g, true, {-100000, -100000}, {0, 0});
+        CHECK(g.cellX == 0 && g.cellZ == 0);                                        // clamp min
+    }
 
     // Shortest-arc angles: 1000 -> 8 goes forward through the 1024 wrap.
     CHECK(std::fabs(lerpAngle(1000, 8, 0.5f) - 1016.0f) < 0.01f); // midpoint across the 1024 wrap

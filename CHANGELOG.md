@@ -4,6 +4,28 @@ All notable changes. Versioning: `0.x.y` pre-1.0; 1.0 = full World Cup
 tournament playable natively, per the definition of success in the
 project goals.
 
+
+## [Unreleased]
+### Added
+- Automated gameplay self-test (goal §14): `wc98-native --self-test FILE.json` launches a real
+  exhibition match from the FCDB tree, drives player 0 with scripted pad words (fixed tick windows),
+  and measures every step on internal simulation state — movement/sprint/turning path & heading
+  deltas, dribble possession retention, pass kick + M7 landing placement, shot arc apex/minGround,
+  ball flight physics, opponent AI reaction to possession, goalkeeper displacement off the line,
+  match-state progression. Structured JSON report written (version/steps/passed/detail), exit code
+  verdicts; ctest gate `self_test_gameplay` (skip return code 2 when no tree/FCDB env).
+- Broadcast camera grid box ported: `FUN_00501910` 12x22 box (scale DAT_0058bcc4/bcc8, index
+  x+y*13, complement 298-index) drives live-match framing in presentation/src/camera.cpp with
+  camera-param re-verification against FIFAWC.EXE (gate `test_presentation`). GAMEPLAY_PARITY §5.3 closed.
+- Difficulty control-level A/B gate (`scenarioDifficulty` in `test_sim_scenarios`): asserts the exact
+  ctrl1f4/ctrl1f8/ctrl1fc triples of `Team_setControlLevels_45159C` for aiAssist 0 vs 2 (human vs AI
+  sides) and that consumers follow — claim range kRange[ctrl1f8] {0x55,0x42,0x2f}, fatigue-tick
+  predicate, keeper ctrl1fc — closing gap O.
+- `docs/reverse-engineering/GAMEPLAY_PARITY.md`: complete gameplay systems inventory (goal §1),
+  constants provenance (§3), test coverage matrix (§4) and ranked open-differences list (§5);
+  gaps B/C/D-placement closed by the self-test, remaining gaps E/F/G/H/K/M/N/P ranked for a
+  one-batch scenario extension.
+
 ## [0.4.0] - 2026-11-08 — Windows menu parity complete: popup/IG board families, highlights browser, management grids, LOAD/SAVE scenes, camera/practise/control pages
 ### Added
 - IGCAMERA/IGCAMSEL camera popups + practise page cycle + CONTROL1 controller page (`IgBoards` kinds 16-20,

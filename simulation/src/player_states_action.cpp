@@ -95,16 +95,19 @@ bool Action_turnToOpponentTarget(World& w, int pid, std::int32_t n) {
 }
 
 // 0x53DF6C state 0x300: kick in progress — approach the ball, arm and release the planned kick
-// (sub-steps via jump table 0x53DF4C), then hand the restart/out-of-play event to the referee.
-// `esi` mirrors the exe register: the "run again" test after most sub-steps (set to 1 by sub 0,
-// overwritten with the kick's contact frame by sub 2) and the value stored into stateTimer by
-// subs 1 and 5.
+// (sub-steps chained via jmp to the dispatch head 0x53E049 through jump table 0x53DF88), then
+// hand the restart/out-of-play event to the referee. Watcom's [esp+0x58] "run again" slot is
+// cleared at every dispatch entry (xor edi,edi) and its address never escapes — break edges go
+// through that test straight to the epilogue, i.e. each `break` returns from this call; only
+// jmp 0x53E049 (`continue`) chains sub-steps within one frame. `esi` mirrors that slot: case 0
+// stores 1 into it (stateTimer write by subs 1/5), case 2 the kick's contact frame.
 void State300(World& w, int pid) {
     PlayerState& p = P(w, pid);
     const int animId0 = static_cast<int>(p.kick.animId); // [esp+0x40]
     const int kind = p.kick.kind;                        // [esp+0x4C] byte +0x1E0
     std::int32_t esi = 0;
     for (;;) {
+        esi = 0; // 0x53E049 xor edi,edi + mov [esp+0x58],edi (dispatch entry clears the slot)
         switch (p.stateSub2) {
         case 0: // 0x53DFD6
             esi = 1;
@@ -269,7 +272,7 @@ void State300(World& w, int pid) {
         default: // 0x53E01E
             break;
         }
-        if (!esi) return; // 0x53E01E test esi
+        return; // 0x53E07E..0x53E095: the [esp+0x58] "run again" slot is cleared at every dispatch (xor edi,edi) and its address never escapes, so break edges exit the state call.
     }
 }
 

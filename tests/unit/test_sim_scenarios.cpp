@@ -24,6 +24,7 @@
 namespace wc98::sim {
 void Kick_arm(World& w, int pid);                             // kick.cpp 0x4D0BB4 (not in header)
 void Player_executeKick(World& w, int pid, int code, std::int32_t ballY); // kick.cpp 0x4E3478
+std::int32_t Player_claimRange(const World& w, int pid);       // player_helpers.cpp 0x4BE034 (not in public header)
 }
 
 using namespace wc98::sim;
@@ -587,6 +588,52 @@ void scenarioGoldenGoal() {
     ck(w.match.endTeam == 1, "endTeam (winner) is not the scoring team");
     ck(w.match.score[1] == w.match.score[0] + 1 && w.match.score[0] == 0, "golden goal did not win it 1-0");
 }
+// ---------------------------------------------------------------------------------------------
+// 11. Difficulty control levels (gap O): Team_setControlLevels_45159C derives the ctrl1f4/1f8/1fc
+// triple from opt.aiAssist + human-controller count; consumers (claim range kRange[ctrl1f8]
+// {0x55,0x42,0x2f}, fatigue-tick predicate ctrl1f8!=0, keeper ctrl1fc) must see distinct values.
+void scenarioDifficulty() {
+    gName = "difficulty";
+    MatchData md = makeMd();
+
+    // A: aiAssist 0 (no assist), one human on team 0 vs AI team 1, gameMode 0 (exhibition).
+    Options optA{};
+    optA.aiAssist = 0;
+    SimRunner rA(md, optA, kSeed);
+    auto& wA = rA.world();
+    wA.teams[0].humans = 1;
+    wA.teams[1].humans = 0;
+    Team_setControlLevels(wA, 0);
+    Team_setControlLevels(wA, 1);
+    ck(wA.teams[0].ctrl1f4 == 0 && wA.teams[0].ctrl1f8 == 0 && wA.teams[0].ctrl1fc == 2,
+       "assist 0 human side triple != {f4:0,f8:0,fc:2}");   // edx==0: esi=0, --c, eax = AI opp -> 2
+    ck(wA.teams[1].ctrl1f4 == 0 && wA.teams[1].ctrl1f8 == 1 && wA.teams[1].ctrl1fc == 0,
+       "assist 0 AI side triple != {f4:0,f8:1,fc:0}");       // humans==0 edx==0: eax=esi=0, c stays
+
+    // B: aiAssist 2 (hardest) on the same fixture; consumer-relevant slots must differ from A.
+    Options optB{};
+    optB.aiAssist = 2;
+    SimRunner rB(md, optB, kSeed);
+    auto& wB = rB.world();
+    wB.teams[0].humans = 1;
+    wB.teams[1].humans = 0;
+    Team_setControlLevels(wB, 0);
+    Team_setControlLevels(wB, 1);
+    ck(wB.teams[0].ctrl1f4 == 0 && wB.teams[0].ctrl1f8 == 2 && wB.teams[0].ctrl1fc == 0,
+       "assist 2 human side triple != {f4:0,f8:2,fc:0}");    // edx==2: esi=0, ++c
+    ck(wB.teams[1].ctrl1f4 == 2 && wB.teams[1].ctrl1f8 == 1 && wB.teams[1].ctrl1fc == 2,
+       "assist 2 AI side triple != {f4:2,f8:1,fc:2}");       // humans==0 edx==2: esi=eax=2
+
+    // Behavioural A/B: the claim range follows ctrl1f8 and the fatigue predicate flips; keeper
+    // ctrl1fc differs between levels on both sides.
+    ck(Player_claimRange(wA, wA.teams[0].players[1]) == 0x55 &&
+       Player_claimRange(wB, wB.teams[0].players[1]) == 0x2f,
+       "claim range does not follow ctrl1f8 (kRange {0x55,0x42,0x2f})");
+    ck((wA.teams[0].ctrl1f8 != 0) == false && (wB.teams[0].ctrl1f8 != 0) == true,
+       "fatigue-tick predicate ctrl1f8!=0 identical across difficulty levels");
+    ck(wA.teams[0].ctrl1fc != wB.teams[0].ctrl1fc && wA.teams[1].ctrl1fc != wB.teams[1].ctrl1fc,
+       "keeper ctrl1fc identical across difficulty levels");
+}
 } // namespace
 
 int main() {
@@ -600,5 +647,6 @@ int main() {
     scenarioShootout();
     scenarioExtraTime();
     scenarioGoldenGoal();
+    scenarioDifficulty();
     return 0;
 }

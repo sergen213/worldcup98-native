@@ -932,6 +932,15 @@ void Ball_kick(World& w, Fixed vx, Fixed vy, Fixed vz, Fixed spin, int frames) {
         return;
     }
     b.trajFlags &= ~1u;
+    // The exe stamps the kicked ring entry with a touch flag (0x600010 bits); reading it back in
+    // FUN_00476D40 sets ball.flags bit 0 ("in play") + posAtTouch. Our ring writer never emits
+    // those bits, so mark the kick here: a kicked ball is live, and Rules_checkBallOut /
+    // throw-in geometry consume these fields.
+    if (w.match.phase == 9 || w.match.phase == 5 || w.match.periodType == 3) {
+        b.flags |= 1u;
+        const Vec3 kp = shr16(b.kickPos);
+        b.posAtTouch = {kp.x, kp.y, kp.z + (kp.z > 0 ? 1 : -1)};
+    }
     int n = 0xb4;
     if (frames == -1) n = 0x3c;
     else if (frames <= 0xb4) n = frames;

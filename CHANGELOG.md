@@ -27,6 +27,15 @@ project goals.
   {0x71,0x3d}/{0x65,0x31}/{0x59,0x25} ×0x10 by quality word `DAT_00644778`, pitch-edge x/z clamps,
   flags bit4/bit5 z-source lanes (ball/block/player), dz<<4 polar + 0x640 constants; live option
   `wc98-native --quality N` (`MatchCamera::setQualityTier`) — gate in `test_presentation` (§7 delta-5).
+- h21 ball-follow TV camera `presentation::followCamera`: task-flag source-triple select
+ (carrier byte[1] bit2 / player-pair byte0 bit4 / ball default), inset-edge bisection clamps
+±(halfW−0x1e0)/(halfL−0x140) and the rec+0x104 bytes {0x58,0xeb} = `0xeb58` angle/speed constant [P] - gate in
+ `test_presentation`; §7 camera-follow row closed (MODEL-PORTED).
+- h18 pitch-edge side camera `presentation::sideCamera` + h20 overhead camera
+  `presentation::overheadCamera`: ball-x lane thresholds 0x1e0/-0x1df, far/near lanes
+  ±(zEdge+0x140) with rec+0x110 mid-band constant and the forced-near bisection guard [P],
+  DAT_00644794-0x10 polar-height lane; overhead = -xEdge polar distance + 0x90 angle/speed.
+  Gates in `test_presentation`; §7 edge/tier row closed (all three MODEL-PORTED).
 - Task-handler family dossier `docs/reverse-engineering/TASK_HANDLERS_WC98.md`: semantic map of the
   30 tabB task handlers (scene bindings via the `.SCI` descriptor table, camera/pitch-mesh/timer
   primitives, kickoff placement task), byte-proven `.SCI` payload grammar from `COMMON/*.SCI`, and a

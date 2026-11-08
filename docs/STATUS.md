@@ -220,6 +220,12 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
   flags bit4/bit5 z-source lanes, dz<<4 polar + 0x640 angle/speed constants [P]; producer = task pool
   init `FUN_004a0810` argument, quality word DAT_00644778). `MatchCamera::setQualityTier` mirrors the
   word; `wc98-native --quality N` live option. Gate in test_presentation; §7 deltas 1-5 all closed.
+- Landed (2026-11-08, pass-12sci §7): h21 ball-follow TV camera `presentation::followCamera` modeled
+  (flag source-triple select carrier/pair/ball, inset-edge clamps ±(halfW−0x1e0)/(halfL−0x140),
+  rec+0x104 {0x58,0xeb} = 0xeb58 [P]); gate in test_presentation; §7 camera-follow row MODEL-PORTED.
+- Landed (2026-11-08, pass-12sci §7): h18 `sideCamera` (lane thresholds 0x1e0/-0x1df, far/near
+  ±(zEdge+0x140), rec+0x110 mid band + forced-near guard, DAT_00644794-0x10 polar lane) and h20
+  `overheadCamera` (-xEdge polar, 0x90) modeled; gates in test_presentation; §7 edge/tier row closed.
 
 ## Known limitations
 

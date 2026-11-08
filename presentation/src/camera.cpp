@@ -495,6 +495,36 @@ TierCamEye tierCamera(int quality, int flags, int xEdge, int zEdge, int ballZ, i
     return {x, z, dz << 4, 0x640}; // dz<<4 atan/commit lane + rec+0x10c bytes {0x40,6} = 0x640 [P]
 }
 
+// h21 FUN_004ca690 ball-follow TV camera [P]. Source triple select (task flags byte[1] bit2 ->
+// carrier, byte0 bit4 -> player pair, else ball), then bisection clamp to +/- edge insets.
+FollowCamEye followCamera(int flags, int ballX, int ballZ, int pairX, int pairZ, int carrierX,
+                          int carrierZ, int halfW, int halfL) {
+    int sx = ballX, sz = ballZ; // DAT_00644818 default triple [P]
+    if (flags & 0x100)      { sx = carrierX; sz = carrierZ; } // byte[1] bit2 -> DAT_00644870 pair
+    else if (flags & 0x10)  { sx = pairX;   sz = pairZ;   }   // byte0 bit4  -> DAT_00644828 pair
+    const int xe = halfW - 0x1e0, ze = halfL - 0x140;          // inset edges (DAT_00644780/7c [P])
+    if (sx > xe) sx = xe; else if (sx < -xe) sx = -xe;         // bisection clamp idiom [P]
+    if (sz > ze) sz = ze; else if (sz < -ze) sz = -ze;
+    return {sx, sz, 0xeb58}; // rec+0x104 bytes {0x58, 0xeb} angle/speed constant [P]
+}
+
+// h18 FUN_004cb600 pitch-edge side camera [P]: z lane by ball x (DAT_006447c4) thresholds
+// 0x1e0 / -0x1df, rec+0x110 scene constant in the mid band; mismatched selection forces the
+// near lane (-zEdge-0x140). polarHeight = DAT_00644794 - 0x10 (rec+0xc polar-offset lane).
+SideCamEye sideCamera(int ballX, int sceneRec110, int zEdge, int pitchConst) {
+    const int far = zEdge + 0x140, near = -zEdge - 0x140; // DAT_7c+0x140 / 0xfffffec0-DAT_7c [P]
+    int z;
+    if (ballX >= 0x1e0)      z = far;        // ball past +x edge -> far (+z) side camera
+    else if (ballX < -0x1df) z = near;       // ball past -x edge -> near (-z) side camera
+    else                     z = sceneRec110;
+    if (z != far && z != near) z = near;     // bisection guard [P]
+    return {z, pitchConst - 0x10};           // DAT_00644794-0x10 polar height lane [P]
+}
+
+// h20 FUN_004c9fd0 overhead camera [P]: polarDist rec+0x8 = -DAT_00644780 (negative x-edge),
+// angle/speed rec+0xc bytes {0x90,0} = 0x90; atan pair from FUN_00518060 is caller-side.
+OverheadCamPolar overheadCamera(int xEdge) { return {-xEdge, 0x90}; }
+
 int tabATaskHeight(int idx, int mode, bool liveRefPos, bool subMode3, int playerHeight, int camHeight) {
     if (idx < 0 || std::size_t(idx + 1) >= std::size(kTaskHeights)) return camHeight; // [port] beyond dump: rec+0x114 lane
     const unsigned w = static_cast<unsigned>(static_cast<int>(std::int16_t(kTaskHeights[std::size_t(idx) + 1]))); // packed >>16 sign-extended halfword

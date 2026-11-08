@@ -125,6 +125,34 @@ void pureLogic() {
         CHECK(tierCamera(1, 0x10, 1000, 1000, 9999, 200, 300).z == 1000 - 0x2a0); // z upper clamp zEdge-0x2a0
         CHECK(tierCamera(1, 0x10, 1000, 1000, -9999, 200, 300).z == 0x230 - 1000); // z lower clamp 0x230-zEdge
     }
+
+    // h21 FUN_004ca690 ball-follow TV camera (DATA-DELTA closure): source triple select by task
+    // flags + inset-edge bisection clamps +/- (halfW-0x1e0)/(halfL-0x140), 0xeb58 constant [P].
+    {
+        const auto f0 = followCamera(0x00, 10, 20, 500, 600, 700, 800, 2500, 2674); // ball default [P]
+        CHECK(f0.x == 10 && f0.z == 20 && f0.speedAngle == 0xeb58);
+        const auto fp = followCamera(0x10, 10, 20, 500, 600, 700, 800, 2500, 2674); // byte0 bit4 -> pair
+        CHECK(fp.x == 500 && fp.z == 600);
+        const auto fc = followCamera(0x110, 10, 20, 500, 600, 700, 800, 2500, 2674); // byte[1] bit2 wins
+        CHECK(fc.x == 700 && fc.z == 800);
+        const auto cl = followCamera(0x00, 99999, -99999, 0, 0, 0, 0, 2500, 2674);
+        CHECK(cl.x == 2500 - 0x1e0 && cl.z == -(2674 - 0x140)); // inset-edge clamp [P]
+    }
+
+    // h18 FUN_004cb600 pitch-edge side cam + h20 overhead [P]: lane thresholds 0x1e0/-0x1df,
+    // far zEdge+0x140 / near -zEdge-0x140, rec+0x110 mid band with forced-near guard.
+    {
+        const auto far = sideCamera(0x200, 0x777, 3000, 0x1140); // ball x >= 0x1e0 -> far lane
+        CHECK(far.z == 3000 + 0x140 && far.polarHeight == 0x1140 - 0x10);
+        const auto near = sideCamera(-0x1e0, 0x777, 3000, 0x1140); // ball x < -0x1df -> near lane
+        CHECK(near.z == -(3000 + 0x140));
+        const auto mid = sideCamera(0, 500, 3000, 0x1140);   // rec+0x110 constant mismatch -> near
+        CHECK(mid.z == -(3000 + 0x140));
+        const auto keep = sideCamera(0, 3000 + 0x140, 3000, 0x1140); // matches far lane -> kept
+        CHECK(keep.z == 3000 + 0x140);
+        const auto ov = overheadCamera(2500); // h20: rec+0x8 = -xEdge, angle/speed 0x90
+        CHECK(ov.polarDist == -2500 && ov.angleSpeed == 0x90);
+    }
     // tabA_pre height prelude FUN_004a0790 on DAT_0057FB82 u16[32]: value = H[idx+1] with the
     // sentinel lanes -5 -> rec+0x78, -4 -> rec+0x114, -1 -> mode constants (pass-12cam).
     {

@@ -73,6 +73,33 @@ struct TierCamEye {
 };
 TierCamEye tierCamera(int quality, int flags, int xEdge, int zEdge, int ballZ, int blockZ, int playerZ);
 
+// h21 FUN_004ca690 ball-follow TV camera [P]: source triple by task flags - carrier DAT_00644870
+// (byte[1] bit2), else player-pair DAT_00644828 (byte0 bit4), else ball DAT_00644818; x/z
+// bisection-clamped to +/- (halfW-0x1e0) / +/- (halfL-0x140); speedAngle = rec+0x104 {0x58,0xeb} =
+// 0xeb58 (zoom word rec+0x68 is the live lane, caller-side).
+struct FollowCamEye {
+    int x, z;
+    unsigned speedAngle; // rec+0x104 constant (angle/speed pack)
+};
+FollowCamEye followCamera(int flags, int ballX, int ballZ, int pairX, int pairZ, int carrierX,
+                          int carrierZ, int halfW, int halfL);
+
+// h18 FUN_004cb600 pitch-edge side camera [P]: the z lane from ball x (DAT_006447c4): >= 0x1e0 ->
+// far (+z) lane zEdge+0x140, < -0x1df -> near (-z) lane -zEdge-0x140, else the rec+0x110 scene
+// constant; a selection matching neither lane forces the near lane (bisection guard).
+// polarHeight = DAT_00644794-0x10 (rec+0xc polar-offset lane). h20 FUN_004c9fd0 overhead:
+// polarDist rec+0x8 = -xEdge, angle/speed 0x90.
+struct SideCamEye {
+    int z;
+    int polarHeight; // DAT_00644794 - 0x10 (rec+0xc)
+};
+SideCamEye sideCamera(int ballX, int sceneRec110, int zEdge, int pitchConst);
+struct OverheadCamPolar {
+    int polarDist;   // rec+0x8 = -DAT_00644780 (negative x-edge)
+    unsigned angleSpeed; // rec+0xc = 0x90 [P]
+};
+OverheadCamPolar overheadCamera(int xEdge);
+
 // Camera presentation task record: the WC98 timer B (fade/zoom) + timer C (position dolly)
 // snapshot-swap model over a camera snapshot pair (section 7 delta 1). Mirrors the task-record
 // fields consumed by the h6/h8/h13/h21/h24/h27 follow family: snapshot A = dolly start,

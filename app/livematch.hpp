@@ -3,7 +3,9 @@
 // demo driver also uses. The live loop drives the ported simulation on a wall-clock cadence and
 // presents the original match art through presentation::MatchScene with camera follow + HUD strip,
 // feeding the keyboard/gamepad pad word into controller 0 (mapping table in livematch.cpp).
-#include <array>
+
+// Gate fixtures read/write user files through plain streams (the highlights lane).
+#include <fstream>
 #include <filesystem>
 #include <memory>
 #include <string>
@@ -44,6 +46,13 @@ struct MatchBoot {
 // (player.hpp PlayerState, anim.hpp AnimInstance, ball.hpp BallState, rules.hpp MatchState).
 presentation::MatchSnapshot snapshotFromWorld(const sim::World& w, const sim::MatchData& md);
 
+// Read bytes from a filesystem path into a string (gate fixture seeding; streams are enough —
+// the highlights lane never needs binary fidelity beyond what these operators preserve).
+inline std::string readFile(const std::filesystem::path& p) {
+    std::ifstream f(p, std::ios::binary);
+    return {std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>()};
+}
+
 // ---- IG presentation boards (analysis/pass13/IG_FAMILIES_SPEC.md §C) ----------------------------
 // One match's data for the IGSTATS/IGHALF/IGFLSUM/IGSCSUM composites: TeamStats block
 // World.rules.stats[2] (rules.hpp, DAT_0065E1FC..), score MatchState::score (DAT_0065E050), goalLog
@@ -68,21 +77,37 @@ struct IgMatchData {
     std::vector<IgGoalRow> goals;            // goalLog DAT_0065E06C rows, chronological + running score
 };
 
-// The four IGLAY.BIG stat/summary boards rendered from IgMatchData. Composite = scene-ownership
-// visible whitelist (null.fsh placeholder widgets are legit invisible; static textid soup slots —
-// igstats ty12..ty16, summary typ3..typ5/typ8/typ9/up/down — excluded per f0f8109 rule) plus the
-// runtime caption overlay: FC-bank titles (28 'Match Statistics', 858 'HALF-TIME', 776 'Full-Time',
-// 1553 'SCORE SUMMARY'), names/scores/shields, stat grid rows and summary list columns.
+// Highlights browser/save-list rows (IG_FAMILIES_SPEC.md §D): tree/user/rplyindx.dat 100x25B table
+// parsed through formats::parseRplyIndex; number = slot (entry+4 sprintf source), name = the
+// rply%04d.dat filename. hdr = the current-match pair painting the IGHILSAV header pane
+// (typ1/nmb1/flg1 + typ2/nmb2/flg2, same geometry as the stat boards).
+struct IgHlRow { int number = 0; std::string name; bool populated = false; };
+struct IgHlData { std::vector<IgHlRow> rows; const IgMatchData* hdr = nullptr; };
+
+// The IGLAY.BIG presentation boards rendered from IgMatchData (stat/summary kinds) and from the
+// rply index rows (highlights browser/save-list kinds). Composite = scene-ownership visible
+// whitelist (null.fsh placeholder widgets are legit invisible; static textid soup slots —
+// igstats ty12..ty16, summary typ3..typ5/typ8/typ9/up/down, ighilite titl/typ4..7, ighilsav
+// titl/typ6/typ8 — excluded per f0f8109 rule) plus the runtime caption overlay: FC-bank titles
+// (28 'Match Statistics', 858 'HALF-TIME', 776 'Full-Time', 1553 'SCORE SUMMARY', 899 'INSTANT
+// REPLAY'), names/scores/shields, stat grid rows, summary list columns and slot rows.
 class IgBoards {
 public:
     IgBoards(render::Renderer& r, const std::filesystem::path& tree);
 
-    // name = lowercase IGLAY.BIG member (igstats | ighalf | igflsum | igscsum). False = absent.
+    // name = lowercase IGLAY.BIG member (igstats | ighalf | igflsum | igscsum | ighilite |
+    // ighilsav | ighilit1). False = absent.
     bool open(std::string_view name);
     [[nodiscard]] bool isOpen() const { return kind_ != 0; }
-    [[nodiscard]] int kind() const { return kind_; } // 1 igstats, 2 ighalf, 3 igflsum, 4 igscsum
-    void movePage(int dir);                           // 'igbC' btn1..btn4 page switch (L/R axis) [C] FUN_0043a3f4
+    [[nodiscard]] int kind() const { return kind_; } // 1 igstats, 2 ighalf, 3 igflsum, 4 igscsum, 5 ighilite, 6 ighilsav, 7 ighilit1
+    void movePage(int dir);                           // 'igbC' btn1..btn4 page switch (L/R axis) [C] FUN_0043a3f4; kinds 5/6 = btlt/btrt slot pages (10 rows/page over the 100-slot table)
     presentation::FeDrawStats draw(render::SpriteBatch& ui, const IgMatchData& d);
+
+    // Highlights lane (§D): browser rows from the rply index + cursor; slol/slor cycles slots.
+    presentation::FeDrawStats draw(render::SpriteBatch& ui, const IgHlData& d);
+    [[nodiscard]] int hlSel() const { return hlSel_; }
+    void setHlSel(int i) { hlSel_ = i < 0 ? 0 : i; page_ = hlSel_ / 10; }
+    void moveHl(int dir, int nRows); // slol/slor slot arrows: wrap over populated rows
 
 private:
     std::filesystem::path tree_;
@@ -91,6 +116,7 @@ private:
     formats::ScreenLayout sc_;
     int kind_ = 0;
     int page_ = 0;
+    int hlSel_ = 0; // highlights browser/save-list slot cursor
 };
 
 // The real-time match loop. window/renderer are caller-owned: the FE shell passes its own windowed
@@ -102,7 +128,7 @@ private:
 // user/rplyNNNN.dat + rplyindx.dat under the tree (docs/asset-formats/RPLY.md).
 int runLiveLoop(const std::filesystem::path& tree, const std::string& prefix, int smokeFrames,
                 platform::Window& window, render::Renderer& renderer, bool recordReplay = false,
-                bool igPauseSmoke = false, int boardScript = 0); // 1 stats tour / 2 half board / 3 full-time boards (gates fe_igstats/fe_ighalf/fe_igscsum/fe_igflsum)
+                bool igPauseSmoke = false, int boardScript = 0); // 1 stats tour / 2 half board / 3 full-time boards (gates fe_igstats/fe_ighalf/fe_igscsum/fe_igflsum) / 4 highlights browser / 5 save list (gates fe_highlite_browser/fe_hilsav_list)
 
 // CLI driver: --tree DIR [--live-match-smoke N] [--out-prefix P]. Standalone wrapper that owns its
 // window + Vulkan swapchain; "skip:" exits with 2 like the other tree gates.

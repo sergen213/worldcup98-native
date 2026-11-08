@@ -276,6 +276,13 @@ if(DEFINED WC98_TREE)
     set_tests_properties(fe_igscsum PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "IGSCSUM: shapes=[1-9]" FAIL_REGULAR_EXPRESSION "IGSCSUM: shapes=0 |texts=0 ")
     add_test(NAME fe_igflsum COMMAND wc98-native --ig-full-smoke 9000 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/igfull)
     set_tests_properties(fe_igflsum PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "IGFLSUM: shapes=[1-9]" FAIL_REGULAR_EXPRESSION "IGFLSUM: shapes=0 |texts=0 ")
+    # Highlights browser + save list (IG_FAMILIES_SPEC.md §D): deterministic fixture slots seed the
+    # gate user dir; IGMENU Highlights row opens IGHILITE over them, Enter = app/replay.cpp re-drive.
+    # fe_hilsav_list: 'S' on the browser opens IGHILSAV (rply index rows + flag/shield pair), Enter writes.
+    add_test(NAME fe_highlite_browser COMMAND wc98-native --ig-hlite-smoke 460 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/hlite)
+    set_tests_properties(fe_highlite_browser PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "IGHILITE: shapes=[1-9]" FAIL_REGULAR_EXPRESSION "IGHILITE: shapes=0 |rply-play.*FAILED|texts=0$ ")
+    add_test(NAME fe_hilsav_list COMMAND wc98-native --ig-hlsav-smoke 470 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/hlsav)
+    set_tests_properties(fe_hilsav_list PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "IGHILSAV: shapes=[1-9]" FAIL_REGULAR_EXPRESSION "IGHILSAV: shapes=0 |hilsav: saved rply0000|texts=0$ ")
     # Between-round tournament presentation (FEFLOW35/25/26/27, LAY_COMPOSITOR_NOTES.md "Tournament
     # presentation scenes"): one stat line per screen; fails on zero shapes/texts/cursors.
     add_test(NAME fe_render_present COMMAND wc98-native --fe-smoke 1 --fe-present --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/present)

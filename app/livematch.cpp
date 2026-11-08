@@ -241,14 +241,28 @@ bool IgBoards::open(std::string_view name) {
         }
         sc_ = formats::ScreenLayout::build(n, formats::LayoutDocument::parse(std::string_view(text)), nullptr, nullptr, "PC");
     } catch (const std::exception&) { return false; }
-    kind_ = n == "igstats" ? 1 : n == "ighalf" ? 2 : n == "igflsum" ? 3 : n == "igscsum" ? 4 : 0;
+    kind_ = n == "igstats" ? 1 : n == "ighalf" ? 2 : n == "igflsum" ? 3 : n == "igscsum" ? 4
+          : n == "ighilite" ? 5 : n == "ighilsav" ? 6 : n == "ighilit1" ? 7 : 0; // §D highlights family (IGHILIT1 = dummy hotkey-transition page, LAY comment)
     page_ = 0;
+    hlSel_ = 0;
     return kind_ != 0;
 }
 
 void IgBoards::movePage(int dir) {
     if (!kind_) return;
+    if (kind_ >= 5) { // btlt/btrt browser arrows: 10-row slot pages over the 100-entry table
+        hlSel_ += dir * 10;
+        if (hlSel_ < 0) hlSel_ = 0;
+        page_ = hlSel_ / 10;
+        return;
+    }
     page_ = (page_ + dir + 2) % 2; // 'igbC' btn1..btn4 page switch [C] FUN_0043a3f4: two pages on the L/R axis
+}
+
+void IgBoards::moveHl(int dir, int nRows) {
+    if (nRows <= 0) return;
+    hlSel_ = (((hlSel_ + dir) % nRows) + nRows) % nRows; // slol/slor slot arrows wrap the populated rows
+    page_ = hlSel_ / 10;
 }
 
 presentation::FeDrawStats IgBoards::draw(render::SpriteBatch& ui, const IgMatchData& d) {
@@ -351,6 +365,83 @@ presentation::FeDrawStats IgBoards::draw(render::SpriteBatch& ui, const IgMatchD
     return st;
 }
 
+// ---- Highlights family (IG_FAMILIES_SPEC.md §D) -----------------------------------------------
+// ighilite = playback transport browser: box3 video pane + btlt/btrt page arrows + play/paus/
+// fast/rewd/slol/slor/save controls over the rply index rows; typ4..7 caption slots and titl carry
+// FC-bank soup ids (249 'Attack', 77 '1', 303 'Bald') so composite skips them per f0f8109 rule and
+// this overlay paints the runtime captions ('INSTANT REPLAY' 899, 'Highlights' 885, 'Replay' 1484).
+// ighilsav = save list: lst1 rows from the rply index (paintListRows), flg1/flg2 FNNN flag quads +
+// typ1/typ2 names + nmb pair digits (digits paint AFTER the flag quads — z-order lesson 5344a02),
+// up/down scroll arrows via the btnup->ingame stem alias, save/back button pair. ighilit1 is the
+// shipped dummy hotkey-transition page (single null box1): composite-only, shapes/texts 0 legit.
+presentation::FeDrawStats IgBoards::draw(render::SpriteBatch& ui, const IgHlData& d) {
+    using namespace presentation;
+    FeDrawStats st;
+    if (kind_ < 5) return st;
+    std::vector<std::string> excl = kind_ == 6 ? std::vector<std::string>{"titl", "typ6", "typ8"}
+                                               : std::vector<std::string>{"titl", "typ4", "typ5", "typ6", "typ7"};
+    std::vector<std::string> visible;
+    for (const auto& o : sc_.objects) {
+        if (!o.shown()) continue;
+        const std::string n = lowerName(o.name);
+        if (std::ranges::find(excl, n) != excl.end()) continue;
+        visible.push_back(n); // composite() applies the whitelist by name (duplicates included)
+    }
+    st = composite(sc_, ui, art_, text_.get(), &visible);
+    const auto cap = [&](std::size_t id) { return text_ && text_->ready() ? std::string(text_->stringAt(id)) : std::string(); };
+
+    // Rows with an index entry + on-disk file (hlRows() already filters populated).
+    std::vector<const IgHlRow*> rows;
+    for (const auto& r : d.rows) if (r.populated && !r.name.empty()) rows.push_back(&r);
+    const int n = int(rows.size());
+    hlSel_ = n ? (((hlSel_ % n) + n) % n) : 0;
+    page_ = hlSel_ / 10;
+    const IgHlRow* sel = n ? rows[std::size_t(hlSel_)] : nullptr;
+    static constexpr std::uint32_t kBlack = render::packRgba(8u, 8u, 32u, 255u); // text over the white RECT fields
+
+    if (kind_ == 5) {
+        // Header pane title: FC-bank 'INSTANT REPLAY' (899) centered on box3 (x=116 w=408).
+        if (const formats::LayoutObject* b3 = layObj(sc_, "box3")) st.texts += paintCentered(text_.get(), ui, cap(899), 320.f, float(b3->y) + 10.f, 400.f);
+        // Current slot filename over the white box6/box7 entry field (x=132 w=200 y=397).
+        if (const formats::LayoutObject* f = layObj(sc_, "box6"); f && sel) st.texts += paintCentered(text_.get(), ui, sel->name, float(f->x) + 100.f, float(f->y) + 9.f, 195.f, kBlack);
+        // Slot number readout over the white box8 strip between the btlt/btrt arrows (x=159 w=134 y=447).
+        if (const formats::LayoutObject* f = layObj(sc_, "box8")) st.texts += paintCentered(text_.get(), ui, sel ? std::format("SLOT {:04d}", sel->number) : std::string("--------"), float(f->x) + 67.f, float(f->y) + 9.f, 130.f, kBlack);
+ // Transport state caption at the typ5 centre slot (play/pause share x=407: a toggle pair).
+        if (const formats::LayoutObject* t = layObj(sc_, "typ5")) st.texts += paintCentered(text_.get(), ui, cap(1484), float(t->x), float(t->y) + 6.f, 120.f);
+        // Right-column captions (soup ids 303/77): 'Highlights' over the save column, 'INSTANT REPLAY' under it.
+        if (const formats::LayoutObject* t = layObj(sc_, "typ7")) st.texts += paintCentered(text_.get(), ui, cap(885), float(t->x) - 4.f, float(t->y) + 6.f, 100.f);
+        if (const formats::LayoutObject* t = layObj(sc_, "typ6")) st.texts += paintCentered(text_.get(), ui, cap(899), float(t->x) - 4.f, float(t->y) + 6.f, 100.f);
+    } else if (kind_ == 6) {
+        // Header pair: names + FNNN shields first, score digits LAST (nmb1/nmb2 over box4/box5).
+        if (d.hdr) {
+            for (int t = 0; t < 2; ++t) {
+                if (const formats::LayoutObject* o = layObj(sc_, t == 0 ? "typ1" : "typ2")) st.texts += paintCentered(text_.get(), ui, d.hdr->names[std::size_t(t)], float(o->x) + 50.f, float(o->y) + 8.f, 130.f);
+                if (const formats::LayoutObject* o = layObj(sc_, t == 0 ? "flg1" : "flg2"); o && !d.hdr->flags[std::size_t(t)].empty()) {
+                    const ScreenArt::Shape sh = art_.shape("..\\global\\", d.hdr->flags[std::size_t(t)], "f000", -1); // FNNN record-index shields (FEFLOW11 rule)
+                    if (sh.tex) { ui.draw(sh.tex, {float(o->x), float(o->y), float(sh.w), float(sh.h)}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu); ++st.shapes; }
+                    else ++st.missing;
+                }
+            }
+            for (int t = 0; t < 2; ++t)
+                if (const formats::LayoutObject* o = layObj(sc_, t == 0 ? "nmb1" : "nmb2")) {
+                    const formats::LayoutObject* box = layObj(sc_, t == 0 ? "box4" : "box5"); // white 26x26 slots at x=212/399 (dumped)
+                    const float cx = box ? float(box->x) + 13.f : float(o->x) + 6.f;
+                    st.texts += paintCentered(text_.get(), ui, numStr(d.hdr->score[std::size_t(t)]), cx, float(o->y) + 7.f, 24.f);
+                }
+        }
+        // lst1 save-list rows from the rply index (captions = slot filenames), cursor on hlSel_.
+        if (const formats::LayoutObject* lst = layObj(sc_, "lst1")) {
+            std::vector<std::string> caps;
+            for (int i = 0; i < n && caps.size() < 10; ++i) caps.push_back(rows[std::size_t(i)]->name); // box h=200 @ Lineheight 20
+            paintListRows(ui, *lst, caps, hlSel_, *text_, 4, st);
+        }
+        // Footer value fields over the white RECTs (box6 x=175 / box8 x=349, w=140 y=383): slot + filename.
+        if (const formats::LayoutObject* f = layObj(sc_, "box6")) st.texts += paintCentered(text_.get(), ui, sel ? std::format("SLOT {:04d}", sel->number) : std::string(), float(f->x) + 70.f, float(f->y) + 9.f, 135.f, kBlack);
+        if (const formats::LayoutObject* f = layObj(sc_, "box8"); f && sel) st.texts += paintCentered(text_.get(), ui, sel->name, float(f->x) + 70.f, float(f->y) + 9.f, 135.f, kBlack);
+    }
+    return st; // kind 7 (ighilit1): dummy transition page, composite only
+}
+
 
 int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames,
                 platform::Window& window, render::Renderer& renderer, bool recordReplay, bool igPauseSmoke, int boardScript) {
@@ -388,7 +479,7 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
     // Native replay recording (--record-replay): every controller-0 tick streams into the recorder;
     // sealed with the final world state hash on loop exit.
     ReplayRecorder rec;
-    if (boardScript >= 2) boot.opt.halfLengthMinutes = 1; // IGHALF/IGSCSUM gates: fast-forward to half/full time
+    if (boardScript == 2 || boardScript == 3) boot.opt.halfLengthMinutes = 1; // IGHALF/IGSCSUM gates: fast-forward to half/full time (the highlights gates keep a running match)
     std::uint32_t recTick = 0;
     sim::SimRunner runner(boot.md, boot.opt, 0x2E7A);
     auto& w = runner.world();
@@ -449,17 +540,17 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
     auto igText = std::make_unique<presentation::FeText>(renderer, tree); // FC*.BIN captions for the LAY textid slots
     enum class IgPause { Off, Menu, QuitAsk, Board }; // + IG presentation boards (IG_FAMILIES_SPEC.md §C)
     IgPause pause = IgPause::Off;
-    int igSel = 0;                       // menu rows: 0 Resume, 1 Stats, 2 Quit (original item set is code-driven, undecoded captions)
+    int igSel = 0;                       // menu rows: 0 Resume, 1 Stats, 2 Highlights, 3 Quit (original item set is code-driven, undecoded captions)
     bool igReported = false, iqReported = false, iqShot = false;
     std::int64_t prevSim = int(w.time.simFrames); // camera delta source (DAT_0065F1E0 frames/tick)
     // IG presentation boards: composite over the live/paused frame from last-match data. igstats opens
     // from the IGMENU Stats row, ighalf at half-time whistle, full time = igscsum then igflsum [C]; Esc
     // dismisses/resumes (payload grammar ESC=0x65), L/R moves pages ('igbC' btn1..btn4 FUN_0043a3f4).
     std::unique_ptr<IgBoards> boards;
-    int boardSrc = 0;                    // open source: 1 stats menu, 2 half-time, 3 full-time chain
-    bool boardReported[5] = {}, halfShown = false, ftShown = false;
+    int boardSrc = 0;                    // open source: 1 stats menu, 2 half-time, 3 full-time chain, 4 highlights browser (menu), 5 save list (browser 'save' button)
+    bool boardReported[8] = {}, halfShown = false, ftShown = false;
     int boardShotAt = -1;                // capture frame of the current board (gate auto-script pacing)
-    static constexpr std::array<const char*, 5> kBoardName{"", "IGSTATS", "IGHALF", "IGFLSUM", "IGSCSUM"};
+    static constexpr std::array<const char*, 8> kBoardName{"", "IGSTATS", "IGHALF", "IGFLSUM", "IGSCSUM", "IGHILITE", "IGHILSAV", "IGHILIT1"};
     const int initPeriod = w.match.periodIndex; // DAT_0065F224: 0 -> >=1 transition marks the half whistle
     std::array<std::int64_t, 2> possAcc{};      // per-team possessionFrames deltas (DAT_0065f264 + owning team DAT_0065f250)
     std::int32_t lastPoss = w.time.possessionFrames;
@@ -520,11 +611,62 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
         switch (boardSrc) {
             case 1: pause = IgPause::Menu; break; // IGSTATS from the menu: return to IGMENU
             case 2: pause = IgPause::Off; break;  // half-time board: Esc resumes the match [C] ESC=0x65 resume callback
+            case 4: pause = IgPause::Menu; break; // highlights browser -> IGMENU (Esc grammar)
+            case 5: openBoard("ighilite", 4); break; // save list -> browser (save button opened it from there)
             default:                              // full-time chain: IGSCSUM -> IGFLSUM page, then exit
                 if (boards && boards->kind() == 4) openBoard("igflsum", 3);
                 else quit = true;
                 break;
         }
+    };
+    // ---- Highlights lane (§D): rows from the rply index, deterministic gate fixtures --------------
+    // Interactive play reads/writes tree/user (the exe's user\rply%04d.dat path); the gates run on a
+    // scratch directory seeded with three scripted mini-replays (fixed seed + fixed pad stream: pure
+    // sim -> byte-stable state hashes, so the replayFile re-drive reproduces them exactly).
+    const fs::path hlUser = smokeFrames ? fs::path(prefix + "-user") : tree / "user";
+    auto hlRows = [&] {
+        std::vector<IgHlRow> rows;
+        try {
+            for (const auto& e : formats::parseRplyIndex(wc98::readFile(hlUser / "rplyindx.dat")))
+                if (!e.name.empty() && fs::exists(hlUser / e.name)) rows.push_back({int(e.number), e.name, true});
+        } catch (const std::exception&) {} // no index yet: browser shows the empty-slot readout
+        return rows;
+    };
+    auto seedHlFixtures = [&] { // gate mode only: clear + rebuild slots 1..3 deterministically
+        std::error_code ec;
+        fs::remove_all(hlUser, ec);
+        fs::create_directories(hlUser, ec);
+        for (int slot = 0; slot < 3; ++slot) {
+            sim::SimRunner fr(boot.md, boot.opt, 0x2E7A); // the live loop's seed: re-drive parity
+            sim::Input_assignController(fr.world(), 0, 1, 0);
+            ReplayRecorder r;
+            const int ticks = 90 * (slot + 1);
+            for (int t = 0; t < ticks; ++t) {
+                sim::ControllerState c{}; // scripted deterministic pad stream
+                if ((t % 45) < 6) c.padBits |= input::actionBit(config::Action::Pass);
+                fr.setController(0, c); // feed the recorded word (the live loop's path): replay re-drive reproduces these runs exactly
+                r.append(unsigned(t), c);
+                fr.tick();
+            }
+            recordToUserDir(hlUser, r.build(0x2E7A, sim::stateHash(fr.world()))); // existing save path
+        }
+    };
+    if (smokeFrames && boardScript >= 4) seedHlFixtures();
+    auto playSelected = [&] { // browser 'play': app/replay.cpp re-drive of the selected slot file
+        const std::vector<IgHlRow> rows = hlRows();
+        const int s = boards ? boards->hlSel() : 0;
+        if (s < 0 || std::size_t(s) >= rows.size()) return;
+        const std::string nm = rows[std::size_t(s)].name;
+        try {
+            const ReplayResult rr = replayFile(tree, hlUser / fs::path(nm));
+            std::cout << "rply-play: " << nm << " ticks=" << rr.ticksPlayed << (rr.matches ? " match=1\n" : " match=0\n");
+        } catch (const std::exception& e) { std::cout << "rply-play: " << nm << " FAILED (" << e.what() << ")\n"; }
+    };
+    auto saveHighlights = [&] { // 'save' button: rply%04d.dat + index update via recordToUserDir
+        std::error_code ec;
+        fs::create_directories(hlUser, ec);
+        const int slot = recordToUserDir(hlUser, rec.build(0x2E7A, sim::stateHash(w)));
+        std::cout << "hilsav: saved rply" << std::setw(4) << std::setfill('0') << slot << ".dat slot=" << slot << '\n';
     };
 
     { // Snap the camera to its tele target once (demo passes a huge frame count per capture; live
@@ -565,6 +707,45 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
                               (boardScript == 3 && ((bk == 4 && presented == boardShotAt + 50) || (bk == 3 && presented == boardShotAt + 60)));
             if (fire) key(bk == 4 && boardScript == 3 ? SDL_SCANCODE_RETURN : SDL_SCANCODE_ESCAPE, true); // Enter: IGSCSUM -> IGFLSUM; Esc: dismiss / quit
         }
+        // Highlights lane gate scripts. Mode 4 (fe_highlite_browser): IGMENU Highlights row opens the
+        // IGHILITE browser over seeded fixture slots; btrt/btlt page arrows, slor slot cycle, Enter =
+        // replay-driver re-drive of the selected slot. Mode 5 (fe_hilsav_list): 'S' on the browser opens
+        // IGHILSAV; Enter writes a new rply%04d.dat + index entry via recordToUserDir.
+        if (boardScript == 4) {
+            if (presented == 200) key(SDL_SCANCODE_ESCAPE, true);   // IGMENU opens after kickoff progress
+            if (presented == 215) key(SDL_SCANCODE_DOWN, true);     // cursor: Resume -> Stats
+            if (presented == 216) key(SDL_SCANCODE_DOWN, false);
+            if (presented == 218) key(SDL_SCANCODE_DOWN, true);     // Stats -> Highlights row
+            if (presented == 219) key(SDL_SCANCODE_DOWN, false);
+            if (presented == 224) { key(SDL_SCANCODE_RETURN, true); } // Enter: IGHILITE browser with fixture slots
+            if (presented == 225) key(SDL_SCANCODE_RETURN, false);
+            if (presented == 300) { key(SDL_SCANCODE_RIGHT, true); }  // btrt slot page arrow
+            if (presented == 301) key(SDL_SCANCODE_RIGHT, false);
+            if (presented == 310) { key(SDL_SCANCODE_LEFT, true); }   // btlt back to the first page
+            if (presented == 311) key(SDL_SCANCODE_LEFT, false);
+            if (presented == 320) { key(SDL_SCANCODE_DOWN, true); }   // slor: cycle slot 1 -> 2
+            if (presented == 321) key(SDL_SCANCODE_DOWN, false);
+            if (presented == 340) { key(SDL_SCANCODE_RETURN, true); } // 'play': app/replay.cpp re-drive of the selected fixture
+            if (presented == 341) key(SDL_SCANCODE_RETURN, false);
+            if (presented == 420) key(SDL_SCANCODE_ESCAPE, true);     // browser -> menu
+            if (presented == 435) key(SDL_SCANCODE_ESCAPE, true);     // resume
+        }
+        if (boardScript == 5) {
+            if (presented == 200) key(SDL_SCANCODE_ESCAPE, true);   // IGMENU opens after kickoff progress
+            if (presented == 215) key(SDL_SCANCODE_DOWN, true);
+            if (presented == 216) key(SDL_SCANCODE_DOWN, false);
+            if (presented == 218) key(SDL_SCANCODE_DOWN, true);     // -> Highlights row
+            if (presented == 219) key(SDL_SCANCODE_DOWN, false);
+            if (presented == 224) { key(SDL_SCANCODE_RETURN, true); } // Enter: browser opens
+            if (presented == 225) key(SDL_SCANCODE_RETURN, false);
+            if (presented == 300) { key(SDL_SCANCODE_S, true); }     // 'save' button -> IGHILSAV list
+            if (presented == 301) key(SDL_SCANCODE_S, false);
+            if (presented == 360) { key(SDL_SCANCODE_RETURN, true); } // Enter: write new slot + index update
+            if (presented == 361) key(SDL_SCANCODE_RETURN, false);
+            if (presented == 420) key(SDL_SCANCODE_ESCAPE, true);     // save list -> browser
+            if (presented == 435) key(SDL_SCANCODE_ESCAPE, true);     // browser -> menu
+            if (presented == 450) key(SDL_SCANCODE_ESCAPE, true);     // resume
+        }
 
         for (SDL_Event e; SDL_PollEvent(&e);) { // keyboard + gamepad transitions into the ported layer
             if (e.type == SDL_EVENT_QUIT) quit = true;
@@ -574,18 +755,23 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
                 else if (!haveIgm) quit = true;
                 else pause = pause == IgPause::Off ? IgPause::Menu : pause == IgPause::QuitAsk ? IgPause::Menu : IgPause::Off;
             } else if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat && pause != IgPause::Off) {
-                switch (e.key.scancode) { // list cursor INC EDX @0x43FCD0: port domain {Resume, Stats, Quit}
-                    case SDL_SCANCODE_UP: igSel = (igSel + 2) % 3; break;
-                    case SDL_SCANCODE_DOWN: if (pause == IgPause::Board && boards) boards->movePage(-1); else igSel = (igSel + 1) % 3; break; // L/R axis pages the 'igbC' btn1..btn4 pair [C] FUN_0043a3f4
-                    case SDL_SCANCODE_LEFT: if (pause == IgPause::Board && boards) boards->movePage(-1); break;
-                    case SDL_SCANCODE_RIGHT: if (pause == IgPause::Board && boards) boards->movePage(1); break;
+                switch (e.key.scancode) { // list cursor INC EDX @0x43FCD0: port domain {Resume, Stats, Highlights, Quit}
+                    case SDL_SCANCODE_UP: if (pause == IgPause::Board && boards && boards->kind() >= 5) boards->moveHl(-1, int(hlRows().size())); else igSel = (igSel + 3) % 4; break; // slol: slot arrow
+                    case SDL_SCANCODE_DOWN: if (pause == IgPause::Board && boards) { if (boards->kind() >= 5) boards->moveHl(+1, int(hlRows().size())); else boards->movePage(-1); } else igSel = (igSel + 1) % 4; break; // L/R axis pages the 'igbC' btn1..btn4 pair [C] FUN_0043a3f4; slor on the highlights lane
+                    case SDL_SCANCODE_LEFT: if (pause == IgPause::Board && boards) boards->movePage(-1); break;  // btlt slot page arrow (ighilite/ighilsav)
+                    case SDL_SCANCODE_RIGHT: if (pause == IgPause::Board && boards) boards->movePage(1); break;  // btrt
+                    case SDL_SCANCODE_S: if (pause == IgPause::Board && boards && boards->kind() == 5) openBoard("ighilsav", 5); break; // 'save' button -> IGHILSAV slot list
                     case SDL_SCANCODE_RETURN: case SDL_SCANCODE_KP_ENTER: case SDL_SCANCODE_SPACE:
-                        if (pause == IgPause::Board) { // Enter advances the full-time chain IGSCSUM -> IGFLSUM [C]
-                            if (boards && boards->kind() == 4) openBoard("igflsum", 3);
+                        if (pause == IgPause::Board) {
+                            const int bk = boards ? boards->kind() : 0;
+                            if (bk == 4) openBoard("igflsum", 3);      // Enter advances the full-time chain IGSCSUM -> IGFLSUM [C]
+                            else if (bk == 5) playSelected();          // browser 'play': app/replay.cpp re-drive of the selected slot
+                            else if (bk == 6) saveHighlights();        // 'save' button: rply%04d.dat + index update via recordToUserDir
                             else dismissBoard();
                         }
                         else if (pause == IgPause::Menu && igSel == 1) openBoard("igstats", 1); // Stats row: live last-match data board
-                        else if (pause == IgPause::Menu && igSel == 2) { if (haveIq) pause = IgPause::QuitAsk; else quit = true; } // 'quit' row: IGQUESHN box, no box -> exit
+                        else if (pause == IgPause::Menu && igSel == 2) openBoard("ighilite", 4); // Highlights row -> IGHILITE browser (§D)
+                        else if (pause == IgPause::Menu && igSel == 3) { if (haveIq) pause = IgPause::QuitAsk; else quit = true; } // 'quit' row: IGQUESHN box, no box -> exit
                         else pause = IgPause::Off;                                          // resume / canc
                         break;
                     default: break;
@@ -614,7 +800,7 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
                         c.padBits |= input::actionBit(config::Action::Shoot);
                 }
                 runner.setController(0, c);
-                if (recordReplay) rec.append(recTick++, c); // recorded input word for this tick
+                if (recordReplay || boardScript >= 4) rec.append(recTick++, c); // recorded input word for this tick (gate lanes keep the recorder hot for 'save')
                 if (!runner.tick()) { // match ended (DAT_0057c604 == 2)
                     if (wantFullBoards && !ftShown) { ftShown = true; openBoard("igscsum", 3); } // full time opens IGSCSUM, then the IGFLSUM page [C]
                     else { quit = true; break; }
@@ -691,8 +877,9 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
         render::SpriteBatch ov; // outlives scene.build(): pushOverlay stores a pointer consumed there
         bool boardShot = false;          // first draw of the current IG board -> prefix__ig*.png evidence capture
         if (pause == IgPause::Board && boards && boards->isOpen()) {
-            FeDrawStats bd = boards->draw(ov, buildIgData());
             const int bk = boards->kind();
+            IgMatchData d = buildIgData(); // persistent header pane data for the save-list pair (typ1/nmb1/flg1)
+            FeDrawStats bd = bk >= 5 ? boards->draw(ov, IgHlData{hlRows(), &d}) : boards->draw(ov, d);
             if (!boardReported[std::size_t(bk)]) { // gate evidence line + PNG (legible stat rows)
                 boardReported[std::size_t(bk)] = true;
                 std::cout << kBoardName[std::size_t(bk)] << ": shapes=" << bd.shapes << " texts=" << bd.texts << '\n';
@@ -704,7 +891,7 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
             FeDrawStats ig = pause == IgPause::Menu ? composite(*igMenu, ov, igArt, igText.get())
                                                      : composite(*igQues, ov, igArt, igText.get());
             if (pause == IgPause::Menu) {
-                for (int row = 0; row <= 2; ++row) { // the port's three-row domain {Resume, Stats, Quit}
+                for (int row = 0; row <= 3; ++row) { // the port's four-row domain {Resume, Stats, Highlights, Quit}
                     std::string tag = "bt"; tag += char('0' + row); tag += row == igSel ? 'd' : 'n';
                     const ScreenArt::Shape sh = igArt.shape("..\\global\\", "INGAME.FSH", tag, -1);
                     if (sh.tex) { ov.draw(sh.tex, {176.f, 138.f + 24.f * float(row), float(sh.w), float(sh.h)}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu); ++ig.shapes; }
@@ -777,6 +964,8 @@ int runLiveMatch(int argc, char** argv) {
         else if (a == "--ig-stats-smoke") { smoke = std::atoi(argv[++i]); boardScript = 1; } // gate fe_igstats: IGMENU Stats-row tour -> IGSTATS composite
         else if (a == "--ig-half-smoke") { smoke = std::atoi(argv[++i]); boardScript = 2; }   // gate fe_ighalf: 1-min halves, IGHALF opens at the half whistle
         else if (a == "--ig-full-smoke") { smoke = std::atoi(argv[++i]); boardScript = 3; }   // gates fe_igscsum/fe_igflsum: full time -> IGSCSUM Enter -> IGFLSUM
+        else if (a == "--ig-hlite-smoke") { smoke = std::atoi(argv[++i]); boardScript = 4; } // gate fe_highlite_browser: Highlights row -> IGHILITE browser, fixture slots + replay-driver play action
+        else if (a == "--ig-hlsav-smoke") { smoke = std::atoi(argv[++i]); boardScript = 5; }  // gate fe_hilsav_list: browser 'S' save button -> IGHILSAV list, Enter writes a new slot via recordToUserDir
         else if (a == "--record-replay") record = true;
         // Flags owned by other modes of the same CLI pass through untouched.
     }

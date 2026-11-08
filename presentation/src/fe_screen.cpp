@@ -95,6 +95,7 @@ const formats::FshFile* ScreenArt::file(const std::string& vpath, const std::str
     struct StemAlias { const char* from; const char* to; const char* dir; };
     static constexpr StemAlias kStemAlias[] = {
         {"button", "ingame", nullptr},
+        {"btnup", "ingame", nullptr}, // ighilsav up/down: btnup.fsh#bt2n/bt3n -> INGAME.FSH (pass13 §D)
         {"igtitlbr", "titlbr", "IGOPTION"},
     };
     if (found.empty() && !root_.empty()) {

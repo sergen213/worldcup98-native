@@ -5,6 +5,12 @@ tournament playable natively, per the definition of success in the
 project goals.
 
 ## [Unreleased]
+### Added
+
+- `ScreenArt` stem alias `button -> ingame`: IG popup layouts reference `..\global\button.fsh`, which exists nowhere on
+  disk; the referenced tags (`btnn/btnd/btn2`) live in `FE/INGAME/INGAME.FSH`. IGSTATS-family buttons now render
+  (raw lane shapes=0 -> 4). Evidence: analysis/pass13/IG_FAMILIES_SPEC.md.
+
 ### Changed
 
 - `--fe-league` gate: hub `selectNav(LeaguePlay)` opens FEFLOW73 directly; the follow-up `enter()` call leaked

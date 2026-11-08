@@ -810,6 +810,7 @@ struct ActFrame {
     PassRec recs[11];           // +0x0D0
     PassRec shots[5];           // +0x288
     const Vec3* p350 = nullptr; // +0x350 shot target
+    std::int32_t budgetScratch = 0; // WC98 local_78: high-half draw budget (LAB_0050d24b [P])
     std::int32_t hi[0xb] = {};  // +0x354..+0x37F
     std::int32_t& at(int o) { return o < 0xd0 ? lo[o >> 2] : hi[(o - 0x354) >> 2]; }
     std::int32_t* ptr(int o) { return &at(o); }
@@ -869,7 +870,7 @@ void frameKick_4DD070(World& w, int pid, ActFrame& F) {
     F.at(0x90) = iabs(F.at(0x90));
     F.at(0x94) = iabs(F.at(0x94));
     if (static_cast<std::uint32_t>(t.humans) > 0) return;
-    if (F.at(0x24) != 0 && F.at(0x78) == 2 && F.at(0x8c) < 0xf0 && p.f014 == 6) t.f1b8 = pid;
+    if (F.at(0x24) != 0 && F.at(0x78) == 2 && F.at(0x8c) < 0xf0 && (p.f014 == 5 || p.f014 == 6)) t.f1b8 = pid; // WC98 f014 set {5,6} [P]
 }
 
 // Shared opening of 0x4DD324 / 0x4DF2CC: the "go long" flag from the line counts (team +0x364 vs
@@ -1146,13 +1147,9 @@ int TeamAI_onBallAct_4DD324(World& w, int pid) {
     f(0x9c) = f(0xa4) = f(0xa0) = 0;
     f(0x8c) = f(0x94) = f(0x90) = 0;
     f(0x6c) = crowd_4DB924(w, pid, F.ptr(0x9c), F.ptr(0x70));
-    if (f(0x28) == 0) {
-        f(0x18) = -1;
-    } else {
-        f(0x3c) = kShotThr[m];
-        f(0x38) = f(0x3c) + 0x3c - static_cast<std::int32_t>((2 - ediDif) << 3);
-        f(0x18) = evalShots_546B2C(w, pid, F.shots);
-    }
+    f(0x3c) = kShotThr[m];
+    f(0x38) = f(0x3c) + 0x3c - static_cast<std::int32_t>((2 - ediDif) << 3); // WC98 prologue unconditional (0x50cfab [P])
+    f(0x18) = evalShots_546B2C(w, pid, F.shots); // WC98 0x50d137: shot eval is unconditional [P]
     if (static_cast<std::uint32_t>(t.humans) == 0 && t.f1b8 != -1 && pid == t.f1b8) t.f1b8 = -1;
     if (pid == t.oneTouch) goto L_4def38;
     if (f(0x20) == 0) {
@@ -1173,8 +1170,10 @@ L_4dd6ad: {
     // FIFA-99 difficulty scaling `<< (dif == 2 ? 0 : 1)` and the conditional 0x1f / 0xf draws are
     // gone. The f210 branch gate becomes [team+0x144]==1 && formation != 0 with shift >>2
     // (FIFA-99: t.f210 == 1 -> >>= 3).
-    f(0x74) = kDribbleBudget[a32] + static_cast<std::int32_t>(w.rng.next() & 0xf);
-    if (t.f210 == 1 && m != 0) f(0x74) >>= 2;
+    const std::int32_t d10 = static_cast<std::int32_t>(w.rng.next());
+    f(0x74) = kDribbleBudget[a32] + (d10 & 0xf);
+    F.budgetScratch = d10 >> 8; // WC98 local_78 = high half of the same draw [P] (rng is a 16-bit stream)
+    if (t.f210 == 1 && m != 0) { f(0x74) >>= 2; F.budgetScratch >>= 3; } // WC98 0x50d266 dual shift [P]
     std::int32_t d4 = (f(0x54) - p.facingDesired) & 0x3ff;
     if (d4 > 0x200) d4 -= 0x400;
     f(0x04) = d4;
@@ -1250,7 +1249,7 @@ L_4ddbc6:
         t.f1b4 = pid;
         t.flags &= ~0x200u;
         if (f(0x2c) != 0) {
-            if (!(w.rng.next() & 7) && f(0x18) > 0 && f(0x38) <= F.shot(f(0x18)).score) goto L_4ddc95;
+            if (!(w.rng.next() & 1) && f(0x18) > 0 && f(0x38) <= F.shot(f(0x18)).score) goto L_4ddc95; // WC98 mask = 1 (0x50d6dd [P])
         }
         if (f(0x58) <= f(0x5c)) goto L_4ddc95;
         Math_polarRecord(f(0x2c) != 0 ? 6 : 0x18, atan2i(f(0xa0), f(0xa4)), F.ptr(0x9c));
@@ -1294,10 +1293,9 @@ L_4ddd92:
     if (ch == -1) goto L_4deec8;
     if (f(0x37c) > 0) {
         if (f(0x37c) >= f(0x48)) goto L_4deec8;
-        if (w.rng.next() & 0xf) goto L_4deec8;
-    }
+    } // WC98 LAB_0050d9c8: no RNG draw between thr9B and the w360 gate (FIFA-99 extra removed [P])
     if (static_cast<std::uint32_t>(o.w360[0]) < 2) goto L_4dec04;
-    if (f(0x1c) == 0 && w.ball.posI.y <= 0x39) goto L_4de6e9;
+    if (f(0x1c) == 0 && w.ball.posI.y <= 0x72) goto L_4de6e9; // WC98 DAT_00646920 < 0x73 [P]
     f(0x08) = side == 1 ? 0x200 : 0;
     if (w.ball.posI.y < 0x72) goto L_4dedee;
     Math_polarRecord(0xb40, f(0x08), F.ptr(0x8c));
@@ -1581,17 +1579,23 @@ L_4de946:
 L_4deb5b:
     // WC98 LAB_0050e... (pair 46): the kSectorClose table gate is replaced by `(reach + attr [+half]) >> 1 < distBall`.
     if (static_cast<std::int32_t>(f(0x0c) >> 1) < P(w, ch).distBall || (w.rng.next() & 0xf)) {
-        if (f(0x74) > w.pl.g67320c) {
+        // WC98 0x50ded2/0x50def5: two flag-gated counter tests - budget vs f(0x34), scratch draw vs f(0x24).
+        if (f(0x34) != 0 && w.pl.g67320c < f(0x74)) {
+            dribbleDir_4DC0D8(w, pid, ch, f(0x4c), f(0x54), f(0x34), F.ptr(0x9c));
+            goto L_4dd814;
+        }
+        if (f(0x24) != 0 && w.pl.g67320c < F.budgetScratch) {
             dribbleDir_4DC0D8(w, pid, ch, f(0x4c), f(0x54), f(0x34), F.ptr(0x9c));
             goto L_4dd814;
         }
     }
-    f(0x37c) = aiD32(0x59fcc8) + static_cast<std::int32_t>((w.rng.next() & 0xf) << 4);
+    w.rng.next(); // WC98 0x50dee6 unconditional draw [P]
     if (f(0x2c) != 0) {
-        if (f(0x18) < 0) goto L_4dec04;
-        if (!(w.rng.next() & 0x1f)) goto L_4def38;
-        if (iabs(p.posI.z) > f(0x37c)) goto L_4def38;
-        goto L_4dec04;
+        // WC98 0x50dee6..0x50def0: threshold = high half of the (rand&0x1f) draw, no global lane and
+        // no FIFA-99 f(0x18)<0 dribble gate [P].
+        const std::uint32_t u = w.rng.next();
+        if ((u & 0x1f) != 0 && iabs(p.posI.z) <= static_cast<std::int32_t>(u >> 8)) goto L_4dec04;
+        goto L_4def38; // LAB_0050d3b8 shot tail (port pass-chain model [P])
     }
     framePasses_4DD2BC(w, pid, F);
     if (f(0x44) <= F.recs[f(0xb8)].score) {
@@ -1669,42 +1673,45 @@ bool TeamAI_tryHeaderPass_4DF2CC(World& w, int pid, std::int32_t h) {
         else if (t.w360[1] == 2 && lines > 4 && (w.rng.next() & 1)) k52 = 1;
         else if (k56 == 0 && (static_cast<std::uint32_t>(t.playerCount) >> 1) > w1 && (w.rng.next() & 0xf)) k52 = 1;
     }
-    {
+    {   // WC98 FUN_0050e740 (pair 47) 0x50edc1/0x50ee71: skip lane gated by f(0x1c), f(0x28) + shot score;
+        // entry requires az > k26 || az > penHalf+line; local_50 = f(0x24) forces the cross-lift from
+        // the skip path. [P]
         const auto d16v = static_cast<std::uint32_t>(w.pitch.penAreaDepth >> 4);
-        const std::int32_t k26 = w.pitch.halfLength - static_cast<std::int32_t>((w.rng.next() % d16v) << 4) - 0xf0;
+        const std::int32_t k26 = w.pitch.halfLength - static_cast<std::int32_t>((w.rng.next() % d16v) << 4) - 0xf0; // WC98 local_6c [P]
         const std::int32_t az = iabs(p.posI.z);
-        if (k2a != 0 && k4a == 0 && recs[best[0][0]].score > 0 &&
-            (az > k26 || az > (w.pitch.penAreaDepth >> 1) + w.pitch.penAreaLineZ)) {
-            const int i = best[0][0];
-            if (Pitch_inPenaltyArea(w, recs[i].target) || (w.rng.next() & 1)) {
-                // 0x4DF693: cross toward the far penalty spot area
-                PassRec& R = recs[i];
+        const bool skipline = (k36 == 0 || k2a != 0) || shots[si].score < 1;
+        const bool deepok = !skipline && !(az <= k26 && az <= (w.pitch.penAreaDepth >> 1) + w.pitch.penAreaLineZ);
+        if (deepok || (skipline && k56 != 0)) { // LAB_0050ea8e entered; local_50 force [P]
+        const int i = best[0][0];
+        if (Pitch_inPenaltyArea(w, recs[i].target) || (w.rng.next() & 1)) {
+            // 0x4DF693: cross toward the far penalty spot area
+            PassRec& R = recs[i];
+            R.target.z += side == 1 ? -0xc0 : 0xc0;
+            OctDist d = octDistance(p.posI, R.target);
+            rel[0] = d.dist;
+            rel[1] = d.dx;
+            rel[2] = d.dz;
+            if (rel[0] < 0x2d0) {
+                const Vec3 spot{0, 0, side == 0 ? w.pitch.penSpotZ : -w.pitch.penSpotZ}; // 0x65F398 + i*0xC
+                std::int32_t dd = 0;
+                const int n = Team_nearestPlayer_4523E4(w, spot, p.team, 0xff, &dd);
+                if (n != -1 && k26 > 0x3c0) return false; // WC98 :947 target non-null + deep threshold [P]
+                if (n == -1) return false; // ponytail: the exe would read null + 0xD4 here (never seen)
+                t.f1e0 = n;
+                R.target = P(w, n).posI;
                 R.target.z += side == 1 ? -0xc0 : 0xc0;
-                OctDist d = octDistance(p.posI, R.target);
+                d = octDistance(p.posI, R.target);
                 rel[0] = d.dist;
                 rel[1] = d.dx;
                 rel[2] = d.dz;
-                if (rel[0] < 0x2d0) {
-                    const Vec3 spot{0, 0, side == 0 ? w.pitch.penSpotZ : -w.pitch.penSpotZ}; // 0x65F398 + i*0xC
-                    std::int32_t dd = 0;
-                    const int n = Team_nearestPlayer_4523E4(w, spot, p.team, 0xff, &dd);
-                    if (n != -1 && dd > 0x3c0) return false;
-                    if (n == -1) return false; // ponytail: the exe would read null + 0xD4 here (never seen)
-                    t.f1e0 = n;
-                    R.target = P(w, n).posI;
-                    R.target.z += side == 1 ? -0xc0 : 0xc0;
-                    d = octDistance(p.posI, R.target);
-                    rel[0] = d.dist;
-                    rel[1] = d.dx;
-                    rel[2] = d.dz;
-                    R.r10 = (rel[0] >> 3) + 0x72;
-                }
-                if (R.r10 < 0xe4) R.r10 = 0xe4;
-                lift = R.r10;
-                goto L_4df7fd;
+                R.r10 = (rel[0] >> 3) + 0x72;
             }
+            if (R.r10 < 0xe4) R.r10 = 0xe4;
+            lift = R.r10;
+            goto L_4df7fd;
         }
     }
+        }
     if (k32 != 0) return false;
     if (static_cast<std::uint32_t>(t.humans) == 0 && t.f1b8 != -1) return false;
     if (k4a != 0) goto L_4dfa95;

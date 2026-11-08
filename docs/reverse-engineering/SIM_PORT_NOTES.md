@@ -142,17 +142,26 @@ ported verbatim. Mapping as implemented:
 | DAT_0064015c == 9 switch gates incl. cVar1 = player byte +0x82 in {2,3,4} -> special-kick re-map param_5 = 0xe (case 0/2, side class 3 && dist < 0x1e0) | identical to FIFA-99 port (annotated; WC98 reads the byte at +0x82 vs FIFA-99 +0x9A) |
 | kind==3 && animClass==2 && posI.z sign (+0xa8) == team side -> animClass = 1 | identical (annotated) |
 
-**OPEN items (not derivable from the decompile alone; do not fake):**
+**Resolved (2026-11-08, pass-12kick):** helpers decompiled (`FUN_004f3590`, `FUN_004f34b0`,
+`FUN_004af940`, `FUN_00500660`, `FUN_0049eb60`; dossier `/tmp/kickd1.txt` + kick_plan re-decompile):
 
-- Power *consumption*: `if (power < dist && target)` calls FUN_004f3590 / FUN_004f34b0 (offsetXZ,
-  sin/cos scale via FUN_004af940) with register args hidden by Ghidra. The vector clamp is computed
-  in the port (`power` local) but NOT applied; extract call-site register state to close.
-- FUN_00500660 predicate: needs `player+8 == 0`, `FUN_0049eb60(dist, ...)` (undumped) and team+0x138 == 0.
-  The port approximates the observable effect as slot-0 && kind==1 -> half-length power.
-- DAT_00641011 is a live (front-end-written) options global; `w.opt.kickAssist` defaults to 0, so no
-  boost fires in sim runs until the front end sets it (FE lane owns that write).
-- WC98 record +0x19 bit 0x80 = "target pointer present" sticky flag (tail copies target from EBX when
-  set); the port models the ternary only, not the sticky flag.
+- Power *consumption*: **applied**. The pair are 16.16 fixed-point sin/cos vector builders — table
+  `DAT_00585898[i] = round(sin(2*pi*i/1024)*65536)` (256 entries, quarter turn; quadrant fold via
+  `FUN_004af940`), multiply >>16 with rounding at bit 0xf == port `fx()`. WC98 lines 62-64: when
+  `power < dist` the kick displacement is rescaled to length=power along the heading (10-bit angle
+  `hd << 6` into `Math_sin16/Math_cos16`). Implemented in `kick.cpp`; gate
+  `scenarioKickPowerClamp` (test_sim_scenarios).
+- FUN_00500660 predicate decoded: `player+8 == 0` && `FUN_0049eb60(vec)` != 0 && team+0x138 == 0.
+  `FUN_0049eb60` = pitch test `|dx| <= DAT_00641318` (halfWidth), `|dz| <= DAT_00641314`
+  (halfLength), dz past a side-dependent line `DAT_00641314 - DAT_006412d8`; DAT_006412d8 is
+  DGROUP bss (runtime-set, no static value) -> modelled at the centre line. team+0x138 gate not
+  modelled. Port models slot-0 && kind==1 && rect -> half-length power.
+- DAT_00641011 writers located: byte-store loop VA `0x450ff5` inside FE options handler
+  `FUN_00450bb0` (config struct `DAT_0057cd78` fields, sets `DAT_00608cf0 = 1`) and a
+  mov-pair block at raw `0x6a9e2/0x6a9f3`. FE lane owns the write; `w.opt.kickAssist` default 0.
+- player+0x19 bit 0x80: set/clear sites decoded — WC98 lines 39-44 recompute it per call from the
+  target-pointer presence (EBX); the tail copy uses the current EBX, so the port ternary is
+  semantically equivalent for this slice (no persistent sticky behaviour observed).
 - Kick_planToPoint 0x4D0BF0 has no WC98 candidate (audit MISSING); kick Arm/execute WC98 bodies are
   pairs 21/27 (`0x502f40`, `0x5146c0`), not this slice.
 

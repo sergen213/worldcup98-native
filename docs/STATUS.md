@@ -202,6 +202,9 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
   (`analysis/pass12sci/TASK_HANDLERS.md`; GAMEPLAY_PARITY §5.1 re-ranked, no Win9x-env blocker).
 - Landed (2026-11-08): commentary per-event preload + scheduler parity models wired
   (`app/commentary` SpeechPreload/EventDispatch/Scheduler; gates a-d in test_commentary).
+- Landed (2026-11-08, pass-12kick): kick-plan power clamp + slot-0 rect predicate ported
+  (`FUN_00502fc0` 39-64 helpers incl. `DAT_00585898` sin table; gate scenarioKickPowerClamp);
+  SIM_PORT_NOTES "Kick family" open items closed (dossier `analysis/pass12kick/`).
 
 ## Known limitations
 

@@ -23,6 +23,8 @@
 
 namespace wc98::sim {
 void Kick_arm(World& w, int pid);                             // kick.cpp 0x4D0BB4 (not in header)
+int Kick_plan(World& w, int pid, std::int32_t vec[4], int mode, int coordMode, const Vec3* target, // kick.cpp 0x4D0CFC / WC98 FUN_00502fc0
+              std::int32_t lift, std::int32_t useHigh, Fixed spin, int kind, int animClass, std::int32_t a6, int animArg);
 void Player_executeKick(World& w, int pid, int code, std::int32_t ballY); // kick.cpp 0x4E3478
 std::int32_t Player_claimRange(const World& w, int pid);       // player_helpers.cpp 0x4BE034 (not in public header)
 int Player_tryTackle(World& w, int pid, int kind);         // player_helpers.cpp 0x4D19C8 (player_states.hpp)
@@ -696,6 +698,47 @@ void scenarioShotPower() {
 }
 
 // ---------------------------------------------------------------------------------------------
+// 12b. WC98 FUN_00502fc0 power gates: displacement is capped at `power` (lines 62-64 scaled via the
+// fixed-point sin/cos helpers FUN_004f3590/FUN_004f34b0), and a slot-0 kicker whose target vector
+// passes the FUN_0049eb60 pitch test (|dx| <= halfWidth, |dz| <= halfLength, attacking direction)
+// takes DAT_00641314 (pitch half-length) as power instead of the phase base (lines 48-56).
+void scenarioKickPowerClamp() {
+    gName = "kick-power-clamp";
+    MatchData md = makeMd();
+    Options opt{};
+    SimRunner r(md, opt, kSeed);
+    auto& w = r.world();
+    w.match.phase = 0; // DAT_0064015c gate: power base 0xb40
+    const std::int32_t hl = w.pitch.halfLength;
+    ck(hl > 0, "fixture pitch half-length unset");
+    int pid = -1;
+    for (int i = 1; i < 22; ++i)
+        if (w.players[static_cast<std::size_t>(i)].slot != 0) { pid = i; break; }
+    ck(pid >= 0, "no outfield player in fixture");
+    const int sideA = w.teams[w.players[pid].team].side;
+    const std::int32_t hw = w.pitch.halfWidth;
+    std::int32_t vec[4] = {0, hw, (sideA == 1 ? -(hl - 1) : hl - 1), 0}; // away from the attacking goal: gate off
+    Kick_plan(w, pid, vec, 6, 1, nullptr, 0, 0, 0, 1, 1, 0, 0);
+    ck(w.players[static_cast<std::size_t>(pid)].kick.vec.dist == 0xb40, "outfield kick not capped at power base 0xb40");
+    int gk = -1;
+    for (int i = 0; i < 22; ++i)
+        if (w.players[static_cast<std::size_t>(i)].slot == 0) { gk = i; break; }
+    ck(gk >= 0, "no goalkeeper in fixture");
+    const int sideG = w.teams[w.players[gk].team].side;
+    std::int32_t vec2[4] = {0, hw, (sideG == 1 ? hl - 1 : -(hl - 1)), 0}; // attacking direction inside the rect
+    Kick_plan(w, gk, vec2, 6, 1, nullptr, 0, 0, 0, 1, 1, 0, 0);
+    const auto& gkk = w.players[static_cast<std::size_t>(gk)].kick;
+    ck(gkk.vec.dist == hl, "slot-0 attacking pass did not take halfLength power");
+    // components scaled along the heading at length=power via fx * sin/cos (16.16 table parity):
+    const std::int32_t adx = gkk.vec.dx < 0 ? -gkk.vec.dx : gkk.vec.dx;
+    const std::int32_t adz = gkk.vec.dz < 0 ? -gkk.vec.dz : gkk.vec.dz;
+    ck(adx <= hw && adz <= hl && adz * 5 >= hl * 4, "power clamp did not scale components along the heading");
+    std::int32_t vec3[4] = {0, hw, (sideG == 1 ? -(hl - 1) : hl - 1), 0}; // defending direction: rect fails
+    Kick_plan(w, gk, vec3, 6, 1, nullptr, 0, 0, 0, 1, 1, 0, 0);
+    ck(w.players[static_cast<std::size_t>(gk)].kick.vec.dist == 0xb40, "slot-0 non-attacking pass took halfLength power");
+}
+
+// ---------------------------------------------------------------------------------------------
 // 13. Gap F (bounce/roll physics): a chip lob must apex, pop at least one bounce off the
 // Ball_consumeTrajectory counter, then roll with decaying ground speed and come to rest.
 void scenarioBounceRoll() {
@@ -1135,6 +1178,7 @@ int main() {
     scenarioGoldenGoal();
     scenarioDifficulty();
     scenarioShotPower();
+    scenarioKickPowerClamp();
     scenarioBounceRoll();
     scenarioNetRest();
     scenarioTackleWin();

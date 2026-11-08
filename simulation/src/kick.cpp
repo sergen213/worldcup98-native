@@ -98,16 +98,29 @@ int Kick_plan(World& w, int pid, std::int32_t vec[4], int mode, int coordMode, c
     k.vec = {vec[0], vec[1], vec[2], vec[3]};
     Angle hd = atan2i(vec[1], vec[2]);
     const std::int32_t dist = vec[0];
-    // Kick power gate (WC98 FUN_00502fc0 lines 49-65). The helper FUN_00500660 returns nonzero only
-    // for a slot-0 kicker passing FUN_0049eb60(dist) with team+0x138 == 0 (predicate not modelled —
-    // SIM_PORT_NOTES "Kick family WC98 deltas"), and the kind==1 branch keeps DAT_00641314 (pitch
-    // half-length) as power; every other path takes the phase base.
+    // Kick power gate (WC98 FUN_00502fc0 lines 48-56). The helper FUN_00500660 returns nonzero only
+    // for a slot-0 kicker whose target vector passes the FUN_0049eb60 pitch test, with team+0x138 == 0;
+    // it keeps DAT_00641314 (pitch half-length) as power, every other path takes the phase base.
+    // FUN_0049eb60: |dx| <= DAT_00641318 (halfWidth), |dz| <= DAT_00641314 (halfLength), and dz must
+    // cross a side-dependent line (DAT_00641314 - DAT_006412d8; DAT_006412d8 is runtime-set, no static
+    // value -> modelled at the centre line). team+0x138 gate not modelled. SIM_PORT_NOTES "Kick family".
     std::int32_t power = w.match.phase == 2 ? kPowerPhase2 : kPowerBase; // DAT_0064015c gate
-    if (p.slot == 0 && kind == 1) power = w.pitch.halfLength;            // FUN_00500660 != 0, param_5 == 1
+    const std::int32_t adx = vec[1] < 0 ? -vec[1] : vec[1];
+    const std::int32_t adz = vec[2] < 0 ? -vec[2] : vec[2];
+    const bool rect = adx <= w.pitch.halfWidth && adz <= w.pitch.halfLength &&
+                      (T.side == 1 ? vec[2] > 0 : vec[2] < 0);
+    if (p.slot == 0 && kind == 1 && rect) power = w.pitch.halfLength; // FUN_00500660 != 0, param_5 == 1
     // +50% assist bump gated by the team side byte (**(player+0x20)) vs DAT_00641011 bits.
     if ((T.side == 0 && (w.opt.kickAssist & 0x40)) || (T.side == 1 && (w.opt.kickAssist & 0x80))) power += power >> 1;
-    static_cast<void>(power); // the dist>power vector clamp (FUN_004f3590 + FUN_004f34b0 offsetXZ, arg
-                              // registers hidden in the decompile) is an OPEN item — not applied.
+    // WC98 lines 62-64: when dist > power the displacement is scaled to length=power at heading via
+    // FUN_004f3590/FUN_004f34b0 (sin/cos of the 10-bit heading, 16.16 fixed-point table DAT_00585898 =
+    // round(sin(2*pi*i/1024)*65536), multiply >>16 with rounding at bit 0xf == fx(); sin/cos inputs in
+    // the port's 16-bit angle units (Math_atan2_16 space) = hd << 6).
+    if (power < dist) {
+        k.vec.dist = power;
+        k.vec.dx = fx(power, Math_sin16(static_cast<std::int32_t>(hd) << 6));
+        k.vec.dz = fx(power, Math_cos16(static_cast<std::int32_t>(hd) << 6));
+    }
     if (animClass == 0x10) { // 0x4D16E3 / WC98 FUN_00502fc0 param_6 == 0x10: no animation, armed at once
         k.contactFrame = -1; // iStack_28 = -1
         k.flags |= 4;        // WC98 sets +0x3c bit 2 only (keeps contact/left bits); FIFA-99 cleared them

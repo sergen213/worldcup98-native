@@ -11,6 +11,14 @@ project goals.
   30 tabB task handlers (scene bindings via the `.SCI` descriptor table, camera/pitch-mesh/timer
   primitives, kickoff placement task), byte-proven `.SCI` payload grammar from `COMMON/*.SCI`, and a
   ranked parity-delta table vs the port simulation (GAMEPLAY_PARITY §5.1 rank-1 unblocked).
+- Kick-plan power model closed to WC98 parity (`simulation/src/kick.cpp`): the `power < dist`
+  displacement clamp (WC98 `FUN_00502fc0` lines 62-64) rescales the kick vector to length=power
+  along the heading via the 16.16 fixed-point sin/cos builders (`FUN_004f3590`/`FUN_004f34b0`, table
+  `DAT_00585898[i] = round(sin(2*pi*i/1024)*65536)`); the slot-0 half-length power gate now models
+  the decoded `FUN_00500660` predicate (player+8==0, `FUN_0049eb60` pitch test: |dx|<=halfWidth,
+  |dz|<=halfLength, attacking-direction line) instead of an approximation. New ctest gate
+  `scenarioKickPowerClamp`; SIM_PORT_NOTES.md "Kick family WC98 deltas" open items closed
+  (kickAssist writers located at VA 0x450ff5 FE handler + raw 0x6a9e2 block).
 - Commentary adapter aligned to the pass-12 per-event speech architecture (`app/commentary.hpp`
   `SpeechPreload` / `SpeechEventDispatch` / `SpeechScheduleRecord` + `SpeechScheduler`, wired into
   `Commentary`): preload enable/disable gate semantics (scene-enabled precondition, once-only gate

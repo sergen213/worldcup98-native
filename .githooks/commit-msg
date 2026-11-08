@@ -1,0 +1,40 @@
+#!/bin/sh
+# Contributor-identity guard for worldcup98-native.
+#
+# GitHub's contributor graph attributes commits to the accounts named in
+# Co-authored-by: trailers, and those ghost entries outlive a history rewrite because
+# GitHub keeps serving the dangling objects. Keep the graph single-author: drop every
+# Co-authored-by trailer before the commit object is written.
+#
+# Enable per clone:  git config core.hooksPath .githooks
+
+set -eu
+
+msg="$1"
+
+if grep -qi '^Co-authored-by:' "$msg"; then
+	sed -i '/^[Cc]o-[Aa]uthored-[Bb]y:/d' "$msg"
+	# Trailing blank lines left behind by the removal.
+	tmp="${msg}.strip.$$"
+	awk '
+	{ lines[NR] = $0 }
+	END {
+		last = NR
+		while (last > 0 && lines[last] ~ /^[[:space:]]*$/) last--
+		for (i = 1; i <= last; i++) print lines[i]
+	}' "$msg" >"$tmp"
+	mv "$tmp" "$msg"
+fi
+
+# Reject identities that map to extra GitHub contributor accounts.
+author_email=$(git config --get user.email || true)
+case "$author_email" in
+sergen213@users.noreply.github.com) ;;
+*)
+	echo "commit-msg: refusing author email '$author_email'" >&2
+	echo "commit-msg: this repo requires sergen213@users.noreply.github.com (see .githooks/commit-msg)" >&2
+	exit 1
+	;;
+esac
+
+exit 0

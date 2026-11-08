@@ -6,6 +6,13 @@ project goals.
 
 ## [Unreleased]
 ### Added
+
+- World-cup family interactive screens (FEFLOW18 finals-draw board, FEFLOW23/24 R16 bracket boards, FEFLOW35
+  standings board): `--fe-wc-cfg N` gates (`fe_wc_cfg{18,23,24,35}`) open the screens with scene-ownership
+  whitelists (dynamic tm/gm/qtm textID soup excluded), app overlays painting ZWCUP pool names + group letters
+  on FEFLOW18 (deterministic re-shuffled zones per `rand` press, engine cap 99), R16 bracket pairs with kit-shield
+  cards under dark-ink team names, and the 8-group standings page (`nglt`/`ngrt` = mod-8 group cursor). Decoded
+  thunk semantics per tag: analysis/pass12/wcfamily_notes.txt (GhidraWc98WcFam1/2 lane).
 - League configuration family (FEFLOW72/74/75/76/78/79/80): list-box (type=9) + slider (type=11) painters render
   `s001` rows with FC-bank captions, kit swatches from the fifa98edit hslCols palette, row cursor navigation and
   gofd/gobk screen-chain keys per decoded key loops. Gates `fe_league_cfg{72,74,75,76,78,79,80}` (--fe-league-cfg N).

@@ -286,3 +286,17 @@ Semantics: `rand` = randomize zones; `strk` = start/launch tournament path; `sts
 - kitColor(): FCDB 5-bit shirt colour indices index analysis/fifa98edit/__init__.py hslCols VERBATIM in table
   order (idx0=(242,165,237) pink ... idx19=(0,2,244) white, idx22=(0,0,40)). A rotated/fabricated table
   painted Argentina/Brazil swatches magenta; verbatim copy fixes it (presentation/src/fe_screen.cpp kitColor).
+
+## 12. World-cup family interactive slice (FEFLOW18/23/24/35, pass-12 implementation) [C]
+
+- Full thunk decode per tag in `/mnt/1st4TB/WorldCup98/analysis/pass12/wcfamily_notes.txt`
+  (GhidraWc98WcFam1/2.py -> /tmp/wcfam_dec{1,2}.txt). Headlines: `rand` = staged random-draw refresh
+  (FUN_004cf150 + per-slot tm%02d visibility loop FUN_00452568, counter cap 99 -> auto-press);
+  `strk`/`stsc` on feflow23/24 = press-animation + mode-store (FUN_004670b0/FUN_004670f4), feflow35 `strk`
+  is ack-only; `nglt`/`ngrt` = FUN_00451964 scene-chain nav with mod-8 group page domain on FEFLOW35.
+  FEFLOW18 has NO up/down row keyloop: rows are engine visibility flags, button+mouse driven [C].
+- Port slice `FeFlow::drawWcFamily` (app/fe_flow.cpp): scene-owned whitelists wc{18,23,24,35}Visible_ exclude
+  the dynamic textID soup slots; tm/gm/qtm cells are objecttype-0 shapeID-null engine-painted widgets, so pool
+  names / group letters / standings rows paint as app overlays at the LAY slot coordinates (drawTeamsGrid model).
+  FEFLOW23/24 ordering rule: stf* kit shapes are full shield cards that cover the tm slots -> flags first,
+  dark-navy ink names last (white-on-light-plate is invisible). Gate captures /tmp/wc98port-out/wcfg{18,23,24,35}_fe*.png.

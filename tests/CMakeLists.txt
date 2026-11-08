@@ -202,6 +202,13 @@ if(DEFINED WC98_TREE)
         add_test(NAME fe_wc_cfg${_wq} COMMAND wc98-native --fe-wc-cfg ${_wq} --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/wcfg${_wq})
         set_tests_properties(fe_wc_cfg${_wq} PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW${_wq}: shapes=[1-9][0-9]* texts=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 ")
     endforeach()
+    # Cheats screen (feflow95.lay, MENU_PARITY.md §8): objecttype-18 checkbox rows btn0..btn7 with the
+    # cheatbox `1box` frames + exe-string captions ("Take a Dive" .. "Alien Model"). --fe-cheats N opens it
+    # with row i ON for bit i: mask 85 = rows 0/2/4/6 checked (toggle glyph visible), mask 0 = all empty.
+    add_test(NAME fe_cheats COMMAND wc98-native --fe-cheats 85 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/cheats)
+    set_tests_properties(fe_cheats PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW95: shapes=[1-9][0-9]* texts=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 ")
+    add_test(NAME fe_cheats_off COMMAND wc98-native --fe-cheats 0 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/cheatsoff)
+    set_tests_properties(fe_cheats_off PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW95: shapes=[1-9][0-9]* texts=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 ")
     # Hub screen (Feflow06.lay, MENU_NAV_WC98.md §3 global-key table): the 13-wedge menu hub becomes
     # the main-menu composite when present; help pane paints FC captions -> texts>0.
     add_test(NAME fe_hub COMMAND wc98-native --fe-smoke 1 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/hub)

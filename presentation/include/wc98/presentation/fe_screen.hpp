@@ -166,6 +166,17 @@ void paintSliderThumb(render::SpriteBatch& ui, const formats::LayoutObject& trac
 void paintListRows(render::SpriteBatch& ui, const formats::LayoutObject& box, std::span<const std::string> captions,
                    int cursorRow, const FeText& txt, int fontId, FeDrawStats& st);
 
+// objecttype 18 checkbox / toggle row (feflow95 Cheats screen; MENU_PARITY.md §8). `box` is the type-18
+// widget carrying HILITEDSHAPEIDON/OFF keys: ON draws the ON tag's art at the widget position, OFF uses
+// HILITEDSHAPEIDOFF (`null` on this layout = no glyph at all). The row frame is a separate objecttype 2
+// widget (cheatbox `1box`) painted by composite behind the glyph. Evidence [C]: feflow95's draw slot body
+// (registry +0x18 = 0x469a60, analysis/pass12/edges_table.txt:499) calls the widget-hilite setter
+// FUN_00479224 at sites 0x469c6b / 0x469ca6 / 0x469cb1 (analysis/pass12/edge2.txt, section from line
+// 11629); that setter selects the HILITEDSHAPEIDON/OFF branch of the button-class shape chain. The nine
+// captions are installed in the same body by CALL->0x4788b4 sites 0x469b2d..0x469bb7 (edge2.txt:11631-
+// 11639), so the LAY textid=0 slots are authoring placeholders, not the runtime captions.
+void paintCheckbox(render::SpriteBatch& ui, const formats::LayoutObject& box, bool on, ScreenArt& art, FeDrawStats& st);
+
 // Draws the merged element list into `ui`. Textured elements are blitted at their shape's native size
 // anchored at (xposition, yposition): the layout position wins and WIDTH/HEIGHT is the interaction box
 // (FIFA 99 LAYOUT.md "FSH header position fields are authoring positions only"; measured: nvicons

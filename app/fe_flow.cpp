@@ -155,6 +155,29 @@ FeFlow::FeFlow(render::Renderer& r, fs::path tree, std::string lang) : tree_(std
             }
         }
     }
+    // Cheats screen (feflow95.lay; MENU_PARITY.md §8). The scene registry row is [C]
+    // analysis/pass12/registry_all.txt:56 and the hub global-key payload 0x1E -> feflow95 is [C]
+    // docs/reverse-engineering/MENU_NAV_WC98.md §3 (evidence 0x4456A3-0x4456A8); payloads have no
+    // decoded keyboard mapping, so the port exposes a documented dev key (F9). Absent layout = lane closed.
+    {
+        try {
+            fs::path d;
+            const std::string t = presentation::readLayout((tree_ / "FE/PACK/LAYOUTS/LAYOUTS.BIG").string() + "@feflow95.lay", d);
+            cheats95_ = formats::ScreenLayout::build("FEFLOW95", formats::LayoutDocument::parse(std::string_view(t)), nullptr, nullptr, "PC");
+            haveCheats_ = true;
+        } catch (const std::exception&) { // no cheats art on this tree: the lane stays closed
+        }
+    }
+    if (haveCheats_) {
+        // Scene-ownership whitelist: blur background, cheatart pane, the eight cheatbox frames, the
+        // eight objecttype-18 toggle widgets, 'yes' and the help pane. txt0..txt7 are excluded: their
+        // textid=0 default resolves to the empty string (captions are installed at runtime from exe
+        // data), so they emit no composite quads; excluding them keeps the gate stats honest.
+        cheatsVisible_ = {"blur", "bgnd",                                                            // blur.fsh + cheatart.pak pane
+                          "box1", "box2", "box3", "box4", "box5", "box6", "box7", "box8",            // cheatbox `1box` frames
+                          "btn0", "btn1", "btn2", "btn3", "btn4", "btn5", "btn6", "btn7",            // objecttype 18 rows
+                          "yes", "help"};                                                           // nvicons tic3/tic5 + pane
+    }
     if (haveWc_) {
         // Composite whitelists per screen (scene-ownership rule): the tm/gm/qtm/tf/qf/ssN dynamic cells
         // are objecttype 0/4 with shapeID null = engine-painted content, overlaid in drawWcFamily; netplay
@@ -321,6 +344,7 @@ FeDrawStats FeFlow::drawCurrent(render::SpriteBatch& ui) const {
     if (setupScreen_) return drawSetup(ui); // FEFLOW09/50 friendly/practise config screens
     if (leagueCfg_) return drawLeagueCfg(ui); // FEFLOW72/74/75/76/79/80 config family
     if (wcCfg_) return drawWcFamily(ui); // FEFLOW18/23/24/35 world-cup family screens
+    if (cheatsView_) return drawCheats(ui); // feflow95 cheats screen (MENU_PARITY.md §8)
     if (leagueView_) return drawLeague(ui);
     if (optsView_ && haveOpts_) return drawOptions(ui);   // FEFLOW15 config screen (Phase 2)
     if (slView_ && haveSl_) return drawSaveLoad(ui);      // Feflow89 slot list (Phase 3)
@@ -484,6 +508,7 @@ void FeFlow::move(int delta) {
         else wcRow_ = std::clamp(wcRow_ + delta, 0, 3);
         return;
     }
+    if (cheatsView_) { moveCheat(delta); return; } // feflow95 rows btn0..btn7 (y=183+25i)
     if (leagueCfg_) { // config grids: up/down = kt/menu row cursor / s001 slider value (keyloop_notes.txt)
         switch (leagueCfg_) {
             case 74: case 80: cfgRow_ = std::clamp(cfgRow_ + delta, 0, std::max(1, rosterSize()) - 1); break;
@@ -565,6 +590,7 @@ bool FeFlow::enter() {
         if (wcCfg_ == 18 && wcRandCount_ < 99) ++wcRandCount_;
         return false; // 23/24 strk/stsc + 35 stats-view: no launch edge from these boards
     }
+    if (cheatsView_) { toggleCheat(cheatRow_); return false; } // Enter flips the focused checkbox row
     if (leagueCfg_) {                                   // Enter = 'alok' confirm: popups close to the grid, grids stay put
         if (leagueCfg_ == 76 || leagueCfg_ == 78) cycleLeagueScreen(-1);
         return false;
@@ -620,6 +646,7 @@ void FeFlow::back() {
     if (onHub()) return; // hub Esc: no parent scene (the Windows hub exits via the 'quit' wedge)
     if (leagueCfg_) { leagueCfg_ = 0; return; } // Esc from a config grid/popup -> FEFLOW73 stays open
     if (wcCfg_) { wcCfg_ = 0; return; } // Esc closes the family screen to its parent flow
+    if (cheatsView_) { cheatsView_ = false; return; } // Esc closes the cheats screen to the menu [H] dev lane
     if (leagueView_) { leagueView_ = false; return; } // Esc from the league list: straight to menu
     if (setupScreen_) { setupScreen_ = false; return; } // Esc from the config screen: straight to menu
     teamScreen_ = false;
@@ -1388,6 +1415,14 @@ int FeFlow::hubActivate(int index) {
 
 int FeFlow::pointerActivate() {
     using presentation::widgetHit;
+    if (cheatsView_) { // feflow95 rows: a click focuses the row and flips its checkbox (the engine's
+                       // hilite-flag write FUN_00479224 on the clicked widget)
+        for (int i = 0; i < kCheats; ++i) {
+            const formats::LayoutObject* o = cheats95_.object("btn" + std::to_string(i));
+            if (o && widgetHit(*o, float(ptrX_), float(ptrY_))) { cheatRow_ = i; toggleCheat(i); return -1; }
+        }
+        return -1;
+    }
     if (optsView_ && haveOpts_) { // tab buttons tbb1..4 (POINTS polygons in the LAY)
         for (int t = 0; t < 4; ++t) {
             const formats::LayoutObject* o = optsScreen_.object("tbb" + std::to_string(t + 1));
@@ -1635,6 +1670,85 @@ FeDrawStats FeFlow::drawCredits(render::SpriteBatch& ui) const {
                 ui.draw(ftex, q.dst, q.uv, q.rgba);
             ++st.texts;
         }
+    }
+    drawCursor(ui, st);
+    return st;
+}
+
+// ---- Cheats screen (feflow95.lay; MENU_PARITY.md §8) ----------------------------------------
+
+bool FeFlow::openCheats(int onMask) {
+    if (!haveCheats_) { lastError_ = "FEFLOW95.LAY is absent from this tree"; return false; }
+    cheatsView_ = true;
+    cheatRow_ = 0;
+    for (int i = 0; i < kCheats; ++i) cheatsOn_[std::size_t(i)] = (onMask & (1 << i)) != 0; // gate/dev pre-action [H]
+    return true;
+}
+
+void FeFlow::moveCheat(int dir) {
+    if (!cheatsView_ || dir == 0) return;
+    cheatRow_ = (cheatRow_ + dir + kCheats) % kCheats; // rows btn0..btn7 at y=183+25i
+}
+
+void FeFlow::toggleCheat(int row) {
+    if (!cheatsView_ || row < 0 || row >= kCheats) return;
+    cheatsOn_[std::size_t(row)] = !cheatsOn_[std::size_t(row)]; // engine: FUN_00479224 hilite-flag write per row
+}
+
+int FeFlow::paintCaption(const formats::LayoutObject& o, std::string_view s, render::SpriteBatch& ui) const {
+    if (!text_ || !text_->ready() || s.empty()) return 0;
+    const int fid = o.intProp("FONTID", 4); // feflow95 rows/titl/help all carry fontID=4
+    const formats::FfnFont* f = text_->face(fid);
+    render::TextureId ftex = text_->faceTexture(fid);
+    if (!f || !ftex) { f = text_->font(); ftex = text_->texture(); }
+    if (!f || !ftex) return 0;
+    const float sizePx = f->lineHeight ? float(f->lineHeight) : 16.f;
+    // Caption colour: the widget's FE global-palette index in NORMALCOLOUR (widget fields +0x68/+0x6C,
+    // parse @0x46e10b). The txt0..txt7 slots carry index 0 = a dark swatch on this pane; the runtime
+    // caption colour is installed by scene code and not statically recoverable, so dark palette colours
+    // fall back to a light one here [H] (legibility rule documented in MENU_PARITY.md §8).
+    const int cidx = o.intProp("NORMALCOLOUR", -1);
+    std::uint32_t rgba = render::packRgba(255u, 236u, 190u, 255u);
+    if (const auto& pal = formats::globalPalette(); cidx >= 0 && std::size_t(cidx) < pal.size()) {
+        const auto& c = pal[std::size_t(cidx)];
+        if (int(c[0]) + int(c[1]) + int(c[2]) > 240) rgba = render::packRgba(c[0], c[1], c[2], 0xFF);
+    }
+    auto quads = presentation::layoutText(*f, s, float(o.x), float(o.y) + (float(o.height) - sizePx) * 0.5f, sizePx, rgba);
+    if (quads.empty()) return 0;
+    float minX = 1e9f, maxX = -1e9f;
+    for (const auto& q : quads) minX = std::min(minX, q.dst.x), maxX = std::max(maxX, q.dst.x + q.dst.w);
+    const float off = float(o.x) + (float(o.width) - (maxX - minX)) * 0.5f - minX; // centred inside the box
+    int n = 0;
+    for (auto& q : quads) { q.dst.x += off; ui.draw(ftex, q.dst, q.uv, q.rgba); ++n; }
+    return n;
+}
+
+FeDrawStats FeFlow::drawCheats(render::SpriteBatch& ui) const {
+    // Scene-owned art (whitelist): blur backdrop, cheatart pane, the eight cheatbox `1box` frames,
+    // 'yes' (nvicons tic1) and the help pane. titl/txt0..txt7 stay out of composite: their LAY textid
+    // defaults are other contexts' bank strings ("and icons"), captions being installed at runtime.
+    FeDrawStats st = presentation::composite(cheats95_, ui, const_cast<ScreenArt&>(art_), text_.get(), &cheatsVisible_);
+    if (!text_ || !text_->ready()) return st;
+    // Pane title: the scene installs "Cheats" (exe VA 0x56400c) on 'titl' at x=144 y=145 w=200 h=19.
+    if (const formats::LayoutObject* t = cheats95_.object("titl")) st.texts += paintCaption(*t, kCheatTitle, ui);
+    for (int i = 0; i < kCheats; ++i) {
+        const formats::LayoutObject* b = cheats95_.object("btn" + std::to_string(i));
+        if (!b) continue;
+        // Row cursor pane: the same filled highlight as the FEFLOW73 list painter ([H] port-side focus;
+        // the engine drives per-widget focus through FUN_00479224, not a static LAY key).
+        if (i == cheatRow_)
+            ui.draw(0, {float(b->x) - 3.f, float(b->y) - 2.f, float(b->width) + 6.f, float(b->height) + 4.f}, {},
+                    render::packRgba(255u, 232u, 96u, 70u));
+        presentation::paintCheckbox(ui, *b, cheatsOn_[std::size_t(i)], const_cast<ScreenArt&>(art_), st);
+        if (const formats::LayoutObject* t = cheats95_.object("txt" + std::to_string(i)))
+            st.texts += paintCaption(*t, kCheatLabels[std::size_t(i)], ui); // x=144 y=179+25i w=100 h=20
+    }
+    // Help pane (objecttype 14 'help', x=240 y=444 w=240 h=40): the scene shows the focused widget's
+    // caption there, so the row cursor feeds it; textbackcolor/textbackshadow keys are art-level.
+    if (const formats::LayoutObject* pane = cheats95_.object("help")) {
+        ui.draw(0, {float(pane->x), float(pane->y), float(pane->width), float(pane->height)}, {},
+                render::packRgba(12u, 10u, 6u, 150u)); // textbackshadow=50 dark plate [H]
+        st.texts += paintCaption(*pane, kCheatLabels[std::size_t(cheatRow_)], ui);
     }
     drawCursor(ui, st);
     return st;

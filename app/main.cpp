@@ -103,6 +103,7 @@ int run(int argc, char** argv) {
     bool feLeague = false; // --fe-league: open the FEFLOW73 league-select list before the smoke frames
     int feLeagueCfg = 0; // --fe-league-cfg N: open the league config family screen N (72/74/75/76/78/79/80)
     int feWcCfg = 0; // --fe-wc-cfg N: open the world-cup family screen N (18/23/24/35)
+    int feCheatsMask = -1; // --fe-cheats N: open the feflow95 cheats screen with cheat row i ON for bit i (MENU_PARITY.md §8)
     std::string feScreenName; // --fe-screen NAME: arbitrary LAYOUTS.BIG member capture lane ("make all menus 1:1")
     bool feOptions = false, feSaveLoad = false, feCredits = false; // --fe-options/--fe-saveload/--fe-credits: open the hub scene-graph views (Phase 2/3/4 gates)
     std::string lang = "eng"; // --lang CODE: FC*.BIN UI-string bank (registry Language key)
@@ -135,6 +136,7 @@ int run(int argc, char** argv) {
         else if (a == "--fe-league") { feMode = true, smokeFrames = 1, feLeague = true; } // FEFLOW73 list capture (1 frame; --fe-smoke N overrides)
         else if (a == "--fe-league-cfg") { feMode = true, smokeFrames = 1, feLeagueCfg = std::stoi(next()); } // league config grid/popup capture gate
         else if (a == "--fe-wc-cfg") { feMode = true, smokeFrames = 1, feWcCfg = std::stoi(next()); } // world-cup family screen capture gate
+        else if (a == "--fe-cheats") { feMode = true, smokeFrames = 1, feCheatsMask = std::stoi(next()); } // feflow95 checkbox-screen capture gate; N = row bitmask ON at open
         else if (a == "--fe-screen") { feMode = true, smokeFrames = 1, feScreenName = next(); } // default capture 1 frame; --fe-smoke N overrides
         else if (a == "--fe-options")  { feMode = true, smokeFrames = 1, feOptions = true; }  // FEFLOW15 options view capture gate
         else if (a == "--fe-saveload") { feMode = true, smokeFrames = 1, feSaveLoad = true; } // Feflow89 slot-list capture gate
@@ -243,6 +245,9 @@ int run(int argc, char** argv) {
             // (SCENEREG site 0x44dc8b), 23/24/35 are between-round boards.
             if (!fe->openWcCfg(feWcCfg)) std::fprintf(stderr, "fe: world-cup config %d unavailable\n", feWcCfg);
         }
+        if (fe && feCheatsMask >= 0) { // --fe-cheats N gate frame: feflow95 cheats screen, rows ON per bitmask
+            if (!fe->openCheats(feCheatsMask)) std::fprintf(stderr, "fe: cheats screen unavailable\n");
+        }
         if (fe && feOptions) fe->openOptions();   // --fe-options gate frame: FEFLOW15 composite
         if (fe && feSaveLoad) fe->openSaveLoad(); // --fe-saveload gate frame: Feflow89 slot list
         if (fe && feCredits) fe->openCredits();   // --fe-credits gate frame: FEFLOW19 roll
@@ -303,6 +308,7 @@ int run(int argc, char** argv) {
             else if (sc == SDL_SCANCODE_LEFT) { if (setup) fe->adjustValue(-1); else fe->move(-1); }
             else if (sc == SDL_SCANCODE_RIGHT) { if (setup) fe->adjustValue(+1); else fe->move(+1); }
             else if (sc == SDL_SCANCODE_TAB) fe->cycleTab(+1); // options tab pages tbb1..4
+            else if (sc == SDL_SCANCODE_F9) { if (!fe->openCheats()) std::fprintf(stderr, "cheats: %s\n", fe->lastError().c_str()); } // dev entry [H]: payload 0x1E has no decoded key map
             else if (sc == SDL_SCANCODE_ESCAPE) fe->back(); // view -> parent; hub Esc no-op ('quit' wedge exits)
             else if (sc == SDL_SCANCODE_RETURN || sc == SDL_SCANCODE_KP_ENTER) {
                 if (!launchSelected()) return navRc;
@@ -399,6 +405,7 @@ int main(int argc, char** argv) {
                       " [--fe] [--tree DIR] [--out-prefix P] [--fe-smoke N] [--tournament-saveload N] [--fe-pick N]"
                       " [--fe-nav exhibition|league|tournament|tournament-load|practise] [--fe-team] [--fe-setup N] [--fe-league] [--fe-league-cfg N] [--fe-screen NAME]"
                       " [--fe-wc-cfg N]"
+                      " [--fe-cheats N]"
                       " [--fe-options|--fe-saveload|--fe-credits]"
                       " [--record-replay] [--lang eng|fre|ger|ita|spa|dut|dan|swe|jap]"
                       " [--fe-present]");

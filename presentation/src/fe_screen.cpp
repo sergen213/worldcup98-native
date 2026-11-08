@@ -575,4 +575,29 @@ void paintListRows(render::SpriteBatch& ui, const formats::LayoutObject& box, st
     }
 }
 
+// objecttype 18 checkbox / toggle row (feflow95 Cheats screen; MENU_PARITY.md §8). The scene keeps one
+// state value per row and switches the widget hilite flag with FUN_00479224 — that flag is what selects
+// HILITEDSHAPEIDON vs HILITEDSHAPEIDOFF in the button-class shape chain, so ON paints the ON tag's art
+// (Xblak `blkx`) and OFF paints HILITEDSHAPEIDOFF, which is `null` on this layout: an empty box (the
+// type-2 cheatbox `1box` frame behind it stays visible). The row caption is NOT a LAY textid
+// (txt0..txt7 carry textid=0): the draw body installs exe string captions through CALL->0x4788b4 sites,
+// so they paint from the app-side label table (fe_flow.cpp). Note formats::LayoutObjectType names class
+// id 18 "Video" (the FIFA 99 grammar reserves CheckBox = 10); feflow95's HILITEDSHAPEIDON/OFF keys plus
+// the FUN_00479224 hilite writes show this family is a toggle, painted as such.
+void paintCheckbox(render::SpriteBatch& ui, const formats::LayoutObject& box, bool on, ScreenArt& art, FeDrawStats& st) {
+    auto tagOf = [&](std::string_view key) -> std::string {
+        if (const std::string* v = box.prop(key); v && !v->empty() && !iequals(*v, "null")) return *v;
+        return {}; // absent/null shape key: the engine draws nothing for this state
+    };
+    const std::string tag = on ? tagOf("HILITEDSHAPEIDON") : tagOf("HILITEDSHAPEIDOFF");
+    if (tag.empty()) return;
+    std::string stem = box.fname; // ScreenArt looks art files up by stem (slashes()/lowered())
+    if (const auto dot = stem.find_last_of('.'); dot != std::string::npos) stem = stem.substr(0, dot);
+    const std::string vpath = box.prop("VPATH") ? *box.prop("VPATH") : std::string();
+    const ScreenArt::Shape sh = art.shape(vpath, stem, tag, -1);
+    if (!sh.tex) { ++st.missing; return; }
+    ui.draw(sh.tex, {float(box.x), float(box.y), float(sh.w), float(sh.h)}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu);
+    ++st.shapes;
+}
+
 } // namespace wc98::presentation

@@ -297,3 +297,49 @@ Method (goal §6): capture every screen via the proven `--fe-screen`/gate lanes,
   list opens with no pool screen ran), so pn rows paint "#jersey name" captions + tricolour kit swatches:
   capture now shows `#8 Simeone … #15 Zanetti`, texts=85, region-clean.
 - Sweep this round: 12/12 interactive family screens render (`/tmp/sweep-out2/report.txt`); full suite **ctest 80/80**.
+
+## 8. Round 2026-11-07c — objecttype-18 checkbox painter + feflow95 Cheats screen [LANDED]
+
+Scene `feflow95.lay` (LAYOUTS.BIG member, 29 objects) = the hidden Cheats/debug board. Registry row **[C]**
+`analysis/pass12/registry_all.txt:56` (`+0x10=0x469af8`, draw `+0x18=0x469a60`, event `+0x1c=0x469cb8`; also
+`analysis/pass11/menu5_scenemap_windowobj.txt:72`). Hub global-key payload **0x1E** → feflow95 **[C]** `MENU_NAV_WC98.md` §3 row
+(evidence `0x4456A3–0x4456A8`, `analysis/pass12/edges_table.txt:31`). Payload codes are menu-context IDs with no statically recoverable
+keyboard mapping **[H]** (`MENU_NAV_WC98.md` §3 note), so the port opens the scene from a documented dev key: **F9** in interactive FE, Esc closes.
+
+### 8.1 objecttype 18 = checkbox / toggle row (painter parity)
+- Rows `btn0..btn7`: `objecttype=18`, x=118 y=183+25i w=15 h=14, `vpath=..\igtman\ fname=Xblak.fsh`, `hilitedshapeidon=blkx`,
+  `hilitedshapeidoff=null` **[C]** LAY dump `/tmp/layd90/LAYOUTS.BIG.d/feflow95.lay:117-234`.
+- Frame = a separate objecttype 2 widget per row, `box1..box8` (x=117 y=182+25i w=17 h=16, `cheatbox.fsh#1box`), painted by the compositor;
+  the toggle glyph is an overlay (`presentation::paintCheckbox`, driven per row from `FeFlow::drawCheats`) — same architecture as
+  paintRowLabel/paintSliderThumb, composite() stays generic.
+- State semantics **[C]**: feflow95's draw body calls the widget-hilite setter FUN_00479224 at sites 0x469c6b / 0x469ca6 / 0x469cb1
+ (`analysis/pass12/edge2.txt`, section from line 11629). That setter selects the HILITEDSHAPEIDON/OFF branch of the button-class shape
+ chain: ON paints `blkx`, OFF paints nothing (`hilitedshapeidoff=null`), the frame box staying visible.
+- State storage **[C]**: scene global DAT_0057d2a0, read per row at 0x469a19 (`MOV ESI,[EDX+0x57d2a0]`) and 0x469c54
+  (`MOV EAX,[EBP+0x57d2a0]`) — `analysis/pass12/nav2_raw.txt:14379,14612` — plus the event handler read at 0x469ce7
+  (`MOV AL,[0x0057d2a0]`, `analysis/pass12/nav1_raw.txt:24235`). The address is DGROUP/.bss (neighbour of the exe font table DAT_0057d2c0)
+  so it starts cleared; per-row writes are not statically enumerated, hence the port keeps its own bool array **[H]**.
+- Grammar note: `formats::LayoutObjectType` names class id 18 "Video" (the FIFA 99 grammar reserves CheckBox = 10); feflow95's key set plus
+  the FUN_00479224 hilite writes show this family is a toggle. Enum untouched; documented here only.
+
+### 8.2 Captions are exe strings, not FC-bank indices
+`titl` (x=144 y=145 w=200 h=19 fontID=4 normalColour=6) carries `textid=6`, txt0..txt7 carry `textid=0`; those defaults resolve to other
+contexts' bank strings ("and icons" — exactly the soup the raw `--fe-screen feflow95` lane captures). The scene installs real captions
+through CALL->0x4788b4 sites 0x469b2d..0x469bb7 of its draw body **[C]** (`analysis/pass12/edge2.txt:11631-11639`), and the strings are exe
+data, byte-verified in `WorldCup98_Extracted/FIFAWC.EXE` (raw = VA − 0x401a00): "Cheats" @VA 0x56400c / raw 0x16260c; rows at
+0x564014/0x564020/0x56402c/0x564038/0x56404c/0x564058/0x564064/0x564074 = "Take a Dive", "Hot Potato", "Big Heads", "Skeleton Players",
+"Crazy Ball", "Silly Moves", "Flaming Ball", "Alien Model"; the unavailable-row caption "-" @VA 0x564090 / raw 0x162690 is installed by
+FUN_004788bc. The table is pinned verbatim in `tests/unit/test_fescenes.cpp`. Caption colour: the LAY slots use palette index 0 (a dark
+swatch on this pane); the runtime caption colour is set by scene code and not statically recoverable, so dark palette colours fall back to a
+light one in `FeFlow::paintCaption` **[H]**.
+
+### 8.3 Port lane + gate
+- Interactive view (`app/fe_flow.cpp`): F9 opens / Esc closes; arrows move the row cursor (btn0..btn7), Enter flips the focused row, click =
+  focus + toggle (`openCheats/moveCheat/toggleCheat/pointerActivate`). `--fe-cheats N` opens it with row i ON for bit i.
+- Gates `fe_cheats` / `fe_cheats_off` (`tests/CMakeLists.txt`): evidence line `FEFLOW95: shapes=15 texts=107 cursors=1 faces=10 lang=eng`;
+  capture `/tmp/wc98port-out/cheats_fe00.png` shows the blur backdrop + cheatart pane, 8 legible rows with the X glyph on rows 0/2/4/6
+  (mask 85), the 'yes' check button and the help pane carrying the focused row's caption **[C]**.
+- Art resolved through the stem index: `FE/PACK/GLOBAL/CHEATART.PAK` (`pict`), `CHEATBOX.PAK` (`1box`), `FE/IGTMAN/XBLAK.FSH` +
+  `FE/PACK/IGTMAN/XBLAK.PAK` (`blkx`), `FE/GLOBAL/BLUR.FSH`, nvicons (`tic1`/`tic5`) **[C]**.
+- Not implemented: the 'yes' confirm target (objecttype 6, releasedshape=`tic1` hilited=`tic5`) — its payload edge is not statically
+  recoverable; clicking it is a documented no-op in the port.

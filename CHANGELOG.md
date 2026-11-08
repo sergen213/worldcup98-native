@@ -14,6 +14,12 @@ project goals.
 
 ### Added
 
+- Objecttype-18 checkbox painter + feflow95 Cheats-screen parity: `presentation::paintCheckbox` renders the toggle glyph from the widget's
+  HILITEDSHAPEIDON (`Xblak.fsh#blkx`) with OFF = `hilitedshapeidoff=null` (no glyph), over the objecttype-2 cheatbox `1box` frame painted by
+  composite. Scene lane `FeFlow::drawCheats` (+ F9 dev key, Esc closes; arrows/Enter/click per row) paints the blur backdrop, cheatart pane,
+  the eight rows and their captions installed by scene code from exe data ("Cheats" VA 0x56400c; "Take a Dive" .. "Alien Model"
+  VA 0x564014..0x564074 — byte-verified in FIFAWC.EXE, NOT FC-bank indices); the help pane shows the focused row. Gates `fe_cheats` /
+  `fe_cheats_off` (`--fe-cheats N` = row bitmask ON at open); label table pinned in `tests/unit/test_fescenes.cpp`; evidence MENU_PARITY.md §8.
 - World-cup family interactive screens (FEFLOW18 finals-draw board, FEFLOW23/24 R16 bracket boards, FEFLOW35
   standings board): `--fe-wc-cfg N` gates (`fe_wc_cfg{18,23,24,35}`) open the screens with scene-ownership
   whitelists (dynamic tm/gm/qtm textID soup excluded), app overlays painting ZWCUP pool names + group letters

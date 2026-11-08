@@ -50,6 +50,7 @@ public:
         return useCapture_          ? captureName_.c_str()
                : leagueCfg_         ? cfgName_.c_str()
                : wcCfg_             ? cfgName_.c_str()
+               : cheatsView_        ? "FEFLOW95"
                : teamScreen_        ? "FEFLOW11"
                : leagueView_        ? "FEFLOW73"
                : setupScreen_       ? (setupPractise_ ? "FEFLOW50" : "FEFLOW09")
@@ -161,6 +162,30 @@ public:
     // button widgets under the pointer and performs Enter's action; returns the FeEntry index on
     // a match launch, -1 for no-launch actions.
     int pointerActivate();
+    // ---- Cheats screen (feflow95.lay; MENU_PARITY.md §8) -------------------------------------
+    // The hub global-key table posts payload 0x1E for this scene (MENU_NAV_WC98.md §3 row, evidence
+    // 0x4456A3-0x4456A8), and those payloads are menu-context codes with no decoded keyboard mapping
+    // ([H] note in that section), so the port opens it from a documented dev key: F9 in interactive FE,
+    // Esc closes. Widgets: box1..box8 (objecttype 2 cheatbox `1box` frames) + btn0..btn7 objecttype 18
+    // toggles (HILITEDSHAPEIDON=Xblak `blkx`, HILITEDSHAPEIDOFF=null = no glyph).
+    bool openCheats(int onMask = 0); // --fe-cheats N / F9; false = layout absent on this tree.
+                                     // `onMask` bit i starts row i ON (gate/dev pre-action [H]).
+    [[nodiscard]] bool onCheats() const { return cheatsView_; }
+    void moveCheat(int dir);   // up/down through the btn0..btn7 rows
+    void toggleCheat(int row); // Enter/click on a row: flip its state (the engine's hilite-flag write)
+    [[nodiscard]] bool cheatOn(int row) const { return row >= 0 && row < kCheats && cheatsOn_[std::size_t(row)]; }
+    [[nodiscard]] int cheatCursor() const { return cheatRow_; }
+    // Row captions the scene installs with FUN_004788b4 (widget fourcc 'txtN' + string pointer): these
+    // are exe data strings, NOT FC-bank indices [C] FIFAWC.EXE VA 0x564014, 0x564020, 0x56402c,
+    // 0x564038, 0x56404c, 0x564058, 0x564064, 0x564074 (DGROUP raw = VA - 0x401a00; byte-verified in
+    // FIFAWC.EXE), installed by CALL->0x4788b4 sites 0x469b2d..0x469bb7 of feflow95's draw slot body
+    // (analysis/pass12/edge2.txt:11631-11639); the pane title 'titl' string is "Cheats" @ VA 0x56400c.
+    // The unavailable-row caption "-" (VA 0x564090, raw 0x162690) is installed by FUN_004788bc.
+    static constexpr int kCheats = 8; // btn0..btn7 / txt0..txt7 rows
+    static constexpr std::array<const char*, kCheats> kCheatLabels{
+        "Take a Dive", "Hot Potato", "Big Heads", "Skeleton Players",
+        "Crazy Ball", "Silly Moves", "Flaming Ball", "Alien Model"};
+    static constexpr const char* kCheatTitle = "Cheats"; // 'titl' caption string (VA 0x56400c)
     // ---- Phase 2 options (FEFLOW15.LAY) / 3 save-load (Feflow89.LAY) / 4 credits (FEFLOW19) ----
     bool openOptions();  // Enter on fe15 / --fe-options; false when the layout is absent from the tree
     bool openSaveLoad(); // Enter on fe41 / --fe-saveload
@@ -248,6 +273,25 @@ public:
     int wcGroup_ = 0;              // FEFLOW35 group page (nglt/ngrt mod 8, decoded 1:1)
     int wcRandCount_ = 0;          // feflow18 'rand' press counter (engine cap 99 -> auto-advance)
     std::vector<std::string> wc18Visible_, wc23Visible_, wc24Visible_, wc35Visible_;
+    // ---- Cheats screen (feflow95.lay; MENU_PARITY.md §8) ------------------------------------
+    // Registry row [C] analysis/pass12/edges_table.txt:499 (feflow95 +0x10=0x469af8, +0x18=0x469a60
+    // draw, +0x1c=0x469cb8; also analysis/pass11/menu5_scenemap_windowobj.txt:72). The row state lives in
+    // the scene global DAT_0057d2a0, indexed per row: reads at 0x469a19 `MOV ESI,[EDX+0x57d2a0]`,
+    // 0x469c54 `MOV EAX,[EBP+0x57d2a0]` (analysis/pass12/nav2_raw.txt:14379,14612) and in the event
+    // handler at 0x469ce7 `MOV AL,[0x0057d2a0]` (nav1_raw.txt:24235). The address sits in DGROUP/.bss
+    // (next to the exe font table DAT_0057d2c0), so it starts cleared; per-row runtime writes are not
+    // statically enumerated, hence the port keeps its own bool array [H].
+    formats::ScreenLayout cheats95_;
+    bool haveCheats_ = false;          // layout present on this tree
+    bool cheatsView_ = false;          // scene shown (F9 dev key / --fe-cheats gate)
+    int cheatRow_ = 0;                 // row cursor over btn0..btn7 [H] port-side cursor
+    std::array<bool, kCheats> cheatsOn_{}; // per-row toggle state (DAT_0057d2a0 analogue)
+    std::vector<std::string> cheatsVisible_; // composite whitelist: scene-owned art only
+    presentation::FeDrawStats drawCheats(render::SpriteBatch& ui) const; // composite + row overlays
+    // One caption through FeText at widget geometry, centred inside the widget box (the alignment=3
+    // semantics of the compositor's label path); colour = palette index from NORMALCOLOUR/HILITECOLOUR.
+    // Captions bypass the FC-bank label() path: the scene installs exe strings on txt0..txt7/titl/'yes'.
+    [[nodiscard]] int paintCaption(const formats::LayoutObject& o, std::string_view s, render::SpriteBatch& ui) const;
     int sel_ = 0;
     std::unique_ptr<presentation::FeText> text_; // FFN face + FC*.BIN strings, loaded once (fe_screen.hpp)
     bool teamScreen_ = false;              // true = team-select list, false = FEFLOW05 main menu

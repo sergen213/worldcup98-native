@@ -1,4 +1,5 @@
 // Hub wedge -> launch-entry mapping (app/fe_flow.hpp FeFlow::hubButtonEntry): the edges table for
+#include <string> // label comparisons (std::to_string-free, but keeps std::string_view usable)
 // the Feflow06.lay cursor domain. A wrong index here silently launches the wrong mode from the hub,
 // so the whole mapping is pinned; gate lanes: fe_hub / fe_nav_* (tests/CMakeLists.txt).
 #include "fe_flow.hpp"
@@ -24,6 +25,16 @@ bool run() {
     // Case-insensitive widget tags (LAY keys are compared case-insensitively by the engine).
     expect(FeFlow::hubButtonEntry("FE07") == 0, "case-insensitive FE07");
     expect(FeFlow::hubButtonEntry("") == -1, "empty name -> no launch");
+    // Cheats rows (feflow95.lay objecttype-18 btn0..btn7; MENU_PARITY.md §8): the captions are exe data
+    // installed by scene code through FUN_004788b4, NOT FC-bank indices - pinned verbatim so a typo does
+    // not silently rename a cheat row. [C] FIFAWC.EXE VA 0x564014/0x564020/0x56402c/0x564038/0x56404c/
+    // 0x564058/0x564064/0x564074 (DGROUP raw = VA - 0x401a00), title "Cheats" @ VA 0x56400c.
+    static constexpr const char* kExpected[8] = {"Take a Dive", "Hot Potato", "Big Heads", "Skeleton Players",
+                                                 "Crazy Ball", "Silly Moves", "Flaming Ball", "Alien Model"};
+    expect(FeFlow::kCheatLabels.size() == 8, "eight cheat rows (btn0..btn7 / txt0..txt7)");
+    for (int i = 0; i < 8; ++i)
+        expect(std::string_view{FeFlow::kCheatLabels[std::size_t(i)]} == kExpected[i], "cheat row caption");
+    expect(std::string_view{FeFlow::kCheatTitle} == "Cheats", "'titl' pane caption string");
     return failures == 0;
 }
 } // namespace

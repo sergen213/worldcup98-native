@@ -1988,6 +1988,119 @@ void scenarioShotVariants() {
 }
 
 // ---------------------------------------------------------------------------------------------
+// 27. Gap M (§5 "header-duel"): a corner-cross descent in the box resolves through the header
+// grammar (codes 9/10 = header/chest, kick.cpp event mapping l.364-366: code 9 -> Header). Same
+// probe-verified lofted-feed geometry as the volley lane; the strike band is the header window
+// 0x5B..0xB4 (player_states_action State301 header gate), and the event must come from the natural
+// kickEvent mapping with the header code recorded in the event-mapping field.
+void scenarioHeaderCross() {
+    gName = "header-cross";
+    MatchData md = makeMd();
+    Options opt{};
+
+    const int geo[4][4] = {{-1200, 900, -770, -510}, {1200, 900, 770, -510}, {-1200, -900, -770, 510},
+                           {1200, -900, 770, 510}}; // same probe-verified descent geometry as lane B
+    const int codes[] = {1, 23, 2, 22};
+    int feedTick = -1, gX = 0, gZ = 0, sX = 0, sZ = 0, gCode = 0;
+    for (int code : codes) {
+        for (const auto& c : geo) {
+            const int t = svProbeFeed(md, opt, c[0], c[1], c[2], c[3], code);
+            if (t >= 0) { feedTick = t; gX = c[0]; gZ = c[1]; sX = c[2]; sZ = c[3]; gCode = code; break; }
+        }
+        if (feedTick >= 0) break;
+    }
+    ck(feedTick >= 0, "no header-feed candidate reached the descent band");
+
+    SimRunner r(md, opt, kSeed);
+    auto& w = r.world();
+    int prevPhase = -1, forceIn = 0;
+    const int sh = 13; // striker (team 1)
+    bool armed = false, fired = false;
+    std::int32_t ballYatHeader = -1, apexHeightMax = 0;
+    int kindAtStrike = -1, codeAtStrike = -1, stateAtStrike = -1;
+    for (int i = 1; i <= 900 && !r.finished() && !fired; ++i) {
+        auto ev = step(r);
+        if (w.match.phase == 0 && prevPhase != 0) forceIn = 154; // M7 kickoff-settle grammar
+        prevPhase = w.match.phase;
+        if (forceIn > 0 && --forceIn == 0 && w.match.phase == 0) {
+            Match_dispatchEvent(w, 0xb, w.match.phaseTeam); // forced in-ball (scenario 2 note)
+            setPos(w, 12, 0, -1500); // opponent keeper off its line: no early interception
+            const int feed = 14; // wide player carrier (probe-verified row)
+            setPos(w, feed, gX, gZ);
+            w.players[static_cast<std::size_t>(feed)].facing = atan2i(sX - gX, sZ - gZ);
+            w.match.setPiecePartner = 12;
+            Ball_placeAt(w, {gX, 2, gZ});
+            w.ball.possessor = feed;
+            w.ball.dribbler = feed;
+            w.ball.lastToucher = feed;
+            w.ball.flags |= 0x20;
+            forceKick(w, feed, gCode, 2); // lofted cross row selected by the probe
+            setPos(w, sh, sX, sZ);
+            Input_assignController(w, 0, 1, 0); // controller binding grammar (volley lane)
+        }
+        if (!armed && w.match.phase == 9 && w.ball.possessor == -1 && w.ball.cross85Count > 0) {
+            const std::int32_t h = std::max(w.ball.apexHeight, w.ball.posI.y);
+            if (h >= 0x5B && w.ball.posI.y >= 0x5B && w.ball.posI.y <= 0x72 && w.ball.apexHeight > w.ball.posI.y) {
+                // Descent entry into the header window: control swap grammar (volley lane), then the
+                // State301 aerial state arms on the descent.
+                const int holder = w.controllers[0].player - 1;
+                ck(holder >= 0 && tmOf(w, holder) == 1, "controller did not bind to a team-1 player");
+                if (holder != sh) {
+                    PlayerState& A = w.players[static_cast<std::size_t>(holder)];
+                    PlayerState& B = w.players[static_cast<std::size_t>(sh)];
+                    std::swap(A.ctrl, B.ctrl);
+                    w.controllers[0].player = sh + 1;
+                    std::swap(A.padOffX, B.padOffX);
+                    std::swap(A.padOffZ, B.padOffZ);
+                }
+                ck(w.players[static_cast<std::size_t>(sh)].ctrl == 1, "control swap onto the striker failed");
+                w.players[static_cast<std::size_t>(sh)].flags22c |= 0x200; // controlled-player flag (scenario 15)
+                Player_setState(w, sh, 0x301, 0, 0);
+                armed = true;
+            }
+        }
+        if (armed && !fired) {
+            const auto& P = w.players[static_cast<std::size_t>(sh)];
+            // Header contact window 0x5B..0xB4 (State301 header gate): strike with the header code.
+            if (P.distBall < 0x60 && w.ball.posI.y >= 0x5B && w.ball.posI.y <= 0x72 && w.ball.possessor == -1) {
+                // Codes 9/10 = header/chest family: solver kind 6 (kick.cpp l.360 note), event lane
+                // maps code 9 explicitly to EventType::Header (kick.cpp l.364-366). Sentinel arm as
+                // in the volley lane (State301 grammar animClass 0x10 row).
+                w.kickCode[static_cast<std::size_t>(sh)] = 9;
+                w.pl.current = sh;
+                codeAtStrike = w.kickCode[static_cast<std::size_t>(sh)]; // header code recorded at contact
+                Player_executeKick(w, sh, 9, w.ball.posI.y); // header/chest family (case 9 row)
+                auto& kk = w.players[static_cast<std::size_t>(sh)].kick;
+                kk.animId = 0x10;
+                kk.contactFrame = -1; // documented aerial arm (animClass 0x10 row)
+                Kick_arm(w, sh);
+                Player_onAnimContact(w); // Kick_execute: code-9 mapping emits Header
+                Player_setState(w, sh, 0x300, 0, 0, false, true); // grammar post-contact state
+            }
+        }
+        apexHeightMax = std::max(apexHeightMax, w.ball.apexHeight);
+        const auto& k = w.players[static_cast<std::size_t>(sh)].kick;
+        if (armed && !fired && has(ev, EventType::Header)) {
+            fired = true;
+            kindAtStrike = k.kind;
+            stateAtStrike = w.players[static_cast<std::size_t>(sh)].state;
+            ballYatHeader = w.ball.posI.y;
+        }
+    }
+    ck(armed, "header descent never armed (aerial feed never entered the 0x5B..0xB4 window)");
+    ck(fired, "box-cross header strike never fired a Header event");
+    // Codes 9/10 share solver kind 6 with code 11 (kick.cpp l.360 note).
+    ck(kindAtStrike == 6, "header strike solver kind is not 6 (header/chest family)");
+    ck(codeAtStrike == 9, "header strike did not record the header/chest code in the event-mapping field");
+    ck(stateAtStrike == 0x300 || stateAtStrike == 0x30a, "header striker never took the kick-execution state");
+    ck(ballYatHeader >= 0x20, "the header did not strike an aerial ball (y <= 0x20)");
+    ck(apexHeightMax >= 0x5B, "apex marker never reached the header window on the lofted cross");
+    std::printf("header cross asserts %02d/%02d PASS\n", gChecks, gChecks);
+    std::printf("header cross: kind=%d code=0x%X y=%d apexMax=%d state=0x%X\n",
+                kindAtStrike, codeAtStrike, ballYatHeader, apexHeightMax, stateAtStrike);
+}
+
+// ---------------------------------------------------------------------------------------------
 // 24. Gap M (§5 "team-shape spacing scenario"): per-player formation slot targets in open play are
 // re-derived from the LOADED G98PL bytes with an independent fx replica of Formation_slotPosition_4CF678
 // (grid-cell arithmetic + ball-zone displacement, colPerUnit 197 / rowPerUnit 270 = (11<<16)/3648,
@@ -2350,6 +2463,8 @@ int main() {
     scenarioReceiverContest();
     scenarioTeamShape();
     scenarioShotVariants();
+    scenarioHeaderCross();
+    scenarioHeaderDuel();
     scenarioSpinNetSurface();
     return 0;
 }

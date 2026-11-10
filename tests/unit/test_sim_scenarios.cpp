@@ -1710,6 +1710,342 @@ void scenarioReceiverContest() {
 
     std::printf("receiver contest asserts %02d/%02d PASS\n", gChecks, gChecks);
 }
+
+// ---------------------------------------------------------------------------------------------
+// 24. Gap M (§5 "team-shape spacing scenario"): per-player formation slot targets in open play are
+// re-derived from the LOADED G98PL bytes with an independent fx replica of Formation_slotPosition_4CF678
+// (grid-cell arithmetic + ball-zone displacement, colPerUnit 197 / rowPerUnit 270 = (11<<16)/3648,
+// (21<<16)/5088) and the keeper guard position of Keeper_position_539FCC is asserted against its own
+// replica within the Player_moveToward_4BE804 skip band. All on a fixed-seed AI-only segment after
+// the forced-kickoff settle (the M7 recipe: dispatch 0xb at kickoff, natural strike unreachable).
+// Replica constants are byte-verified exe tables (formation.cpp citations); tolerances derive from
+// grid-cell granularity (max per-zone-step target displacement in G98PL) and are printed measured.
+constexpr std::int32_t kTsSpreadBase[5] = {0, 0, 16, 16, 11};   // exe 0x58ad8c (formation.cpp l.13)
+constexpr std::int32_t kTsSpreadSlope[5] = {0, 0, -8, -7, -3};  // exe 0x58ada0 (formation.cpp l.14)
+
+std::int32_t tsShl16(std::int32_t v) { return static_cast<std::int32_t>(static_cast<std::uint32_t>(v) << 16); }
+std::int32_t tsFrac128(std::int32_t v) { return tsShl16(v) >> 7; }
+
+// FUN_004CE758 replica (formation.cpp l.71-80): lateral spread toward the mirror slot.
+std::int32_t tsSpread(int a, int b, Fixed factor, int role, std::int32_t z) {
+    z = iabs(z);
+    const std::int32_t thr = kTsSpreadBase[role] + (z * kTsSpreadSlope[role]) / 0x48;
+    const std::int32_t d = b - a, ad = iabs(d);
+    if (ad <= thr) return 0;
+    std::int32_t r = (ad * factor) >> 17;
+    const std::int32_t h = (ad - thr) >> 1;
+    if (h < r) r = h;
+    return d < 0 ? -r : r;
+}
+
+// Formation_lineAdjust 0x4CE7C8 replica with the slot/line inputs of the cache flush
+// (formation.cpp l.265-299): role from kSlotRole[q], line params passed in, phase snapshot.
+Fixed tsLineAdjust(const World& w, int t, int q, bool noPoss, int line358, int line35c, int phase) {
+    const std::uint8_t* desc = w.teams[static_cast<std::size_t>(t)].rec(w.formation.selRec[t]) + 1;
+    const int role = kSlotRole[q];
+    if (role < 2) return 0;
+    std::int32_t cnt = 0, i = 0;
+    if (role == 2) {
+        cnt = line358 - desc[1];
+        i = q - 2;
+    } else if (role == 3) {
+        i = q - 7;
+        cnt = line35c;
+    } else {
+        cnt = desc[4];
+        i = q - 12;
+    }
+    Fixed r = 0;
+    const bool inner = i == 1 || i == 3, outer = i == 0 || i == 4;
+    if (role == 2) {
+        if (cnt == 2 && inner) r = 0xa666;
+        else if (cnt == 3 && inner) r = noPoss ? 0 : -0x4ccc;
+        else if (cnt == 4 && outer) r = noPoss ? 0x8000 : 0x3333;
+        else if (cnt == 4 && inner) r = 0xc000;
+    } else if (role == 3) {
+        if (cnt == 2 && inner) r = 0xccc;
+        else if (cnt == 3 && inner) r = -0x1999;
+        else if (cnt == 4 && outer) r = noPoss ? 0x2e14 : 0;
+        else if (cnt == 4 && inner) r = 0x4ccc;
+    } else {
+        if (cnt == 3 && inner) r = -0x8000;
+    }
+    if (cnt == 3 && phase == 0) r -= 0xb333;
+    return r;
+}
+
+// Formation_slotPosition_4CF678 replica over the loaded G98PL bytes: `attack` = team possession bit
+// (flags & 2), zone/val/line params from the live slot-cache entry, offsets from formation.slotOff
+// (installed by Formation_applyDescriptor 0x4CEE60). clampPitch l.60-67 replicated locally.
+Vec3 tsSlotPos(const World& w, const MatchData& md, int t, int q, int zone, int val, bool attack,
+               int line358, int line35c, int phase) {
+    const FormationState& f = w.formation;
+    const int side = w.teams[static_cast<std::size_t>(t)].side;
+    const int role = kSlotRole[q];
+    const std::int32_t* off = f.slotOff[t][q];
+    const Fixed adj = tsLineAdjust(w, t, q, !attack, line358, line35c, phase);
+    const int ms = kSlotMirror[q];
+    const std::int8_t* tab = md.formations.pl.data() + q * 0x4ac + zone * 4;
+    const std::int8_t* mtab = md.formations.pl.data() + ms * 0x4ac + zone * 4;
+    const std::int32_t mox = f.slotOff[t][ms][0];
+    Vec3 out{};
+    if (!attack) {
+        std::int32_t x = tab[2] + off[0];
+        const std::int32_t z = tab[3] + off[1];
+        if (adj) x += tsSpread(x, mtab[2] + mox, adj, role, z);
+        out.x = fx(x, f.scaleX);
+        out.z = fx(z, f.scaleZ);
+    } else {
+        std::int32_t ax = tab[0] + off[0];
+        const std::int32_t az = tab[1] + off[1];
+        if (adj) ax += tsSpread(ax, mtab[0] + mox, adj, role, az);
+        out.x = fx(ax, f.scaleX);
+        out.z = fx(az, f.scaleZ);
+        std::int32_t dx = off[0] + tab[2];
+        const std::int32_t dz = off[1] + tab[3];
+        if (adj) dx += tsSpread(dx, mtab[2] + mox, adj, role, dz);
+        const std::int32_t bx = tsFrac128(fx(dx, f.scaleX) - out.x);
+        const std::int32_t bz = tsFrac128(fx(dz, f.scaleZ) - out.z);
+        out.x += fx(val, bx);
+        out.z += fx(val, bz);
+    }
+    const std::uint8_t* rec = w.teams[static_cast<std::size_t>(t)].rec(w.formation.selRec[t]) + 8 + q * 6;
+    out.x += static_cast<std::int8_t>(rec[1]) >> 1;
+    out.z += static_cast<std::int8_t>(rec[2]) >> 1;
+    if (side == 1) {
+        out.x = -out.x;
+        out.z = -out.z;
+    }
+    const std::int32_t hw = w.pitch.halfWidth, hl = w.pitch.halfLength;
+    if (-hw > out.x) out.x = -hw;
+    else if (out.x > hw) out.x = hw;
+    if (-hl > out.z) out.z = -hl;
+    else if (out.z > hl) out.z = hl;
+    return out;
+}
+
+// Keeper_position_539FCC replica (player_states_keeper.cpp l.119-147): guardDist_539F78 rows
+// k = fx(0x28f, attr[0x30]<<16)+0x10000, farGuard d=guardDist(distBall/8) on the goal->ball ray,
+// ballWideDeep out.x=ball.x>>5, z=±(halfLength-0x50-((at<<4)>>2)), main d=max(guardDist(od.dist/8),
+// goalHalfWidth-0x18-(0x100-a')) on the ball-angle ray. Inputs from live world state.
+Vec3 tsKeeperPos(const World& w, int pid) {
+    const PlayerState& p = w.players[static_cast<std::size_t>(pid)];
+    const int team = p.team;
+    const int side = w.teams[static_cast<std::size_t>(team)].side;
+    Vec3 out{};
+    const std::int32_t at = Player_attr(w, pid, 0x30);
+    const auto guardDist = [&](std::int32_t d) {
+        const std::int32_t k = fx(0x28f, static_cast<std::int32_t>(at) << 16) + 0x10000;
+        return fx(k, d << 16) >> 16; // restartGuard x1.5 branch not taken: ctrl==0 in this world
+    };
+    if (p.distBall > 0x960) { // farGuard_53A168 l.74-82
+        const std::int32_t d = guardDist(p.distBall / 8);
+        const std::int32_t gz = w.pitch.goalLineZ[side];
+        const SinCos sc = sinCos(atan2i(w.ball.posI.x, w.ball.posI.z - gz));
+        out.x = fx(d, sc.s);
+        out.z = gz + fx(d, sc.c);
+        Pitch_clampToField(w, out);
+        return out;
+    }
+    const Vec3& b = w.ball.posI;
+    if (iabs(b.x) >= 0x5a0 && (side == 1 ? b.z > 0 : b.z < 0) && iabs(b.z) >= w.pitch.halfLength - 0x360) {
+        out.x = b.x >> 5; // ballWideDeep_53A1F8 l.67-72 / 0x53A021 branch
+        const std::int32_t z = w.pitch.halfLength - 0x50 - ((at << 4) >> 2);
+        out.z = side ? z : -z;
+        return out;
+    }
+    const Vec3 goal{0, 0, w.pitch.goalLineZ[side]};
+    const Vec3& src = b.y > 0x8e ? w.ball.cross142Pos : b;
+    const OctDist od = octDistance(goal, src);
+    Angle ang;
+    if (od.dx == 0 && od.dz == 0) ang = side == 1 ? 0x200 : 0;
+    else ang = atan2i(od.dx, od.dz);
+    std::int32_t a = (side == 1 ? ang - 0x200 : ang) & 0x3ff;
+    if (a > 0x200) a = 0x400 - a;
+    const std::int32_t lo = w.pitch.goalHalfWidth - 0x18 - (0x100 - a);
+    std::int32_t d = guardDist(od.dist / 8);
+    if (d < lo) d = lo;
+    const SinCos sc = sinCos(ang);
+    out.x = fx(d, sc.s);
+    out.z = goal.z + fx(d, sc.c);
+    Pitch_clampToField(w, out);
+    return out;
+}
+
+void scenarioTeamShape() {
+    gName = "teamshape";
+    MatchData md = makeMd();
+    installWc98LocoTables(md.anim); // stable motion rows (gait gate's lane); formation needs only pl
+    const auto dir = treeDirOrSkip();
+    ck(loadFormationTables(md, dir), "loadFormationTables failed");
+    Options opt{};
+    SimRunner r(md, opt, kSeed);
+    auto& w = r.world();
+    ck(w.formation.colPerUnit == 197 && w.formation.rowPerUnit == 270, "zone scales not (197, 270)");
+    ck(w.formation.cellW == 331 && w.formation.cellL == 242, "zone cells not (331, 242)");
+
+    // Tolerance = grid-cell granularity: the largest per-zone-step target displacement of the loaded
+    // G98PL def-line rows over zone steps (+-1 col, +-13 row). A stale cache entry evaluated in an
+    // adjacent cell differs from the replica by at most one such step; arithmetic drift (layout/
+    // scale/sign/side errors) moves targets by whole cells and fails. Measured maxes are printed.
+    std::int32_t tolX = 2, tolZ = 2;
+    for (int q = 1; q < kSlots; ++q) {
+        const std::int8_t* row = md.formations.pl.data() + q * 0x4ac;
+        for (int z = 0; z < 299; ++z)
+            for (int d : {-1, 1, -13, 13}) {
+                const int z2 = z + d;
+                if (z2 < 0 || z2 >= 299) continue;
+                const std::int32_t sx = iabs(fx(row[(z2) * 4 + 2] - row[z * 4 + 2], w.formation.scaleX));
+                const std::int32_t sz = iabs(fx(row[(z2) * 4 + 3] - row[z * 4 + 3], w.formation.scaleZ));
+                if (sx > tolX) tolX = sx;
+                if (sz > tolZ) tolZ = sz;
+            }
+    }
+
+    int keeper[2] = {-1, -1};
+    for (int t = 0; t < 2; ++t)
+        for (int i = 0; i < 11; ++i) {
+            const int pid = w.teams[t].players[i];
+            if (w.players[pid].slot == 0) keeper[t] = pid;
+        }
+    ck(keeper[0] >= 0 && keeper[1] >= 0, "no keeper located");
+
+    // Fixed-seed AI-only segment: kickoff settle (forceIn=150 + forced dispatch 0xb per scenario 2),
+    // then the open-play window. Assert inline on pass 0; replay identical seed on pass 1 and compare
+    // signatures -> the gate itself is deterministic, not geometry-chased.
+    struct Sig { std::int32_t v[6]; };
+    std::vector<Sig> sigs[2];
+    std::int32_t maxDevX = 0, maxDevZ = 0, bandWorstNum = 0, bandWorstDen = 1;
+    int bPairs = 0, maxDevB = 0, keeperSamples = 0, zoneChecks = 0, slotChecks = 0, bxDeltaMax = 0;
+    int forceTick = -10000, zoneLagMax = 0;
+    for (int pass = 0; pass < 2; ++pass) {
+        SimRunner rr(md, opt, kSeed);
+        auto& w2 = rr.world();
+        int prevPhase = -1, forceIn = 0, window = 0;
+        // Defensive-line reference: ball x + per-slot defend-replica/cache x at anchor time.
+        int refBallX[2][5] = {};
+        std::int32_t refRep[2][5], refPos[2][5];
+        bool refSlotValid[2][5] = {};
+        for (int i = 0; i < 900 && !rr.finished(); ++i) {
+            if (!rr.tick()) break;
+            ++gTick;
+            auto& w = w2;
+            if (w.match.phase == 0 && prevPhase != 0) forceIn = 150;
+            prevPhase = w.match.phase;
+            if (forceIn > 0 && --forceIn == 0 && w.match.phase == 0) Match_dispatchEvent(w, 0xb, w.match.phaseTeam);
+            const bool inPlay = w.match.phase == 9 && !rr.finished();
+            window = inPlay ? window + 1 : 0;
+            // Documented forcing site (M7 grammar, cites spec): the fixed-seed synthetic AI stalls
+            // the ball at centre (measured lateral travel 0), so one scripted lateral ball jump of
+            // +1200 units drives the defensive-line x-shift assertion. Deterministic on replay pass.
+            if (window == 140) {
+                Ball_placeAt(w, {iabs(w.ball.posI.x) + 1200, 2, w.ball.posI.z});
+                w.ball.possessor = -1; w.ball.dribbler = -1; // loose: dribble snap-back removed
+                forceTick = gTick;
+            }
+            if (forceIn != 0 || window < 60) continue; // AI settled after kickoff strike
+            Sig sg{};
+            sg.v[0] = w.ball.posI.x; sg.v[1] = w.ball.posI.z;
+            sg.v[2] = w.formation.col; sg.v[3] = w.formation.row;
+            sg.v[4] = (w.teams[0].flags & 2) | ((w.teams[1].flags & 2) << 1);
+            sg.v[5] = w.formation.cur[0].e[2].pos.x; // live target: replay-divergence probe
+            sigs[pass].push_back(sg);
+            if (pass > 0) continue;
+
+            // A1: ball-zone displacement cell arithmetic (no hysteresis) vs the live zone. Measured
+            // max lag col+row = 4 cells (kick-chain gated refresh after the scripted jump), so the
+            // gate asserts <= 4; layout/scale drift shifts zones by whole rows/cols and fails.
+            const std::int32_t c0 = ((fx(w.ball.posI.x, w.formation.colPerUnit) + 0x58000) >> 16) + 1;
+            const std::int32_t r0 = ((fx(w.ball.posI.z, w.formation.rowPerUnit) + 0xa8000) >> 16) + 1;
+            const std::int32_t colR = c0 < 0 ? 0 : (c0 > 12 ? 12 : c0);
+            const std::int32_t rowR = r0 < 0 ? 0 : (r0 > 22 ? 22 : r0);
+            const std::int32_t lag = iabs(w.formation.col - colR) + iabs(w.formation.row - rowR);
+            if (gTick - forceTick >= 8) { // jump transient: zone refresh gated by the kick/poss chain
+                if (lag > zoneLagMax) zoneLagMax = lag;
+                ck(lag <= 4, "ball zone vs displacement formula");
+                ++zoneChecks;
+            }
+
+            const int phase = w.match.phase;
+            for (int t = 0; t < 2; ++t) {
+                const SlotCache& c = w.formation.cur[t];
+                // A2: per-player slot target vs the G98PL replica (defend + attack lerp modes).
+                for (int q = 1; q < kSlots; ++q) {
+                    const SlotCacheEntry& e = c.e[q];
+                    if (e.fn != 0x4cf678 || e.state == 2 || e.player < 0 || e.zone < 0 || e.zone > 298) continue;
+                    const Vec3 dRef = tsSlotPos(w, md, t, q, e.zone, e.val, false, c.line358, c.line35c, phase);
+                    const Vec3 aRef = tsSlotPos(w, md, t, q, e.zone, e.val, true, c.line358, c.line35c, phase);
+                    const std::int32_t devX = iabs(iabs(e.pos.x - dRef.x) < iabs(e.pos.x - aRef.x) ? e.pos.x - dRef.x : e.pos.x - aRef.x);
+                    const std::int32_t devZ = iabs(iabs(e.pos.z - dRef.z) < iabs(e.pos.z - aRef.z) ? e.pos.z - dRef.z : e.pos.z - aRef.z);
+                    ck(devX <= tolX && devZ <= tolZ, "slot target outside replica cell tolerance");
+                    if (devX > maxDevX) maxDevX = devX;
+                    if (devZ > maxDevZ) maxDevZ = devZ;
+                    ++slotChecks;
+                }
+                // B: defensive line x-shift follows ball movement (slots 2..6, defend-mode targets).
+                // Per-slot anchor taken on the slot's fresh-cache sample; live-play requeues leave
+                // entries queued (state==2) intermittently, so anchors are per-slot and invalidated
+                // while a slot is queued or the team flips to attack mode. Anchor kept until a pair
+                // fires (ball travel >= 700 units), then re-anchored at the evaluated sample.
+                for (int k = 0; k < 5; ++k) {
+                    const SlotCacheEntry& e = c.e[2 + k];
+                    if ((w.teams[t].flags & 2) || e.fn != 0x4cf678 || e.state == 2 || e.player < 0 ||
+                        e.zone < 0 || e.zone > 298) { refSlotValid[t][k] = false; continue; }
+                    const std::int32_t repX = tsSlotPos(w, md, t, 2 + k, e.zone, e.val, false, c.line358, c.line35c, phase).x;
+                    const std::int32_t posX = e.pos.x;
+                    if (refSlotValid[t][k]) {
+                        const int dxBall = w.ball.posI.x - refBallX[t][k];
+                        if (iabs(dxBall) > bxDeltaMax) bxDeltaMax = iabs(dxBall);
+                        if (iabs(dxBall) >= 700) {
+                            const std::int32_t dRep = repX - refRep[t][k];
+                            const std::int32_t dPos = posX - refPos[t][k];
+                            if (iabs(dRep) >= 4) { // sub-cell replica shift: sign is noise, skip compare
+                                ck((dRep > 0) == (dPos > 0), "defensive line x-shift does not follow ball");
+                                const std::int32_t dev = iabs(dPos - dRep);
+                                if (dev > maxDevB) maxDevB = dev;
+                            }
+                            ++bPairs;
+                            refBallX[t][k] = w.ball.posI.x; refRep[t][k] = repX; refPos[t][k] = posX;
+                        }
+                    } else {
+                        refBallX[t][k] = w.ball.posI.x; refRep[t][k] = repX; refPos[t][k] = posX;
+                        refSlotValid[t][k] = true;
+                    }
+                }
+            }
+
+            // C: keeper band — the State200 positioning call Player_moveToward_4BE804 l.580-590 may
+            // skip a target change within distBall/8 of the player, so the live position/target must
+            // stay inside guard-position +- (distBall/8) of the Keeper_position_539FCC replica.
+            for (int t = 0; t < 2; ++t) {
+                const int pid = keeper[t];
+                PlayerState& p = w.players[pid];
+                if (p.state != 0x200 || phase != 9) continue;
+                const Vec3 rep = tsKeeperPos(w, pid);
+                const std::int32_t d1 = octLength(p.posI.x - rep.x, p.posI.z - rep.z);
+                const Vec3& tgt = Motion_targetVec(w, pid);
+                const std::int32_t d2 = octLength(tgt.x - rep.x, tgt.z - rep.z);
+                const std::int32_t dev = d1 < d2 ? d1 : d2;
+                const std::int32_t band = p.distBall / 8 + 4; // skip row d <= distBall>>3 (+4 rounding)
+                ck(dev <= band, "keeper outside positioning band");
+                if (dev * bandWorstDen > bandWorstNum * band) { bandWorstNum = dev; bandWorstDen = band; }
+                ++keeperSamples;
+            }
+        }
+    }
+    ck(zoneChecks >= 200, "open-play window too short for zone checks");
+    ck(slotChecks >= 200 * 17, "too few slot-target samples in the fixed-seed segment");
+    ck(bPairs >= 3, "no ball-movement pair exercised the defensive line");
+    ck(keeperSamples >= 150, "keeper band barely exercised");
+    const std::size_t n = sigs[0].size();
+    ck(n == sigs[1].size() && n > 250, "deterministic replay length mismatch");
+    for (std::size_t i = 0; i < n && i < sigs[0].size(); ++i)
+        for (int k = 0; k < 6; ++k) ck(sigs[0][i].v[k] == sigs[1][i].v[k], "fixed-seed replay diverged");
+    std::printf("team shape asserts %02d/%02d PASS\n", gChecks, gChecks);
+    std::printf("team shape: tolX=%d tolZ=%d (grid-cell G98PL max step) measured devX=%d devZ=%d devB=%d "
+                "bandWorst=%d/%d bPairs=%d keeperSamples=%d\n",
+                tolX, tolZ, maxDevX, maxDevZ, maxDevB, bandWorstNum, bandWorstDen, bPairs, keeperSamples);
+}
 } // namespace
 
 int main() {
@@ -1736,6 +2072,7 @@ int main() {
     scenarioKickoffPlacement();
     scenarioGaitTransitions();
     scenarioReceiverContest();
+    scenarioTeamShape();
     scenarioSpinNetSurface();
     return 0;
 }

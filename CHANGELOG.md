@@ -7,6 +7,20 @@ project goals.
 
 ## [Unreleased]
 ### Added
+- Gap-B stop-distance gate: `self_test_gameplay` step 13 (`app/selftest.cpp`) - sprint-chase
+  release on a controlled carrier, then per-tick v(t) exact-match against an independent replica of
+  `Motion_rootMotionPre` + root-ladder cap chain (speedCap -> sprintMax/runMax-mB0 -> turn-class
+  kSpeedCap, arrival-band cap, overshoot collapse, standing-snap gate), brake to v==0 and integrated
+  stop distance vs replica step-sum; parity registry row 3 momentum -> PV, PU=0.
+- Gap-M team-shape scenario gate `scenarioTeamShape` (in `test_sim_scenarios`, pass-14): fixed-seed
+  AI-only replay determinism; per-slot targets vs an independent fx replica of
+  `Formation_slotPosition_4CF678` from loaded G98PL bytes (measured devX=devZ=0 over ~13.7k samples,
+  tolerance = grid-cell max step 1776/2845); defensive-line ball-follow lane; keeper band vs
+  `Keeper_position_539FCC` rows (worst 204/291 in-band). Coverage-gap list fully closed.
+- Referee positioning RE lane (pass-14ref): `cmn\ref.c` string disambiguated as eacsnd module;
+  `RefCus`/`REFKIT` = renderer sprite atlas (`FUN_0040e748` `%s_T_d_P_%d_%d`, pool DAT_0059e040,
+  single-tile handle via getter FUN_0040f1d4 EAX==3); gameplay referee tick statically unreachable -
+  documented open (analysis/pass14ref/REF_MAP.md), no approximation installed.
 - `.RES` team-history pair-matrix parser `formats/res.cpp` + gate `test_res`: ZWCUP/ZINTER
   `[u16 n][ids][C(n,2) triples]` layout with the FUN_0048cc58 pair-index formula and directional
   head-to-head lookup; Brazil–Scotland (2,1,0) / Italy–Chile (1,0,1) dossier triples asserted

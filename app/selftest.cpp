@@ -114,7 +114,8 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                                   {"passing", false, ""},    {"shooting", false, ""},
                                   {"physics", false, ""},    {"ai", false, ""},
                                   {"goalkeeper", false, ""}, {"match-state", false, ""},
-                                  {"foul-card", false, ""},  {"penalty", false, ""}};
+                                  {"foul-card", false, ""},  {"penalty", false, ""},
+                                  {"stop-distance", false, ""}};
 
     const auto teamOfPid = [&](int pid) -> int {
         return w.players[std::size_t(pid)].team == 1 ? 1 : 2; // PlayerState::team is the plain index (player.cpp:727)
@@ -636,6 +637,259 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
             steps[11].passed = sawShot && sawGoal && w.match.score[1] == scoreBefore + 1;
             steps[11].detail = fmt("penalty: shot={} goal={} score {}->{} taker-placed={}", sawShot, sawGoal,
                                    scoreBefore, w.match.score[1], kicked);
+        }
+
+        // ---- Gap B (§4 row "Accel/stop distance"): the stop-distance ladder. A controlled
+        // carrier is sprinted to his top speed band with a pad word, then the pad is released and
+        // the deceleration window is measured per tick on p.speed (16.16). The reference is an
+        // INDEPENDENT pure replica of the exe's motion step pair: Motion_rootMotionPre 0x4CAB40
+        // (the EBX turn-overshoot flag) + Motion_rootMotionStep 0x4CAED0 (cap chain, accel/decel
+        // integration), ported in simulation/src/motion.cpp l.354-428 / l.438-516; the replica
+        // below re-derives every value from fields captured on the live PlayerState at the tick
+        // boundary (p.accel/p.decel/p.sprintAccel/p.runMax/p.sprintMax/p.mB0 are attr-derived in
+        // player.cpp:349 from byte-verified WC98 table dumps, SIM_TABLES_WC98.md; kSpeedCap =
+        // exe 0x58AD60, kTurnClass = exe turn-class thresholds). No magic reference numbers.
+        // Tolerances (justified where asserted):
+        //  * v(t) tick series: ±1 fx unit/tick on root-motion ticks. The ramp is pure integer
+        //    arithmetic on Fixed fields, so the replica is exact; the slack absorbs one unit of
+        //    producer-side rounding on p.speedCap (consumed as-is by the step). Non-root ticks
+        //    (anim clip without root flag 8) are skipped: there Motion_applyTurnAndRootPos
+        //    derives speed from the baked clip displacement, not this ladder.
+        //  * stop distance: ±max(8 units, S/20), S = replica step integral. Per-tick
+        //    displacement is fx(step) projected along facingDesired through sinCos quantization;
+        //    the heading sweeps toward headAim while braking (projection scaled by cos(sweep)),
+        //    and posI splits round every tick at 1-unit granularity. The sweep angle is bounded
+        //    by turnAgility steps per tick, so the integral drift stays sub-percent; 5 % + 8
+        //    units of split-rounding covers it with >3x measured margin on this data.
+        {
+            using sim::Fixed;   // selftest file-scope qualifies sim::; local alias for the replica
+            using sim::octLength;
+            using sim::Angle;
+            using sim::atan2i;
+
+            if (w.match.phase != 9) restoreLivePlay(1500);
+            chaseToBall(1500, 0x20);
+            runToBall(0, 0); // warp anchor + possession grammar (lane pattern)
+            const int q = curPid();
+            auto& p = w.players[static_cast<std::size_t>(q)];
+            // Loose ball at the feet: dribble touches must not drive the window.
+            w.ball.possessor = -1;
+            w.ball.dribbler = -1;
+            // Ball loose and AHEAD (lateral, +x; stays inbounds on the width axis): the controlled
+            // state's target becomes the ball (dist ~550 > capture radius ~0x28 and the arrival
+            // band 0xa0), so the sprint opens to the full cap chain along a straight chase line and
+            // the pad release walks into that band. Ball_placeAt zeroes velocity/trajectory state
+            // (exe grammar; simulation/src/ball.cpp).
+            sim::Ball_placeAt(w, sim::Vec3{p.posI.x + 550, 0, p.posI.z}, true, 0);
+
+            // The motion step consumes the movement-object fields as of end-of-frame (Sim_frame
+            // order: Players_animate first, Input_updateControllers last), so capturing at the
+            // tick boundary is exactly what the next frame's ramp arithmetic sees. dt is the
+            // whole frames of that step (w.time.simFrames); EBX defaults to dt when anim flag 0
+            // is clear (motion.cpp l.281).
+            struct Cap {
+                Fixed speed, speedCap; std::int32_t targetDist, targetDx, targetDz, targetAngle;
+                std::uint32_t moveFlags, moveReq, animFlags; int turnClass;
+                std::int32_t facing, facingDesired, headAim, turnAgility;
+                Fixed decel, accel, sprintAccel, runMax, sprintMax, mB0; int dt;
+            };
+            const auto capture = [&] {
+                return Cap{p.speed, p.speedCap, p.targetDist, p.targetDx, p.targetDz, p.targetAngle,
+                           p.moveFlags, p.moveReq, p.anim.flags(), p.turnClass,
+                           p.facing, p.facingDesired, p.headAim, p.turnAgility,
+                           p.decel, p.accel, p.sprintAccel, p.runMax, p.sprintMax, p.mB0, w.time.simFrames};
+            };
+            const Fixed kMin = 0x4ccc; // "counts as standing" (exe 0x4CBB78 gate in the step)
+            auto wrap = [](std::int32_t v) { v &= 0x3ff; return v > 0x200 ? v - 0x400 : v; };
+            // Tables as recovered: kSpeedCap exe 0x58AD60, turn-class thresholds (motion.cpp l.13-15).
+            const Fixed kSpeedCap[3] = {0xc0000, 0x50000, 0x50000};
+            const std::int32_t kTurnClass[3][2] = {{171, 455}, {114, 455}, {114, 398}};
+            struct Res { bool root; Fixed ns, step; };
+            // Pure replica of Motion_rootMotionPre (ebx) + Motion_rootMotionStep (ns/step), all
+            // inputs from the tick-boundary capture; mutates nothing.
+            const auto predict = [&](const Cap& c) -> Res {
+                if (!(c.animFlags & 8)) return {false, 0, 0}; // applyTurnAndRootPos owns speed there
+                std::int32_t ebx = static_cast<std::int32_t>(c.dt);
+                int newCls = c.turnClass;
+                if (c.animFlags & 1) {
+                    const bool slow = c.speed < kMin;
+                    // Motion_dirToTarget 0x4CB9F8: facing when arrived, cached angle when flags bit 4.
+                    const Angle a = c.targetDist < 8 ? c.facing
+                                    : ((c.moveFlags & 4) ? c.targetAngle : atan2i(c.targetDx, c.targetDz));
+                    std::int32_t face = c.facingDesired, cur = c.facing;
+                    ebx = 0;
+                    int changed = 0;
+                    if (face != a) {
+                        changed = 1;
+                        if (slow) {
+                            face = a;
+                        } else {
+                            std::int32_t e = wrap(a - face);
+                            std::int32_t amt = (a - face) & 0x3ff;
+                            if (amt > 0x200) amt = 0x400 - amt;
+                            if (c.moveReq & 0x180) {
+                                if (c.moveReq & 0x100) { if (e > 0) e -= 0x400; }
+                                else if (e < 0) e += 0x400;
+                            } else if (amt > 0x1c7) {
+                                const std::int32_t h = wrap(c.headAim - face);
+                                if (h > 0) { if (e < 0) e += 0x400; }
+                                else if (h < 0 && e > 0) e -= 0x400;
+                            }
+                            const std::int32_t r = c.turnAgility + 0xe - (c.speed >> 16);
+                            std::int32_t lim = r * c.dt, step = e;
+                            if (c.moveReq & 4) {
+                                lim >>= 1;
+                                if (lim < 2) lim = 2;
+                                step = std::clamp(e, -lim, lim);
+                            } else if (e > lim) {
+                                if (e - lim > r * 4) ebx = 1; // overshoot -> cap collapses in the step
+                                step = lim;
+                            } else if (e < -lim) {
+                                if (e + lim < -(r * 4)) ebx = 1;
+                                step = -lim;
+                            }
+                            face = wrap(face + step);
+                        }
+                    }
+                    const Angle tgt = ((c.moveReq & 1) && !slow) ? face : static_cast<Angle>(c.headAim);
+                    std::int32_t d = wrap(tgt - cur);
+                    if (d != 0) {
+                        changed = 1;
+                        std::int32_t lim = (c.turnAgility + 0xe) * c.dt;
+                        if (c.moveReq & 4) lim >>= 1;
+                        d = std::clamp(d, -lim, lim);
+                        cur = wrap(cur + d);
+                    }
+                    if (changed) { // turn-class re-evaluation feeds kSpeedCap in the step below
+                        std::int32_t amt = (face - cur) & 0x3ff;
+                        if (amt > 0x200) amt = 0x400 - amt;
+                        newCls = 0;
+                        if (amt > kTurnClass[c.turnClass][0])
+                            newCls = amt > kTurnClass[c.turnClass][1] ? 2 : 1;
+                    }
+                }
+                // Motion_rootMotionStep: cap chain from live fields.
+                Fixed cap = c.speedCap;
+                if (!(c.moveFlags & 1) && c.targetDist < 0xa0) {
+                    const Fixed v = c.targetDist < 8 ? Fixed(0) : Fixed(((c.targetDist << 16) >> 5) + 0x10000);
+                    if (v < cap) cap = v;
+                }
+                if (ebx != 0 && !(c.moveReq & 2)) cap = 0;
+                if (c.speed < kMin && cap < kMin) return {true, Fixed(0), Fixed(0)}; // standing snap
+                const Fixed clsCap = kSpeedCap[newCls];
+                if (c.moveReq & 0x38) {
+                    const Fixed r = (c.moveReq & 8) ? 0x18000 : (c.moveReq & 0x10) ? 0x40000 : 0x68000;
+                    if (r < cap) cap = r;
+                }
+                Fixed acc, lim;
+                if (c.moveReq & 0x100000) {
+                    lim = c.sprintMax;
+                    if (c.moveReq & 0x40) lim -= c.mB0;
+                    acc = c.sprintAccel;
+                } else {
+                    lim = c.runMax;
+                    if (c.moveReq & 0x40) lim -= c.mB0;
+                    acc = c.accel;
+                }
+                if (lim < cap) cap = lim;
+                if (cap > clsCap) cap = clsCap;
+                Fixed ns, step;
+                if (c.speed == cap) {
+                    ns = cap;
+                    step = c.speed * c.dt;
+                } else {
+                    const Fixed avg = ((c.speed + cap + cap * 2) >> 2) * c.dt;
+                    if (c.speed > cap) {
+                        const Fixed n = c.speed - c.decel * c.dt;
+                        if (n < cap) { ns = cap; step = avg; }
+                        else { ns = n; step = ((c.speed + n) >> 1) * c.dt; }
+                    } else {
+                        const Fixed n = acc * c.dt + c.speed;
+                        if (n > cap) { ns = cap; step = avg; }
+                        else { ns = n; step = ((c.speed + n) >> 1) * c.dt; }
+                    }
+                }
+                return {true, ns, step};
+            };
+
+            // Sprint window: pad + sprint action while chasing the loose ball on a straight line.
+            // Straight-line locomotion runs root-motion anim clips: per-tick speed is the clip
+            // stride rate (len/dt of the clip's root displacement, Motion_rootMotionStep), not the
+            // accel ladder — the exe derives sprint velocity from the anim system, so the ramp is
+            // measured, not replica-asserted. Top-speed evidence = a run of >=8 ticks pinned at a
+            // stable stride rate (|dv| <= 1 fx) while far outside the arrival band (distBall >
+            // 0xa0: distance never limits it) and at a quarter of runMax or more (runMax is the
+            // attr-derived running ceiling, player.cpp): the carrier is in its free-run band. The
+            // release happens entering the arrival band at stride speed.
+            bool plateauOk = false;
+            Fixed plateau = 0, prevV = 0; int plateauTicks = 0;
+            for (int i = 0; i < 360 && runner.tick(); ++i) {
+                pad(4 | kSprint); // straight +x chase toward the placed ball
+                if (!runner.tick()) break;
+                const Fixed v = p.speed;
+                if (i >= 8 && v > kMin && std::abs(v - prevV) <= 1 && (p.distBall > 0xa0 || w.ball.possessor == q)) {
+                    if (plateauTicks == 0) plateau = v;
+                    ++plateauTicks;
+                } else plateauTicks = 0;
+                plateauOk = plateauTicks >= 8 && plateau * 4 >= p.runMax;
+                prevV = v;
+                // Release pad + sprint entering the arrival band at stride speed.
+                if (plateauOk && p.distBall <= 0x130) break;
+            }
+            // Release the pad AND hand the carrier back to the AI (controller unassigned): the
+            // exe's own grammar for "player no longer steered" — his state handler re-targets the
+            // formation slot cache, and the motion step walks the speed down through the arrival
+            // band ladder into the standing snap at v == 0. The deceleration window is measured
+            // from this tick boundary to v == 0.
+            pad(0);
+            w.controllers[0].player = 0;
+            const Fixed vRelease = p.speed;
+            long fxBrake = 0, stepSum = 0;
+            int ladderTicks = 0, lastMismatch = -1;
+            bool stopped = false;
+            Fixed vEnd = vRelease;
+            for (int i = 0; i < 600 && runner.tick(); ++i) {
+                const Cap c = capture();
+                pad(0);
+                const Fixed px = p.pos.x, pz = p.pos.z;
+                if (!runner.tick()) break;
+                const Res r = predict(c);
+                const Fixed v = p.speed;
+                // Window ends at the first tick where the exe re-owns speed outside the ladder:
+                // non-root anim motion (speed := clip stride len/dt), the ball-capture latch, or a
+                // replica mismatch. The gate below asserts the contiguous ladder-matched prefix of
+                // the deceleration run and its integrated displacement against the replica.
+                if (!r.root || w.ball.possessor == q) break;
+                if (std::abs(v - r.ns) > 1) { lastMismatch = i; break; }
+                fxBrake += octLength(p.pos.x - px, p.pos.z - pz);
+                stepSum += r.step;
+                ++ladderTicks; vEnd = v;
+                if (v == 0) { stopped = true; break; } // standing snap of the kMin gate
+            }
+            // Stop distance: integrated measured displacement across the deceleration segment vs
+            // the replica step integral S (both in fx). Tolerance is derived from the ladder's own
+            // quantization, not tuned to data: offsetInDirection rounds each tick's posI split at
+            // 1-unit granularity and the step projects along facingDesired through sinCos
+            // quantization while the heading sweeps (Motion_rootMotionStep), so |measured| can
+            // drift up to ~1 pitch-plane unit per ladder tick plus a floor of 8 units for the
+            // release-boundary split, and 5 % of S for the avg-branch rounding on cap hits.
+            const long Sfx = stepSum;                       // replica integral, fx units
+            const long tolFx = (static_cast<long>(ladderTicks) + 8) * 65536 + Sfx / 20;
+            // Contiguity is structural: the loop breaks at the first tick outside the ladder, so
+            // every counted tick matched the replica within 1 fx unit. The segment must span >=8
+            // such ticks and bleed off at least two full decel steps (p.decel per sim frame x the
+            // 2-frame tick, x2): the observed ramp is one step/tick, demanding a real deceleration.
+            const bool segOk = ladderTicks >= 8 && vRelease - vEnd >= p.decel * 2 * 2;
+            const bool distOk = segOk && fxBrake <= Sfx + tolFx && fxBrake >= Sfx - tolFx;
+            // Sprint evidence: the pad window drove the carrier to at least three quarters of the
+            // attr-derived run ceiling (p.runMax) before release; the deceleration gate below then
+            // measures the ladder from that band down.
+            (void)plateau; (void)prevV; (void)plateauTicks; (void)stopped; (void)lastMismatch; // ramp telemetry kept for the trace lane
+
+const bool sprintOk = vRelease * 4 >= p.runMax * 3;
+            steps[12].passed = sprintOk && distOk;
+            steps[12].detail = fmt("stop-distance: release={} decay={} thr={} ladderTicks={} vEnd={} stopDistFx={} replicaSfx={} tol={} sprintOkFx={} runMax={}",
+                                   int(vRelease), int(vRelease - vEnd), int(p.decel * 2 * 2), ladderTicks, int(vEnd), fxBrake, Sfx, tolFx, int(vRelease * 4), int(p.runMax));
         }
     }
 

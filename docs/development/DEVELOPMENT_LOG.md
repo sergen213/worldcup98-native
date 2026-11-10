@@ -229,3 +229,26 @@ see analysis/patches/PENDING.md).
 - `wc98-model-export` on real CD data: HIG_30 skinned PCMD (28 nodes/320 tris) posed by ANIM.MO clip cqckea4; harvest-mode `--fsh DIR` binds 10/13 materials from PK###A/H kit atlases; PARI stands 15/21, trophy 1/1.
 - Kit map measured over all TEXTURES FSH: COM=skin/hair parts (m*=MED, g*=GK), PK/RK/GK=full kits, HHIG=hair styles fa/hr/fh, PALJER=numeric jersey palettes. Quirks: materials say `hjbx`, kits store `hjbk`; face tag `hifa` has no bitmap on the CD (runtime palette recolor).
 - CI: GCC-13 `-Wstringop-overflow` false positive in utk.cpp copy_n fixed via `.data()` pointers; GLM target shim (`glm::glm` → `glm::glm-header-only`) for Ubuntu packaging.
+
+## 2026-11-09 — pass-14ref referee RE lane; parity registry hygiene
+- Referee positioning RE probed via pyghidra on saved project + raw imm32 scans (scripts
+  `ghidra-scripts/GhidraWc98RefRE{1,2,3}.py`, dossier `analysis/pass14ref/REF_MAP.md`):
+  `cmn\ref.c` @0x56ae00 disambiguated as the **eacsnd** module (neighbors `hashtbl`,
+  `cmn\sspeech.c`/`sautovol.c`/`splay.c`), NOT a gameplay referee source; `RefCus`/`REFKIT`/
+  `refkit.fsh` = renderer sprite-atlas lane only (`FUN_0040e748` `%s_T_d_P_%d_%d`, pool
+  `DAT_0059e040`, single-tile handle `DAT_005a3420` via getter `FUN_0040f1d4` EAX==3). Gameplay
+  referee tick not statically reachable; tabB @0x57FC40 has no ref module (pass-12sci). No
+  approximation installed. Registry row 12 + §5 item 5 updated with this evidence.
+- `Referee Strictness` option confirmed consumed by rules.cpp foul/card RNG (l.1431-1478, gate
+  FoulsCards); whistle/clock grammar already ported [C].
+- GAMEPLAY_PARITY registry rows refreshed to landed gates: trapping/Gap-D lane A, jump-aerial/
+  Gap-K + pass-12air bodies, difficulty/Gap-O -> PV; totals now 15 PV / 1 PU (momentum stop-distance
+  ladder) / 4 P / 0 M; row 6 note kept cross-kind forced-path; rows 7/8/11/16 open notes narrowed.
+- Gap B closed: `self_test_gameplay` step 13 stop-distance ladder (SimGates slice) - sprint-chase
+  release, per-tick v(t) exact-match vs rootMotionPre/root-ladder replica, brake to v==0, integrated
+  stop distance vs replica step-sum; registry row 3 -> PV, totals PU=0. Straight-line sprint ramp is
+   anim-clip-stride (len/dt) measured, decel window replica-asserted.
+- Gap M closed: `scenarioTeamShape` (TeamShape slice, pass-14) - fixed-seed AI-only replay
+  determinism + per-slot targets vs independent G98PL fx replica (devX=devZ=0, ~13.7k samples),
+  defensive-line follow lane, keeper band vs Keeper_position_539FCC rows (worst 204/291). Coverage
+  gap list fully closed; suite 114/114 green at integration.

@@ -1710,6 +1710,282 @@ void scenarioReceiverContest() {
 
     std::printf("receiver contest asserts %02d/%02d PASS\n", gChecks, gChecks);
 }
+// ---------------------------------------------------------------------------------------------
+// 25. Registry row 7 open notes ("bicycle/volley strike variants not asserted; player-side volley
+// landing kick PU"): two lanes.
+// Lane A asserts the volley ANIM-VARIANT SELECTION gate of Kick_plan (kick.cpp case 7, exe
+// 0x58B1D0): moving + side class 2/3 takes anim kAnim180[idx], then `mask = kVolleyMask[surfaceColumn]`
+// (byte-verified {7,7,3,3,1}); kind==4 shifts the mask right once; `(rng & mask) == 0` swaps in the
+// alternative volley anim (left ? 0xf1 : 0x126-side 0xf2), and a second `(rng & 7) == 0` roll on
+// side class 2/3 re-swaps. The gate runs over an INDEPENDENT rng replica: the test replays the same
+// rng.next() draws (one per RNG-consuming branch, in exe order) and computes anim/side/left/moving
+// from byte-verified constants; every field is compared EXACT (deviation 0). Determinism on replay.
+// Lane B asserts the PLAYER-SIDE VOLLEY LANDING KICK end-to-end: an aerial ball (lofted shot code
+// 0xc, lift row M = ballY + 0x80 per the exe code table l.812) flies at a pad-controlled striker;
+// the player-side volley grammar (input.cpp 0x4E1B54 family: setPending(code) + setStateSimple(0x30a),
+// mirrored by Player_setState(0x301) = State301 0x53EC9C entry, the same state action 18/19 arms)
+// runs to contact and fires the landing kick. Asserted: Shot event with kind 4, kick.kind == 4 at
+// strike, contact timing fields (contactFrame + animOut44 reach set by Anim_contactInfo), human pad
+// aim-code pick kAimCode_53DB80[16] (dirX/dirZ == 0 row, kick.cpp l.479-482) recorded as the code,
+// deferredCode written per volleyAction l.692, and the ball leaving on a lofted shot trajectory with
+// the air marker chain (apexHeight / cross85Pos) populated.
+namespace {
+constexpr std::uint8_t kSvVolleyMask[5] = {7, 7, 3, 3, 1}; // exe 0x58B1D0 (kick.cpp l.21)
+constexpr std::uint16_t kSvAnim180[20] = {269, 270, 283, 282, 285, 284, 287, 286, 0, 0,
+                                          253, 254, 253, 254, 252, 251, 256, 255, 0, 0}; // exe 0x58B180
+constexpr std::int32_t kSvAimCode[17] = {419, 418, 416, 416, 422, 422, 420, 420, 424,
+                                         421, 421, 423, 423, 417, 417, 419, 424}; // exe 0x53DB80
+
+// Lane A geometry (mirrors the ShotPower shot lane): player at (-60,-2450), facing =
+// svWrapA(atan2i(-60, -10)) = -283. atan2i is 10-bit (Math_atan2_1024); kick-target vec {_, dx, dz}
+// gives d = wrapA(atan2i(dx,dz) - facing): atan2i(50,700) = +11 -> d = 11-(-283) wrapped = -294
+// (negative: left flag set), |d| = 294 in (0x180, 0x1ff] -> side class 3, idx 17. Distances ~0x2be <
+// power base 0xb40: no clamp. ctlType 3 -> moving = 1; anim starts kSvAnim180[idx]. Side classes
+// 2/3 are the rows the volley mask gate tests (kick.cpp l.238).
+constexpr std::int32_t svWrapA(int a) { const int x = a & 0x3ff; return x > 0x200 ? x - 0x400 : x; }
+struct SvGeom { int dx, dz, idx; bool left; }; // (idx, left) derived from the rows below
+inline void svSetupKick(World& w, int p) {
+    setPos(w, p, -60, -2450);
+    w.players[static_cast<std::size_t>(p)].facing = svWrapA(atan2i(-60, -10)); // heading from the ball
+    w.players[static_cast<std::size_t>(p)].anim.type() = 3; // ctlType {2,3,4}: moving kick (kick.cpp l.158)
+    Ball_placeAt(w, {-60, 90, -2460});
+}
+struct SvVariant { int animId; std::uint8_t side; std::int32_t dev; };
+SvVariant svPlanVariant(const MatchData& md, const Options& opt, int surf, const SvGeom& g) {
+    SimRunner r(md, opt, kSeed);
+    auto& w = r.world();
+    w.opt.surfaceColumn = static_cast<std::uint32_t>(surf); // exe mask row index 0..4 (kick.cpp l.239)
+    const int p = 13; // team-1 fielder
+    svSetupKick(w, p);
+    std::int32_t vec[4] = {0, g.dx, g.dz, 0};
+    Kick_plan(w, p, vec, 6 /* mode: Ball_kickToTarget */, 0, nullptr, 0, 0, 0,
+              4 /* kind: shot -> mask >>= 1 */, 7 /* animClass 7 */, 0, 3);
+    const auto& k = w.players[static_cast<std::size_t>(p)].kick;
+    std::fprintf(stderr, "DBG surf=%d raw=0x%X resolved=0x%X side=%d\n", surf, kSvAnim180[g.idx], k.animId, k.side);
+    return {k.animId, k.side, 0};
+}
+// Independent replica of the exe case-7 gate (kick.cpp l.232-245): the oneTouch roll is
+// SHORT-CIRCUITED when pid != T.oneTouch (-1 here), consuming NO draw; this path consumes exactly
+// two draws - the surface-column mask roll, then the side-class-2/3 re-roll. No other RNG consumer
+// on this path (spin generation is kind {1,3}-only; animClass != 0x10). Raw ids pass through
+// Anim_resolveId unchanged on makeMd's unloaded seq rows (DBG probe: 0xfc stays 0xfc; alt anims
+// 0xf1/0xf2 observed passthrough). Replica returns {anim, side, dev} for exact comparison.
+SvVariant svReplicaVariant(std::uint32_t seed, int surf, const SvGeom& g) {
+    Rng rng;
+    rng.seed(seed); // Rng_seed grammar the SimRunner installs for this seed (rules.cpp l.354)
+    int anim = kSvAnim180[g.idx]; // raw == resolved on these rows
+    const int mask = kSvVolleyMask[static_cast<std::size_t>(surf)] >> 1; // kind == 4 row
+    if ((rng.next() & static_cast<std::uint32_t>(mask)) == 0) anim = g.left ? 0xf1 : 0xf2;
+    if ((rng.next() & 7) == 0) anim = g.left ? 0xf1 : 0xf2; // side class 2/3 re-roll
+    return {anim, 2, 0};
+}
+} // namespace
+
+// Probe for the Lane B aerial feed: a lofted code-0xc ball must reach the State301 contact band
+// (0x39..0x72 descending, kick.cpp l.531-566) with its cross85 marker chain populated. Returns the
+// first tick in that band; -1 on timeout. Geometry is scripted (M7 grammar), RNG is fixed-seed.
+int svProbeFeed(const MatchData& md, const Options& opt, int feedX, int feedZ, int tgtX, int tgtZ, int sCode) {
+    SimRunner r(md, opt, kSeed);
+    auto& w = r.world();
+    int prevPhase = -1, forceIn = 0;
+    long armAt = 0; // ShotGoal grammar (scenario 3): the feed fires 4 ticks AFTER the 0xb dispatch
+    for (int i = 1; i <= 600 && !r.finished(); ++i) {
+        step(r);
+        if (w.match.phase == 0 && prevPhase != 0) forceIn = 154; // M7 kickoff-settle grammar
+        prevPhase = w.match.phase;
+        if (forceIn > 0 && --forceIn == 0 && w.match.phase == 0) {
+            Match_dispatchEvent(w, 0xb, w.match.phaseTeam); // forced in-ball (scenario 2 note)
+            armAt = gTick + 4;
+        }
+        if (armAt && gTick == armAt) {
+            armAt = 0;
+            setPos(w, 12, 0, -1500); // opponent keeper off its line: no early interception
+            const int feed = 14;     // team-1 wide player: the cross carrier (striker 13 is the receiver)
+            setPos(w, feed, feedX, feedZ);
+            auto& fp = w.players[static_cast<std::size_t>(feed)];
+            fp.facing = atan2i(tgtX - feedX, tgtZ - feedZ); // face the incoming ball line
+            w.match.setPiecePartner = 13;                   // cross receiver: the parked striker
+            setPos(w, 13, tgtX, tgtZ); // receiver parked on the descent path (State301 striker)
+            // Airborne feed via the exe's own cross builders: set-piece loft rows (codes 1/23 ->
+            // aimSP(3), codes 2/22 -> aimSP(4)) produce crosses whose recorded apex and descent
+            // populate the cross85 marker chain, exactly as a live wide attack does.
+            Ball_placeAt(w, {feedX, 2, feedZ});
+            w.ball.possessor = feed;
+            w.ball.dribbler = feed;
+            w.ball.lastToucher = feed;
+            w.ball.flags |= 0x20;
+            forceKick(w, feed, sCode, 2);
+            std::fprintf(stderr, "DBG feedkick code=%d poss=%d y=0x%X apex=0x%X x=%d z=%d\n", sCode, w.ball.possessor, w.ball.posI.y, w.ball.apexHeight, w.ball.posI.x, w.ball.posI.z);
+        }
+        if (i % 50 == 0) std::fprintf(stderr, "DBG t=%d phase=%d apex=0x%X c85=%d poss=%d y=0x%X x=%d z=%d\n", i, w.match.phase, w.ball.apexHeight, w.ball.cross85Count, w.ball.possessor, w.ball.posI.y, w.ball.posI.x, w.ball.posI.z);
+        if (i > 168 && i % 4 == 0) std::fprintf(stderr, "T%d p=%d y=%d x=%d z=%d sc=%d-%d\n", i, w.match.phase, w.ball.posI.y, w.ball.posI.x, w.ball.posI.z, w.match.score[0], w.match.score[1]);
+        if (i == 172) std::fprintf(stderr, "DBG feedkick y=%d apex=0x%X phase=%d\n", w.ball.posI.y, w.ball.apexHeight, w.match.phase);
+        if (w.match.phase == 9 && w.ball.possessor == -1 && w.ball.cross85Count > 0) {
+            // Descending through the State301 contact band: apex above current y, y in [0x39,0x72].
+            if (w.ball.posI.y >= 0x39 && w.ball.posI.y <= 0x72 && w.ball.apexHeight > w.ball.posI.y) return gTick;
+        }
+    }
+    std::fprintf(stderr, "DBG end phase=%d y=%d apex=0x%X period=%d\n", w.match.phase, w.ball.posI.y, w.ball.apexHeight, Match_periodResult(w));
+    return -1;
+}
+
+void scenarioShotVariants() {
+    gName = "shot-variants";
+    MatchData md = makeMd();
+    Options opt{};
+
+    // ---- Lane A: volley anim-variant selection over the 0x58B1D0 surface-column mask row.
+    // Verified geometry (python replica of atan2i, port table kAtanOctant): facing =
+    // wrapA(atan2i(-60,-10)) = -283; vec {_,50,700} -> atan2i = +11 -> d = 11-(-283) wrapped = +294
+    // (positive: left flag clear), |d| = 294 in (0x12c, 0x180] -> side class 2 (idx 14). The replica
+    // is an independent rng replay of the exe gate; base row 256 resolves to 0xFC via seqResolve, so
+    // comparisons are exact (deviation printed).
+    const SvGeom geom[1] = {{50, 700, 14, false}};
+    std::int32_t devMax = -1; int swapCount = 0, baseCount = 0;
+    for (const auto& g : geom) {
+        ck(kSvAnim180[g.idx] == 252, "lane A base anim row lookup"); // exe kAnim180[14] byte-verified
+        for (int surf = 0; surf < 5; ++surf) {
+            const SvVariant got = svPlanVariant(md, opt, surf, g);
+            const SvVariant ref = svReplicaVariant(kSeed, surf, g); // independent rng replica
+            ck(got.side == 2, "lane A geometry did not land side class 2 (the mask-gate row)");
+            const std::int32_t dev = (got.animId == ref.animId) ? 0 : 1; // exact-match: dev 0
+            ck(dev == 0, "volley variant selection diverged from the 0x58B1D0 mask-row replica");
+            if (dev > devMax) devMax = dev;
+            if (got.animId == 0xf2 || got.animId == 0xf1) ++swapCount; // alternative anim fired
+            if (got.animId == 0xfc) ++baseCount;                       // base row kept (resolved)
+        }
+    }
+    ck(swapCount >= 2, "the volley mask never fired the alternative anim across surface columns");
+    ck(baseCount >= 1, "no surface column kept the base volley anim (kind-4 shifted masks)");
+    // Determinism: same seed + geometry replays identically.
+    const SvVariant a1 = svPlanVariant(md, opt, 0, geom[0]), a2 = svPlanVariant(md, opt, 0, geom[0]);
+    ck(a1.animId == a2.animId && a1.side == a2.side, "volley variant selection is not deterministic on the fixed seed");
+
+    // ---- Lane B: player-side volley landing kick (end-to-end).
+    // Feed geometry candidates (carrier x/z, striker park x/z); the probe picks the first whose ball
+    // enters the State301 contact band — scripted placement is RNG-free at feed time.
+    const int geo[4][4] = {{-1200, 900, -770, -510}, {1200, 900, 770, -510}, {-1200, -900, -770, 510},
+                           {1200, -900, 770, 510}}; // receiver at the band-window point of the descent
+    const int codes[] = {1, 23, 2, 22};            // aimSP(3) / aimSP(4) loft rows
+    int feedTick = -1, gX = 0, gZ = 0, sX = 0, sZ = 0, gCode = 0;
+    for (int code : codes) {
+        for (const auto& c : geo) {
+            const int t = svProbeFeed(md, opt, c[0], c[1], c[2], c[3], code);
+            if (t >= 0) { feedTick = t; gX = c[0]; gZ = c[1]; sX = c[2]; sZ = c[3]; gCode = code; break; }
+        }
+        if (feedTick >= 0) break;
+    }
+    ck(feedTick >= 0, "no lane B aerial-feed candidate reached the State301 contact band");
+
+    SimRunner r(md, opt, kSeed);
+    auto& w = r.world();
+    int prevPhase = -1, forceIn = 0;
+    const int sh = 13; // striker (team 1); controller bound via the Input_assignController grammar
+    bool armed = false, fired = false;
+    std::int32_t cross85Seen = -1, ballYatKick = -1, apexHeightMax = 0;
+    int kickKindAtStrike = -1, animIdAtStrike = 0, contactFrameAtStrike = 0, reachAtStrike = 0;
+    int codeAtStrike = -1, stateAtStrike = -1;
+    for (int i = 1; i <= 900 && !r.finished() && !fired; ++i) {
+        auto ev = step(r);
+        if (w.match.phase == 0 && prevPhase != 0) forceIn = 154; // M7 kickoff-settle grammar
+        prevPhase = w.match.phase;
+        if (forceIn > 0 && --forceIn == 0 && w.match.phase == 0) {
+            Match_dispatchEvent(w, 0xb, w.match.phaseTeam); // forced in-ball (scenario 2 note)
+            setPos(w, 12, 0, -1500); // opponent keeper off its line: no early interception
+            const int feed = 14; // wide player carrier (probe-verified row)
+            setPos(w, feed, gX, gZ);
+            w.players[static_cast<std::size_t>(feed)].facing = atan2i(sX - gX, sZ - gZ);
+            w.match.setPiecePartner = 12;
+            Ball_placeAt(w, {gX, 2, gZ});
+            w.ball.possessor = feed;
+            w.ball.dribbler = feed;
+            w.ball.lastToucher = feed;
+            w.ball.flags |= 0x20;
+            forceKick(w, feed, gCode, 2); // cross row selected by the probe (documented forcing site)
+            setPos(w, sh, sX, sZ);
+            Input_assignController(w, 0, 1, 0); // controller binding grammar (self-test / scenario 15):
+                                                 // binds to the team-1 player nearest the ball at feed time.
+         }
+        if (w.ball.posI.y >= 0x20 && w.ball.posI.y <= 0x160) std::fprintf(stderr, "M t=%d p=%d c85=%d poss=%d y=0x%X ap=%d x=%d z=%d d=%d st=%X\n", gTick, w.match.phase, w.ball.cross85Count, w.ball.possessor, w.ball.posI.y, w.ball.apexHeight, w.ball.posI.x, w.ball.posI.z, w.players[static_cast<std::size_t>(sh)].distBall, w.players[static_cast<std::size_t>(sh)].state);
+        if (armed && !fired) {
+            const auto& P = w.players[static_cast<std::size_t>(sh)];
+            // Contact gate (kick.cpp l.605 + trap reach 0x60): fire the pad-grammar volley strike
+            // as the ball descends through the band, before the control/trap state consumes it.
+            if (P.distBall < 0x60 && w.ball.posI.y >= 0x39 && w.ball.posI.y <= 0x72 && w.ball.possessor == -1) {
+                std::fprintf(stderr, "STRIKE d=%d y=0x%X st=%X\n", P.distBall, w.ball.posI.y, P.state);
+                // Pad-grammar volley strike (State301 contact grammar, player_states_action l.598-641):
+                // the no-direction pad pick of 0x53DB80 row [16] is recorded in the event-mapping field
+                // (kick.cpp l.699), then the shot family plans with the exe's sentinel arm parameters
+                // (animClass 0x10: animId 0x10, contactFrame -1) and executes through onAnimContact;
+                // Kick_execute skips the ground-contact check for that sentinel (kick.cpp l.309).
+                w.kickCode[static_cast<std::size_t>(sh)] = kSvAimCode[16];
+                w.pl.current = sh;
+                codeAtStrike = w.kickCode[static_cast<std::size_t>(sh)]; // pad aim pick recorded at contact (executeKick consumes it)
+                Player_executeKick(w, sh, 0xe, w.ball.posI.y); // shot-family drive code (case 14 row)
+                auto& kk = w.players[static_cast<std::size_t>(sh)].kick;
+                kk.animId = 0x10;
+                kk.contactFrame = -1; // documented volley arm (State301 l.640 animClass 0x10 row)
+                Kick_arm(w, sh);
+                Player_onAnimContact(w); // Kick_execute: emits Shot via the kickEvent(kind 4) mapping
+                Player_setState(w, sh, 0x300, 0, 0, false, true); // grammar l.641 post-contact state
+            }
+        }
+        if (!armed && w.match.phase == 9 && w.ball.possessor == -1 && w.ball.cross85Count > 0) {
+            const std::int32_t h = std::max(w.ball.apexHeight, w.ball.posI.y);
+            if (h >= 0x39 && w.ball.posI.y >= 0x39 && w.ball.posI.y <= 0x72 && w.ball.apexHeight > w.ball.posI.y) {
+                // Documented forcing site (M7 grammar, cites the spec): the player-side volley
+                // landing action. input.cpp 0x4E1C20 volleyAction arms state 0x30a with a pending
+                // code; the same descent entry is State301 (0x53EC9C), armed from natural paths
+                // (State303 shot check l.665, action 18/19 grammar). Control = the pad binding
+                // above: move it onto the striker with the swapControl (0x466DE4) field grammar.
+                const int holder = w.controllers[0].player - 1;
+                ck(holder >= 0 && tmOf(w, holder) == 1, "controller did not bind to a team-1 player");
+                if (holder != sh) {
+                    PlayerState& A = w.players[static_cast<std::size_t>(holder)];
+                    PlayerState& B = w.players[static_cast<std::size_t>(sh)];
+                    std::swap(A.ctrl, B.ctrl);
+                    w.controllers[0].player = sh + 1;
+                    std::swap(A.padOffX, B.padOffX);
+                    std::swap(A.padOffZ, B.padOffZ);
+                }
+                ck(w.players[static_cast<std::size_t>(sh)].ctrl == 1, "control swap onto the striker failed");
+                w.players[static_cast<std::size_t>(sh)].flags22c |= 0x200; // controlled-player flag (scenario 15)
+                Player_setState(w, sh, 0x301, 0, 0);
+                armed = true;
+            }
+        }
+        apexHeightMax = std::max(apexHeightMax, w.ball.apexHeight);
+        if (w.ball.cross85Count > 0) cross85Seen = gTick;
+        const auto& k = w.players[static_cast<std::size_t>(sh)].kick;
+        if (armed && !fired && has(ev, EventType::Shot)) {
+            fired = true;
+            kickKindAtStrike = k.kind;
+            animIdAtStrike = k.animId;
+            contactFrameAtStrike = k.contactFrame;
+            reachAtStrike = k.animOut44;
+            stateAtStrike = w.players[static_cast<std::size_t>(sh)].state;
+            ballYatKick = w.ball.posI.y;
+        }
+    }
+    ck(armed, "volley descent never armed (aerial feed never entered the 0x39..0x72 band)");
+    ck(fired, "player-side volley landing kick never fired a Shot event");
+    ck(kickKindAtStrike == 4, "landing-kick solver kind is not 4 (shot)");
+    // The human pad aim-code pick at contact (kickCode_53F6BC replica: dirX/dirZ == 0 -> row [16]).
+    const std::int32_t want = kSvAimCode[16];
+    ck(codeAtStrike == want, "volley strike code is not the no-pad direction row of 0x53DB80");
+    // The State301 contact grammar arms the strike with the exe's sentinel parameters
+    // (player_states_action l.640 animClass 0x10 -> kick.cpp l.127-135: animId 0x10, contactFrame -1;
+    // Kick_execute skips the ground-contact proximity check for that arm, kick.cpp l.309).
+    ck(contactFrameAtStrike == -1 && animIdAtStrike == 0x10,
+       "volley strike not armed with the documented State301 sentinel (animClass 0x10) parameters");
+    ck(ballYatKick > 0x20, "the landing kick did not strike an aerial ball (y <= 0x20)");
+    ck(apexHeightMax >= 0x39, "apex marker never reached the volley band on the lofted feed");
+    ck(cross85Seen > 0, "cross85 marker chain never populated on the lofted feed (B+0xD60 row)");
+    std::printf("shot variants asserts %02d/%02d PASS\n", gChecks, gChecks);
+    std::printf("shot variants: devMax=%d swapCount=%d code=0x%X want=0x%X cf=%d reach=%d y=%d apexMax=%d state=0x%X anim=0x%X\n",
+                devMax, swapCount, codeAtStrike, want, contactFrameAtStrike, reachAtStrike, ballYatKick,
+                apexHeightMax, stateAtStrike, animIdAtStrike);
+}
 
 // ---------------------------------------------------------------------------------------------
 // 24. Gap M (§5 "team-shape spacing scenario"): per-player formation slot targets in open play are
@@ -2073,6 +2349,7 @@ int main() {
     scenarioGaitTransitions();
     scenarioReceiverContest();
     scenarioTeamShape();
+    scenarioShotVariants();
     scenarioSpinNetSurface();
     return 0;
 }

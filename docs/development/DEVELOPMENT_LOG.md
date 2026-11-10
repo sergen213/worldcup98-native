@@ -267,3 +267,13 @@ see analysis/patches/PENDING.md).
   duel grammar is deterministic without global-RNG desync.
 - Registry rows 8/10 P->PV (totals 19 PV / 1 partial (referee) / 0 PU / 0 M); coverage matrix
   Tackle/interception row closed; §4 gate list +Q. Suite 114/114 green at integration.
+
+## 2026-11-09 — pass-14sci: .SCI loader chain decoded; boot-scope probe
+- New winedbg LAUNCH lane `analysis/pass14sci/run1_fileopen.sh` (bp watcom fileopen FUN_005291b0,
+  per-hit filename logging via EAX): FE-boot opens are LAY/FSH/BIG packs + modems.cfg only - no .sci
+  opens at boot/menu scope; .sci payload consumption is match-scope (goal/scene scripts). Lane kept as evidence.
+- Loader chain decoded statically: bulk scene-pack loader `FUN_004396e0` -> wildcard enumeration
+  `FUN_00443714` (findfirst/findnext loop + loadfile `FUN_004c2dc0`, `%s\\%s` join @0x561d34 with dir fields
+  DAT_0060133c/0060143c) -> resmemalloc registration per file; descriptor array = {nameptr,id,sentinel,idx};
+  .SCI header model: u32 recordCount@+0, payload base @ +0x08hi (GENGOL c9 / GEN4SO 15f verified),
+  record table @0x40 stride 16B {type,size,flags,next-offset}. Interpreter opcode-semantics loop = remaining open lane.

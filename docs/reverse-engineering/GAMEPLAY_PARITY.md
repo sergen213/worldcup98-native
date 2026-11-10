@@ -149,7 +149,14 @@ Q (physical fall-recovery) closed by `scenarioFallRecovery` lanes A-C (pass-14):
    parsed across all 87 COMMON/*.SCI (`formats/sci.cpp`, gate `test_sci`), kickoff placement dolly
    (delta-3, `simulation::KickoffPlace_*`, gate `scenarioKickoffPlacement`) and quality-tier camera
    (delta-5, `presentation::tierCamera` + `--quality N`, gate in `test_presentation`). §7 deltas 1-5
-   ALL CLOSED (2026-11-08); semantic diff = TASK_HANDLERS_WC98.md §7 delta table.
+   ALL CLOSED (2026-11-08); semantic diff = TASK_HANDLERS_WC98.md §7 delta table. **pass-14sci loader
+   chain decoded**: bulk scene-pack loader = `FUN_004396e0` (speech/scene-guarded) -> wildcard enumeration
+   `FUN_00443714` (findfirst loop + loadfile `FUN_004c2dc0` cmn\loadfile.c, path join `%s\\%s` @0x561d34,
+   DAT_0060133c/0060143c dir fields) -> per-file resmemalloc registration (`FUN_0049f5a0`, handler chain
+   `FUN_0048eb98/0x48eb4c`); descriptor array records {nameptr, id, 0xffffffff, idx}; .SCI header model =
+   {u32 recordCount@+0x00, u16 bodyOff@+0x08hi (=payload base; table @0x40 stride 16B {type,size,flags,next})}.
+   winedbg fileopen capture (launch lane, `analysis/pass14sci/fileopen_raw.txt`) shows FE boot opens LAY/FSH/BIG
+   packs only - .sci payload consumption is match-scope; interpreter opcode-semantics loop stays the open lane.
 2. ~~Per-handler WC98 vs FIFA-99 decompile diff audit~~ **CLOSED** (pass 11): the code half is
    now audited handler-by-handler - verdict table + ranked real differences in
    HANDLER_DIFF_AUDIT.md (`analysis/pass11/handlers/` evidence). The data-table half was already

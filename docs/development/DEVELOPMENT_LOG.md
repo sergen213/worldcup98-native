@@ -253,3 +253,17 @@ see analysis/patches/PENDING.md).
   defensive-line follow lane, keeper band vs Keeper_position_539FCC rows (worst 204/291). Coverage
   gap list fully closed; suite 114/114 green at integration.
 - Volley + header landing lanes closed: `scenarioShotVariants` lane A (volley anim-variant selection vs independent 0x58B1D0 mask-row rng replica, devMax=0, determinism asserted) and lane B (`scenarioShotVariants`: corner-cross lofted feed -> State301 descent band 0x39..0x72 -> pad aim row [16]=0x1A8 recorded in the event-mapping field, sentinel arm animId 0x10/contactFrame -1 per State301 grammar l.640, Shot via kickEvent kind-4 mapping, state 0x300), plus `scenarioHeaderCross` (box-cross descent window 0x5B..0xB4, code-9 header/chest family -> Header event mapping, solver kind 6). Commits 2ac679a/a359d14; suite 114/114 green.
+
+## 2026-11-09 — pass-14intercept: scenarioFallRecovery (Gap Q)
+- New fixed-seed gate `scenarioFallRecovery` (`test_sim_scenarios`, 3 lanes, determinism asserted
+  on both): lane A duel knock-down countdown exact on the attr[0x35] row `(0x14-x)*4`, per-tick
+  decay to floor 0, victim locomotion resume inside the window (rng-gated knock-free branch asserted);
+  lane B `Player_interceptTarget_542EA0` geometry rows - far-ball target 0x86, side-ball 0x26@ang-0x200
+  replace, zero-speed res=-1; lane C flight interception: kickoff preamble (M7 settle grammar) -> forced
+  corridor pass from team-0 feed pair -> team-1 chaser designated via the Team_updateTactics f1cc
+  loose-ball contest path (`Player_resetIdle_4BD308` finish 0x309), State309 capture at the
+  probe-measured stop point wins possession for the defending side. Scenario-local rng/diag offsets +
+  fixed diagTick replica (fx(0x6a)+100 %25==0) reproduce pickMove's RNG consumption sequence so the
+  duel grammar is deterministic without global-RNG desync.
+- Registry rows 8/10 P->PV (totals 19 PV / 1 partial (referee) / 0 PU / 0 M); coverage matrix
+  Tackle/interception row closed; §4 gate list +Q. Suite 114/114 green at integration.

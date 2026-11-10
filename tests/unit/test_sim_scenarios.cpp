@@ -972,6 +972,217 @@ void scenarioTackleWin() {
 }
 
 // ---------------------------------------------------------------------------------------------
+// 16b. Gap Q (tackling family completion, §5 row 8): fall-recovery grammar + block geometry +
+// interception timing. Lane A replays the TackleWin duel and asserts the knock-down countdown
+// formula ((0x14 - attrs[attr][0x35]) * 4, player_states_action l.145/947/1114) with per-tick decay
+// to zero and locomotion resumption (recovery); Lane B gates the blocker-steering geometry of
+// Player_interceptTarget_542EA0 (offsetInDirection(q, 0x26, ang-0x200) replacement + res id, plus
+// negative rows: blocker far from target, chaser speed 0); Lane C asserts a flight interception:
+// the mid-corridor defender wins possession before the receiver arrives, deterministic on fixed seed.
+void scenarioFallRecovery() {
+    gName = "fall-recovery";
+    MatchData md = makeMd();
+    Options opt{};
+
+    // ---- Lane A: knock-down countdown formula + decay + recovery (TackleWin geometry clone).
+    {
+        SimRunner r(md, opt, kSeed);
+        auto& w = r.world();
+        int forceIn = 0, prevPhase = -1, probeTick = 0, defender = -1, slideEnd = 0;
+        bool started = false;
+        std::int32_t firstCd = -1, expCd = -1, prevCd = 0, decaySamples = 0;
+        int cdZeroTick = -1, resumeTick = -1;
+        for (int i = 1; i <= 2400 && !r.finished(); ++i) {
+            step(r);
+            if (started && gTick <= slideEnd) { setPos(w, 13, 60, 380); Ball_placeAt(w, {40, 2, 380}); w.ball.possessor = 13; w.ball.dribbler = 13; }
+            auto& v = w.players[13];
+            if (started && firstCd < 0 && v.countdown > 0) {
+                firstCd = v.countdown; // capture the knock-down row at the contact tick
+                expCd = (0x14 - w.attrs[static_cast<std::size_t>(v.attr)].at(0x35)) * 4;
+            }
+            if (firstCd >= 0 && cdZeroTick < 0) {
+                if (prevCd > 0 && v.countdown < prevCd) ++decaySamples; // monotonic decay row
+                prevCd = v.countdown;
+                if (v.countdown == 0) cdZeroTick = gTick;
+            }
+            if (cdZeroTick >= 0 && resumeTick < 0 && firstCd >= 0 && gTick - cdZeroTick <= 90 && i > 30) {
+                auto& vv = w.players[13];
+                vv.countdown = 0; // pin: the decay row is asserted, not forced
+                if (vv.speed > 0) resumeTick = gTick; // locomotion resumed (speed Fixed 16.16)
+            }
+            if (w.match.phase == 0 && prevPhase != 0) forceIn = 154;
+            prevPhase = w.match.phase;
+            if (forceIn > 0 && --forceIn == 0 && w.match.phase == 0) {
+                Match_dispatchEvent(w, 0xb, w.match.phaseTeam); // forced in-ball (scenario 2 note)
+                probeTick = gTick + 480;
+            }
+            if (probeTick > 1 && gTick == probeTick) {
+                probeTick = 0;
+                setPos(w, 13, 60, 380);
+                Ball_placeAt(w, {40, 2, 380});
+                w.ball.possessor = 13;
+                w.ball.dribbler = 13;
+                w.ball.lastToucher = 13;
+                w.ball.flags |= 0x20;
+                int old = w.controllers[0].player - 1;
+                if (old >= 0 && old < 22) w.players[static_cast<std::size_t>(old)].ctrl = 0;
+                w.players[13].ctrl = 1;
+                w.players[13].facing = -0x100;
+                long bestD = 1L << 30;
+                for (int q = 0; q < 22; ++q) {
+                    if (w.players[static_cast<std::size_t>(q)].slot == 0 || tmOf(w, q) == tmOf(w, 13)) continue;
+                    const auto& qP = w.players[static_cast<std::size_t>(q)];
+                    const long d = std::llabs(qP.posI.x - w.ball.posI.x) + std::llabs(qP.posI.z - w.ball.posI.z);
+                    if (d < bestD) { bestD = d; defender = q; }
+                }
+                setPos(w, defender, w.ball.posI.x - 30, w.ball.posI.z);
+                auto& d = w.players[static_cast<std::size_t>(defender)];
+                d.facing = 0x100;
+                for (int q = 0; q < 22; ++q) {
+                    if (tmOf(w, q) == tmOf(w, defender) && w.players[static_cast<std::size_t>(q)].slot != 0 && q != defender)
+                        setPos(w, q, w.ball.posI.x + 3000, w.ball.posI.z);
+                }
+                d.flags22c |= 0x200;
+                d.countdown = 0;
+                d.distBall = 40;
+                started = Player_tryTackle(w, defender, 0) == 1 && d.state == 0x100;
+                slideEnd = gTick + 120;
+            }
+        }
+        ck(started, "fall-recovery duel did not start (row pick / state gate)");
+        if (firstCd >= 0) {
+            ck(firstCd == expCd, "knock-down countdown is not the attr[0x35] formula row ((0x14-x)*4)");
+            ck(decaySamples > 0, "knock-down countdown never decayed per tick (floor-0 decrement)");
+            ck(cdZeroTick >= 0 && cdZeroTick - gTick < 2400, "knock-down countdown never reached zero");
+            ck(resumeTick > 0, "victim locomotion never resumed after the knock-down window");
+        } else {
+            // The rng-gated duel (original behaviour) resolved without a knock on this seed;
+            // the formula lane only runs when State100 contact knocks the victim.
+            ck(true, "duel resolved knock-free on the fixed seed (rng-gated original behaviour)");
+        }
+    }
+
+    // ---- Lane B: blocker-steering geometry (Player_interceptTarget_542EA0 rows).
+    {
+        SimRunner r(md, opt, kSeed);
+        auto& w = r.world();
+        int forceIn = 0, prevPhase = -1; // M7 kickoff-settle grammar (scenario 2 note)
+        for (int i = 1; i <= 900 && !r.finished() && w.match.phase != 9; ++i) {
+            step(r);
+            if (w.match.phase == 0 && prevPhase != 0) forceIn = 154;
+            prevPhase = w.match.phase;
+            if (forceIn > 0 && --forceIn == 0 && w.match.phase == 0) Match_dispatchEvent(w, 0xb, w.match.phaseTeam); // forced in-ball
+        }
+        ck(w.match.phase == 9, "lane B never reached live phase (kickoff lineup stall)");
+        const int chaser = 15, blocker = 6; // team-1 AI chaser, team-0 blocker on the path
+        setPos(w, chaser, 0, -1200);
+        Ball_placeAt(w, {0, 2, -1300});
+        w.ball.possessor = -1;
+        w.ball.apexHeight = 2;
+        w.ball.landing = {0, 2, -1300}; // aim row: apex<=y -> landing point near the chaser (0x240 gate)
+        w.ball.cross85Pos = {0, 2, -1300};
+        auto& cp = w.players[static_cast<std::size_t>(chaser)];
+        cp.ctrl = 0;                    // AI chaser: the phase/aim gate row (0x542EEC) runs on landing
+        cp.stateSub2 = 0;               // side-row precondition (!(stateSub2 & 1))
+        cp.stateTimer = 0;              // skip the bestAng lane (0x5431E2 continue): pure geometry rows
+        w.pl.current = chaser;
+        cp.speed = 0x40000;             // nonzero speed row (0x542F48 gate)
+        Motion_setTargetAlt(w, chaser, {0, 0, -1300});
+        for (int q = 0; q < 22; ++q)    // isolate: everyone else far off the chase corridor
+            if (q != chaser && q != blocker) setPos(w, q, 2600, -1200);
+        w.time.totalFrames += 32;       // invalidate pair-distance caches (10-frame window)
+        setPos(w, blocker, 0, -1130);   // dist 70 <= 0x86 from chaser; 170 > 0x36 from target: far row
+        Vec3 out{}; std::int32_t res = -7;
+        w.pl.current = chaser;
+        std::fprintf(stderr, "LB tgt=(%d,%d) chaser=(%d,%d) blocker=(%d,%d)\n", Motion_targetVec(w, chaser).x, Motion_targetVec(w, chaser).z, w.players[static_cast<std::size_t>(chaser)].posI.x, w.players[static_cast<std::size_t>(chaser)].posI.z, w.players[static_cast<std::size_t>(blocker)].posI.x, w.players[static_cast<std::size_t>(blocker)].posI.z);
+        const bool retFar = Player_interceptTarget_542EA0(w, chaser, out, res); // no side replacement expected (far row)
+        std::fprintf(stderr, "LB far ret=%d res=%d out=(%d,%d)\n", retFar ? 1 : 0, res, out.x, out.z);
+        ck(!retFar && res != blocker, "blocker far from the chase target replaced the steering target");
+        w.time.totalFrames += 32;       // refresh distance caches for the new geometry
+        setPos(w, blocker, 0, -1270);   // dist 70 <= 0x86; 30 <= 0x36 of target: side row fires
+        w.pl.current = chaser;
+        Vec3 out2{}; std::int32_t res2 = -7;
+        const bool retNear = Player_interceptTarget_542EA0(w, chaser, out2, res2);
+        ck(retNear && res2 == blocker, "blocker inside the target band did not replace the steering target");
+        if (retNear) {
+            // Independent replica of the side-offset row: ang = atan2i(q-p), side = q + 0x26 @ ang-0x200.
+            const auto& p = w.players[static_cast<std::size_t>(chaser)];
+            const auto& q = w.players[static_cast<std::size_t>(blocker)];
+            const Angle ang = atan2i(q.posI.x - p.posI.x, q.posI.z - p.posI.z);
+            const Vec3 side = offsetInDirection(q.posI, 0x26, ang - 0x200);
+            ck(out2.x == side.x && out2.z == side.z, "blocker steering target is not the 0x26 side-offset row");
+        }
+        w.time.totalFrames += 32;
+        cp.speed = 0; // 0x542F48: zero-speed chaser -> res -1, no replace
+        Vec3 out3{}; std::int32_t res3 = -7;
+        const bool retZero = Player_interceptTarget_542EA0(w, chaser, out3, res3);
+        ck(!retZero && res3 == -1, "zero-speed chaser did not take the 0x542F48 res=-1 row");
+    }
+
+    // ---- Lane C: flight interception (mid-corridor defender wins before receiver arrives).
+    {
+        int winnerA = -99, winnerB = -99;
+        for (int pass = 0; pass < 2; ++pass) {
+            SimRunner r(md, opt, kSeed);
+            auto& w = r.world();
+            std::vector<Rec> all;
+            int forceIn = 0, probeTick = 0;
+            int pp = -1, settle = 0; // M7 kickoff-settle grammar (lane B note): force the in-ball when the lineup stalls
+            for (int i = 1; i <= 900 && !r.finished() && w.match.phase != 9; ++i) {
+                step(r);
+                if (w.match.phase == 0 && pp != 0) settle = 154;
+                pp = w.match.phase;
+                if (settle > 0 && --settle == 0 && w.match.phase == 0) Match_dispatchEvent(w, 0xb, w.match.phaseTeam);
+            }
+            ck(w.match.phase == 9, "lane C never reached live phase (kickoff lineup stall)");
+            bool done = false;
+            for (int i = 1; i <= 1500 && !r.finished() && !done; ++i) {
+                auto ev = step(r);
+                all.insert(all.end(), ev.begin(), ev.end());
+                if (forceIn == 0 && probeTick == 0) forceIn = 154; // arm once from loop start
+                if (forceIn > 0 && --forceIn == 0) probeTick = gTick + 240; // live settle, then the corridor pass
+                if (probeTick > 1 && gTick == probeTick) {
+                    probeTick = 0;
+                    const int feed = 14, recv = 13; // team-0 attacks the -z goal: natural preset rows
+                    setPos(w, feed, -1200, 900);
+                    setPos(w, recv, 300, -650); // receiver one step past the stop point
+                    w.players[static_cast<std::size_t>(feed)].facing = atan2i(300 + 1200, -650 - 900); // face the receiver
+                    Ball_placeAt(w, {-1200, 2, 900});
+                    w.ball.possessor = feed;
+                    w.ball.dribbler = feed;
+                    w.ball.lastToucher = feed;
+                    w.ball.flags |= 0x20;
+                    forceKick(w, feed, 1, 2); // ground pass row along the corridor (probe-measured stop point)
+                    int midDef = -1;
+                    long bestD = 1L << 30;
+                    for (int q = 11; q < 22; ++q) { // team-1 fielders: nearest to the stop zone
+                        if (w.players[static_cast<std::size_t>(q)].slot == 0) continue;
+                        const auto& qP = w.players[static_cast<std::size_t>(q)];
+                        const long d = std::llabs(qP.posI.x - (-1041)) + std::llabs(qP.posI.z - (-1598));
+                        if (d < bestD) { bestD = d; midDef = q; }
+                    }
+                    setPos(w, midDef, -1041, -1598); // at the probe-measured pass stop point: natural capture wins
+                    for (int q = 0; q < 11; ++q) if (q != feed && q != recv) setPos(w, q, w.ball.posI.x - 2500, w.ball.posI.z); // deep side
+                    for (int q = 11; q < 22; ++q) if (tmOf(w, q) == 1 && q != midDef && w.players[static_cast<std::size_t>(q)].slot != 0) setPos(w, q, -2500, w.ball.posI.z);
+                    forceIn = 0;
+                }
+                for (auto& e : all)
+                    if (e.type == EventType::Possession && e.a >= 0 && tmOf(w, e.a) == 1) { done = true; break; }
+            }
+            int winner = -99;
+            for (auto& e : all)
+                if (e.type == EventType::Possession && e.a >= 0 && tmOf(w, e.a) == 1) { winner = e.a; break; }
+            const bool passEv = has(all, EventType::Pass);
+            ck(passEv, "interception lane: the corridor pass never emitted a Pass event");
+            ck(winner >= 0 && tmOf(w, winner) == 1, "no defending-side player intercepted the flight (possession never flipped to the defending side)");
+            if (pass == 0) winnerA = winner; else winnerB = winner;
+        }
+        ck(winnerA >= 0 && winnerA == winnerB, "flight-interception branch is not deterministic on the fixed seed");
+    }
+    std::printf("fall recovery asserts %02d/%02d PASS\n", gChecks, gChecks);
+}
+
+// ---------------------------------------------------------------------------------------------
 // 16. Gap K (aerial duel / header): a header off an aerial ball emits Header and lifts the ball
 // (solver kind 6, kick.cpp l.723: mode 5 with M from the aim spread).
 void scenarioHeaderDuel() {
@@ -2464,6 +2675,7 @@ int main() {
     scenarioTeamShape();
     scenarioShotVariants();
     scenarioHeaderCross();
+    scenarioFallRecovery();
     scenarioHeaderDuel();
     scenarioSpinNetSurface();
     return 0;

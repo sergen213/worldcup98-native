@@ -252,3 +252,4 @@ see analysis/patches/PENDING.md).
   determinism + per-slot targets vs independent G98PL fx replica (devX=devZ=0, ~13.7k samples),
   defensive-line follow lane, keeper band vs Keeper_position_539FCC rows (worst 204/291). Coverage
   gap list fully closed; suite 114/114 green at integration.
+- Volley + header landing lanes closed: `scenarioShotVariants` lane A (volley anim-variant selection vs independent 0x58B1D0 mask-row rng replica, devMax=0, determinism asserted) and lane B (`scenarioShotVariants`: corner-cross lofted feed -> State301 descent band 0x39..0x72 -> pad aim row [16]=0x1A8 recorded in the event-mapping field, sentinel arm animId 0x10/contactFrame -1 per State301 grammar l.640, Shot via kickEvent kind-4 mapping, state 0x300), plus `scenarioHeaderCross` (box-cross descent window 0x5B..0xB4, code-9 header/chest family -> Header event mapping, solver kind 6). Commits 2ac679a/a359d14; suite 114/114 green.

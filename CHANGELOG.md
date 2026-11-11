@@ -8,6 +8,14 @@ project goals.
 ## [Unreleased]
 ### Added
 
+- **Input-table provenance gate + D-71 refuted (pass-16)**: `test_input_tables` pins the whole
+  SpInput byte lane to FIFAWC.EXE - button masks @`0x58c7b4`, all 9x14 context slot pointers
+  @`0x58d314` **decoded** to action-table ids (dev5 ctx03 -> id 4 @`0x58cd14`, ctx10 -> id 9
+  @`0x58cf94`), the full 2048-byte action-table lane @`0x58cb14`, the keep-mask lane @`0x58d8fc`
+  and the single queue-gate array @`0x58c750` (D-66/D-58). Registry D-71 **refuted**: the cited
+  deltas `0x58cd94`/`0x58cf14` were big-endian reads of these little-endian slot bytes - the port's
+  `kCtxTable` rows (incl. dev5) are byte-exact WC98 values; no code change needed, gate added.
+
 - **Ball collision/goal-mouth grammar closure (pass-16, D-14)**: WC98 bodies decompiled and
   verified row-for-row — net-rest tail `FUN_004c0150`, resolve switch `FUN_004c09a0` (post/bar
   bounce helpers `FUN_004bf660/0x4bf760`, netDamp `FUN_004c12e0`, reflect `FUN_004bf490`), goal-mouth

@@ -451,3 +451,17 @@ ref-1 = -1), and 23 roster-scan loops in ai/input/rules/squad/team_phase/player_
 installed at every scan site (`if (q < 0) continue; // empty roster slot`) + height/bone return-0
 lanes. Canonical sanitizer suite invocation: `QT_QPA_PLATFORM=offscreen ASAN_OPTIONS=detect_leaks=0
 ctest -j8` in build/debug (Qt/Vulkan exit-time arena allocations are intentional; LSAN-only noise).
+
+## Pass 16b — input-table provenance gate (D-71 refuted)
+
+`test_input_tables` walks the full SpInput byte lane against FIFAWC.EXE: button masks @0x58c7b4
+(dev*0x60, first dword of each 12-B entry), context slots @0x58d314 decoded from slot pointers to
+action-table ids (9x14), the complete 2048-byte action-table lane @0x58cb14, keep masks @0x58d8fc
+(full 196 B) and the single queue-gate array @0x58c750 (D-66/D-58). All pins green on first run.
+
+Register D-71 is a **byte-lane refutation**: its cited deltas (dev5 exe ids 5/8 = ptrs
+`0x58cd94`/`0x58cf14`) are the big-endian reading of the BYTES5.md dump strings; LE decode gives
+ctx03 ptr `0x58cd14` -> id 4 and ctx10 ptr `0x58cf94` -> id 9, exactly what `kCtxTable[5]` carries.
+The port rows are byte-exact WC98 values; the registry row now records the refutation + gate.
+Pitfall recorded: slot-pointer dumps must be decoded little-endian (`14 cb 58 00` = 0x58cb14) -
+a BE read of a dump address is the same class of cite error as D-47/D-48's FIFA-99 addresses.

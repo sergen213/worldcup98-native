@@ -103,6 +103,12 @@ target_link_libraries(test_motion_tables PRIVATE wc98_simulation)
 wc98_test(test_input unit/test_input.cpp)
 target_link_libraries(test_input PRIVATE wc98_input)
 
+# Input-table provenance gate (pass-15/16, BYTES5.md): button masks @0x58c7b4, context slot
+# pointers @0x58d314 decoded to action-table ids (dev5 ctx10 = 0x58cf14 -> id 8, register D-71),
+# full action-table/keep-mask lanes + the single 96-byte queue gate @0x58c750 (D-66). Tree-gated.
+wc98_test(test_input_tables unit/test_input_tables.cpp)
+target_include_directories(test_input_tables PRIVATE ${CMAKE_SOURCE_DIR}/simulation/src)
+
 # Gamepad platform layer: canonical layout mapping + nav repeat throttle + poll() glue
 # through an SDL virtual pad under the dummy video driver (no hardware, no display).
 wc98_test(test_gamepad unit/test_gamepad.cpp)

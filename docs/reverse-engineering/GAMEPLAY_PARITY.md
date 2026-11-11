@@ -224,11 +224,12 @@ rows + State309 flight interception (pass-14 scenarioFallRecovery); physical int
 via the same lane-A countdown/decay/resume gate), **ported-unverified=0**, **partial=1** (referee),
 **missing=0** - no system is entirely absent; open sub-items
 are listed per row and in §4.
-Gates: named ctest gates cited = **24** (`test_sim_core`, `test_sim_players`, `test_sim_team`,
+Gates: named ctest gates cited = **25** (`test_sim_core`, `test_sim_players`, `test_sim_team`,
 `test_sim_scenarios`, `match_demo_frames`, `replay_record_play`, `interactive_match`,
 `self_test_gameplay`, `fe_igmenu`, `fe_ighalf`, `fe_igscsum`, `fe_igflsum`, `test_hud`,
 `test_input`, `test_anim`, `test_gen4tbls`, `test_fcdb`, `test_phrs`, `test_speechqueue`,
-`test_commentary`, `test_gameaudio`, `test_trig_tables`, `test_ball_tables`, `test_motion_tables`);
+`test_commentary`, `test_gameaudio`, `test_trig_tables`, `test_ball_tables`, `test_motion_tables`,
+`test_input_tables`);
 suite total 117/117 green incl. the pass-15 provenance gates and the pass-15 S3 input/motion grammar
 gates in `test_sim_players` (cap-chain per-bit equality, pad-decode fixture pins, gesture boundary
 probes, queue-drop, pause-skip matrix), plus the goal §14 lane `wc98-native --self-test FILE.json`

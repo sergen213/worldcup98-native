@@ -14,15 +14,18 @@ constexpr std::uint32_t kButtonMask[9][8] = { // exe 0x58c7b4 (WC98; FIFA99 fall
     {0x10, 0x20, 0x40, 0x80, 0x100, 0x200, 0x400, 0x800},
     {0x10, 0x20, 0x40, 0x80, 0x100, 0x200, 0x400, 0x800},
 };
-// Context entries 0x58d314 + dev*0xA8 + ctx*0xC = {8, table, ctx} (WC98 FIFAWC.EXE; FIFA99 fallback
-// 0x58C648): byte-identical index lists; action-table pointer deltas verified (+0x360 layout).
+// Context entries 0x58d314 + dev*0xA8 + ctx*0xC = {8, table ptr, ctx} (WC98 FIFAWC.EXE; FIFA99
+// fallback 0x58C648). All nine dev rows pinned to the decoded slot pointers: dev5 ctx03 -> id 4
+// (@0x58cd14), ctx10 -> id 9 (@0x58cf94) (register D-71 refuted: the BYTES5.md cite addresses were
+// big-endian readings of these little-endian slot bytes; ids 4/9 are byte-exact). The FIFA-99 dump
+// is index-identical for every dev row. Gate: tests/unit/test_input_tables.cpp (slot-decode lane).
 constexpr std::uint8_t kCtxTable[9][14] = { // exe 0x58d314 (WC98; FIFA99 fallback 0x58C648)
     {0, 1, 2, 3, 5, 6, 7, 10, 11, 12, 8, 13, 14, 15},
     {0, 1, 2, 3, 5, 6, 7, 10, 11, 12, 8, 13, 14, 15},
     {0, 1, 2, 3, 5, 6, 7, 10, 11, 12, 8, 13, 14, 15},
     {0, 1, 2, 3, 5, 6, 7, 10, 11, 12, 8, 13, 14, 15},
     {0, 1, 2, 3, 5, 6, 7, 10, 11, 12, 8, 13, 14, 15},
-    {0, 1, 2, 4, 5, 6, 7, 10, 11, 12, 9, 13, 14, 15},
+    {0, 1, 2, 4, 5, 6, 7, 10, 11, 12, 9, 13, 14, 15}, // dev5 WC98 slot ptrs (D-71 refuted)
     {0, 1, 2, 3, 5, 6, 7, 10, 11, 12, 8, 13, 14, 15},
     {0, 1, 2, 3, 5, 6, 7, 10, 11, 12, 8, 13, 14, 15},
     {0, 1, 2, 3, 5, 6, 7, 10, 11, 12, 8, 13, 14, 15},

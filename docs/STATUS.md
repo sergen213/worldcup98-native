@@ -170,6 +170,13 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
   (`match.flags278` bit 0x2000). D-56/D-57/D-58/D-64…D-68 → Fixed; gates in `test_sim_players`;
   self-test locomotion windows re-measured on WC98-grammar carriers (movement 4321, sprint segment
   4193, stop-distance ladder green); suite **117/117**, JSON self-test 14/14.
+- Pass-15 S4 (2026-11-11): motion remainder closed — `Motion_setTarget` unconditional (FUN_004F4E70),
+  `Motion_warpTo` pure snap (FUN_004F4F80: atan2 facing write + turnDelta copy, no flag bit 8 / target
+  reset; post-teleport heading now exe-exact), gait/speed-class producer replicated with the canonical
+  `{id, rate}` pair-grid model (loco block = flat u16 view: header trio +0x0, central rows stride 0x2C
+  @+0xC, early-return grids @+0xE8/+0x156; the declared `[row][col][pair]` indexing double-counted the
+  stride). Gates in `test_sim_players` (D-59/D-60) + scenario gait lanes (cells/ladder/rate formula vs
+  byte-exact `.data` dump); D-59/D-60 → Fixed, D-63 → Closed (structural), suite remains **117/117**.
 - Release: tag `v0.3.0` + GitHub release (AppImage + `.sha256`/`.version` sidecars): playable live match,
   authentic FE fonts/language knob, FEFLOW11 team-select grid, measured percent-table scene defaults;
   game smoke exit 0 under Xvfb, launcher offscreen self-test pass, `update.sh --check` -> "up to date";

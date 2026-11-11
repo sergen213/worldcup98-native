@@ -2,6 +2,50 @@
 
 Newest entries first. One entry per meaningful milestone (project rule).
 
+
+## 2026-11-11 — Pass-15 S4: motion remainder closed (D-59/D-60/D-63)
+
+- **D-59 fixed**: `Motion_setTarget` = FUN_004F4E70 grammar — bit-0 clear + dx/dz/octant-dist store
+  unconditional; the port's flag/equality gates (FIFA-99 shape) removed. Gate: target update lands
+  with the no-turn and arrival bits set (`test_sim_players`).
+- **D-60 fixed**: `Motion_warpTo` = FUN_004F4F80 pure snap — pos int+frac + frac clamp, two refresh
+  calls, atan2-table facing write into `facingDesired`, turnDelta copy from desired-facing, head-aim
+  tail; flags bit 8 and target/targetRef untouched. Gate: post-warp facing == atan2-derived value,
+  target preserved (heading after teleport now matches the exe).
+- **D-63 closed (structural)**: gait/speed-class producer replicated (`(speed + 0x8000) >> 16`,
+  sub-threshold walk `>0x4ccc`, `0xb→0` remap, cascade rows, turn-class rows 11/12/13 stride 0x12).
+  Key forensic: the loco pair block is a **flat u16 `{id, rate}` view** — header trio @+0x0 (builder
+  `FUN_004FC2C0` three pair passes), central rows stride 0x2C @**+0xC**, early-return grids
+  @+0xE8/+0x156 with 11 columns; the port's declared `[row][col][pair]` array double-counted the
+  u16 stride and read the wrong cells (the old gate passed only because FIFA-99 expectations matched
+  that same misindexing). Scenario gait lanes now assert per-band canonical cells, selector ladder
+  and the rate formula `(clamp(speed − 0x20·pair[1], ±0x13330) >> 2) + 0x10000` against the byte-exact
+  `.data` dump; special codes accepted with their consumer fanouts (keep-current 0x141 → controller's
+  current record id, no-skill 0x1ca + req bit 0x200 → anim 7). Clip-name resolution stays qualitative
+  per D-61 (tables runtime-built).
+- Suite remains **117/117** (gates land inside existing ctest targets); self-test locomotion windows
+  unchanged by the snap/target grammar (measured green at this commit).
+- **Consumer cutover (same day, first suite run)**: the canonical pair-grid model landed in the
+  **consumer** — `AnimData.loco[6][11][2]/turnL/turnR` replaced by one `locoBlock[264]` flat view of
+  DAT_00591698..DAT_005918A8 (kLoco+kTurnL+kTurnR contiguous dump), and `Anim_selectLocomotion` =
+  FUN_004FC470 grammar: req cascade {&4→2, &1→3, &2→4, &8→1, none→0}, early-return grids on req bits
+  0x40/0x80 (turnL @block+0xE8 idx 116, turnR @+0x156 idx 171), central pairs at +0xC stride 0x2C
+  (u16 idx 6 + col*2 + row*22 — the old FIFA-99 consumer read the trio region as row 0 and used a
+  shifted ladder {&1→4, &2→5} with an extra 0x1000 arm), WC98 special codes (req bit 0x200 + 0x1ca →
+  anim 7; keep-current 0x141: req bit 0x20 → 0x135, else current seq record id). `locoPass` resolves
+  ids and rebuilds rates over the trio/central/grid cells in canonical order. Scenario installer/gate
+  views updated; suite **117/117** green incl. both gait lanes (lane 1 band-by-band cell equality,
+  lane 2 live ladder). Probe prints from the S3/S4 debug sessions stripped (`[upd ...]`, `[st-*]`,
+  LB/DBG scenario lines); `Motion_warpTo` callers fully migrated to the 3-arg snap form.
+
+- **Stop-distance step 13 lane rebuilt on the exe's sprint grammar**: the deceleration window now
+  measures fatigue drop from a FRESH gesture press edge (neutral nibble at the plateau pin, then a
+  `kSprint` press arming the attr-timer → moveReq bit 0x100000 cap chain), with the loose ball placed
+  +1500 ahead so the chase spans the sprint-flag expiry AND >=8 root-clip ticks before the capture
+  latch ends the clean window; the pad stays on the chase nibble (no re-press) while the ladder walks
+  sprintMax -> runMax(-mB0), then neutral at ball arrival for the stop snap. Per-tick exact-match +
+  brake-distance integration unchanged. Self-test **14/14** green; probes stripped.
+
 ## 2026-11-11 — Pass-15 S2/S3 forensic slices: motion tables landed, input layer registered
 
 - **Motion table provenance (D-55) fixed**: the port's `kSpeedCap`/`kTurnClass` cited FIFA-99 VAs

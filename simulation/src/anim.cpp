@@ -554,11 +554,12 @@ void blendPass(AnimData& a) {
 std::int32_t contactInfoData(const AnimData& a, int anim, int edx, int ecx, int ebx, int s1, std::int32_t* out44,
                              std::int32_t* out48);
 
-void locoPass(AnimData& a) { // 0x4CBEA0
+void locoPass(AnimData& a) { // 0x4CBEA0; FUN_004FC2C0 pair-grid model over the static template (D-61/D-63)
     std::memcpy(a.gaitType, kGaitType, sizeof a.gaitType);
-    std::memcpy(a.loco, kLoco, sizeof a.loco);
-    std::memcpy(a.turnL, kTurnL, sizeof a.turnL);
-    std::memcpy(a.turnR, kTurnR, sizeof a.turnR);
+    std::memcpy(a.locoBlock, kLoco, sizeof kLoco); // DAT_00591698..DAT_005918A8 contiguous dump (D-63)
+    std::memcpy(a.locoBlock + 132, kTurnL, sizeof kTurnL);
+    std::memcpy(a.locoBlock + 198, kTurnR, sizeof kTurnR);
+    static_assert(sizeof kLoco == 264 && sizeof kTurnL == 132 && sizeof kTurnR == 132, "block dump sizes");
     std::memcpy(a.skillA, kSkillA, sizeof a.skillA);
     std::memcpy(a.skillB, kSkillB, sizeof a.skillB);
     // The tables' "no clip" filler is the end of the loaded seq table in both families (FIFA-99
@@ -567,22 +568,30 @@ void locoPass(AnimData& a) { // 0x4CBEA0
     // id inside a.seqs (locoPass runs before any clip load, on the raw table ids).
     const std::uint16_t kSeqEnd = static_cast<std::uint16_t>(a.seqs.size());
     auto res = [&](std::uint16_t v) { return v < kSeqEnd ? seqResolve(a, v) : 0x1c4; };
-    for (int r = 0; r < 6; ++r)
+    // Canonical pair cells (gaitselect l.92 addressing): header trio @u16 idx 0..5, central loco
+    // rows stride 0x2C bytes from block +0xC: [reqClass][gaitType col] {id, rate<<5}.
+    auto pairPass = [&](int i) {
+        const int id = res(a.locoBlock[i]);
+        std::int32_t dist = 0, ang = 0;
+        const std::int32_t frames = contactInfoData(a, id, 0, 0, -97, 0, &dist, &ang);
+        const std::int64_t num = static_cast<std::int64_t>(dist) << 16, den = static_cast<std::int64_t>(frames) << 16;
+        std::int32_t q = 0;
+        if (den != 0) { // fdiv2: integer quotient then 16-bit fraction of the remainder
+            const std::int32_t q1 = static_cast<std::int32_t>(static_cast<std::int32_t>(num) / static_cast<std::int32_t>(den));
+            const std::int32_t rm = static_cast<std::int32_t>(static_cast<std::int32_t>(num) % static_cast<std::int32_t>(den));
+            q = (q1 << 16) + static_cast<std::int32_t>((static_cast<std::int64_t>(rm) << 16) / static_cast<std::int32_t>(den));
+        }
+        a.locoBlock[i] = static_cast<std::uint16_t>(id);
+        a.locoBlock[i + 1] = static_cast<std::uint16_t>(q >> 5);
+    };
+    for (int p = 0; p < 3; ++p) pairPass(p * 2);                    // header trio pairs @+0x0
+    for (int r = 0; r < 5; ++r)
+        for (int j = 0; j < 11; ++j) pairPass(6 + 2 * j + 22 * r);   // central rows: idx 6 + col*2 + row*22 (+0xC base)
+    // Early-return grids of u16 ids, row stride 0x16: turnL @block+0xE8 (idx 116), turnR @+0x156 (171).
+    for (int r = 0; r < 5; ++r)
         for (int j = 0; j < 11; ++j) {
-            a.turnL[r][j] = static_cast<std::uint16_t>(res(a.turnL[r][j]));
-            a.turnR[r][j] = static_cast<std::uint16_t>(res(a.turnR[r][j]));
-            const int id = res(a.loco[r][j][0]);
-            std::int32_t dist = 0, ang = 0;
-            const std::int32_t frames = contactInfoData(a, id, 0, 0, -97, 0, &dist, &ang);
-            const std::int64_t num = static_cast<std::int64_t>(dist) << 16, den = static_cast<std::int64_t>(frames) << 16;
-            std::int32_t q = 0;
-            if (den != 0) { // fdiv2: integer quotient then 16-bit fraction of the remainder
-                const std::int32_t q1 = static_cast<std::int32_t>(static_cast<std::int32_t>(num) / static_cast<std::int32_t>(den));
-                const std::int32_t rm = static_cast<std::int32_t>(static_cast<std::int32_t>(num) % static_cast<std::int32_t>(den));
-                q = (q1 << 16) + static_cast<std::int32_t>((static_cast<std::int64_t>(rm) << 16) / static_cast<std::int32_t>(den));
-            }
-            a.loco[r][j][0] = static_cast<std::uint16_t>(id);
-            a.loco[r][j][1] = static_cast<std::uint16_t>(q >> 5);
+            a.locoBlock[116 + j + 11 * r] = static_cast<std::uint16_t>(res(a.locoBlock[116 + j + 11 * r]));
+            a.locoBlock[171 + j + 11 * r] = static_cast<std::uint16_t>(res(a.locoBlock[171 + j + 11 * r]));
         }
     for (int r = 0; r < 6; ++r)
         for (int j = 0; j < 11; ++j) { // the exe never advances the skillB pointer (esi): kept
@@ -725,43 +734,50 @@ std::int32_t syncStart(World& w, const Desc& d, int oldRef) {
 
 int Anim_resolveId(const World& w, int animId) { return seqResolve(AD(w), animId); } // 0x4CC984
 
-int Anim_selectLocomotion(World& w, int pid) { // 0x4CC028
+int Anim_selectLocomotion(World& w, int pid) { // FUN_004FC470 (WC98 canonical; FIFA-99 cite 0x4CC028)
     AnimCtl& ctl = C(w, pid);
     const PlayerState& M = w.players[static_cast<std::size_t>(pid)];
     const AnimData& a = AD(w);
     const u32 req = ctl.req;
     int type = ctl.type();
-    if (type == 0xb) type = 0;
-    std::int32_t gait = (M.speed + 0x8000) >> 16;
-    if (gait == 0 && M.speed > 0x4ccc) gait = 1;
-    int row = 0;
-    if (req & 0x100f) row = (req & 4) ? 2 : (req & 1) ? 4 : (req & 2) ? 5 : (req & 0x1000) ? 3 : 1;
+    if (type == 0xb) type = 0;                                       // l.29-31 remap
+    std::int32_t gait = (M.speed + 0x8000) >> 16;                    // speed band [M+0xA0]
+    if (gait == 0 && M.speed > 0x4ccc) gait = 1;                     // sub-threshold walk row l.33-35
+    const int row = (req & 4) ? 2 : (req & 1) ? 3 : (req & 2) ? 4 : (req & 8) ? 1 : 0; // req cascade l.37-57
     const std::uint8_t* base;
-    if (M.turnClass == 0) base = a.gaitType[type];
-    else if (M.turnClass == 1) base = wrap200(M.facing - M.facingDesired) >= 0 ? a.gaitType[13] : a.gaitType[12];
-    else base = a.gaitType[11]; // turn class 2 (0x59F8E2)
+    if (M.turnClass == 0) base = a.gaitType[type];                   // DAT_0059159C + type*0x12
+    else if (M.turnClass == 1) {                                     // facing - facingDesired sign l.61-72
+        const Angle d = wrap200(M.facing - M.facingDesired);
+        base = d < 0 ? a.gaitType[12] : a.gaitType[13];              // DAT_00591674 / DAT_00591686
+    } else base = a.gaitType[11];                                    // DAT_00591662 (turn class 2)
     int nt = base[gait];
-    if (type == nt && ctl.stamp30 < static_cast<u32>(w.time.totalFrames) && M.turnClass == 0) nt = a.gaitType[0][gait];
-    ctl.type() = static_cast<std::uint8_t>(nt);
-    int id;
-    const std::uint16_t* loco = nullptr;
-    if (M.turnDelta < -0x1c) id = a.turnL[row][nt];
-    else if (M.turnDelta > 0x1c) id = a.turnR[row][nt];
-    else {
-        loco = a.loco[row][nt];
-        id = loco[0];
-    }
-    if ((req & 0x100) && id == 0x166) {
+    if (type == nt && ctl.stamp30 < static_cast<u32>(w.time.totalFrames) && M.turnClass == 0)
+        nt = a.gaitType[0][gait];                                    // row-0 override l.77-79
+    ctl.type() = static_cast<std::uint8_t>(nt);                      // [record+0x2A] write (l.80)
+    const std::uint16_t* Lb = &a.locoBlock[0];                       // DAT_00591698 block view (D-63)
+    if (req & 0x40) return Lb[116 + nt + row * 11];                  // early grid DAT_00591780 l.82-84
+    if (req & 0x80) return Lb[171 + nt + row * 11];                  // early grid DAT_005917EE l.85-87
+    const int cell = 6 + nt * 2 + row * 22;                          // central pair DAT_005916A4+nt*4+row*0x2C (l.92)
+    std::uint32_t id;
+    bool central = false;                                            // bVar3: rate formula applies
+    if (M.turnDelta < -0x1c) id = Lb[116 + nt + row * 11];           // turnL grid l.88-90
+    else if (M.turnDelta <= 0x1c) { id = Lb[cell]; central = true; } // central pair arm l.91-95
+    else id = Lb[171 + nt + row * 11];                               // turnR grid l.96-98
+    if ((req & 0x200) && id == 0x1ca) {                              // no-skill fanout l.100-103
         ctl.rateReq = 0x10000;
         return 7;
     }
-    Fixed rr = 0;
-    if (loco) {
-        std::int32_t d = M.speed - (static_cast<std::int32_t>(loco[1]) << 5);
-        d = std::clamp(d, -0x13330, 0x13330);
-        rr = (d >> 2) + 0x10000;
+    std::uint32_t rate = 0;
+    if (id == 0x141) {                                               // keep-current l.104-111: bit 0x20 ->
+        if (req & 0x20) { ctl.rateReq = 0x10000; return 0x135; }     // anim 0x135, else current seq id
+        id = ctl.seq ? static_cast<std::uint32_t>(ctl.seq - 1) : 7u; // *in_EAX[9] (port stores id + 1; 0 = none)
     }
-    ctl.rateReq = rr;
+    if (central) {                                                   // rate ladder l.113-122 (bVar3 only)
+        std::int32_t d = M.speed - (static_cast<std::int32_t>(Lb[cell + 1]) << 5);
+        d = std::clamp(d, -0x13330, 0x13330);
+        rate = static_cast<std::uint32_t>((d >> 2) + 0x10000);
+    }
+    ctl.rateReq = rate;                                              // [record+0x18] write (l.123)
     return id;
 }
 

@@ -22,7 +22,7 @@ Layout note: WC98's DGROUP layout mirrors FIFA99's exactly for these families �
 | kActionQueueAllowed | 0x58c752 (= btnmask − 0x62, same FIFA99 delta) | **differs: 48/98 entries** | data re-dumped from WC98 bytes |
 | kActionQueueable | — (FIFA99 slot = 0x58c6f0) | **WC98 has no equivalent byte array**: the mirrored slot holds dword-structured data, not a 0/1 array; WC98 ships a single queue block (above). Evidence: FINDINGS.md hexdump + {0,1}-window scan. | FIFA99 dump kept with explicit absent note |
 | kGaitType | 0x59159c | byte-identical (exact scan) | header cites WC98 VA; data unchanged |
-| kLoco | 0x591698 | **differs: 74/132** (WC98 clip ids; e.g. first row 321,322,323,458,532,234 vs FIFA99 358,442,235,324,357,67) | data re-dumped from WC98 bytes |
+| kLoco | 0x591698 | **differs: 74/132** (WC98 clip ids; e.g. first row 321,322,323,458,532,234 vs FIFA99 358,442,235,324,357,67) | data re-dumped from WC98 bytes. Canonical layout (pass-15 S4): flat u16 `{id, rate}` pair view — header trio at +0x0, central rows stride 0x2C @ **+0xC**, early-return grids @ +0xE8/+0x156 (11 cols = gaitType row count); the declared `[row][col][pair]` indexing double-counted the stride |
 | kTurnL / kTurnR | 0x5917a0 / 0x591824 | **differ: 66/66 each** | data re-dumped from WC98 bytes |
 | kSkillA / kSkillB | 0x5918a8 / 0x59192c | **differ: 66/66 each** (WC98 uses clip 534 filler where FIFA99 used 452) | data re-dumped from WC98 bytes |
 
@@ -60,4 +60,8 @@ Unshifted blocks (identical to the port's comments): pos/target +0x1C..+0x4C and
 
 1. kActionQueueable: WC98's queueability gate lives on the dword block at 0x58c6f0 — decode its per-action dword semantics and replace the kept FIFA99 byte array with a faithful WC98 model (input.cpp:352 currently consumes the FIFA99 table).
 2. Diff-shape analysis of kActionTable rows (which contexts/actions WC98 renamed) for the input gesture docs; 162 changed bytes are in `kActionTable.wc98.bin`.
-3. Skill-table filler value survey: confirm 534 = "no skill clip" sentinel semantics from the locoPass/selectLocomotion functions at 0x4fc2xx/0x4fd0xx (Ghidra lane).
+3. **Closed (pass-15 S4)**: the builder `FUN_004FC2C0` pair passes stamp clip ids and resolve a
+   locomotion clip (`seqs[id].flags & 1`, TBI chain) to sentinel **534** = `kSeqEnd`; consumer
+   `FUN_004FC470` reads the cells directly, with special codes 0x141 (keep-current), 0x1ca + req bit
+   0x200 (walk at full rate) and the two early-return grids. Grammar in `docs/asset-formats` lane:
+   `analysis/pass15motion/DECOMPILE/gaitselect_004fc470.txt` l.82-123, `gaitspeedtbl_004fc2c0.txt`.

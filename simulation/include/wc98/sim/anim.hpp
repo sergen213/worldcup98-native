@@ -60,9 +60,12 @@ struct AnimData {
     std::vector<AnimClip> clips;    // AISEQS name table order
     // Locomotion tables, exe values resolved at load by 0x4CBEA0 (copied in anim.cpp, exe address there).
     std::uint8_t gaitType[14][18] = {};   // 0x59F81C anim type by speed (rows 11..13: 0x59F8E2/F4/906 turning)
-    std::uint16_t loco[6][11][2] = {};    // 0x59F918 {anim id, root speed (16.16 >> 5)}
-    std::uint16_t turnL[6][11] = {};      // 0x59FA20 (turnDelta < -0x1C)
-    std::uint16_t turnR[6][11] = {};      // 0x59FAA4 (turnDelta > 0x1C)
+    std::uint16_t locoBlock[264] = {};   // WC98 DAT_00591698..DAT_005918A8 (D-63 canonical): flat u16
+                                        // {id, rate<<5} pair view — header trio @+0x0, central loco rows
+                                        // stride 0x2C @+0xC [reqClass][gaitType col], turnL grid u16 ids
+                                        // (row stride 0x16) @+0xE8, turnR grid @+0x156. The exe builds the
+                                        // live tables at runtime via FUN_004FC2C0 (D-61); static dump =
+                                        // kLoco + kTurnL + kTurnR contiguous (anim_tables.inc).
     std::uint16_t skillA[6][11] = {};     // 0x59FB28 (Anim_trySkill, 0x1C4 none)
     std::uint16_t skillB[6][11] = {};     // 0x59FBAC (req bit 0x800)
     // WC98 adaptation: the PCMD player rig (skeleton offsets + hierarchy) for Anim_evalSkeleton,

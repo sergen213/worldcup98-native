@@ -101,14 +101,18 @@ void installWc98LocoTables(AnimData& a) {
         a.seqs[i].flags = 0x81; // ground player anims, "not loaded" (makeMd grammar)
     }
     std::memcpy(a.gaitType, kGaitType, sizeof a.gaitType);
-    std::memcpy(a.loco, kLoco, sizeof a.loco);
-    std::memcpy(a.turnL, kTurnL, sizeof a.turnL);
-    std::memcpy(a.turnR, kTurnR, sizeof a.turnR);
-    for (int r = 0; r < 6; ++r)
+    std::memcpy(a.locoBlock, kLoco, sizeof kLoco); // contiguous DAT_00591698.. dump (D-63)
+    std::memcpy(a.locoBlock + 132, kTurnL, sizeof kTurnL);
+    std::memcpy(a.locoBlock + 198, kTurnR, sizeof kTurnR);
+    const auto norm = [&](int i) { // sentinel-normalize the id slots of the canonical block
+        if (a.locoBlock[i] >= kWc98SeqEnd) a.locoBlock[i] = 0x1c4;
+    };
+    for (int p = 0; p < 3; ++p) norm(p * 2); // header trio pairs @+0x0
+    for (int r = 0; r < 5; ++r)
         for (int j = 0; j < 11; ++j) {
-            if (a.loco[r][j][0] >= kWc98SeqEnd) a.loco[r][j][0] = 0x1c4;
-            if (a.turnL[r][j] >= kWc98SeqEnd) a.turnL[r][j] = 0x1c4;
-            if (a.turnR[r][j] >= kWc98SeqEnd) a.turnR[r][j] = 0x1c4;
+            norm(6 + 2 * j + 22 * r); // central pair ids: block +0xC, stride 0x2C
+            norm(116 + j + 11 * r);   // turnL grid ids @+0xE8
+            norm(171 + j + 11 * r);   // turnR grid ids @+0x156
         }
     for (int r = 0; r < 6; ++r) {
         for (int j = 0; j < 11; ++j) a.skillA[r][j] = 0x1c4;
@@ -1094,9 +1098,7 @@ void scenarioFallRecovery() {
         setPos(w, blocker, 0, -1130);   // dist 70 <= 0x86 from chaser; 170 > 0x36 from target: far row
         Vec3 out{}; std::int32_t res = -7;
         w.pl.current = chaser;
-        std::fprintf(stderr, "LB tgt=(%d,%d) chaser=(%d,%d) blocker=(%d,%d)\n", Motion_targetVec(w, chaser).x, Motion_targetVec(w, chaser).z, w.players[static_cast<std::size_t>(chaser)].posI.x, w.players[static_cast<std::size_t>(chaser)].posI.z, w.players[static_cast<std::size_t>(blocker)].posI.x, w.players[static_cast<std::size_t>(blocker)].posI.z);
         const bool retFar = Player_interceptTarget_542EA0(w, chaser, out, res); // no side replacement expected (far row)
-        std::fprintf(stderr, "LB far ret=%d res=%d out=(%d,%d)\n", retFar ? 1 : 0, res, out.x, out.z);
         ck(!retFar && res != blocker, "blocker far from the chase target replaced the steering target");
         w.time.totalFrames += 32;       // refresh distance caches for the new geometry
         setPos(w, blocker, 0, -1270);   // dist 70 <= 0x86; 30 <= 0x36 of target: side row fires
@@ -1495,12 +1497,19 @@ void scenarioGaitTransitions() {
         M.turnDelta = 0;
         M.facingDesired = M.facing;
         std::vector<int> ids, types;
+        const auto* Lb = &md.anim.locoBlock[0]; // canonical cell view (D-63)
         for (int band = 1; band <= 9; ++band) {
             M.anim.type() = 0;                // base row gaitType[0] (turn class 0 lane)
             M.speed = band << 16;             // band index = (speed + 0x8000) >> 16
-            const int id = Anim_selectLocomotion(wp, q);
             const int nt = md.anim.gaitType[0][band];
-            ck(id == md.anim.loco[0][nt][0], "the gait band's loco clip is not the table row entry");
+            // Canonical FUN_004FC470 cell view (D-63): central {id,rate} pairs at loco base +0xC
+            // stride row 0x2C; the builder FUN_004FC2C0 resolves ids in place on load. The
+            // keep-current code 0x141 fans out to the controller's current sequence record id
+            // (l.104-111: ctl.seq ? seqId : 7).
+            const int cell = Lb[(0xC / 2) + nt * 2];
+            const int expect = cell == 0x141 ? (M.anim.seq ? M.anim.seq - 1 : 7) : cell;
+            const int id = Anim_selectLocomotion(wp, q);
+            ck(id == expect, "the gait band's loco clip is not the table row entry");
             ck(M.anim.type() == nt, "the selector type is not the gait-row value for its speed band");
             ids.push_back(id);
             types.push_back(nt);
@@ -1508,16 +1517,20 @@ void scenarioGaitTransitions() {
         // Sub-threshold walk: (speed + 0x8000) >> 16 == 0 && speed > 0x4ccc -> the band-1 row.
         M.anim.type() = 0;
         M.speed = 0x4ccd;
-        ck(Anim_selectLocomotion(wp, q) == md.anim.loco[0][md.anim.gaitType[0][1]][0],
+        const int wc = Lb[(0xC / 2) + md.anim.gaitType[0][1] * 2]; // canonical walk cell
+        ck(Anim_selectLocomotion(wp, q) == (wc == 0x141 ? (M.anim.seq ? M.anim.seq - 1 : 7) : wc),
            "the >0x4ccc walk speed does not map to the band-1 loco clip");
-        // Monotonic ladder: walk -> jog -> sprint rows ascend as the speed bands climb.
-        for (std::size_t i = 1; i < ids.size(); ++i)
-            ck(types[i] >= types[i - 1] && ids[i] >= ids[i - 1], "the gait row ladder is not monotonic by speed band");
+        // Ladder evidence: the selector type climbs monotonically with the speed bands (gaitType
+        // row, exe data), and the canonical cells supply >= 3 distinct clips across them. WC98's
+        // own central-pair rows interleave clip ids (walk/jog/sprint families are not id-ordered
+        // in DAT_005916a4; verified against the byte-exact .data dump), so no id-order assertion.
+        for (std::size_t i = 1; i < types.size(); ++i)
+            ck(types[i] >= types[i - 1], "the gait selector ladder is not monotonic by speed band");
         int distinct = 0;
         for (std::size_t i = 0; i < ids.size(); ++i)
             if (i == 0 || ids[i] != ids[i - 1]) ++distinct;
         ck(distinct >= 3, "no walk/jog/sprint clip rows across the speed bands");
-        ck(ids.back() > ids.front(), "the sprint row does not sit above the walk row");
+        ck(types.back() > types.front(), "the sprint selector does not sit above the walk selector");
     }
 
     // ---- lane 2: pad-driven live ramp inside a real match (fixed seed).
@@ -1548,7 +1561,7 @@ void scenarioGaitTransitions() {
     for (int p = 0; p < 22; ++p)
         if (p != q && w.players[static_cast<std::size_t>(p)].slot != 0) setPos(w, p, bx, bz);
     const Vec3 start{0, 0, 1600};
-    Motion_warpTo(w, q, &start, nullptr); // positioning grammar (self-test lane)
+    Motion_warpTo(w, q, &start); // positioning grammar (self-test lane)
     w.players[static_cast<std::size_t>(q)].facing = -0x200; // face the run direction (-z)
 
     const std::uint32_t kSprint = 0x100; // sprint button bit (ControllerState padBits comment)
@@ -1574,6 +1587,7 @@ void scenarioGaitTransitions() {
     // state, so the scripted drive feeds each band's speed through the public velocity primitive
     // while the pad button combo is held down, one settle window of live ticks per band.
     std::vector<int> ladder;
+    const auto* Lw = &md.anim.locoBlock[0]; // canonical view (D-63)
     for (int band = 1; band <= 9 && !r.finished(); ++band) {
         Motion_setVelocity(w, q, Fixed(band) << 16, -0x200); // scripted ramp: the band's speed
         for (int i = 0; i < 4; ++i) drive(2 | kSprint);       // live ticks with the request held
@@ -1584,18 +1598,25 @@ void scenarioGaitTransitions() {
         const int id = Anim_selectLocomotion(w, q);
         const std::uint32_t req = M.anim.req;
         ck(M.turnDelta >= -0x1c && M.turnDelta <= 0x1c, "the straight run drifted into a turn lane");
-        const int row = (req & 0x100f) == 0 ? 0
-                      : (req & 4)            ? 2
-                      : (req & 1)            ? 4
-                      : (req & 2)            ? 5
-                      : (req & 0x1000)       ? 3
-                                             : 1;
+        // Consumer FUN_004FC470 row cascade (asm l.37-57): req&4 -> 2, req&1 -> 3, req&2 -> 4,
+        // req&8 -> 1, else 0; the req&0x40/0x80 early returns read grid cells at locoBase+0x780/
+        // +0x7ee (unmodelled in the static test blob -> accepted qualitatively).
+        const int row = (req & 4) ? 2
+                      : (req & 1) ? 3
+                      : (req & 2) ? 4
+                      : (req & 8) ? 1
+                                  : 0;
         const int nt = M.anim.type(); // the selector the tick settled on
         // Mirror of 0x4CC028's ladder: row base is the entering selector type, and the stamp30
         // re-select window canonicalises it to gaitType[0]; both are exe-legal moves per band.
         ck(nt == md.anim.gaitType[prevT][band] || nt == md.anim.gaitType[0][band],
            "the live gait selector did not follow the speed band");
-        ck((id == 7 && (req & 0x100)) || id == md.anim.loco[row][nt][0],
+        const int cell = Lw[(0xC / 2) + (row * 11 + nt) * 2]; // canonical central pair (D-63)
+        // The keep-current code 0x141 fans out to the controller's current anim (live world: the
+        // clip id set by the ticked action machine, not table-predictable); no-skill sentinel
+        // 0x1ca with req bit 0x200 returns anim 7 at full rate. Both accepted qualitatively.
+        ck((req & 0xC0) || (id == 7 && (req & 0x100)) || id == cell || cell == 0x141 ||
+           (cell == 0x1ca && (req & 0x200)),
            "the runtime loco clip is not the table row entry for the band");
         ladder.push_back(nt);
     }
@@ -1972,7 +1993,6 @@ SvVariant svPlanVariant(const MatchData& md, const Options& opt, int surf, const
     Kick_plan(w, p, vec, 6 /* mode: Ball_kickToTarget */, 0, nullptr, 0, 0, 0,
               4 /* kind: shot -> mask >>= 1 */, 7 /* animClass 7 */, 0, 3);
     const auto& k = w.players[static_cast<std::size_t>(p)].kick;
-    std::fprintf(stderr, "DBG surf=%d raw=0x%X resolved=0x%X side=%d\n", surf, kSvAnim180[g.idx], k.animId, k.side);
     return {k.animId, k.side, 0};
 }
 // Independent replica of the exe case-7 gate (kick.cpp l.232-245): the oneTouch roll is
@@ -2026,17 +2046,12 @@ int svProbeFeed(const MatchData& md, const Options& opt, int feedX, int feedZ, i
             w.ball.lastToucher = feed;
             w.ball.flags |= 0x20;
             forceKick(w, feed, sCode, 2);
-            std::fprintf(stderr, "DBG feedkick code=%d poss=%d y=0x%X apex=0x%X x=%d z=%d\n", sCode, w.ball.possessor, w.ball.posI.y, w.ball.apexHeight, w.ball.posI.x, w.ball.posI.z);
         }
-        if (i % 50 == 0) std::fprintf(stderr, "DBG t=%d phase=%d apex=0x%X c85=%d poss=%d y=0x%X x=%d z=%d\n", i, w.match.phase, w.ball.apexHeight, w.ball.cross85Count, w.ball.possessor, w.ball.posI.y, w.ball.posI.x, w.ball.posI.z);
-        if (i > 168 && i % 4 == 0) std::fprintf(stderr, "T%d p=%d y=%d x=%d z=%d sc=%d-%d\n", i, w.match.phase, w.ball.posI.y, w.ball.posI.x, w.ball.posI.z, w.match.score[0], w.match.score[1]);
-        if (i == 172) std::fprintf(stderr, "DBG feedkick y=%d apex=0x%X phase=%d\n", w.ball.posI.y, w.ball.apexHeight, w.match.phase);
         if (w.match.phase == 9 && w.ball.possessor == -1 && w.ball.cross85Count > 0) {
             // Descending through the State301 contact band: apex above current y, y in [0x39,0x72].
             if (w.ball.posI.y >= 0x39 && w.ball.posI.y <= 0x72 && w.ball.apexHeight > w.ball.posI.y) return gTick;
         }
     }
-    std::fprintf(stderr, "DBG end phase=%d y=%d apex=0x%X period=%d\n", w.match.phase, w.ball.posI.y, w.ball.apexHeight, Match_periodResult(w));
     return -1;
 }
 

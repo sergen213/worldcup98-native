@@ -37,16 +37,18 @@ void setTargetDelta(PlayerState& p, const Vec3& t) {
 
 } // namespace
 
-// 0x4CB778 (EAX = M, EDX = target).
+// FUN_004F4E70 (WC98; FIFA-99 name Motion_setTarget cites 0x4CBA54 — off by 0x3b): stores
+// target x/y/z (+0x34.., y cleared), [M+0x4C] = &record main-target (port: targetRef = 0),
+// byte 0x5E &= ~1 clears the alt-target flag, then dx/dz = target - posI ([M+0x1C]/[M+0x24])
+// and octagonal distance approximation [M+0x60] = hi + lo/2 (sum - min>>1 branch pair).
+// Unconditional: no flag test, no equality compare-and-skip (D-59; settarget_004f4e70.txt l.15-31).
 void Motion_setTarget(World& w, int pid, const Vec3& t) {
     PlayerState& p = w.players[pid];
-    if ((p.moveFlags & 8) || (p.moveFlags & 1) || p.target.x != t.x || p.target.z != t.z) {
-        p.target.x = t.x;
-        p.target.z = t.z;
-        p.targetRef = 0;
-        p.moveFlags &= ~0x0du;
-        setTargetDelta(p, t);
-    }
+    p.target.x = t.x;
+    p.target.z = t.z;
+    p.targetRef = 0;
+    p.moveFlags &= ~1u; // byte 0x5E &= ~1 (exe alt-target clear)
+    setTargetDelta(p, t);
 }
 
 // 0x4CB7FC (EAX = M, EDX = target): alternative target M+0x40 with flag 1; true when within 8.
@@ -63,8 +65,11 @@ bool Motion_setTargetAlt(World& w, int pid, const Vec3& t) {
     return false;
 }
 
-// 0x4CB904 (EAX = M, EDX = pos or null, EBX = point to face or null).
-void Motion_warpTo(World& w, int pid, const Vec3* pos, const Vec3* lookAt) {
+// FUN_004F4F80 (WC98; FIFA-99 name Motion_warpTo cites 0x4CBA78 — off by 0x174): a pure snap.
+// pos int+frac store, refreshBall x2, atan2 -> facingDesired [M+0x7C], copy angleBall
+// [M+0x70] -> turnDelta [M+0x80], updateHeadAim tail. NO flag bit 8, NO setTarget call,
+// NO speed/m98/m9c zeroing (D-60; dossier warpto_004f4f80.txt l.10-23).
+void Motion_warpTo(World& w, int pid, const Vec3* pos) {
     PlayerState& p = w.players[pid];
     if (pos) {
         p.posI.x = pos->x;
@@ -74,19 +79,11 @@ void Motion_warpTo(World& w, int pid, const Vec3* pos, const Vec3* lookAt) {
         p.pos.x = static_cast<Fixed>(static_cast<std::uint32_t>(pos->x) << 16);
         p.pos.z = static_cast<Fixed>(static_cast<std::uint32_t>(pos->z) << 16);
     }
-    p.moveFlags |= 8;
-    Motion_setTarget(w, pid, p.posI);
-    if (lookAt) {
-        const OctDist d = octDistance(p.posI, *lookAt);
-        p.facingDesired = p.facing = atan2i(d.dx, d.dz);
-        p.turnAmount = 0;
-        p.turnClass = 0;
-        p.dir8 = ((p.facing + 0x40) & 0x3ff) >> 7;
-    }
-    Motion_updateHeadAim(w, pid, pos != nullptr); // EBX = pos argument (0x4CB958)
-    p.speed = 0;
-    p.m98 = 0;
-    p.m9c = 0;
+    refreshBall(w, p); // FUN_004f31d0 x2: recomputes dist/dx/dz/angleBall [M+0x64..0x70]
+    const Vec3 v = {w.ball.tpos.x - p.posI.x, 0, w.ball.tpos.z - p.posI.z}; // l.18-21: atan2(ball-rel dx,dz)
+    p.facingDesired = static_cast<std::int32_t>(atan2i(v.x, v.z)); // -> [M+0x7C] facingDesired
+    p.turnDelta = p.angleBall;                                      // l.22: copy [M+0x70] -> [M+0x80]
+    Motion_updateHeadAim(w, pid, pos != nullptr); // FUN_004fd1c0 tail
     refreshBall(w, p);
 }
 
@@ -148,7 +145,6 @@ void Motion_init(World& w, int pid, const Vec3& pos) {
     p.posI.z = pos.z;
     p.pos.x = static_cast<Fixed>(static_cast<std::uint32_t>(pos.x) << 16);
     p.pos.z = static_cast<Fixed>(static_cast<std::uint32_t>(pos.z) << 16);
-    p.moveFlags |= 8;
     Motion_setTarget(w, pid, p.posI);
     p.turnClass = 0;
     p.arrivalCb = 0;
@@ -294,7 +290,7 @@ void Motion_update(World& w, int pid, Fixed dt) {
                 Motion_snapTo(w, pid, p.altTarget);
             } else {
                 const Vec3 tv = targetVec(p);
-                Motion_warpTo(w, pid, &tv, nullptr);
+                Motion_warpTo(w, pid, &tv);
             }
         } else if ((p.moveFlags & 1) && t.dist < 8) {
             p.moveFlags &= ~1u;

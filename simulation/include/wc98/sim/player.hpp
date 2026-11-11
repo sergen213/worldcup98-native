@@ -406,7 +406,7 @@ const Vec3& Motion_targetVec(const World& w, int pid);        // *(player+0x104)
 bool Player_arrivalCallback(World& w, int pid, std::int32_t cb); // call through M+0xD4 (cb = exe address)
 void Motion_setTarget(World& w, int pid, const Vec3& t);      // 0x4CB778
 bool Motion_setTargetAlt(World& w, int pid, const Vec3& t);   // 0x4CB7FC (alt target +0x40, flag 1)
-void Motion_warpTo(World& w, int pid, const Vec3* pos, const Vec3* lookAt); // 0x4CB904
+void Motion_warpTo(World& w, int pid, const Vec3* pos); // WC98 FUN_004f4f80 (0x4CB904); no facing handling (D-60)
 void Motion_snapTo(World& w, int pid, const Vec3& pos);       // 0x4CB884
 Angle Motion_dirToTarget(World& w, int pid);                  // 0x4CB9F8
 void Motion_update(World& w, int pid, Fixed dt);              // 0x4CB510

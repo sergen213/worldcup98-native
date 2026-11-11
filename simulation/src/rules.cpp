@@ -605,7 +605,7 @@ void Match_selectEventDispatcher(World& w, int periodType) { // 0x46F630
         if (m.periodIndex == 0) Motion_setTarget(w, kReferee, entry); // 0x46F72A
     }
     const Vec3 t = Motion_targetVec(w, kReferee); // 0x46F696: warp to [M+0x4C]
-    Motion_warpTo(w, kReferee, &t, nullptr);
+    Motion_warpTo(w, kReferee, &t);
 }
 
 void Match_dispatchEvent(World& w, int event, int team) {
@@ -698,7 +698,7 @@ void Match_updateRules(World& w) {
         PlayerState& r = w.players[kReferee];
         if (!(w.opt.rules & 0x10)) {
             const Vec3 t = Motion_targetVec(w, kReferee);
-            Motion_warpTo(w, kReferee, &t, nullptr);
+            Motion_warpTo(w, kReferee, &t);
         } else {
             Player_frameMove(w, kReferee, m.seqE4, m.seqE8, 0);
         }
@@ -1588,7 +1588,7 @@ const Vec3& Referee_posI(const World& w) { return w.players[kReferee].posI; } //
 
 namespace {
 
-void refWarp(World& w, Vec3 pos) { Motion_warpTo(w, kReferee, &pos, nullptr); } // 0x4CB904(0x66764C, pos, EBX 0)
+void refWarp(World& w, Vec3 pos) { Motion_warpTo(w, kReferee, &pos); } // 0x4CB904(0x66764C, pos, EBX 0)
 void refRequest(World& w, std::uint32_t bits) { // or [0x667718], bits; [M+0]->+0x18 = req >> 16
     PlayerState& r = w.players[kReferee];
     r.moveReq |= bits;

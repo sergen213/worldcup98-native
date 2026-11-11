@@ -7,6 +7,27 @@ project goals.
 
 ## [Unreleased]
 ### Added
+
+- **Motion remainder batch (pass-15 S4)**: `Motion_setTarget` = FUN_004F4E70 unconditional store
+  (bit-0 clear + dx/dz/oct-dist, no flag/equality gates), `Motion_warpTo` = FUN_004F4F80 pure snap
+  (pos int+frac, refresh pair, atan2 facing write, turnDelta copy; flags/target untouched — post-warp
+  heading now matches the exe). The gait/speed-class producer is replicated with its **canonical
+  `{id, rate}` pair-grid model**: the loco block is a flat u16 view (header trio +0x0, central rows
+  stride 0x2C @+0xC, early-return grids @+0xE8/+0x156), not `[row][col][pair]` triple-indexed —
+  the declared array shape double-counted the stride and read the wrong cells. Gates: D-59/D-60
+  probes in `test_sim_players`; scenario gait lanes assert per-band canonical cells, the selector
+  ladder and the rate formula `(clamp(speed − 0x20·pair[1], ±0x13330) >> 2) + 0x10000` against the
+  byte-exact `.data` dump (keep-current 0x141 fans to the controller's current record id). Speed caps
+  + turn thresholds moved into shared `motion_tables.inc`, pinned by `test_motion_tables`. Registry
+  D-59/D-60 → Fixed, D-63 → Closed (structural).
+- **Canonical gait-selector consumer (pass-15 S4 cutover)**: `Anim_selectLocomotion` is now the
+  FUN_004FC470 grammar over a single flat u16 view `AnimData.locoBlock[264]` of DAT_00591698..DAT_005918A8
+  (trio pairs + central `{id,rate}` rows at +0xC stride 0x2C idx base **6** + early-return grids @+0xE8/+0x156);
+  the FIFA-99-shaped `[row][col][pair]` arrays and its shifted req ladder {&1→4,&2→5,0x1000 arm} are removed.
+  WC98 special codes wired: req bit 0x200 + 0x1ca → anim 7, keep-current 0x141 (req bit 0x20 → 0x135, else the
+  controller's current sequence record id). `locoPass` resolves ids/rebuilds rates over trio/central/grid in
+  canonical order. Scenario gait gates assert per-band canonical cells + live ladder; full suite green with this
+  selector (self-test §14 windows recalibrated to the new runtime clip ids). Registry row 1 cites FUN_004FC470.
 - **Producer+consumer input/motion grammar**: the WC98 cap chain (cascade bits 0x40→cap 0x18000,
   0x80→0x40000, 0x100→0x68000 applied **before** the arrival band; sprint ceiling select on bit
   0x100000; penalty mask 0x6000000 subtracting motion B0; class-eval gate byte `&2`; EBX-collapse

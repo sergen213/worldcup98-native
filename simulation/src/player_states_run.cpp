@@ -641,7 +641,7 @@ void State182(World& w, int pid) {
         if (m.setPieceMode == 2 && m.setPiecePartner >= 0) v = P(w, m.setPiecePartner).posI;
         else if (m.setPieceMode != 1) v = m.setPieceAim;
         if (m.setPieceMode != 1) { // 0x5370D7
-            Motion_warpTo(w, pid, &p.posI, nullptr);
+            Motion_warpTo(w, pid, &p.posI);
             Motion_faceVector(w, pid, v.x - p.posI.x, v.z - p.posI.z);
         }
         Ball_takePossession(w, pid, 1);
@@ -970,7 +970,7 @@ void State186(World& w, int pid) {
         [[fallthrough]];
     case 2: // 0x536457
         if (p.targetDist > 0x10 && SeqTrigger_busy(w, 0xc)) return;
-        Motion_warpTo(w, pid, &entry, nullptr);
+        Motion_warpTo(w, pid, &entry);
         Team_removeInjured_49F684(w, t.index);
         Player_clearArrivalCb(w, pid);
         Anim_start(w, pid, 0xeb, 0, p.facingDesired);
@@ -1227,7 +1227,7 @@ void State18D(World& w, int pid) {
         return;
     case 4: // 0x557C5E
         Formation_evalSlotCallback(w, w.match.periodType == 3 ? 6 : 0, pid, v, -1, 0, 1);
-        Motion_warpTo(w, pid, &v, nullptr);
+        Motion_warpTo(w, pid, &v);
         Player_dropBallAndReset(w, pid);
         return;
     default: return;
@@ -1283,7 +1283,7 @@ void State18A(World& w, int pid) {
         }
         if (park) v = {0x27100, 0, 0x27100};
         else Formation_evalSlotCallback(w, cb, pid, v, -1, 0, 1);
-        Motion_warpTo(w, pid, &v, nullptr);
+        Motion_warpTo(w, pid, &v);
         p.stateSub2 = 6;
         p.stateTimer = 0;
         return;
@@ -1295,7 +1295,7 @@ void State18A(World& w, int pid) {
     case 5: { // 0x557F1C
         if (!(w.match.scriptState & 1)) return;
         const Vec3 v{160000, 0, 160000}; // 0x557A18
-        Motion_warpTo(w, pid, &v, nullptr);
+        Motion_warpTo(w, pid, &v);
         nextSub(p);
         return;
     }

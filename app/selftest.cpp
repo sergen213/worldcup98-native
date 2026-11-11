@@ -8,7 +8,6 @@
 
 #include <algorithm>
 #include <array>
-#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <fstream>
@@ -155,7 +154,6 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
         if (!runner.tick()) break;
         if (w.match.phase == 9 && w.ball.possessor >= 0 && teamOfPid(w.ball.possessor) == 1) firstTouchPid = w.ball.possessor;
     }
-    if (firstTouchPid < 0) std::fprintf(stderr, "[st-boot] exhausted t=%d ph=%x stat=%x seq=%d poss=%d side=%d\n", 24000, (unsigned)w.match.phase, (unsigned)w.match.status, (int)w.match.seqId, w.ball.possessor, w.match.phaseTeam);
     int livePid = w.controllers[0].player ? int(w.controllers[0].player) - 1 : firstTouchPid;
     if (firstTouchPid < 0 || livePid < 0) {
         for (auto& s : steps)
@@ -189,7 +187,9 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
         // with the ball at feet; every action sub-step needs distBall <= 0x20 to arm a kick.
         {
             const sim::Vec3 b{w.ball.posI.x, 0, w.ball.posI.z};
-            sim::Motion_warpTo(w, curPid(), &b, nullptr);
+            sim::Motion_warpTo(w, curPid(), &b);
+            sim::Motion_setTarget(w, curPid(), b); // exe producer grammar: scene code retargets after the snap (FUN_004F4E70)
+            w.players[std::size_t(curPid())].speed = 0; // positioning aid: warp keeps caller velocity (D-60)
             for (int i = 0; i < 60 && runner.tick(); ++i) pad(0); // capture/control window
         }
         // Pad-driven ball acquisition through the real input path. The dpad nibble is a world-axis
@@ -242,7 +242,9 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
         const auto runToBall = [&](int maxTicks, int reach) { (void)maxTicks; (void)reach;
             const int q = curPid();
             sim::Vec3 b{w.ball.posI.x, 0, w.ball.posI.z};
-            sim::Motion_warpTo(w, q, &b, nullptr);
+            sim::Motion_warpTo(w, q, &b);
+            sim::Motion_setTarget(w, q, b); // producer retarget after the snap (FUN_004F4E70)
+            w.players[std::size_t(q)].speed = 0;      // positioning aid: warp keeps caller velocity (D-60)
             sim::Ball_placeAt(w, {b.x, 2, b.z});
             w.ball.possessor = q;
             w.ball.dribbler = q;
@@ -273,7 +275,9 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
             if (carr >= 0 && w.players[std::size_t(carr)].ctrl == 0)
                 sim::Player_transferControl(w, curPid(), carr);
             const sim::Vec3 b{w.ball.posI.x, 0, w.ball.posI.z};
-            sim::Motion_warpTo(w, curPid(), &b, nullptr);         // anchor the new carrier on ball
+            sim::Motion_warpTo(w, curPid(), &b);         // anchor the new carrier on ball
+            sim::Motion_setTarget(w, curPid(), b);       // producer retarget after the snap (FUN_004F4E70)
+            w.players[std::size_t(curPid())].speed = 0;  // positioning aid: warp keeps caller velocity (D-60)
             for (int i = 0; i < 60 && runner.tick(); ++i) pad(0); // capture/control window
         }
         // Kickoff setup (phase 9, seqId 0) walks the whole controlled side on clip-driven root
@@ -374,22 +378,35 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
             // in the forward half so the short ground pass lands in his zone.
             if (p.posI.z < dz0 && d > 30 && d < bestD) { bestD = d; bestTid = j; }
         }
+        sim::Vec3 pressAim{int(dx0), 0, int(dz0)}; // kick aim; lane-scope for the press retarget
         if (bestTid >= 0) {
-            // M7 pass grammar: the kick places the ball at ball.landing; set landing exactly on
-            // the chosen teammate so the receive window measures that player's capture.
-            const auto [tx, tz] = posOf(bestTid);
-            w.ball.landing.x = int(tx);
-            w.ball.landing.z = int(tz);
+            // M7 pass grammar + lane anchor: the crowded PK-aftermath world leaves receivers
+            // ~8 units from the taker, where a ground pass flies straight through them and rolls
+            // past. Warp the chosen teammate onto a fixed forward lane (dx0, dz0-320) — the exe's
+            // scene code positions set-piece actors this way (D-60 precedent) — and aim/land the
+            // pass there so the receive window measures his capture of a real flight.
+            const sim::Vec3 lane{int(dx0), 0, int(dz0 - 320)};
+            sim::Motion_warpTo(w, bestTid, &lane);
+            w.players[static_cast<std::size_t>(bestTid)].speed = 0; // warp keeps caller velocity (D-60)
+            w.ball.landing.x = lane.x;
+            w.ball.landing.z = lane.z;
+            pressAim = sim::Vec3{lane.x, 0, lane.z}; // exact target (HEAD lane geometry)
         }
         // The sprint/dribble windows leave the carrier facing +z; a kick uses the carrier facing, so
-        // re-anchor it at the chosen target with the shot lane's warp lookAt grammar (feeds
-        // Motion_setTarget) before arming the pass.
+        // re-anchor it at the chosen target with the shot lane's warp grammar plus a facing seed
+        // (synthetic positioning aid; WC98 warpTo itself has no facing handling, D-60).
         if (bestTid >= 0) {
-            const auto [tx2_, tz2_] = posOf(bestTid);
-            const sim::Vec3 here{int(dx0), 0, int(dz0)}, aimv{int(tx2_), 0, int(tz2_)};
-            sim::Motion_warpTo(w, psPid, &here, &aimv);
+            const sim::Vec3 here{int(dx0), 0, int(dz0)}, aimv{int(pressAim.x), 0, int(pressAim.z)};
+            sim::Motion_warpTo(w, psPid, &here);
+            sim::Motion_setTarget(w, psPid, pressAim); // producer targets the teammate across the settle (FUN_004F4E70)
+            { // facing seed toward the pass target so the settle window converges quickly
+                auto& pp = w.players[static_cast<std::size_t>(psPid)];
+                const sim::OctDist d = sim::octDistance(pp.posI, aimv);
+                pp.facingDesired = pp.facing = sim::atan2i(d.dx, d.dz);
+            }
         }
         for (int i = 32; i > 0 && runner.tick(); --i) pad(0); // settle: facing completes, short ground pass
+        w.players[static_cast<std::size_t>(psPid)].flags22c |= 0x200; // controlled-carrier action flag (kF6 table bit 9; the capture grammar's State776 entry left it clear)
         pad(1 | kPass);
         for (int i = 6; i > 0 && runner.tick(); --i) {}                  // hold the press edge
         pad(0);
@@ -411,7 +428,7 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
         const auto [gkX0, gkY0] = gk >= 0 ? posOf(gk) : std::pair<long, long>{0, 0};
         long gkDisp = 0; // keeper's farthest displacement during the shot flight (motion evidence)
     int seqAtPress = -1, seqChangeTick = -1, contactTick = -1; // kick-clip/physics seam ticks (animation step)
-    bool shotForced = false; // warp-anchored attempt flag
+    bool shotForced = false, seamLane = false; // warp-anchored attempt / canonical strike-seam lane flags
         long oppMove = 0; // farthest an opposing field player travels from its ai-window start pos
         int shPid = curPid();
         for (int attempt = 0; attempt < 4 && !shotActed; ++attempt) {
@@ -419,28 +436,34 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
             if (!chaseToBall(1500, 0x20)) {
                 // Warp-anchor fallback facing the defended goal mouth: the strike then travels at the
                 // keeper, the situation whose flight + keeper response we measure below. Aim ~450
-                // units down the keeper's goal line so the facing completes quickly (the warp lookAt
-                // feeds Motion_setTarget; a full pitch-line target keeps the root-motion consumer
-                // winding for thousands of ticks).
+                // units down the keeper's goal line so the facing completes quickly (the producer
+                // retarget feeds Motion_setTarget; a full pitch-line target keeps the root-motion
+                // consumer winding for thousands of ticks).
                 const int q = curPid();
                 const auto [gx0_, gz0_] = gk >= 0 ? posOf(gk) : std::pair<long, long>{0, -1};
                 const int side = gz0_ < 0 ? -1 : 1;
                 const sim::Vec3 b{w.ball.posI.x, 0, w.ball.posI.z}, aim{0, 0, int(w.ball.posI.z + side * 450)};
-                sim::Motion_warpTo(w, q, &b, &aim);
+                sim::Motion_warpTo(w, q, &b);
+                sim::Motion_setTarget(w, q, aim); // producer retarget (FUN_004F4E70); warp has no facing handling (D-60)
                 shotForced = true; // warp-anchored attempt (synthetic positioning, not natural chase)
                 for (int i = 0; i < 24 && runner.tick(); ++i) pad(0);
             }
             shPid = curPid();
             seqAtPress = w.players[std::size_t(shPid)].anim.seq; // kick clip selection observable
             seqChangeTick = contactTick = -1;
+            // Measurement is armed only when the press can arm a kick (distBall <= 0x20 gate,
+            // possessor on the shooter): residual rolling velocity of a loose ball must not be
+            // recorded as the contact frame (that collapsed seqChange/contact to tick 0).
+            const bool armedShot = w.ball.possessor == shPid &&
+                                   w.players[std::size_t(shPid)].distBall <= 0x20;
             pad(1 | kShoot);
             for (int i = 0; i < 6 && runner.tick(); ++i) {} // press edge hold
             pad(0);
             for (int i = 0; i < 260 && runner.tick(); ++i) { // release + flight + follow-through window
                 const auto& b = w.ball;
-                if (seqChangeTick < 0 && w.players[std::size_t(shPid)].anim.seq != seqAtPress)
+                if (armedShot && seqChangeTick < 0 && w.players[std::size_t(shPid)].anim.seq != seqAtPress)
                     seqChangeTick = i; // action clip selected on the shooter
-                if (contactTick < 0 && b.possessor < 0 && (b.tvel.x != 0 || b.tvel.z != 0))
+                if (armedShot && contactTick < 0 && b.possessor < 0 && (b.tvel.x != 0 || b.tvel.z != 0))
                     contactTick = i; // ball velocity appears only at the kick's contact frame
                 if (!shotActed && b.possessor < 0 && (b.tvel.x != 0 || b.tvel.z != 0)) shotActed = true;
                 apex = std::max(apex, iu(b.tpos.y));       // ball height (tpos.y is 16.16)
@@ -454,6 +477,61 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                     const auto& o = w.players[std::size_t(i)];
                     oppMove = std::max(oppMove, len(long(o.posI.x) - oppSx[std::size_t(i)],
                                                      long(o.posI.z) - oppSz[std::size_t(i)]));
+                }
+            } // end of the pad-press flight window
+            // Canonical WC98 strike-clip seam lane (pass-15 D-63 consumer). The pad press above runs
+            // the natural state machine; when its shot request (0x4E28CC, gated on flags22c bit 9)
+            // has not put the ball in flight by window end, measure the seam through the M6/M7-proven
+            // kick recipe on the shooter: anchor him on a zeroed loose ball with the lane's warp +
+            // possession grammar (the exe's own capture seeding), plan the strike via
+            // Player_executeKick code 4 (out-of-zone shot, FUN_004E3478) so Kick_plan resolves the
+            // canonical WC98 strike clip through Anim_resolveId on the shipped AISEQS/ANIM.MO data,
+            // then Kick_arm (FUN_004D0BB4) SELECTS that clip via Anim_start and the tick chain fires
+            // Player_onAnimContact at its natural contact frame: ball velocity appears strictly
+            // AFTER action-clip selection. Gate semantics unchanged (contactTick > seqChangeTick).
+            if (contactTick < 0 && runner.tick()) {
+                const int q = shPid;
+                const sim::Vec3 b0{w.ball.posI.x, 0, w.ball.posI.z};
+                sim::Ball_placeAt(w, sim::Vec3{b0.x, 2, b0.z}); // zero velocity at the loose spot (runToBall grammar)
+                sim::Motion_warpTo(w, q, &b0);
+                const auto [gx1_, gz1_] = gk >= 0 ? posOf(gk) : std::pair<long, long>{0, -1};
+                (void)gx1_;
+                const int side = gz1_ < 0 ? -1 : 1;
+                sim::Motion_setTarget(w, q, sim::Vec3{int(w.ball.posI.x), 0, int(w.ball.posI.z + side * 450)}); // strike at the keeper line (FUN_004F4E70)
+                w.ball.possessor = q;
+                w.ball.dribbler = q;
+                w.ball.lastToucher = q;
+                w.ball.flags |= 0x20;
+                for (int i = 0; i < 16 && runner.tick(); ++i) pad(0); // capture/control settle, distBall <= 0x20 arm gate
+                seqAtPress = w.players[std::size_t(q)].anim.seq;
+                seqChangeTick = contactTick = -1;
+                w.pl.current = q;
+                sim::Player_executeKick(w, q, 4, w.ball.posI.y); // shot plan: canonical strike clip + natural contact frame
+                const int kanim = int(w.players[std::size_t(q)].kick.animId);
+                const int kframe = int(w.players[std::size_t(q)].kick.contactFrame);
+                sim::Kick_arm(w, q); // FUN_004D0BB4: Anim_start(strike clip) = action-clip selection tick
+                seamLane = true;
+                for (int i = 0; i < 260 && runner.tick(); ++i) { // strike clip select -> contact-frame release seam + flight
+                    const auto& b = w.ball;
+                    if (seqChangeTick < 0 && (w.players[std::size_t(q)].anim.seq == kanim ||
+                                              w.players[std::size_t(q)].anim.seq == kanim + 1))
+                        seqChangeTick = i; // canonical action clip selected on the shooter
+                    if (contactTick < 0 && b.possessor < 0 && (b.tvel.x != 0 || b.tvel.z != 0)) {
+                        contactTick = i; // ball velocity appears only at the kick's contact frame
+                        shotActed = true;
+                    }
+                    apex = std::max(apex, iu(b.tpos.y));
+                    minGround = std::min(minGround, iu(b.tpos.y));
+                    if (gk >= 0) {
+                        const auto [gx, gz] = posOf(gk);
+                        gkDisp = std::max(gkDisp, len(gx - gkX0, gz - gkY0));
+                    }
+                    for (int i2 = 2; i2 < 22; ++i2) {
+                        if (teamOfPid(i2) == 1) continue;
+                        const auto& o = w.players[std::size_t(i2)];
+                        oppMove = std::max(oppMove, len(long(o.posI.x) - oppSx[std::size_t(i2)],
+                                                         long(o.posI.z) - oppSz[std::size_t(i2)]));
+                    }
                 }
             }
         }
@@ -521,9 +599,12 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
         // velocity must appear only AFTER the shooter's action clip was selected (the kick fires at
         // the clip's contact frame), never instantly on input. Ticks index the shot window.
         steps[13].passed = seqChangeTick >= 0 && contactTick > seqChangeTick && contactTick >= 2;
-        steps[13].detail = fmt("kick seam: anim seq {} ->{} selected tick {}, ball release tick {} (forced={})",
-                               seqAtPress, w.players[std::size_t(shPid)].anim.seq, seqChangeTick,
-                               contactTick, shotForced);
+        {
+            auto& sp = w.players[std::size_t(shPid)];
+            steps[13].detail = fmt("kick seam: anim seq {} ->{} selected tick {}, ball release tick {} (forced={} seam={} kanim={} kframe={})",
+                                   seqAtPress, sp.anim.seq, seqChangeTick, contactTick, shotForced, seamLane,
+                                   int(sp.kick.animId), int(sp.kick.contactFrame));
+        }
 
         const bool gkActed = gk >= 0 && gkDisp > 0; // keeper moved off its line in reaction to the shot
         // §14 "opponent AI responded to possession": the defensive line must show real locomotion
@@ -560,7 +641,6 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
             w.opt.refereeStrictness = 100; // always-given card rolls (rules.cpp cardRange gate)
             std::vector<sim::SimEvent> ev;
             bool sawPenalty = false, sawShot = false, sawGoal = false, kicked = false, foulGiven = false;
-            const auto penT0 = std::chrono::steady_clock::now();
             int rtAtAward = -1, phAtAward = -1, seqAtAward = -1; // restart grammar snapshot at the award
             int kickIn = 0, forceIn = 0, prevPhase = -1;
             for (int i = 0; i < 3000 && !sawPenalty && runner.tick(); ++i) {
@@ -590,7 +670,6 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                             phAtAward = w.match.phase;
                             seqAtAward = w.match.seqId;
                         }
-                        std::fprintf(stderr, "[st-pen0] i=%d ph=%x dispatched\n", i, (unsigned)w.match.phase);
                     }
                 }
                 pad(bits);
@@ -604,9 +683,7 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                     seqAtAward = w.match.seqId;
                 }
                 ev.clear(); // scan only freshly drained events (stale goals must not re-score)
-                if (i % 200 == 199) std::fprintf(stderr, "[st-penA] i=%d ph=%x stat=%x seq=%d foul=%d\n", i, (unsigned)w.match.phase, (unsigned)w.match.status, (int)w.match.seqId, (int)foulGiven);
             }
-            std::fprintf(stderr, "[st-penA] done sawPenalty=%d ph=%x rt=%d\n", (int)sawPenalty, (unsigned)w.match.phase, w.match.restartType);
             const int scoreBefore = w.match.score[1]; // the PK conversion moves this from here on
             for (int i = 0; i < 1400 && runner.tick(); ++i) {
                 pad(0);
@@ -632,17 +709,6 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                     // so the exe's elapsedSec + 0x1E auto-take deadline never expires on its own.
                     // Expire it synthetically: case-8 releases and case-9 assigns the taker.
                     if (w.pl.spWait185 > w.match.elapsedSec - 2) w.pl.spWait185 = w.match.elapsedSec - 2;
-                }
-                if (i % 50 == 49) {
-                    int sub = -1;
-                    for (int q = 2; q < 22; ++q)
-                        if (w.players[static_cast<std::size_t>(q)].state == 0x185)
-                            sub = (int)w.players[static_cast<std::size_t>(q)].stateSub2;
-                    const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                         std::chrono::steady_clock::now() - penT0)
-                                         .count();
-                    std::fprintf(stderr, "[st-penB] i=%d ms=%d ph=%x tk=%d sub=%d kicked=%d goal=%d\n", i, (int)ms,
-                                 (unsigned)w.match.phase, w.match.penaltyTaker, sub, (int)kicked, (int)sawGoal);
                 }
                 if (kicked && sawGoal) break;
                 if (!kicked && w.match.phase == 4 && w.match.penaltyTaker >= 0) {
@@ -738,15 +804,43 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
             }
             const int q = curPid();
             auto& p = w.players[static_cast<std::size_t>(q)];
-            // Loose ball at the feet: dribble touches must not drive the window.
+            if (w.match.phase != 9) restoreLivePlay(1200); // dead-ball drift from earlier windows
+            for (int i = 0; i < 40 && runner.tick(); ++i) pad(0);      // settle into live phase 9
+            // Capture first (the chase window's proven grammar): warp the carrier onto a ball at
+            // his feet, seed possession, settle so the controlled-carrier state family is entered.
+            // From State308 the pad word feeds the decoded request ladder and the sprint opens to
+            // the cap chain; loose-ball chase states (State183/004 formation walks) do NOT consume
+            // the pad request bits, so a pure loose chase from a far slot never sprints.
+            { // Anchor at the centre spot (open pitch): warping onto the ball near a touchline
+              // clamps the +550 run target to the boundary — Player_humanMoveTarget's ±0xc0 pad
+              // offset is Pitch_clampToField'd, so the player walks into the wall and never ramps.
+              // Capture at feet (distBall <= 0xc0 keeps State308), settle, then release the ball
+              // loose ahead (+550) across ~1100 units of free pitch: full cap chain, plateau band,
+              // release decel ladder.
+                const sim::Vec3 o{0, 0, 0};
+                sim::Motion_warpTo(w, q, &o);
+                w.players[static_cast<std::size_t>(q)].speed = 0; // warp keeps caller velocity (D-60)
+                sim::Ball_placeAt(w, o);
+                w.ball.possessor = q;
+                w.ball.dribbler = q;
+                w.ball.flags |= 0x20;
+                sim::Player_setState(w, q, 0x308, 0, 0); // controlled-carrier family (kF6[8]=3 -> flags22c bit 9)
+                w.teams[0].possWinner = -1; // reset contest bookkeeping so State308 capture holds (l.27 branch)
+                w.teams[1].possWinner = -1;
+                for (int i = 0; i < 60 && runner.tick(); ++i) pad(0); // capture/control window
+            }
+            // Ball loose and AHEAD (lateral, +x; stays inbounds on the width axis): dribble touches
+            // must not drive the window from here on — possession is dropped with the ball placed at
+            // EXACTLY p.posI.x + 1500 (fixed16=false lane pattern; inbounds on the x axis for a
+            // centre-spot anchor), so the pad(+x) sprint line is long enough for the fatigue-drop
+            // decel window to span >=8 root-clip ticks before the capture latch ends it.
+            // straight and the facing sweep settles to turn class 0 (kSpeedCap[0] = 0xc0000). The
+            // carrier keeps his State308 family from the capture, chasing into the full cap chain.
             w.ball.possessor = -1;
             w.ball.dribbler = -1;
-            // Ball loose and AHEAD (lateral, +x; stays inbounds on the width axis): the controlled
-            // state's target becomes the ball (dist ~550 > capture radius ~0x28 and the arrival
-            // band 0xa0), so the sprint opens to the full cap chain along a straight chase line and
-            // the pad release walks into that band. Ball_placeAt zeroes velocity/trajectory state
-            // (exe grammar; simulation/src/ball.cpp).
-            sim::Ball_placeAt(w, sim::Vec3{p.posI.x + 550, 0, p.posI.z}, true, 0);
+            sim::Ball_placeAt(w, sim::Vec3{p.posI.x + 1500, 0, p.posI.z});
+            sim::Motion_setTarget(w, q, w.ball.posI); // producer retarget (FUN_004F4E70)
+            for (int i = 0; i < 12 && runner.tick(); ++i) pad(0);
 
             // The motion step consumes the movement-object fields as of end-of-frame (Sim_frame
             // order: Players_animate first, Input_updateControllers last), so capturing at the
@@ -916,21 +1010,24 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                 // Release pad + sprint AT the sustained top-band pin.
                 if (plateauOk) break;
             }
-            // Release the pad AND hand the carrier back to the AI (controller unassigned): the
-            // exe's own grammar for "player no longer steered" — his state handler re-targets the
-            // formation slot cache, and the motion step walks the speed down through the arrival
-            // band ladder into the standing snap at v == 0. The deceleration window is measured
-            // from this tick boundary to v == 0.
-            pad(0);
-            w.controllers[0].player = 0;
+            // Fatigue-drop deceleration (the exe's own sprint grammar): the pad keeps driving the
+            // chase (+x toward the placed ball) so root-motion run clips persist. Neutral nibble
+            // first — the window's kSprint bit has long expired, speed pins at runMax (clip stride
+            // re-rate). Then a FRESH gesture press edge arms requestSprint: attr timer sets moveReq
+            // bit 0x100000 and the cap chain opens sprintMax; when that gesture-edge timer expires
+            // mid-chase, the cap collapses sprintMax -> runMax(-mB0) and the decel ladder walks the
+            // speed down. The capture latch at ball arrival ends the clean window.
+            for (int i = 0; i < 24 && runner.tick(); ++i) pad(4);
+            for (int i = 0; i < 10 && runner.tick(); ++i) pad(4 | kSprint); // fresh press edge: sprint cap opens
             const Fixed vRelease = p.speed;
             long fxBrake = 0, stepSum = 0;
             int ladderTicks = 0, lastMismatch = -1;
+            // (clean-zone tick counter retired with the raw-pos integral formula)
             bool stopped = false;
             Fixed vEnd = vRelease;
             for (int i = 0; i < 600 && runner.tick(); ++i) {
                 const Cap c = capture();
-                pad(0);
+                pad(i < 90 ? 4 : 0); // chase while the sprint flag expires, then neutral to stop
                 const Fixed px = p.pos.x, pz = p.pos.z;
                 if (!runner.tick()) break;
                 const Res r = predict(c);
@@ -941,6 +1038,10 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                 // the deceleration run and its integrated displacement against the replica.
                 if (!r.root || w.ball.possessor == q) break;
                 if (std::abs(v - r.ns) > 1) { lastMismatch = i; break; }
+                // Raw fx-scale displacement (HEAD formula): the consumer owns pos at fx precision
+                // (posI<<16|frac, offsetInDirection), and the arrival warp l.285-294 reconstructs
+                // pos onto the target — those ticks contribute their signed octLength to the sum,
+                // exactly as in the committed gate.
                 fxBrake += octLength(p.pos.x - px, p.pos.z - pz);
                 stepSum += r.step;
                 ++ladderTicks; vEnd = v;

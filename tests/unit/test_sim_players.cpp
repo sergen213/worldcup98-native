@@ -284,5 +284,38 @@ int main() {
         CHECK(Input_analogDecode(*w, 1) == 0x48);
         CHECK(k.analogZ >= 6 && !(k.analogX >= 6 || k.analogX < -5));
     }
+    // ---- Pass-15 S4 (D-59/D-60): WC98 FUN_004f4e70 / FUN_004f4f80 semantics pins.
+    {
+        // D-59: store is **unconditional** - the FIFA-99 gate on flag bits 8/1 + equality skipped it.
+        p.posI = {100, 0, -200};
+        p.moveFlags = 1 | 8; // alt-active + legacy "new target" bit: exe stores anyway
+        Motion_setTarget(*w, 0, {50, 0, -260});
+        CHECK(p.target.x == 50 && p.target.z == -260);
+        CHECK(p.targetRef == 0); // [M+0x4C] = M + &0x34 (main block)
+        CHECK(p.moveFlags == 8); // byte [WC98 M+0x5E] &= 0xfe: clears port bit 0 only, keeps the rest
+        CHECK(p.targetDx == -50 && p.targetDz == -60);
+        CHECK(p.targetDist == octLength(-50, -60)); // (a+b)-(min>>1) per l.24-31
+
+        // D-60: pos store + frac reset + ball refresh x2 + distBallPrev copy; NO target reset,
+        // NO facing/lookAt handling, NO speed/m98/m9c zeroing (FIFA-99 extras absent in WC98).
+        w->ball.posI = {300, 0, 100};
+        p.facing = 0x123; p.turnAmount = 7; p.turnClass = 2; p.dir8 = 3;
+        p.speed = 0x4000; p.m98 = 5; p.m9c = 6;
+        const std::int32_t keepDist = p.targetDist;
+        p.targetRef = 1; // warpTo must not touch target/targetRef (exe calls no setTarget)
+        const Vec3 warp{40, 0, -60};
+        Motion_warpTo(*w, 0, &warp);
+        CHECK(p.posI.x == 40 && p.posI.z == -60);
+        CHECK(p.frac.x == 0 && p.frac.z == 0); // [M+0x28]/[M+0x30] zeroed
+        CHECK(p.pos.x == Fixed(std::uint32_t(40) << 16));   // [+4] = x<<16
+        CHECK(p.pos.z == Fixed(static_cast<std::uint32_t>(-60) << 16)); // [+0xC] = z<<16
+        const OctDist d = octDistance(p.posI, w->ball.posI);
+        CHECK(p.dxBall == d.dx && p.dzBall == d.dz && p.distBall == d.dist);
+        CHECK(p.angleBall == atan2i(d.dx, d.dz)); // quadrant atan helper FUN_004f3db4 -> angleBall
+        CHECK(p.distBallPrev == p.distBall);      // [WC98 M+0x70] -> [M+0x80] copy
+        CHECK(p.facing == 0x123 && p.turnAmount == 7 && p.turnClass == 2 && p.dir8 == 3);
+        CHECK(p.speed == 0x4000 && p.m98 == 5 && p.m9c == 6);
+        CHECK(p.targetRef == 1 && p.targetDist == keepDist); // stale deltas retained (exe grammar)
+    }
     return 0;
 }

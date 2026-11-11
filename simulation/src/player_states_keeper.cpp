@@ -1233,7 +1233,7 @@ void State203(World& w, int pid) {
         Player_moveToward_4BE804(w, pid, v);
         if (w.match.periodType == 3 && hl / 2 < p.targetDist) {
             const Vec3 u{0, 0, v.z > 0 ? hl / 2 : -hl / 2};
-            Motion_warpTo(w, pid, &u, nullptr);
+            Motion_warpTo(w, pid, &u);
             Player_moveToward_4BE804(w, pid, v);
         }
         if (iabs(p.posI.z) < iabs(w.ball.restartPos.z)) {

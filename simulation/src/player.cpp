@@ -1,6 +1,7 @@
 // Player objects: layout checks, match attribute records, movement parameters, fatigue, injuries,
 // state machine entry and per-team player update (Players agent). Exe addresses in comments.
 #include <cstddef>
+#include <cstdio>
 
 #include "wc98/sim/data.hpp"
 #include "wc98/sim/world.hpp"
@@ -690,7 +691,8 @@ void Player_reset(World& w, int pid, const Vec3* pos, int cbIndex, bool faceBall
         p.posCb = Formation_evalSlotCallback(w, cbIndex, pid, slotPos, -1, 0, 1);
         pos = &slotPos;
     }
-    Motion_warpTo(w, pid, pos, faceBall ? &w.ball.posI : nullptr);
+    Motion_warpTo(w, pid, pos); // WC98 warpTo has no facing/lookAt handling (D-60)
+    (void)faceBall;            // exe FUN_004bba2c ECX carries it into the scene path, not warpTo
     p.stateTimer = 0;
     p.countdown = 0;
     p.pendingCode = 0x0000ffffu;

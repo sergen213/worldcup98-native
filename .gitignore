@@ -15,3 +15,6 @@ research-inbox/
 WorldCup98_Extracted/
 ghidra/
 squashfs-root/
+
+# agent/verification build dirs
+build-*/

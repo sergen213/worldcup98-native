@@ -177,6 +177,13 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
   @+0xC, early-return grids @+0xE8/+0x156; the declared `[row][col][pair]` indexing double-counted the
   stride). Gates in `test_sim_players` (D-59/D-60) + scenario gait lanes (cells/ladder/rate formula vs
   byte-exact `.data` dump); D-59/D-60 → Fixed, D-63 → Closed (structural), suite remains **117/117**.
+- Pass-16 input/physics closure (2026-11-11): D-71 refuted on the byte lane + `test_input_tables`
+  gate; D-70 per-frame pad sampling seam in the live loop; **D-69 cutover** — platform per-bit event
+  deque deleted, direct physical-word sampling (`sample()` = current level), `test_input` asserts the
+  exe tap-invisibility grammar; **D-73** PK-celebration crash fixed (winner-lane `possWinner == -1`
+  guard in `Player_frameMove`). Self-test windows re-baselined on pass-16 physics: turning phase-gated,
+  AI closing range anchored on live-ball ticks, sprint band asserted at the byte-pinned class cap
+  (kSpeedCap[1] = 0x50000). Suite **118/118**, JSON self-test **14/14** incl. PK goal->celebration.
 - Release: tag `v0.3.0` + GitHub release (AppImage + `.sha256`/`.version` sidecars): playable live match,
   authentic FE fonts/language knob, FEFLOW11 team-select grid, measured percent-table scene defaults;
   game smoke exit 0 under Xvfb, launcher offscreen self-test pass, `update.sh --check` -> "up to date";

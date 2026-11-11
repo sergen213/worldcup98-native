@@ -129,15 +129,16 @@ capture it does not have.
 | D-70 | Live loop sampled the pad word **per sim tick**; exe keeps one read per game frame shared across all ticks of that frame | `FUN_0049daf0`: accumulator → whole-tick count in `DAT_0064122c`, ctrlupdate called once per frame (l.37), devices read once per controller; the port now samples `in.fill(1, framePad)` **once per game frame** (`app/livematch.cpp:1266`) and every drained tick consumes that shared word | **Fixed** (pass-16) — grammar installed at the exe's seam; gate = fe_* / `interactive_match` / `match_demo_frames` / `replay_record_play` lanes green with per-frame sampling (multi-tick frames share one word, recorder keeps scripted bursts deterministic). With D-69 also fixed the visibility window matches the original |
 | D-71 | **Refuted** (pass-16 byte lane): the claimed deltas are big-endian reads of little-endian slot bytes. WC98 dev5 ctx03 ptr = `0x58cd14` → id 4, ctx10 ptr = `0x58cf94` → id 9 — exactly what the port carries; all 9×14 decoded slot ids byte-match | Slot decode from FIFAWC.EXE @**0x58d314** (dev*0xA8+ctx*0xC, `{8, actArrayPtr, ctxId}`), ids `(ptr−0x58cb14)/0x80`; BYTES5.md dump bytes verified verbatim vs file | **Fixed — gate** `test_input_tables` slot-decode lane pins all 9×14 slots incl. dev5; masks @0x58c7b4, full action-table/keep-mask byte lanes, queue gate @0x58c750 (D-66/D-58) |
 | D-72 | FE/menu pad layer structurally differs (menu action buffer + control-transfer at queue peek) | `DECOMPILE/fehandler_00512910.txt`: peek via thunk → `FUN_0049aec0` control transfer → same drop-gate → store action word @[ptr+0x1B0] (DAT_00646940 band); `FUN_0049a5f0` = **nearest-teammate selector** (chebyshev-sum distance), not a queue push. Port FE consumes presentation-level events | **Low / Open (docs)** — menu pad parity unverified. Gate: pad-navigation selftest at 1-tick cadence, scripted dpad+button word sequence → identical screen transitions to the exe replica |
+| D-73 | `Player_frameMove` winner lane indexed `possWinner == -1` straight into the 23-slot player array — SIGABRT in debug on the PK-goal celebration tick (award/booking pipeline sets `-1` mid-tick; lineup restarts leave it `-1`) | Repro: self-test seed 0x2E7A, abort at `std::array<PlayerState,23>` bound assert via `Player_cachedDistance(pid,-1)` after `PK t=133 events: ,11`; exe consumer pattern guards `possWinner >= 0` (e.g. ai.cpp mirror of the `T.possWinner >= 0` block) and its slot-(-1) reads sit in mapped DGROUP data, never fault | **Fixed** (pass-16) — lane guarded: keeper branch treats no-winner as far distance (garbage-read mirror), steering block skipped for `-1`, head lane falls back to facing; gate = self-test penalty window goal->celebration survives end-to-end (14/14 green, suite 118/118) |
 
 ## Totals and plan
 
 Counts at register creation: **Critical 2** (D-10, D-27), **High 16**, **Medium 13**,
 **Low 5**; statuses: Open-with-RE-slice 22, Blocked/documented 3, Non-defect 2, Fixed/anchors 6.
 
-Pass-15 additions (section G, D-47…D-72): **Fixed** — D-47, D-48, D-51 (non-defect), D-55, D-56, D-57,
+Pass-15 additions (section G, D-47…D-73): **Fixed** — D-47, D-48, D-51 (non-defect), D-55, D-56, D-57,
 D-58, D-59, D-60, D-62, D-64, D-65, D-66, D-67, D-68, D-69 (pass-16: direct word sampling),
-D-70 (pass-16: per-frame pad sampling); **Refuted + gated** — D-71 (slot-pointer LE decode: port
+D-70 (pass-16: per-frame pad sampling), D-73 (pass-16: winner-lane `-1` guard); **Refuted + gated** — D-71 (slot-pointer LE decode: port
 rows byte-exact; gate `test_input_tables`); **Closed (structural)** — D-63 (producer grammar
 replicated + canonical pair-table model fixed, gates in the scenario gait lanes);
 **Medium / Open** — D-50, D-52, D-53, D-54 (param rows);

@@ -483,3 +483,19 @@ returns it, per-bit deque + reported fields deleted (input.cpp/hpp). test_input 
 exe grammar — tap opening and closing between two reads produces NO event (asserted), double-tap
 inside one frame invisible, held-to-read presses seen. Full suite green on the cutover (117/118:
 self_test rebaselining in worktree). Registry Open list now D-50/D-52-D-54 + D-61/D-72 docs rows.
+
+## Pass-16 D-73 fix + self-test re-baseline: 118/118 suite, 14/14 self-test (2026-11-11)
+
+PK-goal celebration tick SIGABORTED in the winner lane of Player_frameMove
+(Player_cachedDistance(pid,-1) -> std::array<PlayerState,23> bound assert; award/booking pipeline
+sets possWinner=-1 mid-tick, lineup restarts leave it -1). Repro selftest seed 0x2E7A: abort right
+after "PK t=133 events: ,11". Guard installed (keeper branch = far-distance mirror for no-winner,
+steering block skipped for -1, head lane falls back to facing) mirroring the exe's guarded consumer
+pattern; its slot-(-1) reads sit in mapped DGROUP data and never fault. Registered D-73.
+
+Self-test windows re-baselined on pass-16 physics: turning phase-gated (dead-ball clip walks moved
+through State002 takers produced a fake 180-deg bend), AI closing range now anchored on the live ball
+sampled per phase-9 tick of the shot windows, stop-distance sprint band asserted at min(runMax,
+cap-at-release, kSpeedCap[1]=0x50000) — loose-ball retarget chases keep turn class >=1 under the
+byte-pinned cap rows DAT_0058aee4 (release lands exactly on 0x50000; root-ladder replica proves the
+band). Suite 118/118 green with self_test_gameplay passing end-to-end.

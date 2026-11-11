@@ -15,6 +15,12 @@ project goals.
   assigns the physical pad word directly, `sample()` returns it; a tap opening and closing between
   two device reads produces no event, exactly as in the original. `test_input` asserts the grammar.
 
+- **PK-celebration crash fix (pass-16, D-73)**: `Player_frameMove` winner lane guarded for
+  `possWinner == -1` (keeper branch = far mirror, steering skipped, head falls back to facing); the
+  self-test PK goal->celebration tick survives end-to-end. Self-test windows re-baselined on pass-16
+  physics: turning phase-gated, AI close-range anchored on live-ball ticks, sprint band asserted at
+  the byte-pinned class cap (kSpeedCap[1] = 0x50000). Suite 118/118, self-test 14/14.
+
 - **Live-loop pad sampling seam (pass-16, D-70)**: the live match loop now reads the device once
   per game frame (`in.fill(1, framePad)` after the event pump) and every sim tick drained from that
   frame consumes the shared word - the exe's `FUN_0049daf0` controller-update grammar. Multi-tick

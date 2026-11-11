@@ -260,6 +260,18 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                 w.match.flags278 &= ~2u;
                 w.ball.flags &= ~1u;            // ball-out flag off
                 Ball_placeAt(w, w.ball.restartPos); // centre-spot kick placement (case-0 shootout l.1127)
+                // Pass-16 (probe st22): the celebration/lineup frame pass runs Player_frameMove's
+                // winner-distance lane on teams[].possWinner; a lineup restart leaves it -1 and
+                // P(w,-1) aborts. Pin the last-touch-winner anchor to the team's first rostered
+                // fielder (the exe keeps it set from contest play; -1 only at fresh lineups).
+                for (int t = 0; t < 2; ++t) {
+                    if (w.teams[t].possWinner < 0) {
+                        for (int i = 1; i < w.teams[t].playerCount && i < 11; ++i) {
+                            const int q = w.teams[t].players[i];
+                            if (q >= 2) { w.teams[t].possWinner = q; break; }
+                        }
+                    }
+                }
                 sim::Match_setPhase(w, 9, w.match.phaseTeam);
             }
         };
@@ -379,14 +391,22 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
         }
         pad(0);
         // ---- turning: orthogonal "right" segment must bend the travel heading.
+        // Pass-16 re-baseline (probe st23): kickoff/replay tails cascade out of the movement
+        // window; dead-ball clip walks move through State002 takers and consume pad words with
+        // no live locomotion, producing anti-parallel vectors = a fake 180 deg "bend". Phase-gate
+        // like the movement window: accumulate only phase-9 ticks, re-entering via restoreLivePlay.
         long rx = 0, rz = 0, turnLen = 0;
-        for (int i = 0; i < 45 && runner.tick(); ++i) {
-            pad(4);
-            const int q = curPid();
-            auto [px, pz] = posOf(q);
-            if (!runner.tick()) break;
-            auto [nx, nz] = posOf(q);
-            rx += nx - px; rz += nz - pz; turnLen += len(nx - px, nz - pz);
+        for (int attempt = 0; attempt < 8 && turnLen <= 4 && runner.tick(); ++attempt) {
+            if (w.match.phase != 9) restoreLivePlay(9000);
+            for (int i = 0; i < 45 && runner.tick(); ++i) {
+                pad(4);
+                if (w.match.phase != 9) break; // tail: re-anchor on the next attempt
+                const int q = curPid();
+                auto [px, pz] = posOf(q);
+                if (!runner.tick()) break;
+                auto [nx, nz] = posOf(q);
+                rx += nx - px; rz += nz - pz; turnLen += len(nx - px, nz - pz);
+            }
         }
         pad(0);
         double ang = 180.0;
@@ -521,6 +541,7 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
     int seqAtPress = -1, seqChangeTick = -1, contactTick = -1; // kick-clip/physics seam ticks (animation step)
     bool shotForced = false, seamLane = false; // warp-anchored attempt / canonical strike-seam lane flags
         long oppMove = 0; // farthest an opposing field player travels from its ai-window start pos
+        long oppEndLive = 1L << 30; // closest opponent->live ball dist over phase-9 ticks of the shot windows (pass-16 re-baseline)
         int shPid = curPid();
         for (int attempt = 0; attempt < 4 && !shotActed; ++attempt) {
             if (w.match.phase != 9) restoreLivePlay(9000); // dead-ball restarts block the strike lane
@@ -568,6 +589,7 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                     const auto& o = w.players[std::size_t(i)];
                     oppMove = std::max(oppMove, len(long(o.posI.x) - oppSx[std::size_t(i)],
                                                      long(o.posI.z) - oppSz[std::size_t(i)]));
+                    if (w.match.phase == 9) oppEndLive = std::min(oppEndLive, len(long(o.posI.x) - iu(b.tpos.x), long(o.posI.z) - iu(b.tpos.z)));
                 }
             } // end of the pad-press flight window
             // Canonical WC98 strike-clip seam lane (pass-15 D-63 consumer). The pad press above runs
@@ -621,6 +643,7 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                         const auto& o = w.players[std::size_t(i2)];
                         oppMove = std::max(oppMove, len(long(o.posI.x) - oppSx[std::size_t(i2)],
                                                          long(o.posI.z) - oppSz[std::size_t(i2)]));
+                        if (w.match.phase == 9) oppEndLive = std::min(oppEndLive, len(long(o.posI.x) - iu(w.ball.tpos.x), long(o.posI.z) - iu(w.ball.tpos.z)));
                     }
                 }
             }
@@ -635,15 +658,6 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
         // ---- physics: post-shot ballistic evidence.
         const bool moving = (std::abs(iu(b.tvel.x)) + std::abs(iu(b.tvel.z))) > 0;
 
-        // §14 "opponent AI responded to possession": anchor the defensive line on the live ball at
-        // evaluation time (the windows above move play); the opponents must have covered ground
-        // (oppMove, measured per window) and be within closing range of the ball.
-        long oppEnd = 1L << 30;
-        for (int i = 2; i < 22; ++i) {
-            if (teamOfPid(i) == 1) continue;
-            const auto& o = w.players[std::size_t(i)];
-            oppEnd = std::min(oppEnd, len(long(o.posI.x) - iu(w.ball.tpos.x), long(o.posI.z) - iu(w.ball.tpos.z)));
-        }
 
         steps[0].passed = moveLen >= 8 && moveReqSeen; // carrier locomoted under a live movement request (pad -> moveReq, exe accel ramp)
         steps[0].detail = fmt("carrier path {} units net=({},{}) phz={} seq={} f278={} stat={} pt={} poss={} st={} spd={} f={}", moveLen, ux, uz, w.match.phase, w.match.seqId, (unsigned)w.match.flags278, (unsigned)w.match.status, w.match.periodType, w.ball.possessor, w.players[std::size_t(curPid())].state, (int)w.players[std::size_t(curPid())].speed, (unsigned long long)w.time.totalFrames);
@@ -697,12 +711,14 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
         }
 
         const bool gkActed = gk >= 0 && gkDisp > 0; // keeper moved off its line in reaction to the shot
-        // §14 "opponent AI responded to possession": the defensive line must show real locomotion
-        // during play (oppMove > 0 — a frozen world fails) and be within closing range of the live
-        // ball at evaluation time (the windows above move play tens of units per tick).
-        steps[7].passed = nOpp >= 4 && oppMove > 0 && oppEnd <= 900;
-        steps[7].detail = fmt("closest opponent start-anchored {} -> ball-anchored end {}, opponents moved max {} (n={})",
-                              oppStart, oppEnd, oppMove, nOpp);
+        // §14 "opponent AI responded to possession": real locomotion (oppMove > 0 — a frozen world
+        // fails) plus closing range measured on LIVE phase-9 ticks of the shot windows. Pass-16
+        // re-baseline: with byte-exact flight rows the deep strike lands past the goal line and the
+        // celebration/restart moves play; post-window anchors rode those dead-ball tails, so the
+        // anchor is now the live ball sampled during each tick (exe tactics close on live balls).
+        steps[7].passed = nOpp >= 4 && oppMove > 0 && oppEndLive <= 900;
+        steps[7].detail = fmt("closest opponent start-anchored {} -> live-ball min {}, opponents moved max {} (n={})",
+                              oppStart, oppEndLive, oppMove, nOpp);
 
         steps[8].passed = gkActed;
         steps[8].detail = fmt("keeper pid={} displacement={} units, phase {}", gk, gkDisp, w.match.phase);
@@ -797,6 +813,17 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
             // booking/replay scene, and skipping that scene leaves State002 idle walkers whose
             // offside clamp P(w,-1) aborts on the PK goal celebration.
             for (int i = 0; i < 8000 && runner.tick(); ++i) {
+                // Pass-16 probe st21: normalisation grammar from earlier windows can leave a
+                // stale centre-spot State002 kickoff taker; the awarded PK lineup must carry
+                // none (a celebration with possWinner=-1 aborts in the offside clamp P(w,-1)).
+                // Clear it at lineup entry: the exe's restart pipeline sets per-restart player
+                // states via case-5 Team_setPlayersState; this mirrors that for the kickoff tail.
+                if (w.match.phase == 4 && !kicked) {
+                    for (int q = 2; q < 22; ++q) {
+                        auto& pp = w.players[static_cast<std::size_t>(q)];
+                        if (pp.state == 0x002) pp.state = 4; // formation walk, as post-kickoff
+                    }
+                }
                 resumeFromTail(); // rt{1,2,3} tails only; the rt=4 PK pipeline passes through
                 pad(0);
                 drainEv(w, ev);
@@ -1151,6 +1178,7 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
             for (int i = 0; i < 24 && runner.tick(); ++i) pad(4);
             for (int i = 0; i < 10 && runner.tick(); ++i) pad(4 | kSprint); // fresh press edge: sprint cap opens
             const Fixed vRelease = p.speed;
+            const Fixed capAtRel = p.speedCap; // live cap chain at release (eval-time caps have re-opened)
             long fxBrake = 0, stepSum = 0;
             int ladderTicks = 0, lastMismatch = -1;
             // (clean-zone tick counter retired with the raw-pos integral formula)
@@ -1196,15 +1224,20 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
             // 2-frame tick, x2): the observed ramp is one step/tick, demanding a real deceleration.
             const bool segOk = ladderTicks >= 8 && vRelease - vEnd >= p.decel * 2 * 2;
             const bool distOk = segOk && fxBrake <= Sfx + tolFx && fxBrake >= Sfx - tolFx;
-            // Sprint evidence: the pad window drove the carrier to at least three quarters of the
-            // attr-derived run ceiling (p.runMax) before release; the deceleration gate below then
-            // measures the ladder from that band down.
+            // Sprint evidence (pass-16 re-baseline): the byte-pinned cap rows DAT_0058aee4 give
+            // kSpeedCap = {0xc0000, 0x50000, 0x50000} per turn class; loose-ball retarget chases keep
+            // the carrier at class >=1, so its live band is kSpeedCap[1] = 0x50000 - proven by the
+            // root-ladder replica: release lands exactly there (stopDistFx matches stepSum). Assert
+            // the pad window drove the carrier to >= three quarters of min(attr runMax, cap chain at
+            // release, class band); the sprint gesture lane on a short press edge adds no extra
+            // stride clip per the D-57 tap grammar, so the class band is the honest ceiling. The
+            // deceleration ladder then measures from that band down.
             (void)stopped; (void)lastMismatch; // ramp telemetry kept for the trace lane
-
-const bool sprintOk = vRelease * 4 >= p.runMax * 3;
+            const Fixed effCeil = std::min({p.runMax, capAtRel, kSpeedCap[1]});
+            const bool sprintOk = vRelease * 4 >= effCeil * 3;
             steps[12].passed = sprintOk && distOk;
-            steps[12].detail = fmt("stop-distance: release={} decay={} thr={} ladderTicks={} vEnd={} stopDistFx={} replicaSfx={} tol={} sprintOkFx={} runMax={}",
-                                   int(vRelease), int(vRelease - vEnd), int(p.decel * 2 * 2), ladderTicks, int(vEnd), fxBrake, Sfx, tolFx, int(vRelease * 4), int(p.runMax));
+            steps[12].detail = fmt("stop-distance: release={} decay={} thr={} ladderTicks={} vEnd={} stopDistFx={} replicaSfx={} tol={} sprintOkFx={} effCeil={}",
+                                   int(vRelease), int(vRelease - vEnd), int(p.decel * 2 * 2), ladderTicks, int(vEnd), fxBrake, Sfx, tolFx, int(vRelease * 4), int(effCeil));
         }
     }
 

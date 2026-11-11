@@ -890,7 +890,8 @@ std::int32_t Player_frameMove(World& w, int pid, int ebx, int ecx, int keeperChe
                         static_cast<std::int32_t>(p.posI.z + w.pitch.thirdLineZ[w.teams[p.team].side] >= 0) !=
                             w.teams[p.team].side)
                         keeper = true;
-                    else if (static_cast<std::uint32_t>(Player_cachedDistance(w, pid, winner)) > 0x120)
+                    else if (winner < 0 || // exe reads the adjacent slot area for index -1 (mapped, never faults); garbage distance > threshold -> keeper lane taken
+                             static_cast<std::uint32_t>(Player_cachedDistance(w, pid, winner)) > 0x120)
                         keeper = true;
                 }
                 if (keeper) {
@@ -899,7 +900,7 @@ std::int32_t Player_frameMove(World& w, int pid, int ebx, int ecx, int keeperChe
                 } else {
                     tgt = winner;
                 }
-            } else {
+            } else if (winner >= 0) { // garbage-slot read of the exe never matches d < 0x90/0x150 for -1; tgt stays unset
                 const std::int32_t d = Player_cachedDistance(w, pid, winner);
                 if (d < 0x90) {
                     tgt = winner;
@@ -910,7 +911,9 @@ std::int32_t Player_frameMove(World& w, int pid, int ebx, int ecx, int keeperChe
                     if (da < 0xab) tgt = winner;
                 }
             }
-            setHead(Player_cachedDistance(w, pid, tgt) == 0 ? p.facing : Player_cachedAngle(w, pid, tgt));
+            setHead(tgt >= 0 ? (Player_cachedDistance(w, pid, tgt) == 0 ? p.facing
+                                                                        : Player_cachedAngle(w, pid, tgt))
+                             : p.facing); // no target: exe's cached reads of slot -1 yield garbage angle; keep facing
             if (p.speed == 0) {
                 p.headAim = p.angleBall;
             } else if (look) {

@@ -15,6 +15,13 @@ project goals.
   assigns the physical pad word directly, `sample()` returns it; a tap opening and closing between
   two device reads produces no event, exactly as in the original. `test_input` asserts the grammar.
 
+- **Camera parameter provenance (pass-16cam, D-54)**: the FOV/task-height lane is WC98-proven at
+  **DAT_0057FB82** (port `kTaskHeights` byte-exact; accessor FUN_004a0790 reads `[cam+8]`-indexed
+  dwords, instruction bytes asserted) and the FIFA-99 cite `FOV i16 0x57FAD8` is refuted (an
+  ascending u16 pair table there). caminit FUN_004a0810 (FOV default 0xe28 at EBX[0x1e]=+0x78 +
+  record defaults), the h12/h14/h28 preset rows and the case-5 preset pitch field (63000) all proven;
+  every `kModes` FIFA-99 zone-table signature is absent from the image, so those numerics
+
 - **PK-celebration crash fix (pass-16, D-73)**: `Player_frameMove` winner lane guarded for
   `possWinner == -1` (keeper branch = far mirror, steering skipped, head falls back to facing); the
   self-test PK goal->celebration tick survives end-to-end. Self-test windows re-baselined on pass-16

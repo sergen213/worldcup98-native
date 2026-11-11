@@ -710,7 +710,9 @@ void advance(BallState& b, int& idx, BallEntry*& e) {
     absPos(b);
 }
 
-// FUN_004766E4: steer the ball to dribbleTarget over n frames (no drag/gravity).
+// FIFA-99 `Ball_steerToTarget` family cite (Cam-side grammar; the cited FUN_004766E4 has ZERO
+// call/jmp/dword references in FIFAWC.EXE — absent from WC98, register D-50): steer the ball to
+// dribbleTarget over n frames (no drag/gravity).
 void Ball_moveToward(World& w, int n) {
     BallState& b = w.ball;
     b.trajFlags &= ~1u;

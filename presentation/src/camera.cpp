@@ -1,18 +1,23 @@
-// The exe addresses in this file are FIFA 99-family documentation retained for the WC98 port: World
-// Cup 98 is the same Gen3 engine family, confirmed by docs/reverse-engineering/GHIDRA_PASS5_IG.md
-// (architecture; sim clock evidence l.125). WC98-specific rederivation of these addresses is a
-// follow-up slice. Ported from fifa99-native presentation/src/camera.cpp:
-// Port of the FIFA99.EXE v1.1 in-match cameras. Parameter values were read from the per-mode init
-// functions (rotation CamRot_init* 0x4C3BAC.., position CamPos_init* 0x544FAC..) and the FOV table
-// i16 0x57FAD8; see docs/MATCH_RENDERING.md and docs/reverse/MATCH_CAMERAS.md for every address.
-// Resolved (pass-15): the orbit/lead trig lane now uses the WC98 fixed-point table sine (`sine16x16` /
+// WC98 provenance (pass-16cam, register D-54) for this file's exe cites:
+//   - FOV/task-height rows: **WC98-proven** at DAT_0057FB82 (`cam_wc98_tables.inc`, gate
+//     `test_cam_tables`). The FIFA-99 cite `FOV i16 0x57FAD8` is REFUTED for WC98 — that VA holds an
+//     ascending u16 pair table ({0005,0004,0007,0006,..}), not FOV halfwords.
+//   - camera-record defaults + mode-broadcast constants: **WC98-proven** code immediates of the init
+//     FUN_004a0810 (FOV default `cam+0x78 = 0xe28`) and accessor FUN_004a0790 (`analysis/pass16cam/`).
+//   - per-mode **parameter rows** in `kModes` below: FIFA-99 family cites only. The FIFA-99 zone-table
+//     row signatures ({60900,61050,..}, {-2000,-750,750,2000}, {12250,..}, height triples {0,800,-3000})
+//     occur ZERO times in the WC98 image (`analysis/pass16cam/absent_scan.txt`), and WC98's camera
+//     model is preset-record based (stride-0x2c records DAT_00586xxx, selector FUN_004ca880 —
+//     `analysis/pass16cam/cam_presets.txt`), so these numbers have no byte-level counterpart.
+//   - Gen3 family confirmation: docs/reverse-engineering/GHIDRA_PASS5_IG.md (sim clock l.125).
+// Resolved (pass-15): the orbit/lead trig lane uses the WC98 fixed-point table sine (`sine16x16` /
 // FUN_00497740 over DAT_00585898, byte-exact + asserted) with the engine's fixed-multiply rounding —
-// the old libm path drifted by one unit of the 16-bit angle. Remaining open items: `atan2_16` keeps a
-// libm approximation (the WC98 accessor site is not located yet, register D-53), and the per-mode
-// **parameter rows** above are FIFA-99 cites pending WC98 re-dump (register D-54).
+// the old libm path drifted by one unit of the 16-bit angle. `atan2_16` keeps a libm approximation
+// (the WC98 accessor site is not located yet, register D-53).
 #include "wc98/presentation/camera.hpp"
 
 #include "exe_tables.inc"
+#include "cam_wc98_tables.inc"
 
 #include <algorithm>
 #include <cmath>
@@ -60,7 +65,7 @@ constexpr int kXKeys[] = {-1000, -500, 500, 1000};
 constexpr int kTelePitchMax[] = {60900, 61050, 61200, 61350, 61500}, kTelePitchMin[] = {60500, 60700, 60900, 61100, 61300};
 constexpr int kLeadKeys[] = {-1750, -250, 250, 1750};
 constexpr int kTeleLead0[] = {100, 100, 200, 300, 300}, kTeleLead1[] = {300, 300, 200, 100, 100};
-// Height tables {x add, height, z key} are static exe data, extracted by reverse/tables/gen_presentation_tables.py.
+// Height tables {x add, height, z key}: FIFA-99.EXE static data (`exe_tables.inc` header); absent from the WC98 image (D-54).
 template <std::size_t N> constexpr std::array<HeightKey, N> heights(const std::int32_t (&t)[N][3]) {
     std::array<HeightKey, N> r{};
     for (std::size_t i = 0; i < N; ++i) r[i] = {t[i][0], t[i][1], t[i][2]};
@@ -84,40 +89,47 @@ constexpr int kStadPitchMax[] = {61500, 61500, 61500, 61500, 61500}, kStadPitchM
 // Tower (7)
 constexpr int kTowerLeadKeys[] = {-1750, -250, 250}, kLead500[] = {500, 500, 500, 500};
 
-// Mode table, index = CameraMode for 0..5 and 7 (6 = Ball Cam has its own update).
+// Mode table, index = CameraMode for 0..5 and 7 (6 = Ball Cam has its own update). Every numeric row
+// below is a FIFA-99 family carryover: the per-mode init cites are FIFA-99 addresses and the values
+// have no byte-level counterpart in FIFAWC.EXE (scan `analysis/pass16cam/absent_scan.txt`); WC98's own
+// camera parameters live as stride-0x2c preset records DAT_00586xxx selected by FUN_004ca880
+// (dossier `analysis/pass16cam/cam_presets.txt`). The FOV lane IS WC98-exact (`kTaskHeights` /
+// DAT_0057FB82, gate `test_cam_tables`) — register D-54 is partial, not fully closed.
 constexpr ModeParams kModes[8] = {
-    // 0 Tele: CamRot_initTele 0x4C3BAC, CamPos_initTele 0x544FAC
+    // 0 Tele (FIFA-99 CamRot_initTele 0x4C3BAC / CamPos_initTele 0x544FAC; FIFA-99 family, not byte-exact in WC98)
     {kPitchBox | kPitchKeyX | kYawZones | kPitchZones, 62500, 61900, 24576, 8192, 50, 48, kTeleYawKeys, kTeleYawMax, kTeleYawMin, kXKeys,
      kTelePitchMax, kTelePitchMin, {0, 0, 0, 0}, {-2000, 2000, 3000, 3500}, 240, 100, 59500, 62000, 30, {0, -100, 0}, 100, 5, 13000, 20000,
      20, kLeadKeys, kTeleLead0, kTeleLead1, 2, 1700, 650, 0, 24, 64, 50, 3350, -2500, 2500, kTeleH0, kTeleH1},
-    // 1 Sideline: 0x4C413C / 0x5450D0
+    // 1 Sideline (FIFA-99 0x4C413C / 0x5450D0; FIFA-99 family, not byte-exact in WC98)
     {kPitchKeyX | kPitchZones, 63000, 58000, 19200, 14000, 40, 30, {}, {}, {}, kXKeys, kSidePitchMax, kSidePitchMin, {0, 0, 0, 0},
      {0, 0, 0, 0}, 100, 100, 32768, 63500, 30, {0, -75, 0}, 50, 1, 12000, 21000, 20, kLeadKeys, kLead100, kLead100, 2, 1200, 550, 0, 20, 64,
      -200, 2800, -2700, 2700, kSideH0, kSideH1},
-    // 2 Action: 0x4C43BC / 0x54517C
+    // 2 Action (FIFA-99 0x4C43BC / 0x54517C; FIFA-99 family, not byte-exact in WC98)
     {kPitchZones, 62000, 60000, 1000, 64500, 50, 50, {}, {}, {}, kXKeys, kActionPitchMax, kActionPitchMin, {0, 0, 0, 0}, {0, 0, 0, 0}, 240,
      100, 32768, 62500, 40, {0, 0, 0}, 100, 5, 62000, 3000, 20, {}, kLead300, kLead300, 0, 0, 700, -1500, 20, 64, -1800, 1800, -3800, 800,
      {}, {}},
-    // 3 Goal (End): 0x4C4598 / 0x545214
+    // 3 Goal (End) (FIFA-99 0x4C4598 / 0x545214; FIFA-99 family, not byte-exact in WC98 — WC98's own
+    // preset-record pitch field DAT_00586268 = 63000 is a separate lane, `cam_presets.txt`)
     {kPitchZones, 63000, 58000, 1500, 64000, 50, 50, {}, {}, {}, kGoalPitchKeys, kGoalPitchMax, kGoalPitchMin, {0, 0, 0, 0}, {0, 0, 0, 0},
      160, 100, 32768, 63200, 30, {0, 0, 0}, 50, 1, 61000, 3500, 20, {}, kLead200, kLead200, 2, 0, 700, -1350, 20, 64, -1800, 1800, -3900,
      900, kGoalH, kGoalH},
-    // 4 Stadium: 0x4C4778 / 0x5452B8
+    // 4 Stadium (FIFA-99 0x4C4778 / 0x5452B8; FIFA-99 family, not byte-exact in WC98)
     {kYawBox | kPitchBox | kPitchKeyX | kYawZones | kPitchZones, 62000, 59500, 13500, 6000, 50, 40, kStadYawKeys, kStadYawMax, kStadYawMin,
      kXKeys, kStadPitchMax, kStadPitchMin, {-2000, 1600, -3250, 3500}, {-2000, 1000, -4000, 4000}, 240, 100, 32768, 62200, 25, {0, 0, 0},
      100, 5, 4500, 10500, 20, {}, kLead200, kLead200, 0, 1000, 700, -1100, 32, 64, 0, 2900, -3450, 1350, {}, {}},
-    // 5 Shoulder: 0x4C4A68 / 0x545338
+    // 5 Shoulder (FIFA-99 0x4C4A68 / 0x545338; FIFA-99 family, not byte-exact in WC98)
     {0, 63000, 62000, 10500, 3000, 50, 50, {}, {}, {}, {}, {}, {}, {0, 0, 0, 0}, {0, 0, 0, 0}, 160, 100, 32768, 63500, 30, {0, 0, 0}, 50, 1,
      3000, 8200, 20, {}, kLead150, kLead150, 0, 950, 600, -1650, 24, 64, -750, 2750, -3850, 2450, {}, {}},
-    // 6 Ball Cam (BallCam_update 0x4E90B4) has its own update; this row is unused
+    // 6 Ball Cam (FIFA-99 BallCam_update 0x4E90B4; FIFA-99 family cite) has its own update; row unused
     {0, 0, 0, 0, 0, 1, 1, {}, {}, {}, {}, {}, {}, {0, 0, 0, 0}, {0, 0, 0, 0}, 0, 0, 0, 0, 1, {0, 0, 0}, 0, 0, 0, 0, 1, {}, {}, {}, 0, 0, 240, 0,
      1, 1, 0, 0, 0, 0, {}, {}},
-    // 7 Tower: 0x4C3EE0 / 0x545058 (flags 0x6000: zones off)
+    // 7 Tower (FIFA-99 0x4C3EE0 / 0x545058, flags 0x6000 zones off; FIFA-99 family, not byte-exact in WC98)
     {kPitchKeyX | 0x2000, 57500, 56500, 17600, 15000, 65, 50, {}, {}, {}, {}, {}, {}, {0, 0, 0, 0}, {0, 0, 0, 0}, 200, 100, 49152, 58500, 30,
      {0, 0, 0}, 150, 5, 13500, 19500, 25, kTowerLeadKeys, kLead500, kLead500, 0, 1600, 1520, 0, 24, 64, -150, 3150, -2550, 2550, {}, {}},
 };
-constexpr int kReplayFov = 0xE28; // cam+0x78 default (FOV table entry -5 = "use cam+0x78")
-static_assert(exe::kCamFov[8] == -5);
+constexpr int kReplayFov = 0xE28; // WC98-proven: caminit FUN_004a0810 writes 0xe28 to cam+0x78 (FOV default,
+                                   // the target of FOV-table sentinel -5); gate test_cam_tables.
+static_assert(exe::kCamFov[8] == -5); // FIFA-99 sibling row; WC98 sentinel word kTaskHeights[9] = 0xfffb
 
 double rad(int a16) { return double(a16) * 2.0 * std::numbers::pi / kTurn; }
 // Exe polar-offset idiom (`dist * trig(x)`, OrbitCam_update 0x48D18C / BallCam_update 0x4E90B4):
@@ -419,14 +431,10 @@ constexpr std::uint32_t kSineTable[257] = {
     0x10000}; // T[256] = sin(quarter turn) * 65536
 static_assert(kSineTable[1] == 0x192 && kSineTable[8] == 0x0C8F && kSineTable[255] == 0xFFFE);
 
-// DAT_0057FB82: packed task-height words; the tabA_pre prelude FUN_004a0790 reads
-// *(u32*)(&DAT_0057FB82 + idx*2) sign-shifted >> 16 = this table's u16 at idx+1. Sentinels
-// 0xfffb/-5 -> rec+0x78, 0xfffc/-4 -> rec+0x114, 0xffff/-1 -> mode constants (see tabATaskHeight).
-constexpr std::uint16_t kTaskHeights[32] = { // raw 0x17E182..; VA DAT_0057FB82
-    0x0,   0xcc0, 0xcc0, 0xcc0, 0xa00, 0xcc0, 0x880, 0xac0,
-    0xf00, 0xfffb, 0xcc0, 0xcc0, 0xfffc, 0x1100, 0xffff, 0x1280,
-    0x1280, 0x880, 0xfffb, 0x1540, 0xe40, 0x1a80, 0x1280, 0x1540,
-    0xf00, 0x1540, 0x8fc, 0xcc0, 0xcc0, 0xcc0, 0xcc0, 0x6163};
+// DAT_0057FB82 (WC98-proven FOV/task-height table) lives in `cam_wc98_tables.inc` — byte-exact dump,
+// gate `test_cam_tables`. Sentinels -5 -> rec+0x78 (FOV default 0xe28), -4 -> rec+0x114, -1 -> the
+// mode constants in tabATaskHeight; accessor FUN_004a0790 reads `>>16` of dword[base + [cam+8]*2],
+// i.e. word[idx+1].
 
 // h12 fixed preset rows (DAT_00585FEA/EC/FEE/FF0; stride 10 bytes, {angle,speed,height,yawOff}):
 constexpr CameraPresetRow kH12Presets[2] = {{0x244c, 0xf000, 0x7b8, 0x30},   // row 0 (DAT_00649338 <= 0)

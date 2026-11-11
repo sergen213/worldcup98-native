@@ -184,6 +184,11 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
   guard in `Player_frameMove`). Self-test windows re-baselined on pass-16 physics: turning phase-gated,
   AI closing range anchored on live-ball ticks, sprint band asserted at the byte-pinned class cap
   (kSpeedCap[1] = 0x50000). Suite **118/118**, JSON self-test **14/14** incl. PK goal->celebration.
+- Pass-16cam camera provenance (2026-11-11): D-54 param rows partially closed — FOV/task-height table
+  proven at **DAT_0057FB82** (port `kTaskHeights` byte-exact, accessor FUN_004a0790 instruction bytes),
+  FIFA-99 cite `FOV i16 0x57FAD8` refuted, caminit FUN_004a0810 + h12/h14/h28 preset rows byte-proven;
+  every FIFA-99 `kModes` zone signature = zero hits in the image (rows stay family carryover). New gate
+  `test_cam_tables`; cites relabeled per row in `camera.cpp`. Suite **119/119**.
 - Release: tag `v0.3.0` + GitHub release (AppImage + `.sha256`/`.version` sidecars): playable live match,
   authentic FE fonts/language knob, FEFLOW11 team-select grid, measured percent-table scene defaults;
   game smoke exit 0 under Xvfb, launcher offscreen self-test pass, `update.sh --check` -> "up to date";

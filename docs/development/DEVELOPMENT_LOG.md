@@ -499,3 +499,22 @@ sampled per phase-9 tick of the shot windows, stop-distance sprint band asserted
 cap-at-release, kSpeedCap[1]=0x50000) — loose-ball retarget chases keep turn class >=1 under the
 byte-pinned cap rows DAT_0058aee4 (release lands exactly on 0x50000; root-ladder replica proves the
 band). Suite 118/118 green with self_test_gameplay passing end-to-end.
+
+## Pass-16cam camera parameter provenance: D-54 partial, gate test_cam_tables (2026-11-11)
+
+D-54 param rows re-derived against FIFAWC.EXE. The FOV/task-height lane is WC98's own: halfword table
+**DAT_0057FB82** (raw 0x17e182), accessor FUN_004a0790 reads `mov edx,[0x57fb82+edx*2]` at 0x4a0794 with
+edx = [cam+8] (camera mode) then sar >>16, so the value for index i is word[i+1]; port `kTaskHeights`
+byte-exact incl. sentinels (-5 -> rec+0x78 FOV default 0xe28, -4 -> rec+0x114, -1 -> broadcast grid
+{0x1280 / DAT_00644858 ? 0x1280 : 0x440 / rec+0x10==3 ? 0x1980 : 0x1100 / else 0x1540}) and the "cam0"
+ASCII end marker at word[31]. The FIFA-99 cite `FOV i16 0x57FAD8` is REFUTED — that VA holds an
+ascending u16 pair table. caminit FUN_004a0810 writes the FOV default 0xe28 at EBX[0x1e] (+0x78, site
+0x4a08d6) + record defaults 0x460/0x500/0x3c0/0x4000/0x3480/0x1900; h12 rows DAT_00585FEA stride 10,
+h14 slots DAT_00586046 stride 10, h28 DAT_005862D2 byte-exact; WC98's per-preset pitch field lives at
+record+0x20 (case-5 = 63000 at DAT_00586268, selector write site 0x4caa2f). Every FIFA-99 kModes zone
+signature ({60900..61500}, {61750x5}, {61500x5}, {-2000,-750,750,2000}, {12250..11250}, height triples,
+FIFA-99 FOV words) scans ZERO times in the image (analysis/pass16cam/absent_scan.txt), so those numeric
+rows stay labelled FIFA-99 family carryover; the deferred preset-record decode is recorded in
+analysis/pass16cam/NOTES.md. Section deltas corrected: .text("AUTO") VA = raw + 0x400c00 (not 0x400000).
+Gate `test_cam_tables` (FOV bytes + accessor instruction bytes + caminit/preset immediates + FIFA-99
+absence); cites relabeled per row in camera.cpp. Suite **119/119** green.

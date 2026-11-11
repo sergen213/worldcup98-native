@@ -369,6 +369,13 @@ endif()
 wc98_test(test_presentation unit/test_presentation.cpp)
 target_link_libraries(test_presentation PRIVATE wc98_presentation)
 
+# Camera parameter provenance gate (pass-16cam, register D-54): FOV/task-height table DAT_0057FB82
+# byte-exact + accessor read shape/instruction bytes + caminit FUN_004a0810 and preset-row code
+# immediates; FIFA-99 cites (FOV 0x57FAD8, kModes zone tables) proven absent. Tree-gated.
+wc98_test(test_cam_tables unit/test_cam_tables.cpp)
+target_include_directories(test_cam_tables PRIVATE ${CMAKE_SOURCE_DIR}/presentation/src)
+target_link_libraries(test_cam_tables PRIVATE wc98_presentation)
+
 # HUD overlay layout gate (pure logic, no GPU): scoreboard/clock/radar quad lists from synthetic font+snapshot.
 wc98_test(test_hud unit/test_hud.cpp)
 target_link_libraries(test_hud PRIVATE wc98_presentation)

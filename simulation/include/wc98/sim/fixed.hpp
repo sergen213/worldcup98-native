@@ -49,7 +49,9 @@ constexpr OctDist octDistance(const Vec3& from, const Vec3& to) {
     return {octLength(dx, dz), dx, dz};
 }
 
-// FUN_0046DDB0: sine/cosine from the quarter-wave table 0x582EB4 (257 entries, 16.16).
+// WC98 sine/cosine accessor pair FUN_00497740/4977b0 (camera.hpp l.38-42, pass-12cam) reads the
+// quarter-wave table DAT_00585898 (257 entries, 16.16; rows byte-exact vs FIFAWC.EXE - gated by
+// test_trig_tables). The FIFA-99 cite FUN_0046DDB0 / table 0x582EB4 names a zeros region in WC98.
 // x component = sin(a), z component = cos(a): angle 0 faces +z. Quadrant = (a >> 8) & 3.
 struct SinCos {
     Fixed s, c;
@@ -67,7 +69,8 @@ constexpr SinCos sinCos(Angle a) {
 
 // Math_atan2_1024 0x4BB8F8 (EAX = x, EDX = z): angle of (x, z) in -0x200..0x200, 0 = +z.
 // Octant ratio min/max as 0.32 (`div`), rounded to 8 bits (`shr 24; adc 0`) into byte table
-// 0x59F104 (257 entries, 0..0x80); equal magnitudes give 0x80 directly.
+// DAT_00594CAC (257 entries, 0..0x80; byte-exact vs FIFAWC.EXE - gated by test_trig_tables); equal
+// magnitudes give 0x80 directly. The FIFA-99 cite 0x59F104 is a float table in WC98, not this one.
 constexpr Angle atan2i(std::int32_t x, std::int32_t z) {
     unsigned flags = 0;
     std::uint32_t uz = static_cast<std::uint32_t>(z), ux = static_cast<std::uint32_t>(x);

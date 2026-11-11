@@ -2,7 +2,8 @@
 // Exe trig tables copied byte-exact by tools/sim-tables/dump.py (functional game-logic data).
 #include <cstdint>
 namespace wc98::sim::detail {
-// exe 0x582eb4, 257 x i32 (tools/sim-tables/dump.py)
+// WC98 DAT_00585898, 257 x i32 - byte-exact verified against FIFAWC.EXE data (pass-15); the FIFA-99
+// cite 0x582eb4 names a zeros region in WC98.
 inline constexpr std::int32_t kSinQuarter[257] = {
     0, 402, 804, 1206, 1608, 2010, 2412, 2814, 3215, 3617, 4018, 4420,
     4821, 5222, 5622, 6023, 6423, 6823, 7223, 7623, 8022, 8421, 8819, 9218,
@@ -27,7 +28,8 @@ inline constexpr std::int32_t kSinQuarter[257] = {
     65220, 65258, 65294, 65327, 65358, 65386, 65412, 65436, 65457, 65475, 65491, 65505,
     65516, 65524, 65531, 65534, 65536,
 };
-// exe 0x59f104, 257 x u8 (tools/sim-tables/dump.py)
+// WC98 DAT_00594CAC, 257 x u8 - byte-exact verified (pass-15); the FIFA-99 cite 0x59f104 names a
+// float table in WC98.
 inline constexpr std::uint8_t kAtanOctant[257] = {
     0, 1, 1, 2, 3, 3, 4, 4, 5, 6, 6, 7,
     8, 8, 9, 10, 10, 11, 11, 12, 13, 13, 14, 15,

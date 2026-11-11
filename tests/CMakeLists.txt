@@ -83,6 +83,11 @@ foreach(t IN ITEMS test_sim_core test_sim_players test_sim_team test_sim_scenari
     wc98_test(${t} unit/${t}.cpp)
     target_link_libraries(${t} PRIVATE wc98_simulation)
 endforeach()
+# Trig-table provenance gate (pass-15): the sim's sine quarter-wave + atan octant tables pinned
+# byte-exact to FIFAWC.EXE DGROUP rows (DAT_00585898 / DAT_00594CAC), FIFA-99 cite addresses asserted
+# absent, quadrant-boundary exactness of sinCos/atan2i. Tree-gated (exit 77 skip).
+wc98_test(test_trig_tables unit/test_trig_tables.cpp)
+target_link_libraries(test_trig_tables PRIVATE wc98_simulation)
 
 # Input layer: synthetic SDL events (keyboard pad words, virtual gamepad, hot-plug).
 wc98_test(test_input unit/test_input.cpp)

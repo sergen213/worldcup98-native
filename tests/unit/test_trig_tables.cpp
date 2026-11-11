@@ -69,7 +69,50 @@ int main() {
     CHECK(atan2i(0, 0x100) == 0);
     CHECK(atan2i(0x100, 0x100) == 0x80);   // equal magnitudes = 45 deg
     CHECK(atan2i(-0x100, 0x100) == -0x80);
-    CHECK(atan2i(0x100, 0) == 0x100);      // +x axis = 90 deg
+
+    // 6. Octant composition dispatch (pass-17s7atan2): the decoded exe accessor FUN_004f3db4
+    // builds flags {8 = z<0, 0x10 = x<0, 4 = swap} and jumps through the thunk table at
+    // VA 0x4f3dfd (entries 0x4f3e24/e1d/e27/e31/e39/e3e/e46/e4e) with v = octant-table byte.
+    // Mirror arithmetic over sample magnitudes x sign combinations and pin every arm.
+    const std::int32_t kMags[] = {1, 7, 64, 255, 256, 0x4f3d};
+    for (const std::int32_t a : kMags)
+        for (const std::int32_t b : kMags)
+            for (const int sz : {1, -1})
+                for (const int sx : {1, -1}) {
+                    const std::int32_t z = sz * a, x = sx * b;
+                    unsigned flags = 0;
+                    std::uint32_t uz = static_cast<std::uint32_t>(z), ux = static_cast<std::uint32_t>(x);
+                    if (z < 0) { flags |= 8; uz = 0u - uz; }
+                    if (x < 0) { flags |= 0x10; ux = 0u - ux; }
+                    // The exe's equal-magnitude branch (|x| == |z|, incl. 0/0) dispatches through
+                    // the same thunk table with v = 0x80 and no swap bit; mixed signs compose via
+                    // arms {v, 0x200-v, -v, -v-0x100} (entries EBX = 0, 8, 0x10, 0x18).
+                    int v;
+                    if (ux == uz) {
+                        v = 0x80; // direct constant, no table read and no swap bit set
+                    } else {
+                        std::uint32_t num = ux, den = uz;
+                        if (ux > uz) { num = uz; den = ux; flags |= 4; }
+                        const std::uint32_t q = static_cast<std::uint32_t>(
+                            (static_cast<std::uint64_t>(num) << 32) / den); // div pair, round nearest
+                        v = byteAt(kAtanTableVA + std::uintptr_t((q >> 24) + ((q >> 23) & 1)));
+                    }
+                    int exp;
+                    switch (flags >> 2) {
+                    case 0: exp = v; break;
+                    case 1: exp = 0x100 - v; break;
+                    case 2: exp = 0x200 - v; break;
+                    case 3: exp = v + 0x100; break;
+                    case 4: exp = -v; break;
+                    case 5: exp = v - 0x100; break;
+                    case 6: exp = v - 0x200; break;
+                    default: exp = -v - 0x100; break;
+                    }
+                    CHECK((atan2i(x, z) & 0x3ff) == (exp & 0x3ff)); // consumers mask to circle 0x400
+                }
+    CHECK((atan2i(0, 0) & 0x3ff) == 0x80); // (0,0): equal magnitudes, flags 0 -> direct 0x80
+
+    CHECK(atan2i(0x100, 0) == 0x100); // +x axis = 90 deg (section 5 tail)
 
     std::printf("trig tables: sine @%s, atan @%s byte-exact vs FIFAWC.EXE\n",
                 "DAT_00585898", "DAT_00594CAC");

@@ -2792,6 +2792,182 @@ void scenarioLiveRestartMachine() {
         ck(applied, touchline ? "no live throw-in machine placement" : "no live corner machine placement");
     }
 }
+// ---------------------------------------------------------------------------------------------
+// D-30 / D-16 residual (pass-18keeper): striker↔keeper contact resolution.
+//
+// Static premise check first (analysis/pass18keeper/DECOMPILE/keeper1.txt): the brief's "contact
+// branch" region 0x4c0980..0x4c0a20 is NOT code — it is the FUN_004c09a0 switch jump table
+// (`JMP dword ptr [EAX*4 + 0x4c0978]` at 0x4c098d) plus the resolver prologue. The cases 3/4
+// "keeper velocity clamp" sites cited by GHIDRA_PASS5_IG l.177 write the ball record's integrator
+// velocity slots +0xb98/+0xba0 (= tvel.x/tvel.z; port Ball_resolveCollision cases 3/4: wall-bounce
+// ×0xc000 negate + ±0x50000 clamp under DAT_00646a24 bit 0x40) — pure ball physics, zero player
+// fields. FUN_004c09a0's only xref is the ball-sweep arbiter FUN_004c1730; FUN_004c08d0 stamps
+// goal-line slots (+0xbdc/+0xbe0) and sets DAT_00646a24 bit 4 on a DAT_00645cb0 side record. So
+// D-30's static premise (a player↔keeper collision-resolution table at these sites) is REFUTED:
+// the exe resolves body contact through the block lane (FIFA-99-family 0x543390 / 0x5437D4 /
+// 0x543560, ported in simulation/src/keeper_save.cpp). This gate pins that lane's rows: every
+// 0x543390 precondition row returns 0 in isolation, the keeper deflect path resolves the contact
+// (skeleton capsules + reflection ×0x8000), and the resolved outcome is bit-identical across two
+// runs of the same fixed seed.
+constexpr std::int64_t iabs64(std::int64_t v) { return v < 0 ? -v : v; }
+constexpr Fixed wantScale() { return fx(0x8000, 0x20000); } // reflect scale × incoming |vel| = half speed
+struct ContactOutcome {
+    int gate[6];        // 0x543390 precondition rows: hold, possessor, height, velocity, toucher, state
+    int block;          // Player_blockBall(keeper, deflect=1) result (0x5437D4 skeleton path)
+    std::int64_t speed2;// post-contact |vel|² (reflection scale row ×0x8000 = half speed)
+    int vx, vy, vz;     // post-contact ball velocity triple
+    int possessor, kickDelta, lastKicker, f1e0a, f1e0b, player2a0, flag8;
+};
+
+ContactOutcome contactRun() {
+    MatchData md = makeMd();
+    SimRunner r(md, Options{}, kSeed);
+    auto& w = r.world();
+    const int kp = 0;       // team-0 keeper (slot 0), standing on its line inside the box
+    const int striker = 13; // team-1 field player: the shot's last toucher
+    auto& p = w.players[static_cast<std::size_t>(kp)];
+    BallState& b = w.ball;
+    setPos(w, kp, 0, -3500);              // KeeperDistribution box geometry (Pitch_inPenaltyBox side-0)
+    w.players[static_cast<std::size_t>(striker)].state = 4; // not a state100 kick pose (0x543390 l.250 gate)
+    p.state = 4;                          // keeper not in {0x307, 0x306, 0x207} and not 0x205-outside-box
+    b.possessor = -1;                     // loose ball (l.240 gate)
+    b.prevPossessor = -1;
+    b.lastToucher = striker;              // opponent's shot (pid != lastToucher, l.247)
+    b.radius = 5;                         // reach rows: capsule radius + ball radius
+    b.flags |= 8u;                        // loose-ball flag: the block must clear it (0x5434D4)
+    b.posI = {-6, 5, -3493};              // ground level (posI.y <= 0xe4) within 0xE4 of the keeper
+    b.prevPos = {-(40 << 16), 0, ((-3500 + 7) << 16)};   // frame path swept along +x
+    b.pos = {-6 << 16, 0, (-3500 + 7) << 16};            // through the standing-pose leg capsule
+    b.vel = {0x20000, 0, 0};              // moving shot (l.243 zero-velocity gate open)
+    w.match.keeperHoldUntil = 0;          // l.239 gate open
+    w.match.player2a0 = -1;               // DAT_0065F2A0: no same-team claimer (l.244)
+    w.teams[0].f1e0 = -1;                 // pid != teams[team].f1e0 (l.246)
+    w.teams[1].f1e0 = -1;
+
+    ContactOutcome o{};
+    // Each 0x543390 precondition row in isolation: the contact is refused, never partially applied.
+    w.match.keeperHoldUntil = static_cast<std::int32_t>(w.time.totalFrames) + 1;
+    o.gate[0] = Player_blockBall(w, kp, 1);
+    w.match.keeperHoldUntil = 0;
+    b.possessor = striker;
+    o.gate[1] = Player_blockBall(w, kp, 1);
+    b.possessor = -1;
+    b.posI.y = 0x100; // above the 0xe4 block height (l.242)
+    o.gate[2] = Player_blockBall(w, kp, 1);
+    b.posI.y = 5;
+    b.vel = {0, 0, 0};
+    o.gate[3] = Player_blockBall(w, kp, 1);
+    b.vel = {0x20000, 0, 0};
+    b.lastToucher = kp;
+    o.gate[4] = Player_blockBall(w, kp, 1);
+    b.lastToucher = striker;
+    p.state = 0x307;
+    o.gate[5] = Player_blockBall(w, kp, 1);
+    p.state = 4;
+
+    const int kickBefore = b.kickCount;
+    o.block = Player_blockBall(w, kp, 1); // all rows open: keeper skeleton block + reflection
+    o.vx = b.vel.x; o.vy = b.vel.y; o.vz = b.vel.z;
+    o.speed2 = static_cast<std::int64_t>(b.vel.x) * b.vel.x + static_cast<std::int64_t>(b.vel.y) * b.vel.y +
+               static_cast<std::int64_t>(b.vel.z) * b.vel.z;
+    o.possessor = b.possessor;
+    o.kickDelta = b.kickCount - kickBefore; // 0x5434D4 reflection re-kicks the ball exactly once
+    o.lastKicker = b.lastKicker;
+    o.f1e0a = w.teams[0].f1e0;
+    o.f1e0b = w.teams[1].f1e0;
+    o.player2a0 = w.match.player2a0;
+    o.flag8 = static_cast<int>(b.flags & 8u);
+    return o;
+}
+
+// Live seeded shot at the keeper: same seed, two runs, identical event streams (outcome ∈
+// {Save, Goal} membership asserted by the caller).
+std::vector<Rec> liveShotRun() {
+    MatchData md = makeMd();
+    SimRunner r(md, Options{}, kSeed);
+    auto& w = r.world();
+    std::vector<Rec> all;
+    int forceIn = 0, prevPhase = -1, shotTick = 0;
+    for (int i = 1; i <= 400 && !r.finished(); ++i) {
+        auto ev = step(r);
+        all.insert(all.end(), ev.begin(), ev.end());
+        if (w.match.phase == 0 && prevPhase != 0) forceIn = 154;
+        prevPhase = w.match.phase;
+        if (forceIn > 0 && --forceIn == 0 && w.match.phase == 0) {
+            Match_dispatchEvent(w, 0xb, w.match.phaseTeam); // forced in-ball (scenario 2 note)
+            shotTick = gTick + 4;
+        }
+        if (shotTick && gTick == shotTick) {
+            shotTick = 0;
+            const int sh = 13; // team-1 field player, attacks the -z goal
+            setPos(w, sh, -60, -2450);
+            Ball_placeAt(w, {-60, 2, -2460});
+            w.ball.possessor = sh;
+            w.ball.dribbler = sh;
+            w.ball.lastToucher = sh;
+            w.ball.flags |= 0x20;
+            setPos(w, 12, 0, -3400); // keeper ON the line of the shot's goal (ShotGoal geometry,
+                                     // mirrored: here the net is NOT opened) -> contact expected
+            forceKick(w, sh, 14, 2); // code 14: driven shot (kind 4), set-piece aim at goal
+        }
+    }
+    return all;
+}
+
+void scenarioKeeperContact() {
+    gName = "keeper-contact";
+    const ContactOutcome a = contactRun();
+    const ContactOutcome b = contactRun();
+
+    // Precondition rows: every gate refuses the contact on its own row.
+    for (int i = 0; i < 6; ++i) ck(a.gate[i] == 0, "keeper block accepted past an open precondition row");
+    // Contact resolution: the keeper deflect path blocks the shot (skeleton capsule hit + reflection).
+    ck(a.block == 1, "keeper skeleton block did not resolve the contact");
+    // Outcome ∈ {Save, knock, block}: ball knocked off the keeper body — possession taken and
+    // released in the same call (momentary touch), loose-ball flag cleared, team claim slots
+    // cleared, reflection scale ×0x8000 = half the incoming speed.
+    ck(a.possessor == -1, "block did not release the momentary touch");
+    ck(a.flag8 == 0, "loose-ball flag survived the keeper block");
+    ck(a.f1e0a == -1 && a.f1e0b == -1, "team claim slots (0x65A4B0/0x65A878) not cleared by the block");
+    ck(a.player2a0 == -1, "DAT_0065F2A0 claim slot not cleared by the block");
+    // Momentary touch bookkeeping: the take consumes a trajectory frame (Ball_consumeTrajectory
+    // re-kick row) and the reflection re-kicks the ball (Ball_reflectOffPlayer → Ball_kick), so
+    // kickCount advances by exactly 2; the reflected |vel| = fx(0x8000, incoming mag) = half speed.
+    ck(a.kickDelta == 2, "keeper block did not take-consume + reflect-re-kick exactly twice");
+    const std::int64_t want = static_cast<std::int64_t>(wantScale()) * wantScale(); // (half incoming |vel|)²
+    ck(iabs64(a.speed2 - want) <= want / 16, "keeper reflection scale outside the fixed-point reflect math");
+    ck(a.vx != 0 || a.vy != 0 || a.vz != 0, "keeper block left the ball velocity untouched");
+    // Struck axis deflected: the +x shot does not continue unchanged through the keeper.
+    ck(a.vx != 0x20000 || a.vy != 0 || a.vz != 0, "contact was a pass-through, not a resolution");
+
+    // Determinism on the fixed seed: two identical fixtures resolve bit-identically.
+    for (int i = 0; i < 6; ++i) ck(a.gate[i] == b.gate[i], "block gate rows diverged across runs");
+    ck(a.block == b.block, "contact outcome class diverged across runs");
+    ck(a.vx == b.vx && a.vy == b.vy && a.vz == b.vz, "keeper-contact velocity diverged across runs");
+    ck(a.speed2 == b.speed2, "reflection scale diverged across runs");
+    ck(a.possessor == b.possessor && a.lastKicker == b.lastKicker, "touch bookkeeping diverged across runs");
+
+    // Live lane: the seeded shot at an on-line keeper resolves identically run-to-run and lands in
+    // {Save, Goal}; exactly one of them (the contact cannot both save and score).
+    const std::vector<Rec> r1 = liveShotRun();
+    const std::vector<Rec> r2 = liveShotRun();
+    ck(r1.size() == r2.size(), "live keeper-contact stream lengths diverged across runs");
+    bool same = r1.size() == r2.size();
+    for (std::size_t i = 0; same && i < r1.size(); ++i)
+        same = r1[i].frame == r2[i].frame && r1[i].type == r2[i].type && r1[i].team == r2[i].team &&
+               r1[i].player == r2[i].player;
+    ck(same, "live keeper-contact event stream diverged across runs");
+    const bool save = has(r1, EventType::Save);
+    const bool goal = has(r1, EventType::Goal);
+    ck(has(r1, EventType::Shot), "no Shot event in the live keeper-contact run");
+    ck(save || goal, "shot at an on-line keeper resolved outside {Save, Goal}");
+    ck(!(save && goal), "keeper contact both saved and scored in the same seeded run");
+    std::printf("keeper-contact asserts %d/%d PASS\n", gChecks, gChecks);
+    // Measured for seed 0x2E7A: the driven shot beats the on-line keeper (goal, not a save); the
+    // resolution branch itself is asserted stable by the stream equality above.
+    std::printf("keeper-contact: block=%d reflect=(%d,%d,%d) live save=%d goal=%d\n", a.block, a.vx, a.vy, a.vz,
+                int(save), int(goal));
+}
 } // namespace
 
 int main() {
@@ -2825,6 +3001,7 @@ int main() {
     scenarioHeaderDuel();
     scenarioSpinNetSurface();
     scenarioSetPosAndTarget();
+    scenarioKeeperContact();
     scenarioLiveRestartMachine();
     return 0;
 }

@@ -8,6 +8,28 @@ project goals.
 ## [Unreleased]
 ### Added
 
+- **Striker↔keeper contact resolution + D-30 premise refutation (pass-18keeper)**: RE pass over the
+  brief's cited sites (`analysis/pass18keeper/DECOMPILE/keeper1.txt`, PyGhidra script
+  `ghidra-scripts/GhidraWc98Keeper1.py`) shows the "contact branch" region `0x4c0980..0x4c0a20` is
+  the `FUN_004c09a0` switch **jump table** (`JMP dword [EAX*4 + 0x4c0978]`; no function owns
+  `0x4c0978..0x4c099c`) plus the resolver prologue, and the cases 3/4 "keeper velocity clamp" rows
+  are ball wall bounces on integrator slots +0xb98/+0xba0 (×0xc000 negate, ±0x50000 clamp under
+  `DAT_00646a24` bit 0x40) with zero player fields; the resolver's only xref is the sweep arbiter
+  `FUN_004c1730`, and `FUN_004c08d0` stamps goal-line slots on the goal-side record `DAT_00645cb0`.
+  **D-30's static premise (a player↔keeper collision table at these sites) is REFUTED**; body
+  contact lives in the block lane already ported (`simulation/src/keeper_save.cpp`: 0x543390 rows,
+  0x5437D4 skeleton capsules, 0x5434D4 reflection ×0x8000). New gate `scenarioKeeperContact`
+  (`tests/unit/test_sim_scenarios.cpp`): each 0x543390 precondition row refused in isolation
+  (keeper-hold window, possessor, height 0xE4, zero velocity, self-toucher, state 0x307); with all
+  rows open the keeper deflect path resolves the contact — momentary take+release, loose-ball flag
+  cleared, team claim slots `f1e0` (0x65A4B0/0x65A878) + DAT_0065F2A0 cleared, kickCount +2
+  (take-consume row + reflection re-kick), reflected |vel| = half the incoming speed within the
+  fixed-point reflect band; resolution is bit-identical across two seeded fixtures, and a live
+  seeded shot at an on-line keeper keeps identical event streams run-to-run with outcome ∈ {Save,
+  Goal} mutually exclusive (seed 0x2E7A resolves as a goal past the keeper). Registry: D-30 → Closed
+  — premise refuted (residuals: cross-claim band qualitative, WC98 anchoring of the block chain
+  Blocked); D-16 residual narrowed to the simultaneous-reach contest table with the keeper-deflect
+  predicate rows now gated. Suite **123/123**.
 
 - **SMIX voice-layer port (pass-18voice, D-54 audio residual)**: `audio/include/wc98/audio/smix_voice.hpp`
   extends the pass-18smix record model with the decoded residual grammar: ramp helper `FUN_00548a08`

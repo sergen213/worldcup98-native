@@ -174,6 +174,34 @@ void pureLogic() {
         CHECK(sine16x16(0) == 0 && sine16x16(0x4000) == 0x10000); // quarter-turn identity exact in table mode
         CHECK(cosine16x16(0) == 0x10000 && sine16x16(-0x8000) == 0);
     }
+    // Replay orbit camera (mode 8, OrbitCam_update 0x48D18C) reproduces the exe's fixed-point polar
+    // idiom exactly: offset = fxRound(dist, table trig) with the engine's `(prod >> 16)+bit-15 carry`
+    // rounding over FUN_00497740/4977b0 table values. Independent replica below; a libm path drifts by
+    // one unit at many angles, so this gate pins the table lane (pass-15 D-54).
+    {
+        auto fxRep = [](int len, int trig16) {
+            const std::int64_t v = std::int64_t(len) * trig16;
+            return int((v >> 16) + ((v & 0x8000) ? 1 : 0));
+        };
+        MatchCamera cam;
+        MatchSnapshot s{};
+        s.ball.pos = {0, 0, 0};
+        s.pitchUnits = {20000.0f, 30000.0f}; // wide pitch: keeps the fit clamp at 1.0 for dist 1120
+        s.camera.orbitDist = 1120;
+        const int yawPos = 0x1234, yawNeg = 0xC000 + 0x1234; // quadrant I and III: sine/cosine negative
+        for (const int yaw : {yawPos, yawNeg}) {
+            s.camera.orbitYaw = yaw;
+            s.camera.orbitElev = 0x500;
+            cam.setMode(CameraMode::Replay);
+            cam.reset();
+            cam.tick(s, 1);
+            const int offX = fxRep(1120, sine16x16(yaw));
+            const int offZ = -fxRep(1120, cosine16x16(yaw));
+            CHECK(cam.eye().x == offX);
+            CHECK(cam.eye().z == offZ);
+            CHECK(cam.eye().y == std::max(160, fxRep(1120, sine16x16(0x500)))); // ball y=0, floor 160
+        }
+    }
     // Timer B fade (FUN_00517b50/cc0): step = 0x10000*0x10000/end, live counts up, snap at end.
     {
         CameraTask t;

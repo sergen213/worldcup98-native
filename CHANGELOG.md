@@ -15,6 +15,11 @@ project goals.
   presence, and the **absence** of the 13 FIFA-99-derived closed-form `kFlightConst` rows (solver-constant
   gap, register D-49). All stale FIFA-99 cite addresses in `trig_tables.inc`/`ball_tables.inc`/`fixed.hpp`
   corrected to measured WC98 VAs; parity registry rows 21/22 -> PV.
+- Camera trig lane made exact (pass-15, register D-54): orbit/lead polar offsets (`sin16x`/`cos16x`) now
+  compute `fx(dist, sine16x16/cosine16x16)` — the byte-exact WC98 quarter-wave table sine (FUN_00497740 over
+  `DAT_00585898`) with the engine's `(prod >> 16) + bit-15 carry` fixed-multiply rounding — replacing the libm
+  path that drifted by one unit of the 16-bit angle (measured: dist 1120 @ yaw `0x1234` = 484 table vs 483 libm).
+  Pinned by a replay-camera eye replica assert (quadrant I + III) in `test_presentation`.
 - Gap-B stop-distance gate: `self_test_gameplay` step 13 (`app/selftest.cpp`) - sprint-chase
   release on a controlled carrier, then per-tick v(t) exact-match against an independent replica of
   `Motion_rootMotionPre` + root-ladder cap chain (speedCap -> sprintMax/runMax-mB0 -> turn-class

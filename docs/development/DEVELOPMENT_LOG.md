@@ -301,3 +301,9 @@ see analysis/patches/PENDING.md).
   cadence claims (`(possessionTime & 7)`, `* 0x5000`) — `FUN_004f3590` is a 74-byte multiply/offset helper,
   WC98 touch gate not yet located (next lane: xrefs of ball-slot `B+0xE0C` writers); `kMaxKickSpeed`
   "absent" — present at `0x59490c` with a real consumer.
+- **Camera trig lane made exact (D-54, first correction of the pass):** `sin16x`/`cos16x` in
+  `presentation/src/camera.cpp` now compute `fx(dist, sine16x16/cosine16x16)` — byte-exact WC98 table sine
+  (`FUN_00497740` over `DAT_00585898`) with the engine's `(prod >> 16) + bit-15 carry` fixed-multiply rounding —
+  replacing libm, which measured one unit low at dist 1120 @ yaw `0x1234` (483 vs table 484). Gate: replay-eye
+  replica assert (quadrant I + III) in `test_presentation`; parity row 19 note closed for the trig drift item.
+  Param rows and the atan2 accessor site remain open (D-54/D-53).

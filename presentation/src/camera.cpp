@@ -5,9 +5,11 @@
 // Port of the FIFA99.EXE v1.1 in-match cameras. Parameter values were read from the per-mode init
 // functions (rotation CamRot_init* 0x4C3BAC.., position CamPos_init* 0x544FAC..) and the FOV table
 // i16 0x57FAD8; see docs/MATCH_RENDERING.md and docs/reverse/MATCH_CAMERAS.md for every address.
-// ponytail: sin/cos/atan2 use libm instead of the exe's 0x582EB4 quarter-wave table; results can differ
-// from the original by a unit in the last place of the 16-bit angle. Extract the table if bit-exact
-// replays are ever compared.
+// Resolved (pass-15): the orbit/lead trig lane now uses the WC98 fixed-point table sine (`sine16x16` /
+// FUN_00497740 over DAT_00585898, byte-exact + asserted) with the engine's fixed-multiply rounding —
+// the old libm path drifted by one unit of the 16-bit angle. Remaining open items: `atan2_16` keeps a
+// libm approximation (the WC98 accessor site is not located yet, register D-53), and the per-mode
+// **parameter rows** above are FIFA-99 cites pending WC98 re-dump (register D-54).
 #include "wc98/presentation/camera.hpp"
 
 #include "exe_tables.inc"
@@ -118,8 +120,18 @@ constexpr int kReplayFov = 0xE28; // cam+0x78 default (FOV table entry -5 = "use
 static_assert(exe::kCamFov[8] == -5);
 
 double rad(int a16) { return double(a16) * 2.0 * std::numbers::pi / kTurn; }
-int sin16x(int len, int a16) { return int(double(len) * std::sin(rad(a16))); }
-int cos16x(int len, int a16) { return int(double(len) * std::cos(rad(a16))); }
+// Exe polar-offset idiom (`dist * trig(x)`, OrbitCam_update 0x48D18C / BallCam_update 0x4E90B4):
+// fixed-point product of the distance with FUN_00497740/4977b0 table sine/cosine (quadrant-folded
+// DAT_00585898, slope term `* 0x6487e >> 9`), rounded by the engine's fixed-multiply pattern
+// `(prod >> 16) + bit-15 carry` (FUN_00517f20). Replaces the libm path that drifted in the last ulp
+// of the 16-bit angle; `sine16x16/cosine16x16` are byte-exact against the image table (pass-12cam,
+// asserted in test_presentation), so orbit/lead offsets are now exact by construction.
+int fxTrig(int len, int trig16) {
+    const std::int64_t v = std::int64_t(len) * trig16;
+    return int((v >> 16) + ((v & 0x8000) ? 1 : 0));
+}
+int sin16x(int len, int a16) { return fxTrig(len, sine16x16(a16)); }
+int cos16x(int len, int a16) { return fxTrig(len, cosine16x16(a16)); }
 int hdist(int dx, int dz) { return int(std::sqrt(double(dx) * dx + double(dz) * dz)); }
 int wrap16(int a) { return a & 0xFFFF; }
 int signed16(int a) { return std::int16_t(std::uint16_t(a)); }

@@ -146,7 +146,9 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
   landed (`GAMEPLAY_DISCREPANCIES.md` D-01..D-54, `GAMEPLAY_VALIDATION.md`); trig + nine runtime ball
   tables proven byte-exact at **measured WC98 VAs** and gated by new `test_trig_tables` /
   `test_ball_tables`; stale FIFA-99 cites corrected; closed-form kick/flight constants recorded as
-  FIFA-99-derived (register D-49, open); net-contact "Critical" claims refuted against the raw dumps.
+  FIFA-99-derived (register D-49, open); net-contact "Critical" claims refuted against the raw dumps;
+  camera trig lane now uses the byte-exact WC98 table sine with engine fixed-multiply rounding
+  (`test_presentation` replay-eye replica), closing the documented last-ulp drift.
 - Release: tag `v0.3.0` + GitHub release (AppImage + `.sha256`/`.version` sidecars): playable live match,
   authentic FE fonts/language knob, FEFLOW11 team-select grid, measured percent-table scene defaults;
   game smoke exit 0 under Xvfb, launcher offscreen self-test pass, `update.sh --check` -> "up to date";

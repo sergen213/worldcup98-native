@@ -67,6 +67,8 @@ struct MatchState {
     std::int32_t throwAnim = 0, f258 = 0; // DAT_0065F254 throw-in anim pick 0..3 (state 0x185) / 0x65F258
                                           //   (both cleared by Match_startPeriod)
     std::int32_t replayWanted[2] = {}; // DAT_0065F25C[team] (set by Rules_checkBallOut on goals)
+    std::int32_t replayCamA = 0, replayCamB = 0; // DAT_006401a8 / DAT_006401ac replay-cam controller
+                                                  //   ptrs (paddecode l.108-111 pause matrix) -> ctrl id + 1
     std::int32_t f26c = 0;        // DAT_0065F26C (zeroed by Ball_takePossession / release)
     std::int32_t endWhistle = 0;  // DAT_0065F270 1 half-time whistle (seq 1), 2 final whistle (seq 2)
     std::int32_t endTeam = 0;     // DAT_0065F274 winner / phase team of the period end

@@ -337,26 +337,18 @@ constexpr std::uint8_t kCtxKeep[14][14] = { // exe 0x58d8fc (WC98; FIFA99 fallba
     {0, 0, 0, 192, 0, 0, 0, 0, 0, 0, 0, 0, 255, 0},
     {0, 0, 0, 192, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255},
 };
-// WC98 has ONE queue array: 0x58c752 (WC98 FIFAWC.EXE, = buttonmask base -0x62; FIFA99 fallback
-// 0x58BA86). Re-dumped from WC98: 48/98 entries differ. Code xref site 0x5131bc family.
-constexpr std::uint8_t kActionQueueAllowed[98] = { // exe 0x58c752 (WC98; FIFA99 fallback 0x58BA86)
-    1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0,
-    0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0,
-    0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0,
-    0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0,
-};
-// WC98 has NO byte-array equivalent of kActionQueueable at the FIFA99 slot (buttonmask base -0xC4 =
-// FIFAWC.EXE 0x58c6f0 holds dword-structured data, not a 0/1 array; single queue block above).
-// Array below remains the FIFA99.EXE v1.1 dump (exe 0x58BA24) for input.cpp:352 use.
-constexpr std::uint8_t kActionQueueable[98] = { // FIFA99 exe 0x58BA24 (WC98 equivalent absent)
-    1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1,
-    1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0,
-    0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1,
+// D-66 (pass-15 input): WC98 dispatch FUN_005142a0 l.13-19 reads ONE byte per action from a
+// single table at VA 0x58c750; the jump table has exactly 96 entries, so there are no rows for
+// actions 96/97 (the old FIFA99-shaped 98-entry pair is deleted). Predicate:
+// gate[action] == 1 && byte[player+0x83] & 4 (animation in progress) -> the action is DROPPED.
+// Re-dumped from FIFAWC.EXE file offset 0x58c750-0x401a00 = 0x18AD50, 96 bytes, values {0,1}.
+constexpr std::uint8_t kActionQueueGate[96] = { // exe VA 0x58c750 (WC98 FIFAWC.EXE)
+    1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+    1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0,
+    0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
 };

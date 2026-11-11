@@ -7,6 +7,24 @@ project goals.
 
 ## [Unreleased]
 ### Added
+- **Producer+consumer input/motion grammar**: the WC98 cap chain (cascade bits 0x40→cap 0x18000,
+  0x80→0x40000, 0x100→0x68000 applied **before** the arrival band; sprint ceiling select on bit
+  0x100000; penalty mask 0x6000000 subtracting motion B0; class-eval gate byte `&2`; EBX-collapse
+  gated by bit 4) and the pad-decode constants (stick gate `< 0x2001`, scale `mag*0x50>>0x10` through
+  WC98 sinCos quadrant + bit-15-carry rounding, axis deadbands → bits 1/2/8/4, angle bands
+  0xaa/0x155 with windows [−0x55,0x56]/[0x1aa,0x1ab], digital remap base `DAT_00580d9e`) are now fed
+  by the exe's own producer sites (keeper 0x80/0x100, penalty mask sites, run-state `reqBits(0x11)`) —
+  FIFA-99-shaped `moveReq` flags removed. Gesture held-transitions fire at frames > 7 for states
+  1/4/6/8; the state-7 port-only timer reset is gone (WC98 has none); the action-queue gate re-dumped
+  byte-exact as a single 96-entry array @VA 0x58c750 with predicate `(table[action]==1 &&
+  (player+0x83)&4)`; the queue **FIFO is removed** — WC98 drops gated actions during animation, and
+  the FIFA-99 tail fields (queue[4]@+0x160, count@0x15C) do not exist in its 348-byte controller
+  record; pause-skip request sub-gates + replay gate per `paddecode` l.105-117 (observable
+  `match.flags278` bit 0x2000 matrix). Gates: per-bit cap equality, pad-decode fixture pins at angles
+  {0,0xaa,0xab,0x156,−0x1ab,−0x156,−0x96}, gesture boundary probes (7 no-fire / 8 fires), queue-drop
+  + no-deferred-refire, pause-skip phase matrix — all `test_sim_players`. Self-test locomotion windows
+  re-measured on WC98-grammar carriers (movement 4321 units, sprint segment 4193, stop-distance ladder
+  green); suite **117/117**. Registry rows D-56/D-57/D-58/D-64…D-68 → Fixed.
 - Ball/trig table provenance gate pair (pass-15): `tests/unit/test_trig_tables.cpp` asserts the port's
   sin-quarter and atan-octant rows are **byte-exact** against FIFAWC.EXE at measured VAs
   `DAT_00585898`/`DAT_00594CAC` (+ quadrant-boundary exactness), and `tests/unit/test_ball_tables.cpp`

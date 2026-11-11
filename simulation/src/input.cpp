@@ -4,10 +4,10 @@
 // and the 98 action handlers of table 0x58CCF8 (0x4E1AB8..0x4E3258), plus Player_selectReceiver
 // 0x4BD4B8. The platform layer supplies ControllerState::padBits (docs/INPUT.md).
 //
-// Not modelled: the analog stick path (controller +0x30 is only set by 0x466F70, which no match
-// code calls on PC; Input_initControllers clears it, so every `analogDevice != 0` branch below is
-// unreachable and omitted), the player shouts of actions 31-34 (0x4E3100 -> sound 0x4A26DC) and
-// the presentation triggers PTR 0x581BB0.
+// Not modelled: the player shouts of actions 31-34 (0x4E3100 -> sound 0x4A26DC) and the
+// presentation triggers PTR 0x581BB0. The analog stick path is implemented per FUN_004a9280
+// l.35-100 (register D-57); it runs only when ControllerState::analogDevice != 0, which stays 0
+// on PC (reader 0x580D64 reports no analog), so the digital path is live in every match.
 #include <utility>
 
 #include "player_states.hpp"
@@ -78,6 +78,76 @@ int Input_dirToVector(std::uint32_t bits, std::int32_t* x, std::int32_t* z) { //
     *z = kDirZ[i];
     return i;
 }
+// FUN_004a9280 l.35-100 analog pad decode (register D-57). Runs only when the controller's
+// analogDevice flag is set; PC keeps it 0, so the digital path above is what matches use.
+// Grammar constants (paddecode_004a9280 l.36-100): raw word mask 0x3FE2FF0 (l.36); stick gate
+// magnitude < 0x2001 zeroes the vector and mag (l.39-43); scale = mag * 0x50 >> 0x10 (l.47);
+// +0x2E u16 = angle - 0x100, +0x2C u16 = (angle - prevAngle) & 0x3ff sign-extended to short
+// (l.45-53); unit vector via the sine quarter-table helper FUN_004af940 (quadrant switch on
+// DAT_00585898 = kSinQuarter, x = sin, z = cos) with 16.16 round-multiply by scale, bit-15
+// rounding (l.54-64); axis deadbands v20 >= 6 -> bit 1, v20 < -5 -> bit 2, v24 >= 6 -> bit 8,
+// v24 < -5 -> bit 4 into the bits word (+0x3C) (l.65-80); angle bands into the raw byte (+0x40):
+// |a| <= 0xaa -> bit 8, further-out & > 0x155 -> bit 4 (l.81-92), window [0x56, 0x1aa] -> bit 1
+// and window (-0x1ab, -0x55) -> bit 2 (l.93-100). The digital path's remap base is DAT_00580d9e.
+std::uint32_t Input_analogDecode(World& w, int c) { // 0x4A9280 analog branch (EAX = G)
+    ControllerState& k = Cn(w, c);
+    std::uint32_t bits = k.raw & kButtonsMask; // l.36 reader word masked (+0x40 := same, l.37)
+    if (k.stickMag < 0x2001) {                 // l.39-43 stick gate: no vector, no bands
+        k.analogX = k.analogZ = 0;
+        k.analogMag = 0;
+        return bits;
+    }
+    const std::int32_t scale = k.stickMag * 0x50 >> 0x10; // l.47
+    k.analogMag = k.stickMag;                            // l.45 (+0x28)
+    const Angle a10 = static_cast<Angle>(k.stickAngle & 0x3ff);
+    std::int32_t da = (a10 - k.stickPrevAngle) & 0x3ff;   // l.48-53 (+0x2C, sign-extended short)
+    if (da > 0x200) {
+        da -= 0x400;
+    }
+    k.analogAngle = static_cast<std::uint32_t>(static_cast<std::uint16_t>(da)) |
+                    (static_cast<std::uint32_t>(static_cast<std::uint16_t>(k.stickAngle - 0x100)) << 16); // l.46 / +0x2E
+    const SinCos sc = sinCos(a10);                       // FUN_004af940 quadrant switch, DAT_00585898
+    auto mulRound = [](std::int32_t v, std::int32_t s) { // l.55-62: 16.16 x int with bit-15 round
+        const std::int64_t p = static_cast<std::int64_t>(v) * s;
+        const auto lo = static_cast<std::uint32_t>(p);
+        return static_cast<std::int32_t>((lo >> 0x10) +
+                                         (static_cast<int>(static_cast<std::uint64_t>(p) >> 0x20)) * 0x10000 +
+                                         (((lo >> 0xf) & 1u) != 0 ? 1 : 0));
+    };
+    k.analogX = mulRound(sc.s, scale); // l.55-58 (+0x20 = sin * scale)
+    k.analogZ = mulRound(sc.c, scale); // l.59-64 (+0x24 = cos * scale)
+    if (k.analogX >= 6) {              // l.65-72 deadband into bits (+0x3C)
+        bits |= 1;
+    } else if (k.analogX < -5) {
+        bits |= 2;
+    }
+    if (k.analogZ >= 6) {              // l.73-80
+        bits |= 8;
+    } else if (k.analogZ < -5) {
+        bits |= 4;
+    }
+    std::int32_t sa = a10 & 0x3ff;                       // l.81-84 signed 10-bit angle for bands
+    if (sa > 0x200) {
+        sa -= 0x400;
+    }
+    std::uint8_t ang = static_cast<std::uint8_t>(bits);  // byte (+0x40) := raw low byte, l.37
+    if (sa < -0xaa || 0xaa < sa) {                       // l.85-92 outer band
+        if (sa < -0x155 || 0x155 < sa) {
+            ang |= 4;
+        }
+    } else {
+        ang |= 8;                                        // inner window -> bit 8
+    }
+    if (sa < 0x56 || 0x1aa < sa) {                       // l.93-97 second-window bits
+        if (sa < -0x55 && -0x1ab < sa) {
+            ang |= 2;
+        }
+    } else {                                             // l.98-99 [0x56, 0x1aa] -> bit 1
+        ang |= 1;
+    }
+    k.raw = (k.raw & ~0xffu) | ang; // angle bands land in the raw word's low byte (+0x40)
+    return bits;                                          // l.119 (+0x3C) with deadband bits
+}
 
 void Input_clearEdges(World& w, int c) { // 0x466888
     if (c < 0) return;
@@ -92,7 +162,7 @@ GestureSnap* Input_snap(World& w, int ref) {
     if (ref < 0) return nullptr;
     ControllerState& k = Cn(w, ref >> 4);
     const int s = ref & 15;
-    return s < 8 ? &k.buttons[s].snap : &k.queueSnap[s - 8];
+    return s < 8 ? &k.buttons[s].snap : nullptr; // WC98 gesture block = buttons[8] only (0x5C..0xDC)
 }
 
 void Input_bindGestureTables(World& w, int c, int ctx, int devType) { // 0x4E0DAC (EAX = G, EDX ctx, EBX dev)
@@ -110,7 +180,6 @@ void Input_bindGestureTables(World& w, int c, int ctx, int devType) { // 0x4E0DA
 }
 
 // 0x4E0D90: context id of the bound entry (byte +8), -1 when none.
-static int gestureCtxId(const ControllerState& k) { return k.gestureCtx; }
 
 void Input_setGestureContext(World& w, int c, int ctx) { // 0x4E1598
     ControllerState& k = Cn(w, c);
@@ -138,9 +207,6 @@ void Input_initControllers(World& w) { // 0x466D84
     for (int i = 0; i < kMaxControllers; ++i) {
         Cn(w, i) = ControllerState{};
         ControllerState& k = Cn(w, i);
-        k.index = i;
-        k.queueCount = 0;
-        k.queueLock = 0;
         k.analogDevice = 0;
         Input_bindGestureTables(w, i, 0, k.devType);
     }
@@ -255,8 +321,8 @@ int Input_buttonGesture(World& w, int c, Fixed dt, std::uint32_t buttons, int* r
         case 0:
             if (down) { ev(0, 1); restart(); } else g.snap.lastFrames = g.frames;
             break;
-        case 1:
-            if (g.frames < 0xc) {
+        case 1: // exe pred l.89-95: held fires at frames > 7 (>= 8), not >= 12 (register D-64)
+            if (g.frames <= 7) {
                 if (!down) { ev(3, 3); tap(); } else g.snap.lastFrames = g.frames;
             } else { ev(1, 2); held(); }
             break;
@@ -268,8 +334,8 @@ int Input_buttonGesture(World& w, int c, Fixed dt, std::uint32_t buttons, int* r
             if (g.frames >= 0xc) { ev(4, 0); finish(); }
             else if (down) { ev(7, 4); restart(); }
             break;
-        case 4:
-            if (g.frames < 0xc) {
+        case 4: // pred: frames > 7 -> ev(0xa, st9) (D-64)
+            if (g.frames <= 7) {
                 if (!down) { ev(3, 5); tap(); } else g.snap.lastFrames = g.frames;
             } else { ev(0xa, 9); held(); }
             break;
@@ -277,22 +343,20 @@ int Input_buttonGesture(World& w, int c, Fixed dt, std::uint32_t buttons, int* r
             if (g.frames >= 0xc) { ev(5, 0); finish(); }
             else if (down) { ev(8, 6); restart(); }
             break;
-        case 6:
-            if (g.frames >= 0xc) { ev(0xb, 0xa); held(); }
-            else if (!down) { ev(6, 7); tap(); }
+        case 6: // pred: frames > 7 -> ev(0xb, st0xa) (D-64)
+            if (g.frames <= 7) {
+                if (!down) { ev(6, 7); tap(); } else g.snap.lastFrames = g.frames;
+            } else { ev(0xb, 0xa); held(); }
+            break;
+        case 7: // pred case \a (D-65): the ONLY branch is down -> ev(9, st8); !down continues at
+                // LAB_00512514 (lastFrames = frames). WC98 has no timer reset for state 7.
+            if (down) { ev(9, 8); restart(); }
             else g.snap.lastFrames = g.frames;
             break;
-        case 7:
-            if (g.frames >= 0xc) {
-                g.count = 0;
-                g.frames = 0;
-                g.state = 0;
-            } else if (down) { ev(9, 8); restart(); }
-            break;
-        case 8:
-            if (g.frames >= 0xc) { ev(0xc, 0xb); held(); }
-            else if (!down) { ev(6, 7); tap(); }
-            else g.snap.lastFrames = g.frames;
+        case 8: // pred: frames > 7 -> ev(0xc, st0xb) (D-64)
+            if (g.frames <= 7) {
+                if (!down) { ev(6, 7); tap(); } else g.snap.lastFrames = g.frames;
+            } else { ev(0xc, 0xb); held(); }
             break;
         case 9:
             if (down) g.snap.lastFrames = g.frames;
@@ -326,33 +390,17 @@ int Input_buttonGesture(World& w, int c, Fixed dt, std::uint32_t buttons, int* r
     return 0;
 }
 
-void Input_queueAction(World& w, int c, int action, int ref) { // 0x4E3288
-    ControllerState& k = Cn(w, c);
-    const int ctx = gestureCtxId(k);
-    auto push = [&] {
-        if (k.queueCount >= 4) return;
-        if (const GestureSnap* s = Input_snap(w, ref)) k.queueSnap[k.queueCount] = *s;
-        k.queue[k.queueCount] = action & 0xff;
-        ++k.queueCount;
-    };
-    if (ctx == 1 || ctx == 2) {
-        push();
-        return;
-    }
-    if (k.queueLock != 0) return;
-    k.queueLock = 1;
-    push();
-}
-
+// 0x4E330C (FUN_005142a0, 54 B): WC98 dispatch suppresses an action iff the single gate table
+// byte (&DAT_0058c750)[action] == 1 AND byte[player+0x83] & 4 (animation in progress) — and then
+// DROPS the action: there is no queue store anywhere on the pad path (register D-67; the FIFA-99
+// FIFO + queue[4]/queueCount/queueLock tail fields do not exist in WC98's 0x15C-byte record).
 void Input_dispatchAction(World& w, int c, int action, int ref) { // 0x4E330C
     const ControllerState& k = Cn(w, c);
     const int pid = k.player - 1;
     if (pid < 0) return;
     const int a = action & 0xff;
-    if (kActionQueueable[a] == 1 && (P(w, pid).anim.flags() & 4) && kActionQueueAllowed[a] != 0) {
-        Input_queueAction(w, c, a, ref);
-        return;
-    }
+    // Jump table has exactly 96 entries (a00 = NULL stub): actions >= 96 never dispatch.
+    if (a < 96 && kActionQueueGate[a] == 1 && (P(w, pid).anim.flags() & 4)) return;
     Input_runAction(w, pid, a, ref);
 }
 
@@ -577,21 +625,39 @@ void Input_processController(World& w, int c, Fixed dt) { // 0x4668AC
     ControllerState& k = Cn(w, c);
     MatchState& m = w.match;
     k.raw = Input_readPadBits(k.padBits); // [0x580D60] = 0x4664F8
-    // Digital path 0x466BCD (analogDevice is always 0, see the file comment).
-    std::uint32_t bits =
-        (k.raw & kButtonsMask) | kDirRemap[(k.raw & 0xf) + (((k.raw >> 14) & 3) << 4)];
+    // Path select (l.31): digital on PC, analog grammar when a stick device is attached (D-57).
+    std::uint32_t bits;
+    if (k.analogDevice == 0) { // digital path 0x466BCD: remap base DAT_00580d9e = kDirRemap
+        bits = (k.raw & kButtonsMask) |
+               kDirRemap[(k.raw & 0xf) + (((k.raw >> 14) & 3) << 4)];
+    } else { // l.35-100 analog branch; masked raw feeds the angle-band byte (l.36-37)
+        k.raw &= kButtonsMask;
+        bits = Input_analogDecode(w, c);
+    }
     const std::uint32_t now = bits & kButtonsMask;
     const std::uint32_t old = k.bits & kButtonsMask;
-    if ((bits & 0x2000) && k.player != 0) { // pause / skip request
+    // pause / skip request 0x2000 (FUN_004a95c0 / FUN_004a9620 via paddecode l.105-117, D-68):
+    if ((bits & 0x2000) && k.player != 0) { // l.105 bit test + [G+0x154] player ptr non-null
         const int pid = k.player - 1;
-        if (m.phase != 0xd || w.teams[static_cast<std::size_t>(Tm(w, pid).opponent)].humans == 0) {
-            m.flags278 |= 0x2000;
+        // l.106-107 (mirror block DAT_0064015c/9c): phase == 0xd AND the per-player replay dword
+        // (exe [+0x774]) nonzero -> only the cam matrix below can set. The port maps that gate to
+        // m.replayWanted[opponent] (DAT_0065F25C, set by Rules_checkBallOut on goals); no producer
+        // for the exe dword itself exists in the ported state.
+        const bool replayActive =
+            m.phase == 0xd &&
+            m.replayWanted[static_cast<std::size_t>(Tm(w, pid).opponent)] != 0;
+        if (!replayActive) {
+            m.flags278 |= 0x2000; // l.115: set is unconditional outside an active replay (D-68)
         } else {
-            const std::uint32_t f = m.flags278 | 0x2000;
-            if (m.ownGoalPlayer >= 0) {
-                if (!sameTeam(w, m.ownGoalPlayer, pid)) m.flags278 = f;
-            } else if (m.scorer >= 0 && sameTeam(w, m.scorer, pid)) {
-                m.flags278 = f;
+            // l.108-112 matrix over the replay-cam controllers DAT_006401a8 / DAT_006401ac (port
+            // fields m.replayCamA/B = ctrl id + 1, 0 = null): set allowed when cam A == 0 and cam
+            // B tracks this player, or cam A != 0 and does NOT track it.
+            if (m.replayCamA == 0) {
+                if (m.replayCamB > 0 && Cn(w, m.replayCamB - 1).player - 1 == pid) {
+                    m.flags278 |= 0x2000; // l.109 fallthrough arm
+                }
+            } else if (Cn(w, m.replayCamA - 1).player - 1 != pid) { // l.111 negation arm
+                m.flags278 |= 0x2000;
             }
         }
     }
@@ -608,21 +674,8 @@ void Input_processController(World& w, int c, Fixed dt) { // 0x4668AC
     k.rawDir = Input_dirToVector(k.raw, &k.rawDirX, &k.rawDirZ);
     Input_selectContext(w, k.player - 1, dt, now);
     int ref = -1;
-    int action = Input_buttonGesture(w, c, dt, now, &ref);
-    if (k.queueCount == 0) {
-        k.queueLock = 0;
-    } else if (w.ball.possessor != k.player - 1 || m.phase != 9) {
-        k.queueCount = 0;
-        k.queueLock = 0;
-    } else if (!(P(w, k.player - 1).anim.flags() & 4)) { // dequeue
-        const int cur = action;
-        ref = c * 16 + 8;
-        action = k.queue[0] & 0xff;
-        --k.queueCount;
-        for (int i = 0; i < k.queueCount; ++i) k.queue[i] = k.queue[i + 1];
-        if (cur != 0 && k.queueCount < 4) k.queue[k.queueCount++] = cur;
-    }
-    if (action == 0) return;
+    const int action = Input_buttonGesture(w, c, dt, now, &ref); // l.137-141 gesture machine -> pred -> dispatch
+    if (action == 0) return; // pred returns '\0' -> no dispatch (paddecode l.137-141)
     Input_dispatchAction(w, c, action, ref);
 }
 
@@ -683,7 +736,7 @@ void airAction(World& w, int pid, int code, int) {
 }
 
 // 0x4E1C20 (EDX code, EBX action): first-time kick on the y = 85 descent (0x669190).
-void volleyAction(World& w, int pid, int code, int action) {
+void volleyAction(World& w, int pid, int code, int /*action*/) { // EBX action only feeds the queue store (D-67)
     const int q = Team_nearestPlayer_4522A0(w, w.ball.cross85Pos, P(w, pid).team, P(w, pid).curSlot, 1);
     if (q < 0) return;
     if (q != pid) {
@@ -691,8 +744,8 @@ void volleyAction(World& w, int pid, int code, int action) {
         pid = q;
     }
     if (P(w, pid).anim.flags() & 4) {
-        Input_queueAction(w, P(w, pid).ctrl - 1, action & 0xff, -1);
-        return;
+        return; // WC98 drops the action with an animation in progress; the exe's queue store here is
+                // FE-path thunk FUN_0049a890 (presentation), out of the pad scope (register D-67).
     }
     setPending(w, pid, static_cast<std::uint32_t>(code));
     Player_executeKick(w, pid, code, 0x55);

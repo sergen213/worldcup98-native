@@ -373,13 +373,11 @@ std::int32_t Motion_rootMotionPre(World& w, int pid, Fixed dt) {
             std::int32_t e = wrap(a - face);
             std::int32_t amt = (a - face) & 0x3ff;
             if (amt > 0x200) amt = 0x400 - amt;
-            if (req & 0x180) {
-                if (req & 0x100) {
-                    if (e > 0) e -= 0x400;
-                } else if (e < 0) {
-                    e += 0x400;
-                }
-            } else if (amt > 0x1c7) {
+            // WC98 rootpre (FUN_004f3e60 l.52-65) has NO req-bit forced-turn branch: the
+            // direction flip is only the headAim block gated by amt > 0x1c7. The FIFA-99
+            // 0x180/0x100 re-wrap tested bits that WC98 producers use as cascade cap bits
+            // (keeper sets 0x80/0x100), so it is absent here (register D-56).
+            if (amt > 0x1c7) {
                 const std::int32_t h = wrap(p.headAim - face);
                 if (h > 0) {
                     if (e < 0) e += 0x400;
@@ -389,7 +387,7 @@ std::int32_t Motion_rootMotionPre(World& w, int pid, Fixed dt) {
             }
             const std::int32_t r = p.turnAgility + 0xe - (p.speed >> 16);
             std::int32_t lim = r * dt, step = e;
-            if (req & 4) {
+            if (req & 0x20) { // l.74: the clamp-turn flag halves the rate limit
                 lim >>= 1;
                 if (lim < 2) lim = 2;
                 step = std::clamp(e, -lim, lim);
@@ -405,12 +403,12 @@ std::int32_t Motion_rootMotionPre(World& w, int pid, Fixed dt) {
         p.facingDesired = face;
         p.animFacingDesired = face;
     }
-    const Angle tgt = ((req & 1) && !slow) ? face : static_cast<Angle>(p.headAim);
+    const Angle tgt = ((req & 0x10) && !slow) ? face : static_cast<Angle>(p.headAim); // l.107
     std::int32_t d = wrap(tgt - cur); // (the 0x180 re-wraps at 0x4CABF6 leave d unchanged)
     if (d != 0) {
         changed = 1;
         std::int32_t lim = (p.turnAgility + 0xe) * dt;
-        if (req & 4) lim >>= 1;
+        if (req & 0x20) lim >>= 1; // l.153
         if (slow) turnDelta = d;
         d = std::clamp(d, -lim, lim);
         cur = wrap(cur + d);
@@ -442,6 +440,15 @@ void Motion_rootMotionStep(World& w, int pid, Fixed dt, std::int32_t ebx) {
     const std::int32_t dist = p.targetDist;
     const Fixed spd = p.speed;
     Fixed cap = p.speedCap;
+    // WC98 cascade on the flags dword [M+0xD8], applied BEFORE the arrival band
+    // (cand_rootstep_004f4380 l.30-44): bit 0x40 -> min(cap,0x18000), 0x80 -> 0x40000,
+    // the rest of the trio -> 0x68000; only when any of the three bits is set.
+    if ((req & 0x1c0) != 0) {
+        if (req & 0x40) cap = std::min(cap, Fixed(0x18000));
+        else if (req & 0x80) cap = std::min(cap, Fixed(0x40000));
+        else cap = std::min(cap, Fixed(0x68000));
+    }
+    // Arrival band (l.45-54): gate byte[+0x5E] & 1; dist<8 -> 0, else scaled distance, store-if-lesser.
     if (!(p.moveFlags & 1) && dist < 0xa0) {
         if (dist < 8) {
             cap = 0;
@@ -450,40 +457,45 @@ void Motion_rootMotionStep(World& w, int pid, Fixed dt, std::int32_t ebx) {
             if (v < cap) cap = v;
         }
     }
-    if (ebx != 0 && !(req & 2)) cap = 0;
+    // Sprint/penalty (l.56-78): sprint flag bit 0x100000 selects the ceiling, penalty mask
+    // 0x6000000 subtracts [M+0xBC] (mB0). The FIFA-99 consumer read these flags at the old
+    // offsets with masks 0x38/0x40; WC98 producers set the bits above (keeper 0x80/0x100,
+    // penalty sites player.cpp:862/918/922, run states reqBits(p,0x11)).
+    Fixed acc;
+    if ((req & 0x100000) == 0) {
+        Fixed lim = p.runMax;
+        if ((req & 0x6000000) != 0) lim -= p.mB0;
+        cap = std::min(cap, lim);
+        acc = p.accel;
+    } else {
+        Fixed lim = p.sprintMax;
+        if ((req & 0x6000000) != 0) lim -= p.mB0;
+        cap = std::min(cap, lim);
+        acc = p.sprintAccel;
+    }
+    // Class-eval flag mirror (l.79-99): gate byte[+0xD8] & 2.
+    if ((req & 2) != 0) {
+        std::int32_t amt = (p.headAim - p.facingDesired) & 0x3ff;
+        if (amt > 0x200) amt = 0x400 - amt;
+        int c = 0;
+        if (amt > kTurnClass[p.turnClass][0]) c = amt > kTurnClass[p.turnClass][1] ? 2 : 1;
+        if (cap >= (kSpeedCap[c] >> 1)) p.moveStatus |= 2;
+    }
+    const Fixed clsCap = kSpeedCap[p.turnClass]; // l.100: class cap clamp
+    if (cap > clsCap) {
+        if (spd >= clsCap) p.moveStatus |= 2;
+        cap = clsCap;
+    }
+    // EBX-collapse gate (l.103): the hard-turn overshoot collapses the cap only when
+    // byte[+0xD8] & 4 == 0.
+    if (ebx != 0 && (req & 4) == 0) cap = 0;
+    const Fixed decel = p.decel;
+    // "counts as standing" gate (exe 0x4CBB78, kMin = 0x4ccc): zero the velocity and run
+    // the anim step; the ramp ladder below is the exe's LAB_004f455a path.
     if (spd < 0x4ccc && cap < 0x4ccc) {
         p.speed = p.m98 = p.m9c = 0;
         Anim_moveStep(w, pid);
     } else {
-        const Fixed decel = p.decel, clsCap = kSpeedCap[p.turnClass];
-        if (req & 0x38) {
-            if (req & 8) cap = std::min(cap, 0x18000);
-            else if (req & 0x10) cap = std::min(cap, 0x40000);
-            else cap = std::min(cap, 0x68000);
-        }
-        Fixed acc;
-        if (req & 0x100000) {
-            Fixed lim = p.sprintMax;
-            if (req & 0x40) lim -= p.mB0;
-            cap = std::min(cap, lim);
-            acc = p.sprintAccel;
-        } else {
-            Fixed lim = p.runMax;
-            if (req & 0x40) lim -= p.mB0;
-            cap = std::min(cap, lim);
-            acc = p.accel;
-        }
-        if (p.moveReq & 1) {
-            std::int32_t amt = (p.headAim - p.facingDesired) & 0x3ff;
-            if (amt > 0x200) amt = 0x400 - amt;
-            int c = 0;
-            if (amt > kTurnClass[p.turnClass][0]) c = amt > kTurnClass[p.turnClass][1] ? 2 : 1;
-            if (cap >= (kSpeedCap[c] >> 1)) p.moveStatus |= 2;
-        }
-        if (cap > clsCap) {
-            if (spd >= clsCap) p.moveStatus |= 2;
-            cap = clsCap;
-        }
         const Vec3 pos16{static_cast<Fixed>(static_cast<std::uint32_t>(p.posI.x) << 16) + p.frac.x, 0,
                          static_cast<Fixed>(static_cast<std::uint32_t>(p.posI.z) << 16) + p.frac.z};
         Fixed step, ns;

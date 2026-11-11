@@ -340,3 +340,39 @@ see analysis/patches/PENDING.md).
   replacing libm, which measured one unit low at dist 1120 @ yaw `0x1234` (483 vs table 484). Gate: replay-eye
   replica assert (quadrant I + III) in `test_presentation`; parity row 19 note closed for the trig drift item.
   Param rows and the atan2 accessor site remain open (D-54/D-53).
+
+## Pass-15 S3 — producer+consumer input/motion grammar (2026-11-11)
+
+The FIFA-99-shaped locomotion/input layer is replaced by the WC98 grammar, coordinated across both
+sides of the flag vocabulary (the earlier consumer-only re-gate regressed movement to zero; measured
+2026-11-11):
+
+- **Cap chain** (`motion.cpp rootMotionStep`): cascade bits `[M+0xD8]&0x1c0` applied *before* the
+  arrival band (0x40→cap 0x18000, 0x80→0x40000 store-if-lesser; 0x100→0x68000), sprint ceiling select
+  on bit 0x100000, penalty mask 0x6000000 subtracts motion B0 (runMax−mB0 = 0x72665−0x7800 exact),
+  class-eval gate byte `&2` → `moveStatus`, EBX hard-turn collapse gated by bit 4 (`rootMotionPre`
+  ret==1 geometry). Producers aligned: keeper sets 0x80/0x100, penalty sites set the mask bits, run
+  states use `reqBits(0x11)` (0x80+0x100 = the sustained run cap band).
+- **Pad decode** (`Input_analogDecode` l.36-99): stick gate `< 0x2001`, scale `mag*0x50>>0x10` through
+  sinCos quadrant + `(prod>>16)+bit-15 carry` rounding, axis deadbands ±6/−5 → bits 1/2/8/4, angle
+  bands ≤0xaa→bit8 / >0x155→bit4 with windows [−0x55,0x56]/[0x1aa,0x1ab] into the raw low byte;
+  digital remap base `DAT_00580d9e`. Edge mask + hold cap were already exact.
+- **Gesture machine**: held transitions at frames > 7 for states 1/4/6/8 (states 3/5 keep 0xb); the
+  state-7 port-only ≥12-frame timer reset removed — WC98 has none, so sustained release keeps state 7.
+- **Queue gate + FIFO**: single 96-byte array byte-exact @VA 0x58c750 (`input_tables.inc`), predicate
+  `(table[action]==1 && (player+0x83)&4)`; entries 96/97 dropped. The action FIFO is deleted: WC98
+  drops gated actions during animation, and its controller record is 348 B (stride 0x15C, player
+  @+0x154) — the FIFA-99 queue fields at +0x15C/+0x160 do not exist. FE handlers keep their thunk path
+  (the exe's only queue users).
+- **Pause/skip matrix** (paddecode l.105-117): sub-gates per decompile — scorer/ownGoal team equality,
+  replay gate via `match.replayWanted[opponent]`, cam matrix via `replayCamA/B`; observable
+  `match.flags278` bit 0x2000.
+
+Gates: all in `test_sim_players` — per-bit cap equality (req settles at exactly the table value), pad
+fixture pins {gate, angles 0/0xaa/0xab/0x156/−0x1ab/−0x156/−0x96, deadband case}, gesture boundary
+probes, queue drop + no-deferred-refire, pause-skip phase matrix. The self-test locomotion windows were
+re-measured on WC98-grammar carriers: movement 4321 units [min 1500], sprint segment 4193 (gate ≥300),
+stop-distance ladder + per-tick replica green; suite **117/117**, JSON self-test 14/14. Registry rows
+D-56, D-57, D-58, D-64…D-68 → Fixed (G-section totals updated); the shared motion-tables header
+(`simulation/include/wc98/sim/motion_tables.inc`, D-55) is now a public include so the self-test replica
+and `test_motion_tables` pin one source of truth.

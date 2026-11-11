@@ -250,6 +250,38 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
             w.ball.flags |= 0x20;
             for (int i = 0; i < 24 && runner.tick(); ++i) pad(0);
         };
+        // WC98-grammar window anchor (measured 2026-11-10, pass-15 input/motion patch): under the
+        // byte-exact exe consumer grammar the kickoff-setup keeper machine walks on clip-driven
+        // root motion and NEVER sets moveReq bits (keeper.cpp:1067 is a restart-machine branch;
+        // trace /tmp/wc98trace.txt at HEAD grammar showed pid 19 st=4 req=0 across the whole old
+        // window). The exe's live carriers are run/mark-state producers, so the locomotion windows
+        // must measure an outfield carrier: hand control to the nearest controlled-side field
+        // player with the exe's own receiver-assignment grammar (SpKick 0x4528C4), then anchor him
+        // on the ball with Motion_warpTo (the §7 M7 placement primitive) like the windows below.
+        {
+            int carr = -1; long bestD = 1L << 30;
+            for (int pid = 2; pid < 22; ++pid) {
+                if (teamOfPid(pid) != 2) continue; // controlled side only
+                const auto& pp = w.players[std::size_t(pid)];
+                if (pp.slot == 0) continue;        // keeper is slot 0 (Team_findKeeper rule)
+                const auto [px, pz] = posOf(pid);
+                const long d = len(px - iu(w.ball.tpos.x), pz - iu(w.ball.tpos.z));
+                if (d < bestD) { bestD = d; carr = pid; }
+            }
+            // The exe's control hand-off primitive (Input_assignController 0x466xxx lane,
+            // input.cpp:274): transfer from the bound player to an uncontrolled field player.
+            if (carr >= 0 && w.players[std::size_t(carr)].ctrl == 0)
+                sim::Player_transferControl(w, curPid(), carr);
+            const sim::Vec3 b{w.ball.posI.x, 0, w.ball.posI.z};
+            sim::Motion_warpTo(w, curPid(), &b, nullptr);         // anchor the new carrier on ball
+            for (int i = 0; i < 60 && runner.tick(); ++i) pad(0); // capture/control window
+        }
+        // Kickoff setup (phase 9, seqId 0) walks the whole controlled side on clip-driven root
+        // motion with no moveReq bits under WC98 grammar (measured 2026-11-10: /tmp/wc98trace.txt
+        // shows st=4 req=0 through the entire old window). Acquire/anchor possession through the
+        // lane's own acquisition + warp grammar so the sampled carrier runs on the byte-exact
+        // producer bits (run/mark states), exactly like the stop-distance ladder scenario below.
+        if (!chaseToBall(1500, 0x40)) runToBall(0, 0);
         long ux = 0, uz = 0, moveLen = 0, sprintLen = 0, ballGapSum = 0, n = 0;
         bool moveReqSeen = false; // a movement request was live inside the window (pad -> moveReq)
         for (int i = 0; i < 90 && runner.tick(); ++i) pad(1); // warmup: absorb the accel ramp
@@ -686,7 +718,24 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
 
             if (w.match.phase != 9) restoreLivePlay(1500);
             chaseToBall(1500, 0x20);
+            // WC98 window discipline (measured 2026-11-10): the ladder must run on a controlled-side
+            // OUTFIELD carrier with full locomotion attrs (decel/accel rows nonzero; keeper/setup
+            // machines set no moveReq bits). Hand control per the exe transfer grammar when the
+            // binding is not such a player, then anchor him on the ball.
             runToBall(0, 0); // warp anchor + possession grammar (lane pattern)
+            { // measured binding drift during the seed ticks: re-anchor control on a healthy
+              // controlled-side outfield carrier with full locomotion attrs.
+                int carr = -1; long bestD = 1L << 30;
+                for (int pid = 2; pid < 22; ++pid) {
+                    if (teamOfPid(pid) != 2 || w.players[std::size_t(pid)].slot == 0) continue;
+                    if (w.players[std::size_t(pid)].ctrl != 0 || w.players[std::size_t(pid)].decel == 0) continue;
+                    const auto [px, pz] = posOf(pid);
+                    const long d = len(px - iu(w.ball.tpos.x), pz - iu(w.ball.tpos.z));
+                    if (d < bestD) { bestD = d; carr = pid; }
+                }
+                if (carr >= 0 && w.players[std::size_t(carr)].ctrl == 0)
+                    sim::Player_transferControl(w, curPid(), carr);
+            }
             const int q = curPid();
             auto& p = w.players[static_cast<std::size_t>(q)];
             // Loose ball at the feet: dribble touches must not drive the window.
@@ -746,17 +795,15 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                             std::int32_t e = wrap(a - face);
                             std::int32_t amt = (a - face) & 0x3ff;
                             if (amt > 0x200) amt = 0x400 - amt;
-                            if (c.moveReq & 0x180) {
-                                if (c.moveReq & 0x100) { if (e > 0) e -= 0x400; }
-                                else if (e < 0) e += 0x400;
-                            } else if (amt > 0x1c7) {
+                            // WC98 rootpre l.52-65: headAim block only, no req-bit forced-turn branch.
+                            if (amt > 0x1c7) {
                                 const std::int32_t h = wrap(c.headAim - face);
                                 if (h > 0) { if (e < 0) e += 0x400; }
                                 else if (h < 0 && e > 0) e -= 0x400;
                             }
                             const std::int32_t r = c.turnAgility + 0xe - (c.speed >> 16);
                             std::int32_t lim = r * c.dt, step = e;
-                            if (c.moveReq & 4) {
+                            if (c.moveReq & 0x20) { // rootpre l.74 clamp-turn flag
                                 lim >>= 1;
                                 if (lim < 2) lim = 2;
                                 step = std::clamp(e, -lim, lim);
@@ -770,12 +817,12 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                             face = wrap(face + step);
                         }
                     }
-                    const Angle tgt = ((c.moveReq & 1) && !slow) ? face : static_cast<Angle>(c.headAim);
+                    const Angle tgt = ((c.moveReq & 0x10) && !slow) ? face : static_cast<Angle>(c.headAim); // l.107
                     std::int32_t d = wrap(tgt - cur);
                     if (d != 0) {
                         changed = 1;
                         std::int32_t lim = (c.turnAgility + 0xe) * c.dt;
-                        if (c.moveReq & 4) lim >>= 1;
+                        if (c.moveReq & 0x20) lim >>= 1; // l.153
                         d = std::clamp(d, -lim, lim);
                         cur = wrap(cur + d);
                     }
@@ -787,35 +834,36 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                             newCls = amt > kTurnClass[c.turnClass][1] ? 2 : 1;
                     }
                 }
-                // Motion_rootMotionStep cap chain from live fields (FIFA-99 consumer grammar). The
-                // WC98 exe's own M+0xD8 bit tests differ: cascade bits 0x40/0x80/0x100 first, penalty
-                // mask 0x6000000, ebx-collapse gated by byte bit 4 (cand_rootstep_004f4380 l.30-103).
-                // The port's producers are FIFA-99-shaped, so the coordinated producer+consumer fix is
-                // register D-56 — blocked on the pad-decode grammar of the pass-15 S3 dossier.
+                // Motion_rootMotionStep cap chain from live fields, byte-exact WC98 consumer
+                // grammar (register D-56 closed with this patch): cascade on M+0xD8 & 0x1c0 first
+                // (0x40 -> 0x18000, 0x80 -> 0x40000, trio rest -> 0x68000; cand_rootstep l.30-44),
+                // penalty mask 0x6000000 (l.58/69), EBX-collapse iff byte&4 == 0 (l.103). The port's
+                // producers set the WC98 bits (keeper 0x80/0x100, penalty sites player.cpp:862/918/922,
+                // run states reqBits(p,0x11)) — motion.cpp is the shared consumer.
                 Fixed cap = c.speedCap;
+                if ((c.moveReq & 0x1c0) != 0) {
+                    const Fixed r = (c.moveReq & 0x40) ? 0x18000 : (c.moveReq & 0x80) ? 0x40000 : 0x68000;
+                    if (r < cap) cap = r;
+                }
                 if (!(c.moveFlags & 1) && c.targetDist < 0xa0) {
                     const Fixed v = c.targetDist < 8 ? Fixed(0) : Fixed(((c.targetDist << 16) >> 5) + 0x10000);
                     if (v < cap) cap = v;
                 }
-                if (ebx != 0 && !(c.moveReq & 2)) cap = 0;
-                if (c.speed < kMin && cap < kMin) return {true, Fixed(0), Fixed(0)}; // standing snap
-                const Fixed clsCap = kSpeedCap[newCls];
-                if (c.moveReq & 0x38) {
-                    const Fixed r = (c.moveReq & 8) ? 0x18000 : (c.moveReq & 0x10) ? 0x40000 : 0x68000;
-                    if (r < cap) cap = r;
-                }
                 Fixed acc, lim;
                 if (c.moveReq & 0x100000) {
                     lim = c.sprintMax;
-                    if (c.moveReq & 0x40) lim -= c.mB0;
+                    if ((c.moveReq & 0x6000000) != 0) lim -= c.mB0;
                     acc = c.sprintAccel;
                 } else {
                     lim = c.runMax;
-                    if (c.moveReq & 0x40) lim -= c.mB0;
+                    if ((c.moveReq & 0x6000000) != 0) lim -= c.mB0;
                     acc = c.accel;
                 }
                 if (lim < cap) cap = lim;
+                const Fixed clsCap = kSpeedCap[newCls];
                 if (cap > clsCap) cap = clsCap;
+                if (ebx != 0 && (c.moveReq & 4) == 0) cap = 0; // l.103 collapse gate byte&4==0
+                if (c.speed < kMin && cap < kMin) return {true, Fixed(0), Fixed(0)}; // standing snap
                 Fixed ns, step;
                 if (c.speed == cap) {
                     ns = cap;

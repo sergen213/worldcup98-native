@@ -229,9 +229,11 @@ Gates: named ctest gates cited = **24** (`test_sim_core`, `test_sim_players`, `t
 `self_test_gameplay`, `fe_igmenu`, `fe_ighalf`, `fe_igscsum`, `fe_igflsum`, `test_hud`,
 `test_input`, `test_anim`, `test_gen4tbls`, `test_fcdb`, `test_phrs`, `test_speechqueue`,
 `test_commentary`, `test_gameaudio`, `test_trig_tables`, `test_ball_tables`, `test_motion_tables`);
-suite total 117/117 green incl. the pass-15 provenance gates, plus the
-goal §14 lane `wc98-native --self-test FILE.json` (`self_test_gameplay`) driving a real exhibition
-match with scripted pad words: movement/sprint/turning/dribbling/passing/shooting/physics/AI/
-goalkeeper/match-state/foul-card/penalty + the Gap-B stop-distance ladder (top-band pin release at
-the byte-exact `DAT_0058aee4`/`DAT_0058aef0` rows, per-tick replica exact-match) + the animation
-kick-seam timing step, all measured on internal sim state, JSON report written, exit code verdict.
+suite total 117/117 green incl. the pass-15 provenance gates and the pass-15 S3 input/motion grammar
+gates in `test_sim_players` (cap-chain per-bit equality, pad-decode fixture pins, gesture boundary
+probes, queue-drop, pause-skip matrix), plus the goal §14 lane `wc98-native --self-test FILE.json`
+(`self_test_gameplay`) driving a real exhibition match with scripted pad words: movement/sprint/
+turning/dribbling/passing/shooting/physics/AI/goalkeeper/match-state/foul-card/penalty + the Gap-B
+stop-distance ladder (top-band pin release on the WC98 cap-chain bits, per-tick replica exact-match)
+ the animation kick-seam timing step, all measured on internal sim state, JSON report written, exit
+code verdict.

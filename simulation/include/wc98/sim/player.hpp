@@ -268,10 +268,14 @@ struct ControllerState {
     std::int32_t f11C, f120, f124, f128, f12C, f130, f134, f138, f13C, f140, f144, f148;
     std::int32_t maskDev;           // +0x14C G+0xF4 button-mask row ptr 0x58BAE8 + dev*0x60 -> dev
     std::int32_t gestureCtx;        // +0x150 G+0xF8 context entry ptr 0x58C648 + dev*0xA8 + ctx*0xC -> ctx (-1 null)
-    std::int32_t queue[4];          // +0x154 queued actions (Input_queueAction 0x4E3288)
-    GestureSnap queueSnap[4];       // +0x164 gesture snapshot per queued action (never shifted, like the exe)
-    std::int32_t queueCount;        // +0x194
-    std::int32_t queueLock;         // +0x198 1 = one action queued outside contexts 1/2
+    // WC98's controller record (stride 0x1A4 @ 0x664C5C) has no FIFA-99 queue FIFO at +0x154..
+    // +0x19B: the pad path drops gated actions outright (register D-67), and the exe exposes no
+    // writer for this region; it stays reserved to keep the layout pins (player = +0x19C). The three
+    // analog-feed slots inside the gap carry the stick reader stub's raw values (D-57).
+    std::int32_t f154[15];          // +0x154..+0x18F reserved gap
+    std::int32_t stickMag;          // +0x190 raw stick magnitude (gate < 0x2001 zeroes the vector)
+    std::int32_t stickAngle;        // +0x194 raw stick angle, 10-bit
+    std::int32_t stickPrevAngle;    // +0x198 previous angle for the +0x2C relative delta
     std::int32_t player;            // +0x19C controlled player ptr -> player id + 1 (0 = inactive)
     std::uint32_t flags1a0;         // +0x1A0 options: 2 skill contexts 1/2, 8 chip shots in the box, 0x10 IGT 1-2
     std::uint32_t padBits;          // platform input (not in the exe struct)
@@ -450,9 +454,10 @@ int Player_animChooser(World& w, int pid, std::uint32_t chooser, int curAnim, in
 
 // --- SpInput (input.cpp) ---
 // Gesture refs: handlers get the gesture snapshot the exe passes in EDX as a ref = controller*16 +
-// slot (slot 0..7 = buttons[slot].snap, 8..11 = queueSnap[slot-8]); -1 = none (EBX = 0 callers).
+// slot (slot 0..7 = buttons[slot].snap; WC98 has no queueSnap slots, register D-67); -1 = none.
 GestureSnap* Input_snap(World& w, int ref);
 std::uint32_t Input_readPadBits(std::uint32_t padBits);                  // 0x4664F8 sim part: Space 0x1000 -> 0x20000
+std::uint32_t Input_analogDecode(World& w, int c);                       // 0x4A9280 analog branch (D-57)
 int Input_dirToVector(std::uint32_t bits, std::int32_t* x, std::int32_t* z); // 0x466860 (tables 0x580D6C/7C/85)
 void Input_clearEdges(World& w, int c);                                  // 0x466888
 void Input_processController(World& w, int c, Fixed dt);                 // 0x4668AC
@@ -465,7 +470,6 @@ void Input_bindGestureTables(World& w, int c, int ctx, int devType);     // 0x4E
 void Input_selectContext(World& w, int pid, Fixed dt, std::uint32_t buttons); // 0x4E0E24 per controlled player
 void Input_setGestureContext(World& w, int c, int ctx);                  // 0x4E1598 (ctx -1 = none)
 int Input_buttonGesture(World& w, int c, Fixed dt, std::uint32_t buttons, int* ref); // 0x4E1690 -> action
-void Input_queueAction(World& w, int c, int action, int ref);            // 0x4E3288
 void Input_dispatchAction(World& w, int c, int action, int ref);         // 0x4E330C
 void Input_runAction(World& w, int pid, int action, int ref);            // handler table 0x58CCF8[action]
 bool Player_inShootingZone(const World& w, int pid);                     // 0x4E19F8

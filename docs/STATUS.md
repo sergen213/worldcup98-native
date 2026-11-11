@@ -158,8 +158,18 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
   `kActionTable` (256/256 rows) and the dir index/remap pages are byte-exact **MATCH**; divergences registered as
   D-64…D-72 (gesture held-threshold ≥8 vs port ≥12, queue-gate table +2 offset / 96 size, WC98 drops queueable actions
   during `anim&4` — no FIFO in the 348-byte controller record, pause-skip sub-gates inverted, one device read per frame).
-  D-56 (cap-chain bit grammar) stays Open after a measured zero-speed regression: producer + consumer remap lands as
-  one coordinated patch.
+  D-56 was Open after a measured zero-speed regression; **pass-15 S3 landed the coordinated
+  producer+consumer patch (2026-11-11)**: cap chain cascade 0x40/0x80/0x100 applied before the arrival
+  band + sprint ceiling bit 0x100000 (cap 0x68000) + penalty mask 0x6000000 minus B0 + class-eval byte
+  `&2` + collapse gate bit 4, fed by aligned producers (keeper 0x80/0x100, penalty sites, run-state
+  `reqBits(0x11)`); pad-decode constants (gate `< 0x2001`, scale `mag*0x50>>0x10` via sinCos + bit-15
+  carry, deadbands → bits 1/2/8/4, angle bands 0xaa/0x155 windows, digital remap `DAT_00580d9e`);
+  gesture held-transitions at frames > 7 (states 1/4/6/8) with the state-7 port timer removed; single
+  96-byte queue gate @VA 0x58c750 `(table[action]==1 && (player+0x83)&4)` and **FIFO deleted**
+  (drop-only semantics, 348 B controller record); pause-skip sub-gates + replay matrix
+  (`match.flags278` bit 0x2000). D-56/D-57/D-58/D-64…D-68 → Fixed; gates in `test_sim_players`;
+  self-test locomotion windows re-measured on WC98-grammar carriers (movement 4321, sprint segment
+  4193, stop-distance ladder green); suite **117/117**, JSON self-test 14/14.
 - Release: tag `v0.3.0` + GitHub release (AppImage + `.sha256`/`.version` sidecars): playable live match,
   authentic FE fonts/language knob, FEFLOW11 team-select grid, measured percent-table scene defaults;
   game smoke exit 0 under Xvfb, launcher offscreen self-test pass, `update.sh --check` -> "up to date";

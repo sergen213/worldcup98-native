@@ -8,6 +8,22 @@ project goals.
 ## [Unreleased]
 ### Added
 
+
+- **Set-piece grammar port (pass-17, D-27 grammar-installed)**: new `simulation/src/setpieces.cpp` +
+  `setpieces.hpp` replicate the WC98 restart grammar from the dossier (`/mnt/1st4TB/WorldCup98/analysis/pass17setpiece/`):
+  pitch-band initializer `FUN_0049e400` (stadium rows {0:(0xff0,0x1620), 1:(0xf00,0x1500), 3:(0xe10,0x12c0),
+  default:(0xe40,0x13e0)} + derived box/circle/half/quarter/fifth/third rows incl. DAT_006412f8=DAT_006412fc=6),
+  box-band writer `FUN_004bf1e0` (goalNear/Far, crossNear/High; aspect [P] = trig-pair soup model), selector
+  arbiter lane of `FUN_004c1730` (`SetPiece_arbitrate`: goal-line band→1, touchline→2, velocity bands→3/4 with
+  FUN_004bf390 fixed-point time, box-band→9; earliest-interpolation accumulator local_1c=0x10001) incl. the
+  cylinder-sweep quadratic helper chain (FUN_0049e16c square / FUN_0049e1d0 dot / FUN_004a19b8 / FUN_0049e13c sqrt /
+  FUN_0049e220 split divide), and the placement machine `FUN_004c09a0` (`SetPiece_place`, cases 1/2/3/4/5/6-tail/
+  7/8/9/10: velocity clamp ×0xc000 ±0x50000 under DAT_00646a24 bit 0x40, fx/fxt rounded triples, `>>0x10` ball-block
+  writes, state/subState/flag bytes). Gates: `tests/unit/test_setpiece_grammar.cpp` (initializer table rows per
+  stadium, box-band rows, six arbiter segments, per-case exact rounded-target asserts) + self-test steps
+  setpiece-corner / setpiece-throwin / setpiece-goalkick / setpiece-penalty on the default-stadium band. Live
+  restart cutover (rules spots -> machine) and FUN_004c0150 mid-match band adjustments stay open; registry D-27
+  marked Partial. Suite 121/121, self-test 19/19.
 - **Pass-lane dribble/pass grammar cutover (pass-17ai, D-22 closed)**: `team_ai_ball.cpp` onBallAct
   lane re-modeled on the WC98 passlane dossier (`analysis/pass17ai/DECOMPILE/passlane_0x50cf50.txt`) —
   fused retarget gate `L_4de3b8` = own-box flag || loose-ball designation (team +0xF0) || attacking-half

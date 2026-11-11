@@ -23,7 +23,8 @@
 #include "wc98/sim/sim.hpp"
 #include "wc98/sim/world.hpp"
 #include "wc98/sim/events.hpp"
-#include "wc98/sim/rules.hpp"
+// pitch band, selector arbiter and placement machine on fixed segments (analysis/pass17setpiece).
+#include "wc98/sim/setpieces.hpp"
 #include "wc98/sim/motion_tables.inc" // replica rows = DAT_0058aee4 / DAT_0058aef0
 
 #include "fe_flow.hpp"    // fcdbTeamFromList: reuse the interactive boot path
@@ -1393,6 +1394,94 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
             st.detail = fmt("fe-nav skipped: FE shell unavailable ({})", e.what());
         }
         steps.push_back(std::move(st));
+    }
+    {
+        // D-27 set-piece grammar (FUN_004c1730 arbiter + FUN_004c09a0 machine, pass-17): pure
+        // offline replica gates on the FUN_0049e400 band (stadium default {0xe40,0x13e0}). Each
+        // restart case asserts the arbiter selector for a fixed sweep segment AND the exact rounded
+        // (>>0x10) placement triple from the machine. Grammar authority = dossier rows cited in
+        // simulation/src/setpieces.cpp; unit twin = tests/unit/test_setpiece_grammar.cpp.
+        const auto sh16 = [](std::int32_t v) { return sim::Fixed(std::uint32_t(v) << 16); };
+        const sim::WC98Band band = sim::makeWC98Band(2);                 // default stadium row (0xe40,0x13e0)
+        const sim::BoxBand box = sim::makeBoxBand(band, 5, sim::kOne);   // aspect [P: trig pair soup]
+        // Stadium initializer rows (pitchinit l.10-36): half rows per variant + shared derived rows.
+        const std::array<std::pair<int, int>, 4> halves{{
+            {sim::makeWC98Band(0).halfWidth, sim::makeWC98Band(0).halfLength},    // (0xff0,0x1620)
+            {sim::makeWC98Band(1).halfWidth, sim::makeWC98Band(1).halfLength},    // (0xf00,0x1500)
+            {sim::makeWC98Band(3).halfWidth, sim::makeWC98Band(3).halfLength},    // (0xe10,0x12c0)
+            {band.halfWidth, band.halfLength}}};                                   // default (0xe40,0x13e0)
+        const bool rowsOk = halves[0].first == 0x7F8 && halves[0].second == 0xB10 &&
+                            halves[1].first == 0x780 && halves[1].second == 0xA80 &&
+                            halves[2].first == 0x708 && halves[2].second == 0x960 &&
+                            band.penSpotDist == 0x240 && band.goalAreaDepth == 0x120 &&
+                            band.postThickness == 6 && band.barThickness == 6;
+        {   // Corner: goal-line band sweep -> selector 1, case-1 sign rows exact.
+            sim::SetPieceRec g{};
+            g.pos = {sh16(0xE0), 0, sh16(0x9F8)};
+            g.vx = -sh16(0xE0);                                   // sweep aims through the origin
+            g.vz = -sh16(0x9F8);
+            g.absX = sh16(0xE0);                                  // inside the c window, over d
+            g.absZ = sh16(0x9E8);                                 // a row (hl-(f8+5)-2)<<16 <= z <= bhi
+            g.absPrevX = sh16(0xE0);
+            g.absPrevZ = sh16(0x9F8);
+            const sim::ArbiterResult a = sim::SetPiece_arbitrate(g, band, box, 0, false, 5);
+            const sim::MachineOutcome p = sim::SetPiece_place(1, g, band, box, 5, {sh16(5), 0, sh16(0x9F8)});
+            StepRes st{"setpiece-corner", a.selector == 1 && rowsOk && p.reaim &&
+                                          p.target.x == sh16(5) - sh16(band.postThickness / 2 + band.goalHalfWidth) &&
+                                          p.target.z == sh16(0x9F8 - (band.halfLength - (band.postThickness >> 1))), ""};
+            st.detail = fmt("corner: sel={} target=({:#x},{},{:#x}) hl/hw={}/{}", a.selector,
+                            unsigned(p.target.x), unsigned(p.target.y), unsigned(p.target.z), band.halfLength, band.halfWidth);
+            steps.push_back(std::move(st));
+        }
+        {   // Throw-in: touchline sweep (y-band) -> selector 2, case-2 y/z rows exact.
+            sim::SetPieceRec t{};
+            t.pos = {sh16(0x300), sh16(0xA0), sh16(0x500)};       // |y| opens the f row gate
+            t.vx = -sh16(0x300);                                  // sweep aims through the origin
+            t.vz = -sh16(0x500);
+            t.absX = sh16(0x300);
+            t.absZ = sh16(0x500);                                 // below bhi, gate-A a row closed
+            t.prev = {t.pos.x, 0, t.pos.z};
+            const sim::ArbiterResult a = sim::SetPiece_arbitrate(t, band, box, 0, false, 5);
+            sim::SetPieceRec rec{};
+            rec.pos.z = sh16(1);                                  // z sign row -> -halfLength side
+            const sim::MachineOutcome p = sim::SetPiece_place(2, rec, band, box, 5,
+                                                              {sh16(0x300), sh16(0xA0), sh16(0x9F8)});
+            StepRes st{"setpiece-throwin", a.selector == 2 &&
+                                           p.target.x == sh16(0x300) &&
+                                           p.target.y == sh16(0xA0 - (band.barThickness / 2 + band.goalHeight - 5)) &&
+                                           p.target.z == sh16(0x9F8 - (band.halfLength - (band.postThickness >> 1))), ""};
+            st.detail = fmt("throwin: sel={} target=({:#x},{:#x},{:#x})", a.selector,
+                            unsigned(p.target.x), unsigned(p.target.y), unsigned(p.target.z));
+            steps.push_back(std::move(st));
+        }
+        {   // Goal kick: case-10 goalFar lane (DAT_00648f94) exact rounded z + state/flags.
+            const sim::MachineOutcome p = sim::SetPiece_place(10, sim::SetPieceRec{}, band, box, 5,
+                                                              {sh16(7), sh16(2), sh16(1)});
+            StepRes st{"setpiece-goalkick", p.rounded.z == (box.goalFar >> 16) && p.state == 2 &&
+                                            p.subState == 8 && (p.flagsE & 0x180) == 0x180, ""};
+            st.detail = fmt("goalkick: goalFar={:#x} rounded=({},{},{}) sub={}", unsigned(box.goalFar),
+                            p.rounded.x, p.rounded.y, p.rounded.z, p.subState);
+            steps.push_back(std::move(st));
+        }
+        {   // Penalty area: box-band sweep -> selector 9, case-9 add-off lane exact triple.
+            sim::SetPieceRec c{};
+            c.pos = {sh16(0x50), 0, sh16(0xA40)};                 // inside thirdBandZ over crossNear
+            c.absX = sh16(0x50);
+            c.absZ = sh16(0xA40);                                 // >= (hl+f0)<<16 - fx(5<<16,r)
+            c.absPrevX = sh16(0xE0);                              // gate-A d window via prev x
+            c.absPrevZ = sh16(0x600);                             // bhi window via prev z
+            const sim::ArbiterResult a = sim::SetPiece_arbitrate(c, band, box, 0, false, 5);
+            sim::SetPieceRec m{};
+            m.vz = sh16(1);                                       // off = fx(vz,0x78000) = +0x78000
+            const sim::MachineOutcome p = sim::SetPiece_place(9, m, band, box, 5,
+                                                              {sh16(4), 0, sh16(band.halfLength)});
+            StepRes st{"setpiece-penalty", a.selector == 9 &&
+                                           p.target.z == sh16(band.halfLength) + sim::fx(sh16(1), 0x78000) &&
+                                           p.rounded.z == band.halfLength + (0x78000 >> 16), ""};
+            st.detail = fmt("penalty: sel={} target.z={:#x} rounded=({},{},{})", a.selector,
+                            unsigned(p.target.z), p.rounded.x, p.rounded.y, p.rounded.z);
+            steps.push_back(std::move(st));
+        }
     }
     writeJson(outJson, steps);
     int passed = 0;

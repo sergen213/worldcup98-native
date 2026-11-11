@@ -41,9 +41,9 @@ formats::Pcm decodeSlot(const std::filesystem::path& file, std::uint32_t slot) {
 // keep bit-identical v0.3.0 gains; lowering a scene percent drives the voice through SMIX.
 float smixLaneGain(int channel) {
     audio::SmixVoice v;                    // record model of the DAT_00661068 slot band
-    v.active = true;
-    audio::Smix_setPan(v, 0x7F, 0x7F);     // FUN_00548a58 grammar: centre, ramps armed
     const int q7 = audio::sceneLevels().gainQ7(channel);
+    audio::Smix_startVoice(v, 0x7F, 0x7F, static_cast<std::uint8_t>(q7)); // FUN_005483bc rows:
+    audio::Smix_setPan(v, q7, q7);         // initial pair + gate byte +0x6B, ramp armed (FUN_00548a08)
     v.setVolume(q7, q7);                   // FUN_0054ccfe installer on the scene Q7 ints
     return v.gainRef().volL;               // mono voice: L-slot float gain
 }

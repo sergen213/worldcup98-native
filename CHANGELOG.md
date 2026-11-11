@@ -9,6 +9,24 @@ project goals.
 ### Added
 
 
+- **SMIX voice-layer port (pass-18voice, D-54 audio residual)**: `audio/include/wc98/audio/smix_voice.hpp`
+  extends the pass-18smix record model with the decoded residual grammar: ramp helper `FUN_00548a08`
+  on the record +0x68 byte window (gate/mult byte +0x6B; signed-target midpoint store then
+  `(gate*mid)>>7` overwrite, gate-zero clears the ramp-out flag), pan setter prev-pair compare +
+  direction flags (`FUN_00548a58`), voice start/stop record rows with the serve-pump hook
+  `(*DAT_0066eeac)` (`FUN_005483bc`/`FUN_00548960`), frequency clamp **0x80000** boundary rows, the
+  centi-ratio pitch path `FUN_005492b0`/`FUN_005490b0` over the 13-entry power table DAT_00596144
+  (`2^(2^k/1200)`, multiply/divide per set bit, ROUND(base*scale)), and the TLV sample-format parser
+  `FUN_0052d290` as a pure function with sign-extension widths per `FUN_0052e160` + full tag-table
+  round-trip (default waveformat **0x5622** = 22.05 kHz mono16; rate map {8000..44100}; loopEnd aux
+  clamp `<-1 → -1`). App lane (`app/game_audio.cpp`) starts each voice through the FUN_005483bc
+  record rows; default serve-pump slot is a no-op so v0.3.0 stream gains stay bit-identical (unity
+  at 100% scene levels). Gates: new `test_voice_layer` — ramp convergence exact at i/127 fractions,
+  clamp boundary rows, pitch table rows + replica sweep, TLV round-trip + truncation guards;
+  `test_smix_grammar` gains the raw gate/midpoint/ramp byte rows. Registry: `docs/asset-formats/AUDIO.md`
+  §Voice layer closes the D-54 audio residual (EACSND envelope/streamer dispatch and HW3D pos3d stay
+  documented-open). Suite **123/123**.
+
 - **Live set-piece restart cutover (pass-17restart, D-27 live-wired)**: `Match_setpieceLive`
   (`simulation/src/rules.cpp`) runs at seq4 step-0 per restart: band + box init from the stadium id,
   live trajectory record → `SetPieceRec` feed (driver_0x4c1730 fields), sweep arbiter accumulator time

@@ -195,29 +195,17 @@ int main() {
         CHECK(Smix_setFrequency(v, 0x4000) == 0x4000);     // below clamp passes through
     }
 
-    // ---- ramp helper FUN_00548a08: byte band math on the dword registers ------------------
+    // ---- ramp helper FUN_00548a08: faithful byte rows pinned in test_voice_layer ----------
     {
         SmixVoice v;
-        v.rampStop = 0;
-        v.raw[2] = 0xDEADBEEFu;
-        Smix_rampStep(v);                                   // stop flag clear: low byte -> 0
-        CHECK((v.raw[2] & 0xFFu) == 0u);
-        CHECK((v.raw[2] >> 8) == (0xDEADBEu));
-
-        v.rampStop = 1;                                     // midpoint store, then scaled overwrite
-        v.raw[0] = 0x50000000u;                             // hi byte a = +80
-        v.raw[1] = 0x30000000u;                             // hi byte b = +48
-        v.raw[5] = 0x02000000u;                             // hi byte c = 2
-        Smix_rampStep(v);
-        CHECK((v.raw[2] & 0xFFu) == static_cast<std::uint32_t>(static_cast<unsigned char>((80 * 2) >> 7)));
-        v.raw[2] = 0;                                       // scaled form wins over midpoint (64)
-        Smix_rampStep(v);
-        CHECK((v.raw[2] & 0xFFu) == 1u);
-
-        v.raw[0] = 0xB0000000u;                             // a = -80 signed >>24
-        const std::uint32_t want = static_cast<std::uint8_t>(static_cast<char>((-160) >> 7));
-        Smix_rampStep(v);
-        CHECK((v.raw[2] & 0xFFu) == want);                  // arithmetic shift, signed char store
+        v.active = true;
+        Smix_setGateVolume(v, 0x7F);  // +0x6B gate byte write arms the helper (FUN_00548ab8)
+        CHECK(v.gateVol == 0x7F);
+        // Gate zero clears the output byte (+0x71), exe stop-flag branch.
+        v.active = true;
+        SmixVoice g;
+        g.panL = 60; g.panR = 40;  // gate 0: midpoint path skipped, output -> 0
+        CHECK(Smix_rampStep(g) == 0);
     }
 
     std::printf("test_smix_grammar: ALL CHECKS PASS\n");

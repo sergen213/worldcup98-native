@@ -420,6 +420,12 @@ target_link_libraries(test_scene_levels PRIVATE wc98_audio)
 # installer combo table + i/127 normalization, 2x2 pan-matrix handlers, voice-block ramp flags.
 wc98_test(test_smix_grammar unit/test_smix_grammar.cpp)
 target_link_libraries(test_smix_grammar PRIVATE wc98_audio)
+
+# SMIX voice-layer grammar (pass-18voice): ramp helper byte rows + i/127 convergence, start/stop
+# record grammar with serve-pump hook, frequency clamp boundaries, centi-ratio pitch table, TLV
+# sample-format parser tag-table round-trip.
+wc98_test(test_voice_layer unit/test_voice_layer.cpp)
+target_link_libraries(test_voice_layer PRIVATE wc98_audio)
 wc98_test(test_sqf unit/test_sqf.cpp)
 wc98_test(test_sci unit/test_sci.cpp)
 wc98_test(test_res unit/test_res.cpp)

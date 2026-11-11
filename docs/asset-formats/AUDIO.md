@@ -177,6 +177,44 @@ Grammar source: `analysis/pass17audio/NOTES.md` rows audio11–audio15 + `DECOMP
   exactly unity (int 0x7F → 1.0f), keeping v0.3.0 stream gains bit-identical. MicroTalk/EA-XA
   PhraseBank streams are untouched by this lane.
 
+## Voice layer (pass-18voice)
+
+The exe-side voice layer that drives the mixer is ported in `audio/include/wc98/audio/smix_voice.hpp`
+(record scaffolding, pan setter + ramp helper, start/stop with serve-pump hook, frequency clamp +
+centi-ratio pitch path, TLV sample-format parser), gated by `test_voice_layer`; the app lane
+(`app/game_audio.cpp`) now starts voices through the FUN_005483bc record rows.
+Grammar source: `analysis/pass17audio/NOTES.md` audio6-audio15 + `DECOMPILE2/dsnd_*`,
+`audcall_52d290/52daac/52ddbc/52df68`; dossier table `analysis/pass18voice/table_596144.txt`.
+
+- **Ramp helper** (`FUN_00548a08`): operates on the record +0x68 byte window — gate/mult byte
+  +0x6B, target pair +0x6C/+0x6D. Gate zero → ramp-out flag (+0x72) clear; midpoint of the signed
+  target pair (arithmetic-shift average) stored at +0x69, then overwritten with `(gate * mid) >> 7`
+  — exact convergence rows `i/127` (`(127*((i+0)>>1))>>7 == i>>1`, gate 0x40 → `i>>1`) asserted;
+  the final dword step calls the voice vtable[0x377] slot (serve-side hook, not ported).
+- **Pan setter** (`FUN_00548a58`): prev-pair compare (+0x69/+0x6A vs new +0x6C/+0x6D) sets signed
+  direction flags +0x6E/+0x6F {1 rising, 0xFF falling/equal}, always arms the ramp helper;
+  inactive record returns -1.
+- **Voice start** (`FUN_005483bc` iSNDmixstart): writes initial L/R pair + prev mirror, gate byte,
+  installs resampler step (mode==1 → head-fill variant), arms the ramp helper, volume installer,
+  then sets the active flag; gate rows pin field order + first ramp output.
+- **Stop** (`FUN_00548960` iSNDstop): clears the record window (+0x6C..+0x71) and calls the serve
+  pump `(*DAT_0066eeac)` (installed by SMIX init FUN_00548098); port exposes a callable slot,
+  inactive returns -1.
+- **Frequency/pitch**: clamp **0x80000** boundary rows; centi-ratio scale `FUN_005492b0` = product
+  over set bits of the 13-entry power table DAT_00596144 (`2^(2^k/1200)`; positive branch
+  multiply, negative divide with walker-exceeds-magnitude scan stop), pitch value `FUN_005490b0` =
+  ROUND(base * scale) into SetFrequency.
+- **TLV sample-format parser** (`FUN_0052d290`, pure function): tag chain over the sample block —
+  terminators {ff, fe}, escape fc, sign-extension widths per `FUN_0052e160` (width1 >0x7F → -0x100,
+  width2 >0x7FFF → -0x10000, width3 >0x7FFFFF → -0x1000000), tag table {84 waveformat, 81 bits,
+  82 channelMode, 85 loopStart, 86 loopEnd (aux clamp `<-1 → -1`), 87 auxField+set, 91 extraTrim,
+  92 playMode, 8a/93 data/aux pointer arms (record offsets; streamer consumption = EACSND lane),
+  9A unknown skip-by-len}; default waveformat tag **0x5622** = 22.05 kHz mono16, rate map from the
+  SMIX init table {8000..44100}. `Smix_startVoiceFromSample` wires header → record rate.
+- Default serve-pump slot is a no-op: the app lane runs the record grammar without an active mixer
+  pump, so v0.3.0 stream gains stay bit-identical (gate sweep verifies gain = i/127 float).
+
 Open rows unchanged: envelope/streamer semantics live inside EACSND-side dispatch (`audio3`
 director state machine) and stay an RE lane; HW3D `pos3d` quadrant (`FUN_005490f0`) is documented,
-not ported.
+not ported. The vtable[0x377] per-voice serve hook and the 8a/93 streamer pointers are recorded as
+EACSND-lane interfaces, not wired to playback (the port's own `audio/src/mixer.cpp` decodes streams).

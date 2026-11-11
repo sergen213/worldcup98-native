@@ -63,19 +63,22 @@ int launchEntry(app::FeEntry e, const std::filesystem::path& tree, const std::st
     case app::FeEntry::Exhibition: {
         if (liveMatch && window && renderer) return app::runLiveLoop(tree, prefix + "_fe_live", 0, *window, *renderer, recordReplay);
         const std::string p = prefix + "_fe_exhibition";
-        const char* argv[] = {"wc98-native", p.c_str(), "--tree", tree.string().c_str()};
+        const std::string ts = tree.string(); // keep the path alive across runMatchDemo (argv view)
+        const char* argv[] = {"wc98-native", p.c_str(), "--tree", ts.c_str()};
         return runMatchDemo(4, const_cast<char**>(argv));
     }
     case app::FeEntry::Tournament:
         return runTournamentDemo(userTeam); // reads $WC98_TREE (set at startup)
     case app::FeEntry::Practise: { // same match driver, distinct capture prefix (FEFLOW50 flow)
         const std::string p = prefix + "_fe_practise";
-        const char* argv[] = {"wc98-native", p.c_str(), "--tree", tree.string().c_str()};
+        const std::string ts = tree.string(); // keep the path alive across runMatchDemo (argv view)
+        const char* argv[] = {"wc98-native", p.c_str(), "--tree", ts.c_str()};
         return runMatchDemo(4, const_cast<char**>(argv));
     }
     case app::FeEntry::LeaguePlay: { // league select confirmed: same match driver, distinct prefix
         const std::string p = prefix + "_fe_league";
-        const char* argv[] = {"wc98-native", p.c_str(), "--tree", tree.string().c_str()};
+        const std::string ts = tree.string(); // keep the path alive across runMatchDemo (argv view)
+        const char* argv[] = {"wc98-native", p.c_str(), "--tree", ts.c_str()};
         return runMatchDemo(4, const_cast<char**>(argv));
     }
     default: return 1; // Count sentinel / unmapped entry codes

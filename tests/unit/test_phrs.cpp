@@ -104,7 +104,10 @@ static void syntheticFlatBank() {
     const Bytes midi{'M', 'I', 'D', 'x', 0, 0, 0, 0};
     mm.insert(mm.end(), midi.begin(), midi.end());
     std::vector<RawEnt> me{{std::uint32_t(16 + 9), std::uint32_t(mm.size())}};
-    const auto mbank = PhraseBank::parse(makeBank(me, {mm}));
+    // PhraseBank keeps views into the caller's buffer: bind the bank bytes to a named
+    // lvalue first (parsing an inline temporary left memberBytes() dangling under ASan).
+    const Bytes mb = makeBank(me, {mm});
+    const auto mbank = PhraseBank::parse(mb);
     CHECK(mbank.recordCount() == 1 && mbank.record(0).classLetter == '?');
     CHECK(decodePlayTrack(mbank.memberBytes(0), 20).frames() == 0); // MIDx -> silent
 }

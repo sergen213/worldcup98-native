@@ -8,6 +8,12 @@ project goals.
 ## [Unreleased]
 ### Added
 
+- **Live-loop pad sampling seam (pass-16, D-70)**: the live match loop now reads the device once
+  per game frame (`in.fill(1, framePad)` after the event pump) and every sim tick drained from that
+  frame consumes the shared word - the exe's `FUN_0049daf0` controller-update grammar. Multi-tick
+  frames can no longer surface a fresh device word mid-frame. Gates: fe_* lanes, `interactive_match`,
+  `match_demo_frames`, `replay_record_play` green on the new seam (68/68).
+
 - **Input-table provenance gate + D-71 refuted (pass-16)**: `test_input_tables` pins the whole
   SpInput byte lane to FIFAWC.EXE - button masks @`0x58c7b4`, all 9x14 context slot pointers
   @`0x58d314` **decoded** to action-table ids (dev5 ctx03 -> id 4 @`0x58cd14`, ctx10 -> id 9

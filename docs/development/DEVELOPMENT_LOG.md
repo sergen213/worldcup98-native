@@ -452,7 +452,7 @@ installed at every scan site (`if (q < 0) continue; // empty roster slot`) + hei
 lanes. Canonical sanitizer suite invocation: `QT_QPA_PLATFORM=offscreen ASAN_OPTIONS=detect_leaks=0
 ctest -j8` in build/debug (Qt/Vulkan exit-time arena allocations are intentional; LSAN-only noise).
 
-## Pass 16b — input-table provenance gate (D-71 refuted)
+## Pass 16b — live-loop pad seam (D-70) + input-table provenance gate (D-71 refuted)
 
 `test_input_tables` walks the full SpInput byte lane against FIFAWC.EXE: button masks @0x58c7b4
 (dev*0x60, first dword of each 12-B entry), context slots @0x58d314 decoded from slot pointers to
@@ -465,3 +465,9 @@ ctx03 ptr `0x58cd14` -> id 4 and ctx10 ptr `0x58cf94` -> id 9, exactly what `kCt
 The port rows are byte-exact WC98 values; the registry row now records the refutation + gate.
 Pitfall recorded: slot-pointer dumps must be decoded little-endian (`14 cb 58 00` = 0x58cb14) -
 a BE read of a dump address is the same class of cite error as D-47/D-48's FIFA-99 addresses.
+
+D-70 installed at the live loop: `app/livematch.cpp` now samples the device once per game frame
+(after the event pump, before draining ticks) and hands the shared word to every sim tick of that
+frame - the exe's single controller-update read (`FUN_0049daf0`, whole-tick count in DAT_0064122c).
+Gate scope: fe_* + `interactive_match` + `match_demo_frames` + `replay_record_play` = 68/68 green
+on the new seam. D-69 (platform per-bit deque) stays open; it still widens visibility inside a frame.

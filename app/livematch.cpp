@@ -1260,10 +1260,14 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
         if (pause == IgPause::Off) {
             acc += smokeFrames ? kStepMs : double(std::min<std::uint64_t>(now - last, 100)); // spiral guard
             last = now;
+            // exe grammar (register D-70, FUN_0049daf0): the device is read exactly once per game
+            // frame by the controller update; every sim tick drained from this frame consumes the
+            // same word. Sample after the event pump so the word reflects this frame's levels.
+            sim::ControllerState framePad{};
+            in.fill(1, framePad);
             while (acc >= kStepMs) {
                 acc -= kStepMs;
-                sim::ControllerState c{};
-                in.fill(1, c); // pad word of device 1 into ControllerState::pad words
+                sim::ControllerState c = framePad; // shared pad word of this game frame
                 if (!sawPassBit && (c.padBits & input::actionBit(config::Action::Pass))) {
                     sawPassBit = true;
                     std::cout << "live: input->sim pass bit 0x20 reached controller 0 pad word\n";

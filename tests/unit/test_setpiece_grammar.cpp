@@ -253,6 +253,78 @@ int main() {
         check(gB.state == -1, "guard selector 11");
     }
 
+    // ---- 13. Mid-match band adjustment (FUN_004c0150, pass-17restart) -------------------------
+    {   // netCase 5 damping lane rows (L.91-112): exact fx products + clamp band.
+        const WC98Band b = makeWC98Band(2);
+        const BoxBand box = makeBoxBand(b, 5, 0x10000);
+        SetPieceRec r{};
+        r.subState = 5;
+        r.vx = sh(10); r.vy = -sh(3); r.vz = -sh(2);       // d2 = fx pair > 0x400000, vy < 0
+        const NetAdjustResult a = SetPiece_adjustNet(r, b, box, 5);
+        check(a.damped && !a.vxFlipped && !a.stoppedSmall, "netCase5 damping fires (L.91)");
+        check(a.vx == fx(sh(10), 0x3333) && a.vz == fx(-sh(2), 0x3333), "damping x0x3333 rows (L.102,107)");
+        const Fixed ny = fx(sh(3), 0x4ccc);                // -vy * 0x4ccc -> below band low
+        check(a.vy == (ny < 0x30000 ? Fixed(0x30000) : ny), "clamp row: vy=fx(-vy,0x4ccc) >= 0x30000 (L.96-98)");
+        check(a.state == 1 && a.contactTimer == 0x3c, "predEvent sweep miss rows precede damping (L.76-79)");
+    }
+    {   // netCase 5 post-lane flip (L.187-193): |tpos.x| over the mouth row -> b98 := -b98.
+        const WC98Band b = makeWC98Band(2);
+        const BoxBand box = makeBoxBand(b, 5, 0x10000);
+        SetPieceRec r{};
+        r.subState = 5;
+        r.vx = sh(1);                                      // d2 below the damping gate
+        r.vy = sh(3);                                      // |vy| >= 0x147: no stopSmall row
+        r.pos.x = sh(0x400);                               // over (f8>>1 + fc + f5)<<16
+        const NetAdjustResult a = SetPiece_adjustNet(r, b, box, 5);
+        check(a.vxFlipped && a.vx == -r.vx, "netCase5 post-lane flip row (L.191-192)");
+    }
+    {   // sweep-miss writes (L.76-79): dead record, netCases 1 and 7 -> state := 1, timer 0x3c.
+        const WC98Band b = makeWC98Band(2);
+        const BoxBand box = makeBoxBand(b, 5, 0x10000);
+        SetPieceRec r{};
+        r.subState = 1;                                    // zero velocity: sweepPlane A<=0 -> miss
+        const NetAdjustResult m1 = SetPiece_adjustNet(r, b, box, 5);
+        check(!m1.swept && m1.state == 1 && m1.contactTimer == 0x3c, "netCase1 miss rows (L.77-78)");
+        r.subState = 7;
+        r.vz = sh(2);                                      // t = fdiv(crossNear-1, 2<<16) > accum window
+        const NetAdjustResult m7 = SetPiece_adjustNet(r, b, box, 5);
+        check(!m7.swept && m7.state == 1 && m7.contactTimer == 0x3c, "netCase7 predBox window miss (L.17)");
+    }
+    {   // netCase 4 skip gate (L.39): goalNear + 1 <= |tpos.z| -> sweep skipped, no miss writes.
+        const WC98Band b = makeWC98Band(2);
+        const BoxBand box = makeBoxBand(b, 5, 0x10000);
+        SetPieceRec r{};
+        r.subState = 4;
+        r.pos.z = sh(0xB00);                               // beyond goalNear
+        const NetAdjustResult a = SetPiece_adjustNet(r, b, box, 5);
+        check(a.swept && a.state == -1 && a.contactTimer == 0, "netCase4 skip-gate row (L.39)");
+    }
+    {   // non-5 velocity lane (L.196-237): x0xc000 scaling + target lerp at the timer fraction.
+        const WC98Band b = makeWC98Band(2);
+        const BoxBand box = makeBoxBand(b, 5, 0x10000);
+        SetPieceRec r{};
+        r.subState = 3;
+        r.pos = {sh(2), sh(1), sh(0x100)};                 // |pos| over the sweep radius, v away
+        r.vx = sh(4); r.vy = sh(6); r.vz = sh(8);          // -> quadratic roots negative: sweep miss
+        r.target = {sh(1), sh(2), sh(3)};
+        const NetAdjustResult a = SetPiece_adjustNet(r, b, box, 5);
+        const Fixed t = sh(5);                             // timer < 5 -> 5 (L.216-219)
+        const Fixed f = fdiv(0xcccc, t);                   // L.221-223 split form
+        check(!a.swept && a.state == 1 && a.contactTimer == 0x3c, "non-5 lane: miss rows precede velocity (L.77-78)");
+        check(a.vx == fx(sh(4), 0xc000) + fx(r.target.x - r.pos.x, f) &&
+              a.vy == fx(sh(6), 0xc000) + fx(r.target.y - r.pos.y, f) &&
+              a.vz == fx(sh(8), 0xc000) + fx(r.target.z - r.pos.z, f), "x0xc000 + lerp rows (L.197-237)");
+    }
+    {   // netCases >8: no sweep helper, no velocity lane -> record slots pass through [P].
+        const WC98Band b = makeWC98Band(2);
+        const BoxBand box = makeBoxBand(b, 5, 0x10000);
+        SetPieceRec r{};
+        r.subState = 9;
+        r.vx = sh(4);
+        const NetAdjustResult a = SetPiece_adjustNet(r, b, box, 5);
+        check(a.swept && a.state == -1 && a.vx == r.vx, "netCase9 passthrough");
+    }
+
     std::printf("setpiece-grammar: %s (%d failures)\n", g_fail ? "FAIL" : "PASS", g_fail);
     return g_fail ? 1 : 0;
 }

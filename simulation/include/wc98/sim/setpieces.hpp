@@ -117,4 +117,23 @@ MachineOutcome SetPiece_place(int selector, const SetPieceRec& rec, const WC98Ba
                               const BoxBand& box, std::int32_t scale, const Vec3& xyz,
                               std::uint32_t clampFlags = 0x40);
 
+// Mid-match band adjustment (D-27 live cutover, pass-17restart): FUN_004c0150. The exe runs the
+// sweep helpers over the trajectory record keyed by netCase (+0xB60), merging hit times into the
+// min accumulator (EBX); a miss writes state := 1 and +0xB58 := 0x3c. netCase == 5 enters the
+// damping lane (velocity slots scaled, clamped) at L.81-195; every other netCase scales velocity
+// x0xc000 and lerps toward the record target triple (L.196-257). Sweep helpers FUN_004bfcc0 /
+// FUN_004bfb40 (netCases 1/2/3) have no dossier decompile: modeled [P] on the pred_0x4bf9e0 rows.
+struct NetAdjustResult {
+    bool swept = false;            // sweep helper returned non-zero
+    Fixed time = 0x10001;          // merged min accumulator (pred_* LAB rows)
+    int state = -1;                // T+0xB5C := 1 on sweep miss (L.77)
+    std::int32_t contactTimer = 0; // T+0xB58 := 0x3c on sweep miss (L.78)
+    bool damped = false;           // netCase==5 damping lane executed (L.91-112)
+    bool stoppedSmall = false;     // |vy| < 0x147: velocity slots zeroed, vy := 0x2468 (L.168-173)
+    bool vxFlipped = false;        // post-lane: b98 := -b98 when |tpos.x| over the mouth row (L.191-192)
+    Fixed vx = 0, vy = 0, vz = 0;  // T+0xB98/9C/BA0 after every applied lane
+};
+NetAdjustResult SetPiece_adjustNet(const SetPieceRec& rec, const WC98Band& band, const BoxBand& box,
+                                   std::int32_t scale, Fixed accum = 0x10001);
+
 } // namespace wc98::sim

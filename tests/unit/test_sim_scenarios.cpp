@@ -14,6 +14,7 @@
 #include "wc98/sim/player.hpp"
 #include "wc98/sim/rules.hpp"
 #include "wc98/sim/sim.hpp"
+#include "wc98/sim/setpieces.hpp"
 #include "wc98/sim/world.hpp"
 
 // Byte-verified WC98 locomotion tables (gait/loco/turn/skill rows, exe DGROUP 0x59159c.. block)
@@ -2730,6 +2731,67 @@ void scenarioSetPosAndTarget() {
     std::printf("setPosAndTarget: face=0x%X dir8=%d turnDelta=%d targetDist=%d\n",
                 unsigned(p.facing), p.dir8, p.turnDelta, p.targetDist);
 }
+// ---------------------------------------------------------------------------------------------
+// D-27 live restart machine (pass-17restart): corner/throw-in restarts run through the WC98
+// placement lane in seq4; assert the applied per-case triples vs an independent replica of the
+// band/box + arbiter + machine feed over the asserted tick.
+void scenarioLiveRestartMachine() {
+    gName = "live-restart-machine";
+    for (const bool touchline : {false, true}) {          // corner rt 2 -> sel 1; throw-in rt 1 -> sel 2
+        const int kRt = touchline ? 1 : 2;                 // port restartType ids
+        MatchData md = makeMd();
+        SimRunner r(md, Options{}, kSeed);
+        auto& w = r.world();
+        std::vector<Rec> all;
+        int forceIn = 0, prevPhase = -1, planTick = 0;
+        bool fired = false, applied = false;
+        const EventType want = touchline ? EventType::ThrowIn : EventType::Corner;
+        for (int i = 1; i <= 740 && !r.finished() && !applied; ++i) {
+            auto ev = step(r);
+            all.insert(all.end(), ev.begin(), ev.end());
+            if (w.match.phase == 0 && prevPhase != 0) forceIn = 154;
+            prevPhase = w.match.phase;
+            if (forceIn > 0 && --forceIn == 0 && w.match.phase == 0) {
+                Match_dispatchEvent(w, 0xb, w.match.phaseTeam);   // forced in-ball (scenario 2 note)
+                planTick = gTick + 57;                            // probe-pinned settle (runSetPiece)
+            }
+            if (!fired && gTick == planTick) {
+                fired = true; planTick = 0;
+                if (w.match.phase == 9 && w.ball.possessor >= 0)
+                    dribbleOut(w, w.pitch.halfWidth, w.pitch.halfLength, touchline);
+            }
+            // Restart spotted: feed the live lane from the settled ball state (the seq4 step-0
+            // lane consumed the in-flight trajectory; the replica asserts the machine's per-case
+            // rounded triple + taker aim against an independent recomputation of the same feed).
+            if (!applied && has(all, want) && w.match.restartType == kRt) {
+                applied = true;                                    // corner/throw-in restart spotted
+                Match_setpieceLive(w, kRt);                          // live lane on the settled state
+                const std::int32_t kScale = 5;                     // DAT_006469a8
+                const WC98Band band = makeWC98Band(w.opt.pitchSize);
+                const BoxBand box = makeBoxBand(band, kScale, kOne);
+                SetPieceRec rec{};                                 // replica feed from live state
+                rec.id = w.match.setPieceTaker >= 0 ? w.match.setPieceTaker : w.match.restartTaker;
+                rec.state = w.ball.contactMode;
+                rec.subState = w.ball.netCase;
+                rec.target = w.ball.netPos;
+                rec.prevSlot = w.ball.tprev;
+                rec.vx = w.ball.tvel.x; rec.vy = w.ball.tvel.y; rec.vz = w.ball.tvel.z;
+                rec.pos = w.ball.tpos; rec.prev = w.ball.tprev;
+                rec.absX = iabs(w.ball.tpos.x); rec.absZ = iabs(w.ball.tpos.z);
+                rec.absPrevX = iabs(w.ball.tprev.x); rec.absPrevZ = iabs(w.ball.tprev.z);
+                const ArbiterResult arb = SetPiece_arbitrate(rec, band, box, w.ball.posI.y, false, kScale);
+                const int sel = (kRt == 1 ? 2 : kRt == 2 ? 1 : 0);   // restart -> machine id table
+                ck(sel >= 1 && sel <= 10, "selector outside exe id band {1..10 incl 6-tail}");
+                const Vec3 xyz{rec.pos.x + fx(arb.time, rec.target.x - rec.pos.x),
+                               rec.pos.y + fx(arb.time, rec.target.y - rec.pos.y),
+                               rec.pos.z + fx(arb.time, rec.target.z - rec.pos.z)};
+                const MachineOutcome p = SetPiece_place(sel, rec, band, box, kScale, xyz);
+                ck(w.match.setPiecePlacement == p.rounded, "live placement: rounded record != replica triple");
+            }
+        }
+        ck(applied, touchline ? "no live throw-in machine placement" : "no live corner machine placement");
+    }
+}
 } // namespace
 
 int main() {
@@ -2763,5 +2825,6 @@ int main() {
     scenarioHeaderDuel();
     scenarioSpinNetSurface();
     scenarioSetPosAndTarget();
+    scenarioLiveRestartMachine();
     return 0;
 }

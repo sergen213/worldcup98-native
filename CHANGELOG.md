@@ -9,6 +9,20 @@ project goals.
 ### Added
 
 
+- **Live set-piece restart cutover (pass-17restart, D-27 live-wired)**: `Match_setpieceLive`
+  (`simulation/src/rules.cpp`) runs at seq4 step-0 per restart: band + box init from the stadium id,
+  live trajectory record → `SetPieceRec` feed (driver_0x4c1730 fields), sweep arbiter accumulator time
+  for the interpolated triple, and the placement machine on the restart→selector map {corner 1,
+  throw-in 2, penalty 9, goal kick 10; ids outside {1..10} leave the lane inert}. The rounded triple is
+  applied as a dedicated tasking record `MatchState::setPiecePlacement` (the exe ball-block +0xccd..
+  slot alignment stays [P]; the flight-prediction landing field and input-lane aim/kind slots are not
+  machine-owned). Mid-match band adjustment `FUN_004c0150` ported as `SetPiece_adjustNet` (netCase
+  skip-gates, sweep-miss rows, netCase-5 damping ×0x3333 + clamp ≥0x30000, post-lane mouth flip row).
+  Gates: test_setpiece_grammar section 13 (damping/miss/skip/flip/lane rows), scenario
+  `live-restart-machine` (corner + throw-in through the live lane vs independent replica on seed
+  0x2E7A), self-test step setpiece-live. Trajectory-record state-row application stays [P]
+  (per-handler row-capture parity open, registry D-27). Suite 122/122, self-test 20/20.
+
 - **Set-piece grammar port (pass-17, D-27 grammar-installed)**: new `simulation/src/setpieces.cpp` +
   `setpieces.hpp` replicate the WC98 restart grammar from the dossier (`/mnt/1st4TB/WorldCup98/analysis/pass17setpiece/`):
   pitch-band initializer `FUN_0049e400` (stadium rows {0:(0xff0,0x1620), 1:(0xf00,0x1500), 3:(0xe10,0x12c0),

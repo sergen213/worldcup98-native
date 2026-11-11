@@ -46,6 +46,36 @@ bool sweepPlane(const Vec3& pos, Fixed vx, Fixed vz, std::int32_t radius, Fixed&
     return any;
 }
 
+// CONCAT44 split-divide form shared by FUN_004bf2e0 / FUN_004bf310 / pred_0x4bffd0 (L.12-13,
+// L.51-52): ((rem>>16)<<32 | rem<<16) / den + q*0x10000 — the 16.16 fixed division of v by den
+// split into quotient q and remainder rem (v = q*den + rem).
+int concatDiv(int rem, int den, int q) {
+    if (den == 0) return q * 0x10000;                     // guarded at the call sites
+    const unsigned long long v = (static_cast<unsigned long long>(static_cast<std::uint32_t>(rem >> 16)) << 32) |
+                                 (static_cast<unsigned int>(rem) << 16);
+    return static_cast<int>(static_cast<long long>(v / static_cast<unsigned long long>(den)) +
+                            static_cast<long long>(q) * 0x10000);
+}
+// v / den in the exe's split form (quotient + remainder halves).
+int sdiv(int v, int den) {
+    if (den == 0) return 0;
+    const int q = v / den;
+    return concatDiv(v - static_cast<long long>(q) * den, den, q);
+}
+// DAT_00591490/0x591514 bsr-table sqrt lane (FUN_004bf490 L.154-163, pred pair): v in units^2,
+// result 16.16 magnitude [P model: table rows unregistered; isqrt(v << 16) shape].
+Fixed sqrtBsr(std::uint32_t v) {
+    if (v == 0) return 0;
+    std::uint64_t x = static_cast<std::uint64_t>(v) << 16;   // units^2 -> fixed^2
+    std::uint64_t r = 0, dd = 1;
+    while (dd <= x / 4) dd <<= 2;                             // largest power of 4 <= x
+    for (; dd; dd >>= 2) {                                    // restoring integer isqrt
+        if (x >= r + dd) { x -= r + dd; r = (r >> 1) + dd; }
+        else r >>= 1;
+    }
+    return static_cast<Fixed>(r);
+}
+
 // Case 1/2 velocity re-aim helpers FUN_004bf660 / FUN_004bf760: sqrt(vx²+vz²) magnitude, speed =
 // fx(mag, 0x8000), direction via atan/sin helper pair (FUN_004a6fa0 + FUN_004a5d50). [P] register
 // recovery: modeled with the ported sinCos(atan2i) accessors; not consumed by the D-27 gates.
@@ -333,4 +363,181 @@ MachineOutcome SetPiece_place(int selector, const SetPieceRec& recIn, const WC98
     return out;
 }
 
+
+// Sweep-predicate model of FUN_004bf9e0 (pred_0x4bf9e0.txt; shared by the netCase 1/2/3 helper
+// pair FUN_004bfcc0 / FUN_004bfb40 and case-4/8 calls). The t producer is the FUN_004bf310
+// register-soup solve [P: modeled with the arbiter's quadratic sweepPlane lane]; window rows are
+// exact (L.24-60). `planeZ` = the ±(crossNear-1)/goalFar row; on success tAcc merges to t (LAB).
+bool predGoalPlane(const SetPieceRec& r, Fixed targetX, Fixed planeZ, const WC98Band& band,
+                   const BoxBand& box, std::int32_t scale, Fixed& tAcc) {
+    Fixed t;                                                    // L.16 FUN_004bf310 -> local_14
+    if (!sweepPlane(r.pos, r.vx, r.vz,
+                    (band.postThickness >> 1) + band.goalHalfWidth - scale, t)) return false;
+    if (t < 0 || t >= kOne || t > tAcc) return false;           // L.24-29: t==0, local_14<0, accum<=local_14
+    const Fixed ix = r.pos.x + fx(t, targetX - r.pos.x);        // L.30-38 interpolated pair
+    const Fixed iz = r.pos.z + fx(t, planeZ - r.pos.z);
+    if (std::abs(ix) >= sh((band.postThickness >> 1) + band.goalHalfWidth - scale)) return false;  // L.42-47 f8>>1+fc-f5
+    if (std::abs(iz) >= box.crossNear) {                        // L.48-60: |iz| >= crossNear
+        if (std::abs(iz) > box.goalNear && box.crossNear != box.goalNear) return false;
+    }
+    tAcc = t;                                                   // success: accum = t, return 1
+    return true;
+}
+
+// pred_0x4bfed0 (netCase 5 sweep): FUN_004bf2e0 linear t [P] against the target z row; x-window
+// positive-only rows L.31-43.
+bool predEvent(const SetPieceRec& r, Fixed planeZ, const WC98Band& band, const BoxBand& box,
+               std::int32_t scale, Fixed& tAcc) {
+    if (r.vz == 0) return false;                                // L.16 FUN_004bf2e0 in_EAX==0 -> miss
+    const Fixed t = fdiv(planeZ - r.pos.z, r.vz);               // L.12-13 split divide [P]
+    if (t < 0 || t >= kOne || t > tAcc) return false;           // L.17 window rows
+    const Fixed ix = r.pos.x + fx(t, sh(0) - r.pos.x);          // L.19-23 lerps [P target-x row]
+    if (std::abs(ix) >= sh(band.goalHalfWidth + (band.postThickness >> 1) + scale)) return false;  // L.31 x-window
+    const Fixed iz = r.pos.z + fx(t, planeZ - r.pos.z);         // L.24-28 z lerp
+    if (std::abs(iz) >= box.crossHigh && std::abs(iz) < sh(band.halfLength)) return false;  // L.36-43 band rows
+    tAcc = t;
+    return true;
+}
+
+// pred_0x4bffd0 (netCases 6/7 sweep): decompile available; window/mod/div rows exact, [P] only on
+// the FUN_004bf2e0 linear t producer.
+bool predBox(const SetPieceRec& r, Fixed targetY, Fixed targetZ, const WC98Band& band,
+             const BoxBand& box, [[maybe_unused]] std::int32_t scale, Fixed& tAcc) {
+    // L.57-64 window rows use the hl/goalFar bands; the f5 scale row applies to cs 6/7 x-row only.
+    const Fixed t = fdiv(targetZ - r.pos.z, r.vz);              // [P] linear t producer
+    if (t < 0 || t >= kOne || t > tAcc) return false;           // L.17 local_14 window vs accum
+    const Fixed iy = r.pos.y + fx(t, targetY - r.pos.y);        // L.18-22 y lerp
+    const Fixed iz = r.pos.z + fx(t, targetZ - r.pos.z);        // L.23-27 z lerp
+    const int base = sh((band.barThickness >> 1) + band.goalHeight);   // L.28 (fc>>1)+e8
+    const Fixed q = sdiv(iy, base);                             // L.29-31 split mod/div lane
+    Fixed bandZ;
+    if (q < 0x10001) {                                          // L.32 iVar2 < 0x10001
+        bandZ = fx(q, box.goalFar) - fx(q, box.crossHigh);      // L.39-44 scaled pair (f94 / f88)
+    } else {
+        bandZ = box.goalFar - box.crossHigh;                    // L.48
+    }
+    if (std::abs(iz) > sh(band.halfLength) &&                   // L.57 hl<<16 < |iz|
+        std::abs(iz) < bandZ + sh(8)) {                         // L.61 (goalFar - band)+0x80000
+        tAcc = t;                                               // L.62-63 accum = local_14, return 1
+        return true;
+    }
+    return false;
+}
+
+// FUN_004c0150 replica (pitchwriter dossier). netCase (+0xB60) selects the sweep helper set;
+// a miss writes state := 1 and +0xB58 := 0x3c (L.76-79). netCase == 5 runs the damping lane
+// (L.81-195, early return L.112); every other netCase scales velocity x0xc000 then lerps toward
+// the record target triple (L.196-237) with a sinCos table override lane (L.238-256 [P]).
+NetAdjustResult SetPiece_adjustNet(const SetPieceRec& recIn, const WC98Band& band,
+                                   const BoxBand& box, std::int32_t scale, Fixed accum) {
+    NetAdjustResult res;
+    res.vx = recIn.vx; res.vy = recIn.vy; res.vz = recIn.vz;    // slots default to record values
+    SetPieceRec r = recIn;                                      // lanes read/write T slots in place
+    Fixed tAcc = accum;                                         // unaff_EBX min accumulator (pred_* merges)
+    const int cs = r.subState;                                  // +0xB60 netCase selector (L.21)
+    const std::int32_t pzSign = r.prevSlot.z < 0 ? -1 : 1;      // L.24/31/45/51/70 sign of the +0xB94 slot
+    bool hit = false, skipSweep = false;
+    switch (cs) {
+    case 1: case 2: case 3:                                     // L.23-35 crossNear row target [P helper pair]
+        hit = predGoalPlane(r, sh(0), pzSign * (box.crossNear - kOne), band, box, scale, tAcc);
+        break;
+    case 4: {                                                  // L.37-49 goal-plane bar rows
+        const Fixed base = sh((band.barThickness >> 1) + band.goalHeight);   // L.38 fc>>1+e8
+        if (box.goalNear + kOne <= std::abs(r.pos.z)) { skipSweep = true; break; }  // L.39 gate -> LAB
+        Fixed tz = base - sh(scale * 2) - kOne;                // L.40 target row
+        if (r.pos.y < tz) tz = r.pos.y;                        // L.41-43 clamp to tpos.y
+        hit = predGoalPlane(r, sh(0), pzSign * tz, band, box, scale, tAcc);  // [P call soup]
+        break;
+    }
+    case 5: {                                                  // L.50-56 predEvent rows (base+kOne plane)
+        const Fixed base = sh((band.barThickness >> 1) + band.goalHeight);
+        hit = predEvent(r, base + kOne, band, box, scale, tAcc);
+        break;
+    }
+    case 6: case 7: {                                          // L.57-66 x/z rows from prevSlot signs [P]
+        const std::int32_t pxSign = r.prevSlot.x < 0 ? -1 : 1;
+        const Fixed tx = pxSign * (sh((band.barThickness >> 1) + band.goalHalfWidth + scale) + kOne);
+        hit = predBox(r, tx, pzSign * (box.crossNear - kOne), band, box, scale, tAcc);  // [P triple args]
+        break;
+    }
+    case 8:                                                    // L.67-74 goalFar row
+        hit = predGoalPlane(r, sh(0), pzSign * (box.goalFar + kOne), band, box, scale, tAcc);
+        break;
+    default:
+        skipSweep = true;                                       // no sweep helper for other netCases [P]
+        break;
+    }
+    res.time = tAcc;
+    res.swept = hit || skipSweep;
+    if (!hit && !skipSweep) {                                   // L.76-79 sweep-miss writes
+        res.state = 1;                                          // T+0xB5C := 1 (L.77)
+        res.contactTimer = 0x3c;                                // T+0xB58 := 0x3c (L.78)
+    }
+    if (cs == 5) {
+        // LAB_004c01d7 damping lane, L.81-195.
+        const Fixed vx = r.vx, vy = r.vy, vz = r.vz;
+        const std::uint32_t d2u = static_cast<std::uint32_t>(fx(vx, vx)) +
+                                  static_cast<std::uint32_t>(fx(vz, vz));   // L.82-90 rounded square pair
+        if (d2u > 0x400000 && vy < 0) {                         // L.91 gate: d2 > 0x400000 && b9c < 0
+            Fixed ny = fx(-vy, 0x4ccc);                        // L.91-95 -vy * 0x4ccc (fx row)
+            if (ny < 0x30000) ny = 0x30000;                     // L.96-98 clamp low
+            else if (ny > 0x50000) ny = 0x50000;                // L.99-101 clamp high
+            res.damped = true;
+            res.vx = fx(vx, 0x3333);                            // L.102 b98 scaled x0x3333
+            res.vy = ny;                                        // b9c := clamped -vy*0x4ccc
+            res.vz = fx(vz, 0x3333);                            // L.107 ba0 scaled x0x3333
+            return res;                                         // L.112 early return (no post-lane)
+        }
+        // Distance lane L.114-161: two sqrt-pair distances against the goal-mouth rows [P table].
+        const Fixed base = sh((band.barThickness >> 1) + band.goalHeight);   // L.114 iVar4 - tpos.y
+        const Fixed dY = base - r.pos.y;
+        const Fixed iZ = r.pos.z < 1 ? (-r.pos.z - box.crossHigh) : (box.crossHigh - r.pos.z);  // L.119-130 f88 rows
+        const Fixed dA = sqrtBsr(static_cast<std::uint32_t>(fx(dY, dY)) +
+                                 static_cast<std::uint32_t>(fx(iZ, iZ)));   // [P bsr table lane]
+        const Fixed hl16 = sh(band.halfLength);                // DAT_00641314<<16 (L.138)
+        const Fixed iX = r.pos.z < 1 ? (-hl16 - r.pos.z) : (hl16 - r.pos.z);                     // L.138-150 hl rows
+        const Fixed dB = sqrtBsr(static_cast<std::uint32_t>(fx(dY, dY)) +
+                                 static_cast<std::uint32_t>(fx(iX, iX)));   // [P]
+        const Fixed gateBase = box.goalNear - hl16;            // L.157 iVar4 row
+        if (fx(gateBase, 0x1999) < dA + dB - gateBase) {       // L.158-161 gate
+            const std::int32_t avy = vy < 0 ? -vy : vy;        // L.172 abs(b9c)
+            if (avy < 0x147) {                                 // L.168-173 stopSmall row
+                res.stoppedSmall = true;
+                res.vx = 0; res.vz = 0; res.vy = 0x2468;       // slots zeroed, vy := 0x2468
+            }
+            // L.175-183: the (avy < 0x20000 / vy < 0) pair both call FUN_004bf490, which re-aims
+            // velocity slots at the record-target direction (normalized; tail writes b98/ba0 via
+            // fx rows). [P] register triple at the call site is soup: modeled as a no-op marker.
+        }
+        if (std::abs(r.pos.x) > sh((band.postThickness >> 1) + band.goalHalfWidth + scale)) {
+            res.vx = -res.vx;                                  // L.187-193 post-lane b98 := -b98
+            res.vxFlipped = true;
+        }
+        return res;
+    }
+    if (skipSweep && cs > 8) return res;                       // default: no velocity lanes [P]
+    // L.196-237 non-netCase-5 lane: velocity x0xc000, then gravity lerp toward the target triple.
+    Fixed vx = fx(r.vx, 0xc000);                               // L.197-211 fx rows (b98/9c/ba0)
+    const Fixed vy = fx(r.vy, 0xc000);
+    Fixed vz = fx(r.vz, 0xc000);
+    const Fixed t = r.id < 5 ? sh(5) : sh(r.id);               // L.216-219 FUN_004c2a40 timer <5 -> 5 [P]
+    const Fixed f = fdiv(0xcccc, t);                           // L.221-223 split form of 0/cccc / t [P]
+    vx += fx(r.target.x - r.pos.x, f);                         // L.224-237 lerps toward target triple [P]
+    const Fixed vyL = vy + fx(r.target.y - r.pos.y, f);
+    vz += fx(r.target.z - r.pos.z, f);
+    res.vx = vx; res.vy = vyL; res.vz = vz;
+    // L.238-256 sinCos table lane: gate (sqrtPair target-dist < speed && kOne < speed) [P soup];
+    // on hit the slots take table rows scaled x0x10 (v * 0x100000 >> 16 = v << 4).
+    const Fixed dx = r.target.x - r.pos.x, dz = r.target.z - r.pos.z;
+    const Fixed dPair = sqrtBsr(static_cast<std::uint32_t>(fx(r.vx, r.vx)) +
+                                static_cast<std::uint32_t>(fx(r.vz, r.vz)));   // speed pair [P]
+    const Fixed dTgt = sqrtBsr(static_cast<std::uint32_t>(fx(dx, dx)) +
+                               static_cast<std::uint32_t>(fx(dz, dz)));        // target pair [P]
+    if (dTgt < dPair && kOne < dPair) {                        // L.240-244 gate rows
+        const Angle a = atan2i(dx, dz);                        // FUN_004f3db4 pair [P]
+        res.vx = static_cast<Fixed>(sinCos(a).s << 4);         // L.245-248 sin table row (v<<20)>>16
+        res.vz = static_cast<Fixed>(sinCos(static_cast<Angle>((a + 0x100) & 0x3ff)).c << 4);  // L.253-255 quarter-turn row
+    }
+    return res;
+}
 } // namespace wc98::sim

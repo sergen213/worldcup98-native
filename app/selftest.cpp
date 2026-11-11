@@ -1482,6 +1482,41 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                             unsigned(p.target.z), p.rounded.x, p.rounded.y, p.rounded.z);
             steps.push_back(std::move(st));
         }
+        {   // Live cutover (pass-17restart): Match_setpieceLive fed from the LIVE ball state of
+            // this kickoff-scale-seed world, corner rt 2 (machine sel 1) then throw-in rt 1 (sel 2).
+            // The applied rounded triple + taker aim must equal an independent replica feed.
+            const auto replica = [&](int rt) {
+                sim::Match_setpieceLive(w, rt);
+                sim::SetPieceRec rec{};                       // replica feed from live state
+                rec.id = w.match.setPieceTaker >= 0 ? w.match.setPieceTaker : w.match.restartTaker;
+                rec.state = w.ball.contactMode;
+                rec.subState = w.ball.netCase;
+                rec.target = w.ball.netPos;
+                rec.prevSlot = w.ball.tprev;
+                rec.vx = w.ball.tvel.x; rec.vy = w.ball.tvel.y; rec.vz = w.ball.tvel.z;
+                rec.pos = w.ball.tpos; rec.prev = w.ball.tprev;
+                rec.absX = std::abs(w.ball.tpos.x); rec.absZ = std::abs(w.ball.tpos.z);
+                rec.absPrevX = std::abs(w.ball.tprev.x); rec.absPrevZ = std::abs(w.ball.tprev.z);
+                const sim::WC98Band lband = sim::makeWC98Band(w.opt.pitchSize);
+                const sim::BoxBand lbox = sim::makeBoxBand(lband, 5, sim::kOne);
+                const sim::ArbiterResult a = sim::SetPiece_arbitrate(rec, lband, lbox, w.ball.posI.y, false, 5);
+                const int sel = (rt == 2 ? 1 : rt == 1 ? 2 : 0);   // restart -> machine id table
+                const sim::Vec3 xyz{rec.pos.x + sim::fx(a.time, rec.target.x - rec.pos.x),
+                                    rec.pos.y + sim::fx(a.time, rec.target.y - rec.pos.y),
+                                    rec.pos.z + sim::fx(a.time, rec.target.z - rec.pos.z)};
+                const sim::MachineOutcome p = sim::SetPiece_place(sel, rec, lband, lbox, 5, xyz);
+                return std::pair<int, sim::Vec3>{sel, w.match.setPiecePlacement == p.rounded
+                        ? p.rounded : sim::Vec3{0x7FFF, 0, 0}};
+            };
+            const auto corner = replica(2);                   // corner rt -> machine sel 1 lane
+            const bool cornerOk = corner.first == 1 && corner.second != sim::Vec3{0x7FFF, 0, 0};
+            const auto throwin = replica(1);                  // then throw-in rt -> machine sel 2
+            StepRes st{"setpiece-live", cornerOk && throwin.first == 2 &&
+                                        throwin.second != sim::Vec3{0x7FFF, 0, 0}, ""};
+            st.detail = fmt("live: cornerKind={} r=({},{},{}) throwKind={}", corner.first,
+                            corner.second.x, corner.second.y, corner.second.z, throwin.first);
+            steps.push_back(std::move(st));
+        }
     }
     writeJson(outJson, steps);
     int passed = 0;

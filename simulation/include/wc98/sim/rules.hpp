@@ -92,6 +92,8 @@ struct MatchState {
     std::int32_t setPieceAimCtrl = 0; // DAT_0065F2D0 controller index + 1 (exe: pointer)
     std::int32_t setPieceTaker = -1;  // DAT_0065F2D4
     std::int32_t setPiecePartner = -1; // DAT_0065F2D8
+    Vec3 setPiecePlacement{};       // machine rounded triple (exe ball-block +0xccd.. [P slot
+                                    // align]); tasking record consumed by placement gates only
     std::int32_t periodSideFlag = 0;  // DAT_0065F2DC
     std::int32_t setPieceArmed = 0;   // DAT_0065F2E4
     std::uint8_t f2e8[8] = {};        // DAT_0065F2E8..0x65F2ED (zeroed by Match_init)
@@ -192,6 +194,9 @@ void Match_onTrainingEvent(World& w, int event, int team);      // 0x473B20
 void Match_onPresentationEvent(World& w, int event, int team);  // 0x4741A0
 void Match_handicap(World& w, int level);                       // FUN_0045564C (EAX = DAT_0065EEF8)
 void Match_lineUpRestart(World& w, int restartType);            // 0x46F3EC restart spot -> ball.restartPos
+// D-27 live cutover (pass-17restart): WC98 set-piece placement lane driven per restart event;
+// dossier analysis/pass17setpiece. Applies MachineOutcome to ball landing + player tasking aim.
+void Match_setpieceLive(World& w, int restartType);
 void Match_requestPeriodEnd(World& w, int whistle, int next, int team); // 0x471F30
 void Match_decidePeriodOutcome(World& w);                       // 0x46FDE4
 void Match_endPeriodSuddenDeath(World& w, int winner);          // 0x470EFC

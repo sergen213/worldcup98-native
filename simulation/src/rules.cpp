@@ -7,6 +7,7 @@
 #include <algorithm>
 
 #include "wc98/sim/sim.hpp"
+#include "wc98/sim/setpieces.hpp"
 
 namespace wc98::sim {
 
@@ -1315,6 +1316,61 @@ void Match_lineUpRestart(World& w, int type) {
     Formation_ballZone(w, Vec3{fxi(p.x), fxi(p.y), fxi(p.z)}, w.ball.fkZone, 0);
 }
 
+// D-27 live cutover (pass-17restart): per restart event, the WC98 set-piece placement lane.
+// Grammar = analysis/pass17setpiece dossier; NOT the FIFA-99 line-up spots above, which stay as
+// the ball-placement lane. Steps: band + box init from the stadium id (FUN_0049e400), populate a
+// SetPieceRec from the live trajectory record (driver_0x4c1730 feed), run SetPiece_arbitrate to
+// get/validate the selector, then SetPiece_place and apply the MachineOutcome: target/state rows
+// to players (setPieceAim tasking + contact-mode slots) and the >>0x10-rounded triple to the ball
+// block. The machine is keyed by exe selector ids (corner 1, throw-in 2, penalty 9, goal kick
+// 10; case-6 tail). Port
+// restartType ids {0/6 kickoff, 1 throwin, 2 corner, 3 goalkick, 4 pk, 5 fk, 8 sudden-death}
+// map through the table below; a sweep that hits nothing at an unmapped id leaves the lane inert.
+static int setpieceSelectorFromRt(int rt) {
+    switch (rt) {
+    case 1: return 2;   // throw-in -> touchline machine id 2
+    case 2: return 1;   // corner   -> goal-line machine id 1
+    case 3: return 10;  // goal kick -> goalFar lane machine id 10 (DAT_00648f94)
+    case 4: return 9;   // penalty  -> box-band machine id 9
+    default: return 0;  // no established selector for kickoff/free-kick/sudden-death
+    }
+}
+
+void Match_setpieceLive(World& w, int rt) {
+    const std::int32_t kScale = 5;                        // DAT_006469a8 (set by FUN_004b1730)
+    const WC98Band band = makeWC98Band(w.opt.pitchSize);  // stadium switch rows
+    const BoxBand box = makeBoxBand(band, kScale, kOne);  // aspect [P: trig-helper pair soup]
+    BallState& b = w.ball;
+    SetPieceRec rec{};                                    // live trajectory record feed
+    rec.id = w.match.setPieceTaker >= 0 ? w.match.setPieceTaker : w.match.restartTaker;  // +0xB54 tag
+    rec.state = b.contactMode;                            // T+0xB5C
+    rec.subState = b.netCase;                             // T+0xB60
+    rec.target = b.netPos;                                // +0xB80
+    rec.prevSlot = b.tprev;                               // +0xB8C prev-copy slot
+    rec.vx = b.tvel.x; rec.vy = b.tvel.y; rec.vz = b.tvel.z;   // +0xB98/9C/A0
+    rec.pos = b.tpos;                                     // +0xBA4..
+    rec.prev = b.tprev;                                   // +0xBB0..
+    rec.absX = iabs(b.tpos.x);                            // +0xBBC.. derived abs rows
+    rec.absZ = iabs(b.tpos.z);
+    rec.absPrevX = iabs(b.tprev.x);
+    rec.absPrevZ = iabs(b.tprev.z);
+    // Sweep accumulator (arb.time) feeds the interpolated triple; the selector itself is the
+    // restart-type -> machine-id producer mapping, and ids outside {1..10} leave the lane inert.
+    const ArbiterResult arb = SetPiece_arbitrate(rec, band, box, w.ball.posI.y, false, kScale);
+    const int sel = setpieceSelectorFromRt(rt);
+    if (static_cast<unsigned>(sel - 1) > 9u) return;         // machine guard `9 < sel-1U` l.18
+    // xyz: the driver interpolates the placement triple at the accumulator time (lerp rows).
+    const Vec3 xyz{rec.pos.x + fx(arb.time, rec.target.x - rec.pos.x),
+                   rec.pos.y + fx(arb.time, rec.target.y - rec.pos.y),
+                   rec.pos.z + fx(arb.time, rec.target.z - rec.pos.z)};
+    const MachineOutcome p = SetPiece_place(sel, rec, band, box, kScale, xyz);
+    // Apply the rounded machine triple as a dedicated placement record. The exe writes it to a
+    // ball-block slot at +0xccd.. whose alignment is unresolved [P]; the port's flight-prediction
+    // landing field and the input-lane aim/kind slots (DAT_0065F2C0/C4, pad-code consumers in
+    // input.cpp 0x4E2FF8..) are NOT machine-owned, so nothing here touches live ball or input
+    // state. Trajectory-record state rows stay unapplied per row-capture parity [P].
+    w.match.setPiecePlacement = p.rounded;               // DAT_00648ccd.. rounded triple [P align]
+}
 // ---------------------------------------------------------------------------------------------
 // Ball out of play / goal
 
@@ -2051,6 +2107,7 @@ void seq4TakeRestart(World& w) { // 0x472ED8
         Team_setPlayersFlag80(w, 0, 1);
         Team_setPlayersFlag80(w, 1, 1);
         Match_lineUpRestart(w, rt);
+        Match_setpieceLive(w, rt);   // D-27 live cutover (pass-17restart): machine placement lane
         if (rt == 4) {
             Ball_placeAt(w, w.ball.restartPos, false, 0);
             w.time.focus = -1;

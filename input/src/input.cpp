@@ -71,14 +71,9 @@ void Input::recompute(Device& d) {
     for (std::size_t a = 0; a < config::kActionCount; ++a)
         for (auto& in : s.bindings.actions[a])
             if (std::find(s.active.begin(), s.active.end(), in) != s.active.end()) bits |= actionBit(config::Action(a));
-    // Queue every level change so a press shorter than a tick (or a re-press) is still seen.
-    for (int b = 0; b < 32; ++b) {
-        bool now = bits >> b & 1;
-        auto& q = s.queue[std::size_t(b)];
-        if (now == bool(s.phys >> b & 1)) continue;
-        q.push_back(now);
-        if (q.size() > 8) q.erase(q.begin(), q.begin() + 2); // never sampled (device unused): keep it bounded
-    }
+    // WC98 grammar (register D-69, paddecode l.18/85-90): the device reader reports the current
+    // physical level; edges come from the XOR-diff of consecutive reads. No per-bit queue - a tap
+    // that opens and closes between two reads produces no event, exactly as in the original.
     s.phys = bits;
 }
 
@@ -181,20 +176,7 @@ std::uint32_t Input::sample(std::uint32_t id) {
     auto* d = find(id);
     if (!d) return 0;
     auto& s = state(*d);
-    std::uint32_t r = 0;
-    for (int b = 0; b < 32; ++b) {
-        auto& q = s.queue[std::size_t(b)];
-        bool level;
-        if (!q.empty()) {
-            level = q.front();
-            q.pop_front();
-        } else {
-            level = s.phys >> b & 1;
-        }
-        r |= std::uint32_t(level) << b;
-    }
-    s.reported = r;
-    return r;
+    return s.phys; // current physical level of this read (D-69; sim diffs consecutive words)
 }
 
 void Input::fill(std::uint32_t id, sim::ControllerState& c) {

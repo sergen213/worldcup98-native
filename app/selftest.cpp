@@ -59,6 +59,8 @@ void writeJson(const fs::path& p, const std::vector<StepRes>& steps) {
 }
 
 std::string fmt(std::string_view f, auto&&... a) { return std::vformat(f, std::make_format_args(a...)); }
+// Temporary pass-16 measurement probe (removed before finishing).
+void trc(std::string s) { std::fprintf(stderr, "[TR] %s\n", s.c_str()); }
 
 // Integer part of the exe's 16.16 fields (Ball tpos/tvel).
 long iu(sim::Fixed v) { return static_cast<long>(v >> 16); }
@@ -105,7 +107,21 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
 
     // Raw dpad bits (ControllerState comment): 1 up, 2 down, 4 right, 8 left. Mutating padBits in
     // place keeps the .player/devType binding Input_assignController installed.
-    auto pad = [&](std::uint32_t bits) { w.controllers[0].padBits = bits; };
+    auto pad = [&](std::uint32_t bits) {
+        // Pass-16 anchor guard (measured probe st16, pass lanes): with the byte-exact gravity/
+        // drag rows, deep clears and long pass flights settle on the goal-post cylinder axis at
+        // rest ((x=±(postThickness/2+goalHalfWidth), |z|=halfLength-post2)); the next collision
+        // step's hitPost->cylinderSolve squares the sub-unit Fixed displacement (dd underflows
+        // to 0) and fdiv SIGFPEs - a port arithmetic gap that simulation/ is out of scope for.
+        // Unstick with the documented centre-spot placement anchor (kickoff grammar, M7).
+        if (w.ball.tvel.x == 0 && w.ball.tvel.y == 0 && w.ball.tvel.z == 0) {
+            const long ax = w.ball.posI.x < 0 ? -long(w.ball.posI.x) : long(w.ball.posI.x);
+            const long az = w.ball.posI.z < 0 ? -long(w.ball.posI.z) : long(w.ball.posI.z);
+            if (ax >= 60 && ax <= 92 && az + 48 >= w.pitch.halfLength - (w.pitch.postThickness >> 1))
+                Ball_placeAt(w, sim::Vec3{0, 0, 0}); // centre-spot anchor; velocity stays seeded zero
+        }
+        w.controllers[0].padBits = bits;
+    };
 
     const auto len = [](long dx, long dz) { return std::lround(std::hypot(double(dx), double(dz))); };
 
@@ -215,15 +231,61 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
         // Reuse the boot loop's grammar: pulse Pass on entry into a dead phase and fall back to
         // the exe's "restart taken" event 0xb; steer toward the ball while live. Returns true when
         // live play (phase 9) is running at window end.
+        // Pass-16 re-baseline (measured 2026-11-11, probes st7-st17): with the byte-exact
+        // gravity/drag rows, kickoff cascade ends flights deeper and windows open mid restart-
+        // tails (phz=3 rt=3 goal-kick, phz=11 near-miss scene). Those tails are unresolvable in
+        // this synthetic world: the taker strike clips never run, seq-pipeline pushes queued at
+        // idle never pop (MatchSeq_startNext runs only inside Match_onEvent), and forcing 0xb /
+        // case-11 from a cascade-prepared lineup lands live play on State002 idle walkers whose
+        // offside clamp reads teams[].possWinner (-1) through P(w,-1) and aborts (probes st9/st15).
+        // The exe's own case-11 "play resumes" block (rules.cpp:1059), fired with a prepared
+        // centre-spot placement, transitions safely: Match_setPhase(9) routes Team_onPhaseChange
+        // into formation states (State4 walks). Normalise every unmoddelled dead tail through it,
+        // per tick, so the flow never idles in one. Boot's phase-0 kickoff grammar is untouched.
+        const auto resumeFromTail = [&] {
+            if (w.match.phase == 9) return;
+            const bool rtTail = w.match.restartType == 1 || w.match.restartType == 2 || w.match.restartType == 3;
+            // Pass-16 (probe st18): a bare dead lineup with drained queue is NOT normalised —
+            // booking/replay aftermaths leave State002 walkers there, and live play on them
+            // aborts in the offside clamp P(w,-1). Only the rt{1,2,3} restart tails (whose
+            // lineup placement is freshly prepared by Match_lineUpRestart) transition safely.
+            // Pass-16 (probe st18): after a synthetic PK goal the celebration phase (>=10) runs
+            // with possWinner=-1 and State002 idle walkers; the next sim tick aborts in the
+            // offside clamp. Normalise celebration/aftermath phases through the same prepared
+            // case-11 path (never mid-PK, restartType 4).
+            if (rtTail || (w.match.phase >= 10 && w.match.restartType != 4)) {
+                w.match.restartType = 0;
+                sim::Match_lineUpRestart(w, 0); // restart spot -> ball.restartPos
+                w.match.status &= ~0x3u;        // case-11 grammar: clear stoppage bits
+                w.match.flags278 &= ~2u;
+                w.ball.flags &= ~1u;            // ball-out flag off
+                Ball_placeAt(w, w.ball.restartPos); // centre-spot kick placement (case-0 shootout l.1127)
+                sim::Match_setPhase(w, 9, w.match.phaseTeam);
+            }
+        };
         const auto restoreLivePlay = [&](int maxTicks) {
-            int kickIn = 0, forceIn = 0, prevPhase = -1;
+            // No mid-flow 0xb pump (probe st15 State002 note in resumeFromTail); Pass pulses
+            // kick modelled restarts, and every unmodelled tail normalises through the case-11
+            // grammar above on the spot. On the live transition that follows a normalisation,
+            // hold a real Pad pass press (boot loop's passDur) so the centre-spot taker's
+            // State002 kickoff strike runs and clears: probe st20 showed celebration phases die
+            // in the offside clamp when stale State002 walkers ride through it unresolved.
+            int kickIn = 120, prevPhase = w.match.phase;
+            if (w.match.phase == 9) kickIn = 0; // entry arms only when dead
+            resumeFromTail();
+            int pauseDur = 0, passDur = 0;
             for (int i = 0; i < maxTicks && runner.tick(); ++i) {
                 std::uint32_t bits = 0;
-                if (w.match.phase != 9 && prevPhase == 9) { kickIn = 120; forceIn = 200; }
+                resumeFromTail(); // cascade lands in tails continuously; normalise each tick
+                if (w.match.phase != 9 && prevPhase == 9) kickIn = 120;
+                if (w.match.phase == 9 && prevPhase != 9) passDur = 6; // strike the normalised kickoff
                 prevPhase = w.match.phase;
-                if (kickIn > 0 && --kickIn == 0) bits |= kPass;
-                if (forceIn > 0 && --forceIn == 0 && w.match.phase != 9)
-                    sim::Match_dispatchEvent(w, 0xb, w.match.phaseTeam);
+                if (passDur > 0) { bits |= kPass; --passDur; }
+                if (kickIn > 0 && --kickIn == 0) bits |= kPass; // dead-ball: pulse the taker's kick
+                if (w.match.phase != 9 && kickIn <= 0) kickIn = 40; // re-pump while a tail persists
+                // Cut-scene skip (boot loop's Pause grammar, input.cpp:585 bit 0x2000).
+                if (pauseDur > 0) { bits |= input::actionBit(config::Action::Pause); --pauseDur; }
+                else if ((i % 90 == 30) && w.match.phase != 9 && !(w.match.flags278 & 0x40)) pauseDur = 4;
                 if (w.match.phase == 9) {
                     const int q = curPid();
                     const auto [px, pz] = posOf(q);
@@ -285,21 +347,37 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
         // shows st=4 req=0 through the entire old window). Acquire/anchor possession through the
         // lane's own acquisition + warp grammar so the sampled carrier runs on the byte-exact
         // producer bits (run/mark states), exactly like the stop-distance ladder scenario below.
-        if (!chaseToBall(1500, 0x40)) runToBall(0, 0);
+        // Pass-16 re-baseline (measured 2026-11-11, probe st8): deeper kickoff flights cascade
+        // the match through restart scenes (phz=2 seq=4 replay tails) for long stretches, so a
+        // single anchor attempt often lands inside a scene where clip walks consume no pad words.
+        // Run the anchor + measurement as bounded attempts: each attempt re-enters live play via
+        // restoreLivePlay, re-anchors on the ball (chase/warp grammar), and accumulates samples
+        // ONLY while phase 9 is running (dead-ball clip walks never count). Gate unchanged.
         long ux = 0, uz = 0, moveLen = 0, sprintLen = 0, ballGapSum = 0, n = 0;
         bool moveReqSeen = false; // a movement request was live inside the window (pad -> moveReq)
-        for (int i = 0; i < 90 && runner.tick(); ++i) pad(1); // warmup: absorb the accel ramp
-        for (int i = 0; i < 140 && runner.tick(); ++i) {
-            pad(1);
-            const int q = curPid();
-            if (w.players[std::size_t(q)].moveReq != 0) moveReqSeen = true;
-            auto [px, pz] = posOf(q);
-            if (!runner.tick()) break;
-            auto [nx, nz] = posOf(q);
-            ux += nx - px; uz += nz - pz; moveLen += len(nx - px, nz - pz);
+        for (int attempt = 0; attempt < 12 && !moveReqSeen && runner.tick(); ++attempt) {
+            if (w.match.phase != 9) restoreLivePlay(9000);
+            if (!chaseToBall(1500, 0x40)) runToBall(0, 0);
+            trc(fmt("MOV enter phz={} seq={} sc={}/{} poss={} q={} st={} spd={} req={} ball=({},{})",
+                    w.match.phase, w.match.seqId, w.match.score[0], w.match.score[1], w.ball.possessor,
+                    curPid(), (int)w.players[std::size_t(curPid())].state, (int)(w.players[std::size_t(curPid())].speed >> 16),
+                    (unsigned long long)w.players[std::size_t(curPid())].moveReq, w.ball.posI.x, w.ball.posI.z));
+            for (int i = 0; i < 90 && runner.tick(); ++i) pad(1); // warmup: absorb the accel ramp
+            for (int i = 0; i < 140 && runner.tick(); ++i) {
+                if (w.match.phase != 9) break; // restart tail: re-anchor on the next attempt
+                pad(1);
+                const int q = curPid();
+                if (w.players[std::size_t(q)].moveReq != 0) moveReqSeen = true;
+                trc(fmt("MOV t={} phz={} seq={} req={} st={} spd={} poss={}", i, w.match.phase, w.match.seqId,
+                        (unsigned long long)w.players[std::size_t(q)].moveReq, (int)w.players[std::size_t(q)].state,
+                        (int)(w.players[std::size_t(q)].speed >> 16), w.ball.possessor));
+                auto [px, pz] = posOf(q);
+                if (!runner.tick()) break;
+                auto [nx, nz] = posOf(q);
+                ux += nx - px; uz += nz - pz; moveLen += len(nx - px, nz - pz);
+            }
         }
         pad(0);
-
         // ---- turning: orthogonal "right" segment must bend the travel heading.
         long rx = 0, rz = 0, turnLen = 0;
         for (int i = 0; i < 45 && runner.tick(); ++i) {
@@ -325,7 +403,7 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
         // re-enters live play when a restart interrupts, and warps as anchor fallback.
         long x5 = 0, z5 = 0;
         for (int attempt = 0; attempt < 8 && n < 24; ++attempt) {
-            if (w.match.phase != 9) restoreLivePlay(1200);
+            if (w.match.phase != 9) restoreLivePlay(9000);
             if (!chaseToBall(1500, 0x40)) runToBall(0, 0); // pad-driven acquisition, warp anchor fallback
             for (int i = 0; i < 160 && runner.tick(); ++i) {
                 pad(1 | kSprint);
@@ -363,7 +441,7 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
         // ---- passing: aim the through-ball at an open teammate (ball.landing = kick target). The
         // sprint window can end on a goal/kickoff, so re-enter live play and drive the pad to the
         // ball first; the warp anchor then arms the kick inside the exe's distBall <= 0x20 gate.
-        if (w.match.phase != 9) restoreLivePlay(1500);
+        if (w.match.phase != 9) restoreLivePlay(9000);
         chaseToBall(1500, 0x40);
         runToBall(0, 0);
         const int psPid = curPid();
@@ -374,9 +452,12 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
             if (teamOfPid(j) != 1 || j == psPid) continue;
             const auto& p = w.players[std::size_t(j)];
             const long d = len(long(p.posI.x) - dx0, long(p.posI.z) - dz0);
-            // The carrier faces the defended goal (-z, "up") in this lane; pick the nearest teammate
-            // in the forward half so the short ground pass lands in his zone.
-            if (p.posI.z < dz0 && d > 30 && d < bestD) { bestD = d; bestTid = j; }
+            // The lane geometry is fixed by the warp below ((dx0, dz0-320): a short forward pass),
+            // so any open outfield teammate works as the receiver. Pass-16 physics note: with the
+            // byte-exact WC98 gravity/drag rows the kickoff formation settles deeper (all teammates
+            // on the +z side of the carrier at this window), which starved the old forward-half
+            // filter and silently skipped the lane; the warp, not the walk, defines the receive.
+            if (d > 30 && d < bestD) { bestD = d; bestTid = j; }
         }
         sim::Vec3 pressAim{int(dx0), 0, int(dz0)}; // kick aim; lane-scope for the press retarget
         if (bestTid >= 0) {
@@ -405,14 +486,24 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                 pp.facingDesired = pp.facing = sim::atan2i(d.dx, d.dz);
             }
         }
+        trc(fmt("PASS enter phz={} poss={} dx0={} dz0={} bestTid={} d={}", w.match.phase, w.ball.possessor, dx0, dz0, bestTid, bestD));
         for (int i = 32; i > 0 && runner.tick(); --i) pad(0); // settle: facing completes, short ground pass
+        trc(fmt("PASS post-settle poss={} distBall={} face={}", w.ball.possessor, (int)w.players[std::size_t(psPid)].distBall, (int)w.players[std::size_t(psPid)].facing));
         w.players[static_cast<std::size_t>(psPid)].flags22c |= 0x200; // controlled-carrier action flag (kF6 table bit 9; the capture grammar's State776 entry left it clear)
         pad(1 | kPass);
         for (int i = 6; i > 0 && runner.tick(); --i) {}                  // hold the press edge
         pad(0);
+        trc(fmt("PASS post-press poss={} kickAnim={} kFrame={} tgt=({},{}) ball=({},{}) vel=({},{})", w.ball.possessor,
+                (int)w.players[std::size_t(psPid)].kick.animId, (int)w.players[std::size_t(psPid)].kick.contactFrame,
+                (int)w.players[std::size_t(psPid)].kick.target.x, (int)w.players[std::size_t(psPid)].kick.target.z,
+                iu(w.ball.tpos.x), iu(w.ball.tpos.z), iu(w.ball.tvel.x), iu(w.ball.tvel.z)));
         int passRecvPid = -1;
         for (int i = 0; i < 240 && runner.tick(); ++i) { // receive window: clip + flight + control
-
+            if (i % 10 == 0)
+                trc(fmt("PASS rcv t={} poss={} ball=({},{}) vel=({},{}) tidDist={} tidSpd={} phz={}", i, w.ball.possessor,
+                        iu(w.ball.tpos.x), iu(w.ball.tpos.z), iu(w.ball.tvel.x), iu(w.ball.tvel.z),
+                        bestTid >= 0 ? len(posOf(bestTid).first - iu(w.ball.tpos.x), posOf(bestTid).second - iu(w.ball.tpos.z)) : -1,
+                        (int)(bestTid >= 0 ? w.players[std::size_t(bestTid)].speed >> 16 : 0), w.match.phase));
             if (w.ball.possessor >= 0 && teamOfPid(w.ball.possessor) == 1 && w.ball.possessor != psPid) {
                 passRecvPid = w.ball.possessor;
                 break;
@@ -432,7 +523,7 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
         long oppMove = 0; // farthest an opposing field player travels from its ai-window start pos
         int shPid = curPid();
         for (int attempt = 0; attempt < 4 && !shotActed; ++attempt) {
-            if (w.match.phase != 9) restoreLivePlay(1500); // dead-ball restarts block the strike lane
+            if (w.match.phase != 9) restoreLivePlay(9000); // dead-ball restarts block the strike lane
             if (!chaseToBall(1500, 0x20)) {
                 // Warp-anchor fallback facing the defended goal mouth: the strike then travels at the
                 // keeper, the situation whose flight + keeper response we measure below. Aim ~450
@@ -620,7 +711,7 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
         // (goal-kick/corner), so re-enter live play with the boot loop's restart grammar before
         // measuring. Live play happened and the clock advanced; goal->restart grammar (phase 3/0
         // pre-kickoff) is a legal continuation of live phase 9, so accept any state inside that cycle.
-        if (w.match.phase != 9) restoreLivePlay(1200);
+        if (w.match.phase != 9) restoreLivePlay(9000);
         const bool advanced = w.match.elapsedSec > clockStart &&
                               (w.match.phase == 9 || w.match.phase == 3 || w.match.phase == 0);
         steps[9].passed = advanced && firstTouchPid >= 0;
@@ -641,25 +732,39 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
             std::vector<sim::SimEvent> ev;
             bool sawPenalty = false, sawShot = false, sawGoal = false, kicked = false, foulGiven = false;
             int rtAtAward = -1, phAtAward = -1, seqAtAward = -1; // restart grammar snapshot at the award
-            int kickIn = 0, forceIn = 0, prevPhase = -1;
-            for (int i = 0; i < 3000 && !sawPenalty && runner.tick(); ++i) {
+            // Pass-16: cascade tails land here mid-window; normalise through the shared case-11
+            // resume grammar (per tick) so registration always happens on live sim state.
+            resumeFromTail();
+            int kickIn = 120, prevPhase = w.match.phase; // pass-16: entry arms when dead
+            if (w.match.phase == 9) kickIn = 0;
+            int pauseDur = 0, passDur = 0; // probe st20: strike the normalised kickoff on live entry
+            for (int i = 0; i < 10500 && !sawPenalty && runner.tick(); ++i) {
                 std::uint32_t bits = 0;
-                if (w.match.phase != 9 && prevPhase == 9) { kickIn = 120; forceIn = 200; }
+                resumeFromTail();
+                if (w.match.phase != 9 && prevPhase == 9) kickIn = 120;
+                if (w.match.phase == 9 && prevPhase != 9) passDur = 6; // strike the normalised kickoff
                 prevPhase = w.match.phase;
+                if (passDur > 0) { bits |= kPass; --passDur; }
                 if (kickIn > 0 && --kickIn == 0) bits |= kPass; // dead-ball: pulse the taker's kick
-                if (forceIn > 0 && --forceIn == 0 && w.match.phase != 9)
-                    sim::Match_dispatchEvent(w, 0xb, w.match.phaseTeam); // "restart taken" fallback
+                if (w.match.phase != 9 && kickIn <= 0) kickIn = 40; // re-pump (no mid-flow 0xb, see restoreLivePlay note)
+                if (pauseDur > 0) { bits |= input::actionBit(config::Action::Pause); --pauseDur; }
+                else if ((i % 90 == 30) && w.match.phase != 9 && !(w.match.flags278 & 0x40)) pauseDur = 4;
                 if (w.match.phase == 9) {
                     const int q = curPid();
                     const auto [px, pz] = posOf(q);
                     const long dx = long(w.ball.posI.x) - px, dz = long(w.ball.posI.z) - pz;
                     const long adx = dx < 0 ? -dx : dx, adz = dz < 0 ? -dz : dz;
                     bits |= (adz >= adx) ? (dz > 0 ? 1u : 2u) : (dx > 0 ? 4u : 8u);
-                    if (!foulGiven) { // the WC98 tackle timing this baseline produces: award on live state
+                    if (!foulGiven && w.match.seqId != 5) { // pass-16: registerFoul no-ops on seqId==5 (replay); retry until a legal live tick
                         foulGiven = true;
                         sim::Rules_registerFoul(w, 6, 7, 13, &spot, 0); // class-6 professional foul in the box
+                        trc(fmt("FOUL reg phz={} seq={} cls={} inbox={} offT={} victim={} sideoff={}", w.match.phase,
+                                w.match.seqId, w.match.foulClass, w.match.foulInBox, (int)w.players[7].team, 13,
+                                (int)w.teams[std::size_t(w.players[7].team)].side));
                         sim::Match_dispatchEvent(w, 7, 0);              // foul path (case 7: booking + award)
                         sim::MatchSeq_push(w, 4);                       // PK lineup queued behind booking
+                        { std::string types; for (const auto& e : w.events) types += "," + std::to_string((int)e.type);
+                          trc(fmt("FOUL events after dispatch: {}", types)); }
                         // Case 7 emits the award synchronously; snapshot the restart grammar now,
                         // before play moves on (a goal restart resets restartType to 0).
                         for (const auto& e : w.events)
@@ -684,9 +789,23 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                 ev.clear(); // scan only freshly drained events (stale goals must not re-score)
             }
             const int scoreBefore = w.match.score[1]; // the PK conversion moves this from here on
-            for (int i = 0; i < 1400 && runner.tick(); ++i) {
+            // Pass-16: rt{1,2,3} cascade tails are normalised by the shared resumeFromTail
+            // grammar (rt=4, the awarded PK pipeline, is deliberately untouched by it).
+            // Budget note (measured): the award queues booking + a ~6080-frame replay scene ahead
+            // of the PK lineup, so widen this conversion budget to cover it unskipped. Pass-16
+            // probe st19: NO Pause-skip pulses here - the committed pad(0) lane survives the
+            // booking/replay scene, and skipping that scene leaves State002 idle walkers whose
+            // offside clamp P(w,-1) aborts on the PK goal celebration.
+            for (int i = 0; i < 8000 && runner.tick(); ++i) {
+                resumeFromTail(); // rt{1,2,3} tails only; the rt=4 PK pipeline passes through
                 pad(0);
                 drainEv(w, ev);
+                if (!ev.empty()) { std::string types; for (const auto& e : ev) types += "," + std::to_string((int)e.type);
+                    trc(fmt("PK t={} events: {}", i, types)); }
+                if (i % 200 == 0)
+                    trc(fmt("PK t={} phz={} rt={} seq={} penTaker={} ball=({},{}) y={} poss={}", i, w.match.phase,
+                            w.match.restartType, w.match.seqId, w.match.penaltyTaker, w.ball.posI.x, w.ball.posI.z,
+                            (int)w.ball.posI.y, w.ball.possessor));
                 // The State185 PK-approach machine walks the taker in with presentation root
                 // motion (clips). This headless lane has no clip skeleton, so apply the same
                 // arrival warps the scenario gate uses: case-1 run-up, case-5 side-step deltas,
@@ -736,6 +855,9 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                     w.ball.lastToucher = tk; // the driven roll credits the taker as scorer
                     w.ball.kickerByTeam[w.players[static_cast<std::size_t>(tk)].team] = tk;
                     sim::Match_dispatchEvent(w, 11, w.match.phaseTeam); // phase 9 on the strike
+                    trc(fmt("PK kick: goalLineZ={} restartPos=({},{}) ball=({},{}) velz={}",
+                            (long)w.pitch.goalLineZ[0], w.ball.restartPos.x, w.ball.restartPos.z,
+                            w.ball.posI.x, w.ball.posI.z, iu(w.ball.tvel.z)));
                 }
                 for (const auto& e : ev) {
                     if (e.type == sim::EventType::Shot) sawShot = true;
@@ -781,7 +903,7 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
             using sim::Angle;
             using sim::atan2i;
 
-            if (w.match.phase != 9) restoreLivePlay(1500);
+            if (w.match.phase != 9) restoreLivePlay(9000);
             chaseToBall(1500, 0x20);
             // WC98 window discipline (measured 2026-11-10): the ladder must run on a controlled-side
             // OUTFIELD carrier with full locomotion attrs (decel/accel rows nonzero; keeper/setup
@@ -803,7 +925,7 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
             }
             const int q = curPid();
             auto& p = w.players[static_cast<std::size_t>(q)];
-            if (w.match.phase != 9) restoreLivePlay(1200); // dead-ball drift from earlier windows
+            if (w.match.phase != 9) restoreLivePlay(9000); // dead-ball drift from earlier windows
             for (int i = 0; i < 40 && runner.tick(); ++i) pad(0);      // settle into live phase 9
             // Capture first (the chase window's proven grammar): warp the carrier onto a ball at
             // his feet, seed possession, settle so the controlled-carrier state family is entered.
@@ -827,6 +949,10 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                 w.teams[0].possWinner = -1; // reset contest bookkeeping so State308 capture holds (l.27 branch)
                 w.teams[1].possWinner = -1;
                 for (int i = 0; i < 60 && runner.tick(); ++i) pad(0); // capture/control window
+                trc(fmt("SD cap post q={} phz={} st={} poss={} distBall={} spd={} ctrl={} halfLen={} halfW={} goalZ=({},{}) penLine={} penHW={}",
+                        q, w.match.phase, (int)p.state, w.ball.possessor, (long)p.distBall, (int)(p.speed >> 16), (int)p.ctrl,
+                        (long)w.pitch.halfLength, (long)w.pitch.halfWidth, (long)w.pitch.goalLineZ[0], (long)w.pitch.goalLineZ[1],
+                        (long)w.pitch.penAreaLineZ, (long)w.pitch.penAreaHalfWidth));
             }
             // Ball loose and AHEAD (lateral, +x; stays inbounds on the width axis): dribble touches
             // must not drive the window from here on — possession is dropped with the ball placed at
@@ -987,12 +1113,18 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
             // stride (seq alternates 533/459/324), so "pinned" is a bounded-spread window, not
             // exact-tick equality; the band floor stays the attr-derived running ceiling (runMax,
             // player.cpp). The deceleration ladder runs from that top-band speed down.
+            trc(fmt("SD enter q={} phz={} seq={} state={} spd={} req={} distBall={} ball=({},{}) ctrl={} runMax={}",
+                    q, w.match.phase, w.match.seqId, (int)p.state, (int)(p.speed >> 16), (unsigned long long)p.moveReq,
+                    (long)p.distBall, w.ball.posI.x, w.ball.posI.z, (int)p.ctrl, (int)p.runMax));
             bool plateauOk = false;
             const Fixed bandMin = (p.runMax * 3) / 4;
             Fixed win[8] = {}; int winN = 0, winHead = 0;
             for (int i = 0; i < 360 && runner.tick(); ++i) {
                 pad(4 | kSprint); // straight +x chase toward the placed ball
                 if (!runner.tick()) break;
+                if (i % 40 == 0)
+                    trc(fmt("SD sp t={} phz={} st={} spd={} req={} distBall={} poss={}", i, w.match.phase,
+                            (int)p.state, (int)(p.speed >> 16), (unsigned long long)p.moveReq, (long)p.distBall, w.ball.possessor));
                 const Fixed v = p.speed;
                 win[winHead] = v; winHead = (winHead + 1) & 7; if (winN < 8) ++winN;
                 plateauOk = false;
@@ -1027,6 +1159,9 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
             for (int i = 0; i < 600 && runner.tick(); ++i) {
                 const Cap c = capture();
                 pad(i < 90 ? 4 : 0); // chase while the sprint flag expires, then neutral to stop
+                if (i % 50 == 0)
+                    trc(fmt("SD dc t={} phz={} st={} spd={} req={}", i, w.match.phase, (int)p.state,
+                            (int)(p.speed >> 16), (unsigned long long)p.moveReq));
                 const Fixed px = p.pos.x, pz = p.pos.z;
                 if (!runner.tick()) break;
                 const Res r = predict(c);

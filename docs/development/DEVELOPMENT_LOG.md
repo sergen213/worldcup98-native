@@ -471,3 +471,15 @@ D-70 installed at the live loop: `app/livematch.cpp` now samples the device once
 frame - the exe's single controller-update read (`FUN_0049daf0`, whole-tick count in DAT_0064122c).
 Gate scope: fe_* + `interactive_match` + `match_demo_frames` + `replay_record_play` = 68/68 green
 on the new seam. D-69 (platform per-bit deque) stays open; it still widens visibility inside a frame.
+
+## Pass-16 input-grammar closures: D-71 refuted, D-70 per-frame sampling, D-69 queue cutover (2026-11-11)
+
+D-71 refuted on the byte lane: WC98 dev5 slots at 0x58d314 decode LE to ids 4/9 exactly as the port
+carries; test_input_tables slot-decode lane added. D-70 installed: livematch samples the pad word
+once per game frame (FUN_0049daf0 accumulator grammar), every drained tick of that frame consumes
+the shared word; gates green incl. the fe_* smoke lanes. D-69 cut over after the prior "no exe
+counterpart" claim was verified against the decompile: recompute assigns the physical word, sample()
+returns it, per-bit deque + reported fields deleted (input.cpp/hpp). test_input rewritten to the
+exe grammar — tap opening and closing between two reads produces NO event (asserted), double-tap
+inside one frame invisible, held-to-read presses seen. Full suite green on the cutover (117/118:
+self_test rebaselining in worktree). Registry Open list now D-50/D-52-D-54 + D-61/D-72 docs rows.

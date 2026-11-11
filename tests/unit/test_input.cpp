@@ -66,20 +66,22 @@ int main() {
     key(in, SDL_SCANCODE_RCTRL, false);
     CHECK(in.sample(kb) == 0);
 
-    // A tap shorter than a tick is reported for exactly one tick.
+    // WC98 grammar (register D-69): a press that opens and closes between two device reads
+    // produces NO event - the reader reports current physical levels, edges are the XOR-diff of
+    // consecutive reads. The old port queue surfaced such taps for one tick; that is refuted.
     key(in, SDL_SCANCODE_D, true);
     key(in, SDL_SCANCODE_D, false);
-    CHECK(in.sample(kb) == 0x40);
     CHECK(in.sample(kb) == 0);
-    // A double tap inside one tick keeps both presses separated by a released tick, so the sim's
-    // gesture machine (0x4E1690) sees press, release, press, release in order.
+    CHECK(in.sample(kb) == 0);
+    // A double tap completed inside one frame is invisible the same way; only presses that are
+    // still held at read time enter the pad word stream.
     key(in, SDL_SCANCODE_D, true);
     key(in, SDL_SCANCODE_D, false);
     key(in, SDL_SCANCODE_D, true);
     key(in, SDL_SCANCODE_D, false);
     std::uint32_t seq[5];
     for (auto& s : seq) s = in.sample(kb) & 0x40;
-    CHECK(seq[0] == 0x40 && seq[1] == 0 && seq[2] == 0x40 && seq[3] == 0 && seq[4] == 0);
+    CHECK(seq[0] == 0 && seq[1] == 0 && seq[2] == 0 && seq[3] == 0 && seq[4] == 0);
     // A held key spanning ticks stays pressed every tick (hold frames are counted by the sim).
     key(in, SDL_SCANCODE_D, true);
     for (int i = 0; i < 20; ++i) CHECK(in.sample(kb) == 0x40);
@@ -118,12 +120,10 @@ int main() {
     CHECK(in.sample(padId) == kLeft);
     axis(SDL_GAMEPAD_AXIS_LEFTX, 0x4001);
     axis(SDL_GAMEPAD_AXIS_LEFTY, -0x7000);
-    in.sample(padId); // consumes the queued left release
     CHECK(in.sample(padId) == (kRight | kUp));
     axis(SDL_GAMEPAD_AXIS_LEFTX, 0);
     axis(SDL_GAMEPAD_AXIS_LEFTY, 0);
     axis(SDL_GAMEPAD_AXIS_LEFT_TRIGGER, 0x7FFF); // skill 1
-    in.sample(padId);
     CHECK(in.sample(padId) == 0x400);
     axis(SDL_GAMEPAD_AXIS_LEFT_TRIGGER, 0);
     CHECK(in.sample(padId) == 0);

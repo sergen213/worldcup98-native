@@ -5,13 +5,13 @@
 // the sibling FIFA 99 native project, whose exe addresses document the bit layout.
 //
 // One Input per process. Feed every SDL event to handle(); call sample() once per sim tick per
-// human controller. Gesture timing (taps, double taps, holds) is the simulation's job; this layer
-// guarantees every physical transition reaches it as at least one tick of the new level, in order.
+// human controller. WC98 grammar (register D-69, paddecode l.18/85-90): the device reader reports
+// the CURRENT physical level at read time, and edges come from the XOR-diff of consecutive reads -
+// a press opening and closing between two reads produces NO event in the pad word stream. Gesture
+// timing (taps, double taps, holds) is the simulation's job.
 #include "wc98/config/settings.hpp"
 #include "wc98/sim/player.hpp"
-#include <array>
 #include <cstdint>
-#include <deque>
 #include <string>
 #include <vector>
 
@@ -56,7 +56,7 @@ public:
     // Connected devices with a side, in device order: the match's human controllers.
     [[nodiscard]] std::vector<const Device*> humans() const;
 
-    // Pad word of one device for the next sim tick (consumes at most one queued transition per bit).
+    // Pad word of one device for this read (WC98 direct level + XOR-diff grammar, D-69).
     std::uint32_t sample(std::uint32_t deviceId);
     // sample() into ControllerState::padBits; devType 0 (every device reports the keyboard layout).
     void fill(std::uint32_t deviceId, sim::ControllerState& c);
@@ -65,8 +65,7 @@ public:
 
 private:
     struct State {
-        std::uint32_t phys = 0, reported = 0;
-        std::array<std::deque<bool>, 32> queue;
+        std::uint32_t phys = 0; // current physical pad word (device reader reads levels directly)
         std::vector<std::string> active; // currently active input names
         config::DeviceBindings bindings;
         SDL_Gamepad* pad = nullptr;

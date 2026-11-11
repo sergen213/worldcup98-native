@@ -8,6 +8,19 @@ project goals.
 ## [Unreleased]
 ### Added
 
+
+- **Pass-17 ref — referee lane live capture bounded; motion-record array located (D-28 narrowed)**:
+  the WC98 per-slot motion record array is decoded from the tick chain (`FUN_0049daf0` callees):
+  handler `FUN_0049bd80` indexes base **0x63C000 stride 0x7F4** — pos x/y/z rec+0xA0/0xA4/0xA8,
+  focus ptr +0x114, class +0x13C, clip array +0xB4 (count +0x770); pair-distance producer
+  `FUN_0049c330` (motion-ptr array DAT_0063c98c). REFUTED: rules.cpp cites `0x46F2EC/0x46F39C/
+  0x470C80/0x472244/0x473042` and globals `0x6675F8/0x66764C/0x65E018` have zero imm32 occurrences
+  in FIFAWC.EXE — FIFA-99-note convention (scan pinned in dossier). Live winedbg LAUNCH lane proven
+  boot-to-FE with fileopen landmarks (`bp *0x5291b0`) + XTEST key acceptance at FE; match scope not
+  reached (nav grammar open, residuals R1-R4); per-slot sampler `run2_slots.py` ready for a future
+  kickoff-nav capture. No simulation constants installed (none measured); suite untouched. Docs:
+  D-28 row narrowed. Dossier `analysis/pass17ref/{NOTES.md,DECOMPILE/,logs/}`.
+
 - **Camera preset-record grammar decoded + FIFA-99 `kModes` deleted (pass-17cam, D-54 closed)**: the
   live per-mode camera grammar is byte-derived from WC98 — 11 selector FUN_004ca880 records at
   DAT_00586{08c..248} (stride 0x2c) installed as port `kPresets` (camera.hpp: flags@+0x8, s16 radius/x

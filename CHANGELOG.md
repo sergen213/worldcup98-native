@@ -8,6 +8,13 @@ project goals.
 ## [Unreleased]
 ### Added
 
+- **D-71 refuted + gate (pass-16)**: WC98 dev5 input-context slots decode LE at 0x58d314 to ids
+  4/9 — byte-exact with the port; the claimed deltas were big-endian reads. New `test_input_tables`
+  lane pins all 9×14 slot decodes + queue gate @0x58c750 (D-66/D-58).
+- **Input queue cutover to WC98 grammar (pass-16, D-69)**: per-bit event deque deleted — `recompute`
+  assigns the physical pad word directly, `sample()` returns it; a tap opening and closing between
+  two device reads produces no event, exactly as in the original. `test_input` asserts the grammar.
+
 - **Live-loop pad sampling seam (pass-16, D-70)**: the live match loop now reads the device once
   per game frame (`in.fill(1, framePad)` after the event pump) and every sim tick drained from that
   frame consumes the shared word - the exe's `FUN_0049daf0` controller-update grammar. Multi-tick

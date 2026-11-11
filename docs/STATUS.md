@@ -189,6 +189,8 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
   FIFA-99 cite `FOV i16 0x57FAD8` refuted, caminit FUN_004a0810 + h12/h14/h28 preset rows byte-proven;
   every FIFA-99 `kModes` zone signature = zero hits in the image (rows stay family carryover). New gate
   `test_cam_tables`; cites relabeled per row in `camera.cpp`. Suite **119/119**.
+
+- Pass-16kick D-49 close (2026-11-11): closed-form flight/solve rebuilt on the WC98 arithmetic grammar — math band `FUN_0051e530..FUN_0051ecbb` decoded, solver pool `DAT_005913e8..0x59143c` installed byte-exact as `kKickPool`, drag pair over `DAT_00590a20` + lambert tables `DAT_00590fe8/0x590be8`, norm pair `kNormScale/kNormBias` @`DAT_00591490/0x591514`. FIFA-99 `kFlightConst`/`kFlightSets` cites deleted; 13 absence asserts in `test_ball_tables`. Self-test passing/shooting windows promoted (speed vs solve ceiling, apex = `Flight_heightAt(Flight_timeFromVy(vy))`, arc descent); `scenarioFallRecovery` lane C re-baselined as a flight stop-zone gate. Suite **119/119**, self-test **14/14**.
 - Release: tag `v0.3.0` + GitHub release (AppImage + `.sha256`/`.version` sidecars): playable live match,
   authentic FE fonts/language knob, FEFLOW11 team-select grid, measured percent-table scene defaults;
   game smoke exit 0 under Xvfb, launcher offscreen self-test pass, `update.sh --check` -> "up to date";

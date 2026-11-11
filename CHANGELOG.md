@@ -8,6 +8,13 @@ project goals.
 ## [Unreleased]
 ### Added
 
+- **Closed-form flight/solve rebuilt on WC98 grammar (pass-16kick, D-49)**: the FIFA-99 log/exp
+  decomposition is deleted; `flight.cpp` now uses the decoded WC98 math band (fx dot / EA fast-norm
+  over `DAT_00591490/0x591514` / cross-pair / rotate2d) with the solver pool `DAT_005913e8..0x59143c`
+  installed byte-exact as `kKickPool`, drag pair over `DAT_00590a20` and lambert tables
+  `DAT_00590fe8/0x590be8`. 13 FIFA-99-absence asserts pin the deleted cites in `test_ball_tables`;
+  self-test passing/shooting windows promoted to measured flight-shape gates;
+  `scenarioFallRecovery` lane C re-baselined as a probe-measured stop-zone gate.
 - **D-71 refuted + gate (pass-16)**: WC98 dev5 input-context slots decode LE at 0x58d314 to ids
   4/9 — byte-exact with the port; the claimed deltas were big-endian reads. New `test_input_tables`
   lane pins all 9×14 slot decodes + queue gate @0x58c750 (D-66/D-58).

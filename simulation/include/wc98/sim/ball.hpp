@@ -136,7 +136,6 @@ struct BallState {
     Fixed net[4] = {};                // DAT_0066BA2C..38 net box bounds (FUN_00481B48)
     std::int32_t stadiumWalls = 1;    // DAT_00582E8C != 0: stand-wall handler 0x41DF38 installed
                                       //   by the stadium setup 0x41CEDF (condition untraced; on)
-    Fixed flightSet[4] = {};          // DAT_00590290..9C ground-roll constants (FUN_0050605C)
     std::int32_t lob[48] = {};        // DAT_00588F38 lob table rows {vy, range, firstRoll+7, range/9}
     std::uint16_t flightTime[320] = {}; // DAT_00672A24 (Ball_buildFlightTimeTable 0x4BA91C)
     std::uint16_t spinDrift[320] = {};  // DAT_00672CA4 (FUN_004BAA5C)
@@ -189,7 +188,6 @@ int Ball_findFlightTime(const World& w, Fixed dist, Fixed speed); // 0x4BAB90
 void Ball_buildFlightTimeTable(World& w); // 0x4BA91C
 void Ball_buildSpinTable(World& w, Fixed drag, Fixed decay, Fixed gain); // 0x4BAA5C
 void Ball_buildLobTable(World& w);        // 0x4BAC5C
-void Flight_selectSet(World& w, int i);   // 0x50605C
 void Ball_solveKick(World& w, Angle a, Fixed vh, Fixed vy, Fixed spin, std::int32_t out[4], std::int32_t* lift); // 0x4BA89C
 
 // --- Forecast readers (k frames ahead; extend != 0 integrates more when needed; return 2 ok / 0) ---
@@ -211,16 +209,16 @@ Fixed Math_sin16(std::int32_t a);                          // 0x44F300
 Fixed Math_cos16(std::int32_t a);                          // 0x44F370
 void Math_sinCos16(std::int32_t a, Fixed* s, Fixed* c);    // 0x460BD0
 
-// Closed-form flight helpers (flight.cpp, integer 16.16, no x87).
-Fixed Flight_dragPow(std::int32_t x);                        // 0x505CD0
-Fixed Flight_dragLog(std::int32_t x);                        // 0x505D4C
-Fixed Flight_groundSpeedForDistance(const World& w, Fixed dist, Fixed lift); // 0x5060E8
-Fixed Flight_vyForTime(Fixed y0, Fixed y1, Fixed t);         // 0x50621C
-Fixed Flight_vyForApexTime(Fixed t);                         // 0x506190 vy0 reaching the apex after t frames
-Fixed Flight_rollTime(const World& w, Fixed dist, Fixed speed); // 0x506094
-Fixed Flight_timeFromVy(Fixed dy);                           // 0x506148 frames to apex from vy
-Fixed Flight_heightAt(Fixed y0, Fixed t);                    // 0x5061CC apex height
-Fixed Flight_timeForApex(Fixed y0, Fixed apexY);             // 0x506394 (-1 when unreachable)
-int Flight_rootsForHeight(Fixed y0, Fixed y1, Fixed vy, Fixed* tLow, Fixed* tHigh); // 0x5062A8
+// Closed-form flight helpers (flight.cpp, integer 16.16, no x87; WC98 math band FUN_0051e5xx..).
+Fixed Flight_dragPow(std::int32_t x);                        // FUN_0051e530
+Fixed Flight_dragLog(std::int32_t x);                        // FUN_0051e5b0
+Fixed Flight_groundSpeedForDistance(Fixed dist, Fixed lift); // FUN_0051e980
+Fixed Flight_vyForTime(Fixed y0, Fixed y1, Fixed t);         // FUN_0051eac0
+Fixed Flight_vyForApexTime(Fixed t);                         // FUN_0051ea30 vy0 reaching the apex after t frames
+Fixed Flight_rollTime(Fixed dist, Fixed speed);              // FUN_0051e920
+Fixed Flight_timeFromVy(Fixed dy);                           // FUN_0051e9e0 frames to apex from vy
+Fixed Flight_heightAt(Fixed y0, Fixed t);                    // FUN_0051ea70 height at frame t
+Fixed Flight_timeForApex(Fixed y0, Fixed apexY);             // FUN_0051ec40 (-1 when unreachable)
+int Flight_rootsForHeight(Fixed y0, Fixed y1, Fixed vy, Fixed* tLow, Fixed* tHigh); // FUN_0051eb50
 
 } // namespace wc98::sim

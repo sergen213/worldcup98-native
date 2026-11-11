@@ -518,3 +518,21 @@ rows stay labelled FIFA-99 family carryover; the deferred preset-record decode i
 analysis/pass16cam/NOTES.md. Section deltas corrected: .text("AUTO") VA = raw + 0x400c00 (not 0x400000).
 Gate `test_cam_tables` (FOV bytes + accessor instruction bytes + caminit/preset immediates + FIFA-99
 absence); cites relabeled per row in camera.cpp. Suite **119/119** green.
+
+## Pass-16kick D-49 close: closed-form solver rebuilt on WC98 grammar (2026-11-11)
+The FIFA-99 log/exp decomposition in `flight.cpp` is gone. The WC98 math band
+`FUN_0051e530..FUN_0051ecbb` (fx fixed-point dot, EA fast-norm over the bsr pair
+`mull [DAT_00591490] + bias [DAT_00591514]`, cross-pair store, rotate2d via sine
+`DAT_00585898`) is decoded in `analysis/pass16kick/`; the solver entry pair
+FUN_004f2820/FUN_004f29b0 (raw 0xf1c20/0xf1db0, `.text` VA = raw + 0x400c00) is
+installed byte-exact as `kKickPool` (`DAT_005913e8..0x59143c`) with the drag pair
+over `DAT_00590a20` rows and lambert tables `DAT_00590fe8/0x590be8`. The atan2 pool
+`DAT_00594CAC` has exactly one consumer (VA 0x4f3de6) inside the solver band. All
+FIFA-99 cites (`kFlightConst` rows, `kFlightSets`, expRow pool 0x58F880, constants
+0x59024c/50/54) are absent from the image — pinned by 13 absence asserts in
+`test_ball_tables`. Self-test promoted windows: pass speed vs solve-output ceiling,
+shot apex = `Flight_heightAt(y0, Flight_timeFromVy(vy))` from the contact frame,
+arc descent. `scenarioFallRecovery` lane C is now a flight stop-zone gate (kick
+fired live-phase under the M7 settle grammar; probe-measured landing (-210,-1317)
+with speed-decay closure + determinism tuple on seed 0x2E7A). Suite **119/119**,
+self-test **14/14**.

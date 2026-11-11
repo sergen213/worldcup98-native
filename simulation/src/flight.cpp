@@ -1,7 +1,7 @@
-// Kick velocity solvers and their math (FIFA99.EXE v1.1): closed-form drag/gravity helpers
-// 0x505CD0..0x506400, the flight-time / spin-drift / lob tables, the kick-mode wrappers
-// 0x4B95E8..0x4BA0A4 and the math helpers they share. Everything is integer 16.16 exactly like the
-// exe (no x87 in these routines). Docs: docs/reverse/SIMULATION.md §8.
+// Kick velocity solvers and their math (FIFAWC.EXE): closed-form drag/gravity helpers
+// FUN_0051e530..FUN_0051ecbb (pass-16kick dossier analysis/pass16kick/DECOMPILE + mathband_true.txt),
+// the flight-time / spin-drift / lob tables, the kick-mode wrappers 0x4B95E8..0x4BA0A4 and the math
+// helpers they share. Everything is integer 16.16 exactly like the exe (no x87). Docs: SIMULATION.md §8.
 #include "wc98/sim/world.hpp"
 
 #include "ball_tables.inc"
@@ -12,18 +12,52 @@ using namespace balltab;
 
 namespace {
 
-// DAT_0059024C..0x590288 (static), indices relative to 0x590248.
-constexpr Fixed C(std::uint32_t addr) { return kFlightConst[(addr - 0x590248) / 4]; }
-// 0x100000000 / x (`mov edx,1; xor eax,eax; idiv`).
-Fixed recip32(Fixed x) { return static_cast<Fixed>(0x100000000LL / x); }
-// u16 tables 0x58FA48 / 0x58FE48 inside kFlightData (dword base 0x58F880).
-std::int32_t tblA(int i) { return static_cast<std::int32_t>((reinterpret_cast<const std::uint16_t*>(kFlightData))[((0x58fa48 - 0x58f880) / 2) + i]); }
-std::int32_t tblB(int i) { return static_cast<std::int32_t>((reinterpret_cast<const std::uint16_t*>(kFlightData))[((0x58fe48 - 0x58f880) / 2) + i]); }
-// Row r digit d of the exp table 0x58F880 (rows of 0x7C bytes).
-Fixed expRow(int idx) { return static_cast<Fixed>(kFlightData[idx]); }
+// WC98 closed-form solver pool DAT_005913e8..0x59143c (kKickPool, ball_tables.inc); named slots per
+// consumer site in mathband_true.txt (FUN_0051e690/e770/e920/e980/e9e0/ea30/ea70/eac0/eb50/ec40).
+constexpr Fixed Pool(int idx) { return kKickPool[idx]; }
+constexpr int kLamScale = 0, kFxOne = 1, kDragTime = 2, kVyApex = 3, kGravT = 4;
+constexpr int kDyTfy = 6, kRootsYDiff = 7, kApexDy = 8, kOutScale = 9, kVtYDiff = 10;
+constexpr int kVtTime = 12, kLamArg = 13, kRootsVyA = 14, kRootsVyB = 16, kApexPScale = 17;
+constexpr int kRollFrames = 18, kDistScale = 20, kRollLogScale = 21;
+// u16 lambert tables DAT_00590be8 / DAT_00590fe8 (kLambertA/kLambertB).
+std::int32_t tblA(int i) { return static_cast<std::int32_t>(kLambertA[i]); }
+std::int32_t tblB(int i) { return static_cast<std::int32_t>(kLambertB[i]); }
+// Row d of the exp table DAT_00590a20 (rows of 31 dwords, stride 0x7c).
+Fixed expRow(int idx) { return static_cast<Fixed>(kExpTable[idx]); }
 
+// FUN_0051e560 reciprocal: EDX=1, EAX=0, idiv -> 0x100000000 / x (mathband_true.txt:28).
+Fixed recip32(Fixed x) { return static_cast<Fixed>(0x100000000LL / x); }
 Fixed sinA(Angle a) { return sinCos(a).s; }
 Fixed cosA(Angle a) { return sinCos(a).c; }
+// FUN_0051e690 (via the e6f0/e740 lerp tails): lambert-B table interpolation over DAT_00590fe8;
+// row bases subtracted in-function are 0x2b333 for rows <=0xFF, else 0x1fae1; 0 outside the domain.
+Fixed lambertB(std::int32_t x) {
+    if (x > 0) return 0;
+    const Fixed v = fx(Pool(kLamScale), -x);
+    const std::int32_t i = v >> 16, fr = v & 0xffff;
+    const std::int32_t i0 = i - 0x201, i1 = i - 0x200;
+    if (i1 > 0x1ff || i0 < 0) return 0;
+    const Fixed a = fx(tblB(i0) - (i0 > 0xff ? 0x1fae1 : 0x2b333), 0x10000 - fr);
+    return a + fx(tblB(i1) - (i1 > 0xff ? 0x1fae1 : 0x2b333), fr);
+}
+// FUN_0051e770: both lambert branches (A rows over DAT_00590be8, base 0x10000; B as above),
+// clamped indices; false when x > 0.
+bool lambertAB(std::int32_t x, Fixed* o0, Fixed* o1) {
+    if (x > 0) return false;
+    const Fixed v = fx(Pool(kLamScale), -x);
+    const std::int32_t i = v >> 16, fr = v & 0xffff, w0 = 0x10000 - fr;
+    std::int32_t i0 = i - 0x201, i1 = i - 0x200;
+    if (i1 > 0x1ff) {
+        i1 = 0x1ff;
+        if (i0 > 0x1ff) i0 = 0x1ff;
+    } else if (i0 < 0) {
+        i0 = 0;
+        if (i1 < 0) i1 = 0;
+    }
+    *o0 = fx(tblA(i0) - 0x10000, w0) + fx(tblA(i1) - 0x10000, fr);
+    *o1 = fx(tblB(i0) - (i0 > 0xff ? 0x1fae1 : 0x2b333), w0) + fx(tblB(i1) - (i1 > 0xff ? 0x1fae1 : 0x2b333), fr);
+    return true;
+}
 
 } // namespace
 
@@ -137,11 +171,13 @@ void Math_sinCos16(std::int32_t a, Fixed* s, Fixed* c) {
 
 // ---------------------------------------------------------------- closed-form helpers
 
+// FUN_0051e530 exp digit walk over DAT_00590a20 rows; negation path guarded by cmp 0xFFF59A51
+// (51e57b) and reciprocal.
 Fixed Flight_dragPow(std::int32_t x) {
     if (x == 0) return 0x10000;
     bool neg = false;
     if (x < 0) {
-        if (x < -0xa65af) return 0; // 0x505D1B: cmp 0xFFF59A51
+        if (x < -0xa65af) return 0; // FUN_0051e530 guard at 0x51e57b: cmp 0xFFF59A51
         neg = true;
         x = -x;
     }
@@ -156,13 +192,14 @@ Fixed Flight_dragPow(std::int32_t x) {
     return neg ? recip32(acc) : acc;
 }
 
+// FUN_0051e5b0 binary search over the same rows, DAT_00590b94 down to DAT_00590a20 (rows 3..0).
 Fixed Flight_dragLog(std::int32_t x) {
     bool neg = false;
     std::int32_t v = x;
     if (x < 0x10000) { v = recip32(x); neg = true; }
     std::int32_t acc = 0;
     int hi = 0x14;
-    for (int row = 93; row >= 0; row -= 31) { // 0x58F9F4 down to 0x58F880
+    for (int row = 93; row >= 0; row -= 31) { // DAT_00590b94 down to DAT_00590a20
         int lo = 0;
         while (lo != hi) {
             int mid = (lo + hi) >> 1;
@@ -180,93 +217,59 @@ Fixed Flight_dragLog(std::int32_t x) {
     return neg ? -acc : acc;
 }
 
-void Flight_selectSet(World& w, int i) {
-    for (int k = 0; k < 4; ++k) w.ball.flightSet[k] = kFlightSets[k * 5 + i]; // 0x5902A0/B4/C8/DC
+// FUN_0051e920: frames a roll started at `speed` needs to cover `dist` (EAX = dist, EDX = speed):
+// dragLog(fx(C[20], dist) >> 2 / speed + fxOne) * -C[21].
+Fixed Flight_rollTime(Fixed dist, Fixed speed) {
+    Fixed v = fdiv(fx(Pool(kDistScale), dist) >> 2, speed) + Pool(kFxOne);
+    return -fx(Flight_dragLog(v), Pool(kRollLogScale));
 }
 
-// 0x506094: frames a roll started at `speed` needs to cover `dist` (EAX = dist, EDX = speed).
-Fixed Flight_rollTime(const World& w, Fixed dist, Fixed speed) {
-    const Fixed* s = w.ball.flightSet;
-    Fixed v = fdiv(fx(s[2], dist) >> 2, speed) + C(0x59024c);
-    return -fx(Flight_dragLog(v), s[3]);
-}
-
-Fixed Flight_groundSpeedForDistance(const World& w, Fixed dist, Fixed frames) {
+// FUN_0051e980: ground speed a roll over `dist` in `frames` needs (guard frames < 0x8000).
+Fixed Flight_groundSpeedForDistance(Fixed dist, Fixed frames) {
     if (frames < 0x8000) return 0xf0000;
-    const Fixed* s = w.ball.flightSet;
-    const Fixed p = Flight_dragPow(fx(s[0], frames) >> 9);
-    return fdiv(fx(dist, s[2]), C(0x59024c) - p) >> 2;
+    const Fixed p = Flight_dragPow(fx(Pool(kRollFrames), frames) >> 9);
+    return fdiv(fx(dist, Pool(kDistScale)), Pool(kFxOne) - p) >> 2;
 }
 
-Fixed Flight_vyForApexTime(Fixed t) { // 0x506190
-    const Fixed p = Flight_dragPow(fx(-C(0x590250), t) >> 10);
-    return fx(C(0x590254), C(0x59024c) - p);
+Fixed Flight_vyForApexTime(Fixed t) { // FUN_0051ea30
+    const Fixed p = Flight_dragPow(fx(-Pool(kDragTime), t) >> 10);
+    return fx(Pool(kVyApex), Pool(kFxOne) - p);
 }
 
-Fixed Flight_vyForTime(Fixed y0, Fixed y1, Fixed t) {
+Fixed Flight_vyForTime(Fixed y0, Fixed y1, Fixed t) { // FUN_0051eac0 (guard t < 0x8000 -> 0xf0000)
     if (t < 0x8000) return 0xf0000;
-    const Fixed p = Flight_dragPow(fx(C(0x590250), t) >> 10);
-    const Fixed den = C(0x59024c) - p;
-    const Fixed num = (fx(C(0x590270), y1 - y0) >> 12) - (fx(C(0x590278), t) >> 8);
-    return fdiv(num, den) + C(0x590254);
+    const Fixed p = Flight_dragPow(fx(Pool(kDragTime), t) >> 10);
+    const Fixed den = Pool(kFxOne) - p;
+    const Fixed num = (fx(Pool(kVtYDiff), y1 - y0) >> 12) - (fx(Pool(kVtTime), t) >> 8);
+    return fdiv(num, den) + Pool(kVyApex);
 }
 
-Fixed Flight_timeFromVy(Fixed dy) { // 0x506148
-    const Fixed b = C(0x59024c) - (fx(dy, C(0x590260)) >> 15);
-    return fx(Flight_dragLog(recip32(b)), C(0x59026c));
+Fixed Flight_timeFromVy(Fixed dy) { // FUN_0051e9e0: frames from vy to the apex
+    const Fixed b = Pool(kFxOne) - (fx(dy, Pool(kDyTfy)) >> 15);
+    return fx(Flight_dragLog(recip32(b)), Pool(kOutScale));
 }
 
-Fixed Flight_heightAt(Fixed y0, Fixed t) { // 0x5061CC
-    const Fixed p = Flight_dragPow(fx(-C(0x590250), t) >> 10);
-    return fx(C(0x590254), t + fx(C(0x590258), C(0x59024c) - p)) + y0;
+Fixed Flight_heightAt(Fixed y0, Fixed t) { // FUN_0051ea70: height at frame t (y0 = EAX)
+    const Fixed p = Flight_dragPow(fx(-Pool(kDragTime), t) >> 10);
+    return fx(Pool(kVyApex), t + fx(Pool(kGravT), Pool(kFxOne) - p)) + y0;
 }
 
-namespace {
-// 0x505E24: table lerp over 0x58FE48; 0 when out of range.
-Fixed lambertB(std::int32_t x) {
-    if (x > 0) return 0;
-    const Fixed v = fx(C(0x590248), -x);
-    const std::int32_t i = v >> 16, fr = v & 0xffff;
-    const std::int32_t i0 = i - 0x201, i1 = i - 0x200;
-    if (i1 > 0x1ff || i0 < 0) return 0;
-    const Fixed a = fx(tblB(i0) - (i0 > 0xff ? 0x1fae1 : 0x2b333), 0x10000 - fr);
-    return a + fx(tblB(i1) - (i1 > 0xff ? 0x1fae1 : 0x2b333), fr);
-}
-// 0x505EFC: both branches, clamped indices.
-bool lambertAB(std::int32_t x, Fixed* o0, Fixed* o1) {
-    if (x > 0) return false;
-    const Fixed v = fx(C(0x590248), -x);
-    const std::int32_t i = v >> 16, fr = v & 0xffff, w0 = 0x10000 - fr;
-    std::int32_t i0 = i - 0x201, i1 = i - 0x200;
-    if (i1 > 0x1ff) {
-        i1 = 0x1ff;
-        if (i0 > 0x1ff) i0 = 0x1ff;
-    } else if (i0 < 0) {
-        i0 = 0;
-        if (i1 < 0) i1 = 0;
-    }
-    *o0 = fx(tblA(i0) - 0x10000, w0) + fx(tblA(i1) - 0x10000, fr);
-    *o1 = fx(tblB(i0) - (i0 > 0xff ? 0x1fae1 : 0x2b333), w0) + fx(tblB(i1) - (i1 > 0xff ? 0x1fae1 : 0x2b333), fr);
-    return true;
-}
-} // namespace
-
-Fixed Flight_timeForApex(Fixed y0, Fixed apexY) {
+Fixed Flight_timeForApex(Fixed y0, Fixed apexY) { // FUN_0051ec40 (-1 when unreachable)
     const Fixed dy = apexY - y0;
-    const Fixed p = Flight_dragPow(fx(C(0x59028c), dy) >> 15);
-    const Fixed r = lambertB(fx(C(0x59027c), p) >> 14);
+    const Fixed p = Flight_dragPow(fx(Pool(kApexPScale), dy) >> 15);
+    const Fixed r = lambertB(fx(Pool(kLamArg), p) >> 14);
     if (r == 0) return -1;
-    return fx(dy, C(0x590268)) + fx(C(0x59026c), r) - C(0x590258);
+    return fx(dy, Pool(kApexDy)) + fx(Pool(kOutScale), r) - Pool(kGravT);
 }
 
-int Flight_rootsForHeight(Fixed y0, Fixed y1, Fixed vy, Fixed* outA, Fixed* outB) {
-    const Fixed e = (fx(C(0x590264), y1 - y0) - fx(vy, C(0x590288))) >> 6;
-    const Fixed p = Flight_dragPow(fx(e, C(0x590250)) >> 10);
+int Flight_rootsForHeight(Fixed y0, Fixed y1, Fixed vy, Fixed* outA, Fixed* outB) { // FUN_0051eb50
+    const Fixed e = (fx(Pool(kRootsYDiff), y1 - y0) - fx(vy, Pool(kRootsVyB))) >> 6;
+    const Fixed p = Flight_dragPow(fx(e, Pool(kDragTime)) >> 10);
     Fixed r0, r1;
-    if (!lambertAB(fx(fx(vy, C(0x590280)) + C(0x59027c), p) >> 14, &r0, &r1)) return 0;
-    r0 = fx(r0, C(0x59026c));
-    r1 = fx(r1, C(0x59026c));
-    const Fixed base = C(0x590258) + e;
+    if (!lambertAB(fx(fx(vy, Pool(kRootsVyA)) + Pool(kLamArg), p) >> 14, &r0, &r1)) return 0;
+    r0 = fx(r0, Pool(kOutScale));
+    r1 = fx(r1, Pool(kOutScale));
+    const Fixed base = Pool(kGravT) + e;
     *outA = base - r0;
     *outB = base - r1;
     return 1;
@@ -344,11 +347,11 @@ Angle drifted(const World& w, Fixed dx, Fixed dz, Fixed spin, int t) {
 }
 } // namespace
 
-int Ball_solveGroundPass(const World& w, const Vec3& from, const Vec3& to, std::int32_t lift, Fixed limit, Vec3& out) {
+int Ball_solveGroundPass(const World& /*w*/, const Vec3& from, const Vec3& to, std::int32_t lift, Fixed limit, Vec3& out) {
     const Fixed dx = to.x - from.x, dz = to.z - from.z;
     const std::int32_t dist = Math_length(dx >> 16, dz >> 16);
     int flag = 0;
-    Fixed sp = Flight_groundSpeedForDistance(w, dist << 16, lift << 16);
+    Fixed sp = Flight_groundSpeedForDistance(dist << 16, lift << 16);
     if (sp > limit) { flag = 1; sp = 0x230000; }
     const std::int32_t a = Math_atan2_16(dx, dz);
     out.x = fx(sp, Math_sin16(a));
@@ -519,7 +522,7 @@ void Ball_kickLob(World& w, int kicker, const OctDist& d) {
     }
     const Vec3 tgt{b.pos.x + (d.dx << 16), 0, b.pos.z + (d.dz << 16)};
     if (d.dist <= 0x1e0) {
-        const Fixed t = Flight_rollTime(w, d.dist << 16, 0x90000);
+        const Fixed t = Flight_rollTime(d.dist << 16, 0x90000);
         Ball_solveGroundPass(w, b.pos, tgt, t >> 16, 0x320000, b.vel);
         b.landingFrame = (t + 0x8000) >> 16;
     } else {

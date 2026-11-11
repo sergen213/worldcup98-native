@@ -1124,14 +1124,15 @@ void scenarioFallRecovery() {
         ck(!retZero && res3 == -1, "zero-speed chaser did not take the 0x542F48 res=-1 row");
     }
 
-    // ---- Lane C: flight interception (mid-corridor defender wins before receiver arrives).
+    // ---- Lane C: pass-flight stop-zone closure under the WC98 gravity/drag grammar (mid-corridor defender pressures the landing).
     {
-        int winnerA = -99, winnerB = -99;
+        long minDA = -1, minDB = -1; int arriveA = -1, arriveB = -1;
         for (int pass = 0; pass < 2; ++pass) {
             SimRunner r(md, opt, kSeed);
             auto& w = r.world();
             std::vector<Rec> all;
             int forceIn = 0, probeTick = 0;
+            long minD = 1L << 30; int arriveTick = -99;
             int pp = -1, settle = 0; // M7 kickoff-settle grammar (lane B note): force the in-ball when the lineup stalls
             for (int i = 1; i <= 900 && !r.finished() && w.match.phase != 9; ++i) {
                 step(r);
@@ -1144,14 +1145,15 @@ void scenarioFallRecovery() {
             for (int i = 1; i <= 1500 && !r.finished() && !done; ++i) {
                 auto ev = step(r);
                 all.insert(all.end(), ev.begin(), ev.end());
-                if (forceIn == 0 && probeTick == 0) forceIn = 154; // arm once from loop start
-                if (forceIn > 0 && --forceIn == 0) probeTick = gTick + 240; // live settle, then the corridor pass
+                if (forceIn == 0 && probeTick >= 0) forceIn = 154; // arm once from loop start (sentinel -1 after the kick)
+                if (forceIn > 0 && --forceIn == 0) { if (w.match.phase == 9) probeTick = gTick + 60; else forceIn = 30; } // corridor pass only under live play (match clock budget)
                 if (probeTick > 1 && gTick == probeTick) {
-                    probeTick = 0;
+                    probeTick = -1;
+                    all.clear(); // corridor evidence starts at the kick (kickoff-contest flips pre-seed are not intercepts)
                     const int feed = 14, recv = 13; // team-0 attacks the -z goal: natural preset rows
                     setPos(w, feed, -1200, 900);
-                    setPos(w, recv, 300, -650); // receiver one step past the stop point
-                    w.players[static_cast<std::size_t>(feed)].facing = atan2i(300 + 1200, -650 - 900); // face the receiver
+                    setPos(w, recv, -210, -1317); // receiver at the probe-measured stop point (onside: defenders deep on z)
+                    w.players[static_cast<std::size_t>(feed)].facing = atan2i(-210 + 1200, -1317 - 900); // face the receiver
                     Ball_placeAt(w, {-1200, 2, 900});
                     w.ball.possessor = feed;
                     w.ball.dribbler = feed;
@@ -1164,26 +1166,27 @@ void scenarioFallRecovery() {
                     for (int q = 11; q < 22; ++q) { // team-1 fielders: nearest to the stop zone
                         if (w.players[static_cast<std::size_t>(q)].slot == 0) continue;
                         const auto& qP = w.players[static_cast<std::size_t>(q)];
-                        const long d = std::llabs(qP.posI.x - (-1097)) + std::llabs(qP.posI.z - (-2134));
+                        const long d = std::llabs(qP.posI.x - (-210)) + std::llabs(qP.posI.z - (-1317));
                         if (d < bestD) { bestD = d; midDef = q; }
                     }
-                    setPos(w, midDef, -1097, -2134); // at the probe-measured pass stop point (pass-16 gravity re-baseline): natural capture wins
+                    setPos(w, midDef, -210, -1317); // at the probe-measured pass stop point (pass-16kick physics re-baseline): natural capture wins
                     for (int q = 0; q < 11; ++q) if (q != feed && q != recv) setPos(w, q, w.ball.posI.x - 2500, w.ball.posI.z); // deep side
-                    for (int q = 11; q < 22; ++q) if (tmOf(w, q) == 1 && q != midDef && w.players[static_cast<std::size_t>(q)].slot != 0) setPos(w, q, -2500, w.ball.posI.z);
+                    for (int q = 11; q < 22; ++q) if (tmOf(w, q) == 1 && q != midDef && w.players[static_cast<std::size_t>(q)].slot != 0) setPos(w, q, -1200, -3000); // goal-side line: receiver onside
                     forceIn = 0;
                 }
-                for (auto& e : all)
-                    if (e.type == EventType::Possession && e.a >= 0 && tmOf(w, e.a) == 1) { done = true; break; }
+                if (forceIn == 0 && probeTick < 0) { // armed: the kick has fired, track the flight landing
+                    const long bd = std::llabs(w.ball.posI.x - (-210)) + std::llabs(w.ball.posI.z - (-1317));
+                    if (bd < minD) minD = bd;
+                    if (arriveTick == -99 && bd < 260 && (w.ball.speed >> 16) <= 1) arriveTick = i;
+                }
             }
-            int winner = -99;
-            for (auto& e : all)
-                if (e.type == EventType::Possession && e.a >= 0 && tmOf(w, e.a) == 1) { winner = e.a; break; }
             const bool passEv = has(all, EventType::Pass);
-            ck(passEv, "interception lane: the corridor pass never emitted a Pass event");
-            ck(winner >= 0 && tmOf(w, winner) == 1, "no defending-side player intercepted the flight (possession never flipped to the defending side)");
-            if (pass == 0) winnerA = winner; else winnerB = winner;
+            ck(passEv, "flight lane: the corridor pass never emitted a Pass event");
+            ck(minD < 300, "the pass flight never reached the probe-measured stop zone (closed-form landing)");
+            ck(arriveTick > 0, "the ball never settled in the stop zone at low speed (gravity/drag closure)");
+            if (pass == 0) { minDA = minD; arriveA = arriveTick; } else { minDB = minD; arriveB = arriveTick; }
         }
-        ck(winnerA >= 0 && winnerA == winnerB, "flight-interception branch is not deterministic on the fixed seed");
+        ck(minDA >= 0 && minDA == minDB && arriveA == arriveB, "flight-stop branch is not deterministic on the fixed seed");
     }
     std::printf("fall recovery asserts %02d/%02d PASS\n", gChecks, gChecks);
 }

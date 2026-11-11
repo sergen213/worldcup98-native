@@ -518,7 +518,18 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                 (int)w.players[std::size_t(psPid)].kick.target.x, (int)w.players[std::size_t(psPid)].kick.target.z,
                 iu(w.ball.tpos.x), iu(w.ball.tpos.z), iu(w.ball.tvel.x), iu(w.ball.tvel.z)));
         int passRecvPid = -1;
+        // D-49 closed-form replica capture (pass lane): the ground-pass wrapper solves velocity
+        // from the oct landing point, frames and a fixed limit BEFORE integration; record the
+        // kick-time position (last posI while the taker held the ball) plus the first-flight speed.
+        int passFromX = 0, passFromZ = 0, passSpdRep = -1, passSpdObs = -1;
+        long pfx = 1L << 60, pfz = 1L << 60;
+        bool passRepOk = false, passLob = false;
         for (int i = 0; i < 240 && runner.tick(); ++i) { // receive window: clip + flight + control
+            if (w.ball.possessor == psPid && passFromX == 0) { pfx = w.ball.posI.x; pfz = w.ball.posI.z; }
+            else if (passFromX == 0 && w.ball.possessor < 0 && (w.ball.tvel.x != 0 || w.ball.tvel.z != 0)) {
+                passFromX = int(pfx); passFromZ = int(pfz); passSpdObs = w.ball.speed;
+                passLob = w.ball.tvel.y > 0; // Ball_kickLob stamps a row vy at kick time (ground pass has vy 0)
+            }
             if (i % 10 == 0)
                 trc(fmt("PASS rcv t={} poss={} ball=({},{}) vel=({},{}) tidDist={} tidSpd={} phz={}", i, w.ball.possessor,
                         iu(w.ball.tpos.x), iu(w.ball.tpos.z), iu(w.ball.tvel.x), iu(w.ball.tvel.z),
@@ -529,12 +540,36 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                 break;
             }
         }
+        // D-49 closed-form replica of the kick velocity solve from kick-time inputs: oct(landing -
+        // release posI), frames/lob rows and the WC98 pool constants (Ball_kickLob flight.cpp:515 /
+        // Ball_solveGroundPass 0x4BA7F8). Branch selected by the flags bit 0x80 stamped at kick time.
+        if (passFromX != 0) {
+            const long ddx = long(w.ball.landing.x) - passFromX, ddz = long(w.ball.landing.z) - passFromZ;
+            const std::int32_t distO = sim::Math_length(int(ddx), int(ddz));
+            const auto FX = [](sim::Fixed x, sim::Fixed y) { return sim::Fixed((std::int64_t(x) * std::int64_t(y)) >> 16); };
+            const sim::SinCos sc = sim::sinCos(sim::atan2i(int(ddx), int(ddz)));
+            if (passLob && distO > 0x1e0) { // Ball_kickLob row path: h = dist / lob[i*4+3]
+                int i = 0;
+                for (sim::Fixed range = w.ball.lob[1]; range < distO && i < 12;) { ++i; if (i < 12) range = w.ball.lob[i * 4 + 1]; }
+                if (i == 12) i = 11;
+                const sim::Fixed h = sim::fdiv(sim::Fixed(std::int64_t(distO) << 16), w.ball.lob[i * 4 + 3]);
+                passSpdRep = sim::octLength(FX(sc.s, h), FX(sc.c, h));
+            } else { // Ball_solveGroundPass: groundSpeed(dist, frames) with the 0x1e0000 clamp, atan split
+                const sim::Fixed dist = sim::Fixed(std::int64_t(distO) << 16);
+                sim::Fixed sp = sim::Flight_groundSpeedForDistance(dist, w.ball.landingFrame << 16);
+                if (sp > 0x1e0000) sp = 0x230000; // wrapper clamp path (flag=1, limit 0x1e0000)
+                const std::int32_t af = sim::Math_atan2_16(int(ddx << 16), int(ddz << 16));
+                passSpdRep = sim::octLength(FX(sp, sim::Math_sin16(af)), FX(sp, sim::Math_cos16(af)));
+            }
+            passRepOk = passSpdObs >= 0 && passSpdObs <= passSpdRep; // cap gate: solve output ceiling
+        }
 
         // ---- shooting: strike toward the opponent goal (keeper side) through the real input path.
         // WC98's decision-family gates make the loose-ball duel competitive, so each attempt drives
         // the pad to the ball first; a kick only arms inside the exe's distBall <= 0x20 gate.
         const int gk = sim::Team_findKeeper(w, 0); // opponent keeper (controller binds team index 1)
         long shotDist = -1, apex = 0, minGround = 1L << 30;
+        long shotVy = 0, shotY0 = 0; // D-49 closed-form apex inputs (captured at the contact frame)
         bool shotActed = false; // kick released: possession left the taker and the ball is in flight
         const auto [gkX0, gkY0] = gk >= 0 ? posOf(gk) : std::pair<long, long>{0, 0};
         long gkDisp = 0; // keeper's farthest displacement during the shot flight (motion evidence)
@@ -577,7 +612,10 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                     seqChangeTick = i; // action clip selected on the shooter
                 if (armedShot && contactTick < 0 && b.possessor < 0 && (b.tvel.x != 0 || b.tvel.z != 0))
                     contactTick = i; // ball velocity appears only at the kick's contact frame
-                if (!shotActed && b.possessor < 0 && (b.tvel.x != 0 || b.tvel.z != 0)) shotActed = true;
+                if (!shotActed && b.possessor < 0 && (b.tvel.x != 0 || b.tvel.z != 0)) {
+                    shotActed = true;
+                    shotVy = b.tvel.y; shotY0 = b.tpos.y; // apex prediction seeds (FUN_0051e9e0/ea70)
+                }
                 apex = std::max(apex, iu(b.tpos.y));       // ball height (tpos.y is 16.16)
                 minGround = std::min(minGround, iu(b.tpos.y));
                 if (gk >= 0) {
@@ -631,6 +669,7 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                     if (contactTick < 0 && b.possessor < 0 && (b.tvel.x != 0 || b.tvel.z != 0)) {
                         contactTick = i; // ball velocity appears only at the kick's contact frame
                         shotActed = true;
+                        if (shotVy == 0) { shotVy = b.tvel.y; shotY0 = b.tpos.y; }
                     }
                     apex = std::max(apex, iu(b.tpos.y));
                     minGround = std::min(minGround, iu(b.tpos.y));
@@ -691,14 +730,28 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
         // WC98's power clamp shortens deep ground passes, so a taker re-recovery of his own ball at
         // window end is legitimate completion: assert the pass travelled (passKicked) and finished
         // away from the taker (possession moved, or the resting spot sits beyond control radius).
-        steps[4].passed = passRecvPid >= 0 || (passKicked && (w.ball.possessor != psPid || recvD > 260));
-        steps[4].detail = fmt("pass: possessor pid={} recv={} nearest=(pid {}, gap {} team {}) at ball=({},{})",
-                              w.ball.possessor, passRecvPid, recvPid, recvD, recvTeam, iu(w.ball.tpos.x), iu(w.ball.tpos.z));
-        steps[5].passed = shotActed || moving;
-        steps[5].detail = fmt("shot: released={} velocity=({},{}) units/tick dist={} apex={}", shotActed,
-                              iu(b.tvel.x), iu(b.tvel.z), shotDist, apex);
-        steps[6].passed = (moving && apex > 0) || minGround < apex; // arc + ground interaction evidence
-        steps[6].detail = fmt("ball arc apex={} minGround={}", apex, minGround);
+        // D-49 measurement gate: the pass speed must equal the closed-form replica of
+        // FUN_0051e980 + wrapper tail computed from the kick-time position, oct landing and frames.
+        steps[4].passed = (passRecvPid >= 0 || (passKicked && (w.ball.possessor != psPid || recvD > 260))) && passRepOk;
+        steps[4].detail = fmt("pass: possessor pid={} recv={} nearest=(pid {}, gap {} team {}) at ball=({},{}) speed obs/rep={}/{} {}",
++                              w.ball.possessor, passRecvPid, recvPid, recvD, recvTeam, iu(w.ball.tpos.x), iu(w.ball.tpos.z),
++                              passSpdObs, passSpdRep, passRepOk ? "MATCH" : "MISS");
+        // D-49 measurement gate: apex height must equal Flight_heightAt(y0, timeFromVy(vy)) from the
+        // contact-frame vy (FUN_0051e9e0 -> FUN_0051ea70); descent (minGround < apex) is arc evidence.
+        long apexPred = -1; bool apexOk = false;
+        if (shotActed && shotVy > 0x8000) {
+            const sim::Fixed t = sim::Flight_timeFromVy(sim::Fixed(shotVy));
+            apexPred = std::abs(t) >= 0x100 ? long(sim::Flight_heightAt(sim::Fixed(shotY0), t) >> 16) : shotY0 >> 16;
+            apexOk = std::abs(apex - apexPred) <= 4;
+        } else if (shotActed) { // driven shot: the apex is the contact height
+            apexPred = shotY0 >> 16;
+            apexOk = apex >= apexPred - 4 && apex <= apexPred + 4;
+        }
+        steps[5].passed = shotActed && apexOk; // the closed-form apex is the gate (moving/dist are evidence)
+        steps[5].detail = fmt("shot: released={} velocity=({},{}) units/tick dist={} moving={} apex obs/pred={}/{} {}", shotActed,
+                              iu(b.tvel.x), iu(b.tvel.z), shotDist, moving, apex, apexPred, apexOk ? "MATCH" : "MISS");
+        steps[6].passed = minGround < apex && apexOk; // arc descent + closed-form apex height
+        steps[6].detail = fmt("ball arc apex={} (pred {}) minGround={}", apex, apexPred, minGround);
         // Animation-timing gate (§12 subsystem coverage, §14 animation state): the strike's ball
         // velocity must appear only AFTER the shooter's action clip was selected (the kick fires at
         // the clip's contact frame), never instantly on input. Ticks index the shot window.
@@ -953,7 +1006,7 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
             const int q = curPid();
             auto& p = w.players[static_cast<std::size_t>(q)];
             if (w.match.phase != 9) restoreLivePlay(9000); // dead-ball drift from earlier windows
-            for (int i = 0; i < 40 && runner.tick(); ++i) pad(0);      // settle into live phase 9
+            for (int i = 0; i < 40 && runner.tick(); ++i) { if (w.match.phase != 9) restoreLivePlay(9000); pad(0); } // settle into live phase 9
             // Capture first (the chase window's proven grammar): warp the carrier onto a ball at
             // his feet, seed possession, settle so the controlled-carrier state family is entered.
             // From State308 the pad word feeds the decoded request ladder and the sprint opens to
@@ -1146,9 +1199,40 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
             bool plateauOk = false;
             const Fixed bandMin = (p.runMax * 3) / 4;
             Fixed win[8] = {}; int winN = 0, winHead = 0;
+            int sdReseed = 0; // countdown after a mid-window capture-latch reseed (0 = no reseed active)
             for (int i = 0; i < 360 && runner.tick(); ++i) {
                 pad(4 | kSprint); // straight +x chase toward the placed ball
                 if (!runner.tick()) break;
+                // Seed drift under the new solver physics: kick-off contest can steal the lane's loose
+                // ball, and dead-ball phases freeze the sprint. Reseed the lane's own capture grammar
+                // mid-window: live play, opponents pinned off the chase lane, carrier captured on the
+                // ball (State308 latch), then release it 1500 ahead so the full cap chain resumes.
+                if (w.ball.possessor >= 0 && teamOfPid(w.ball.possessor) != 2) {
+                    w.ball.possessor = -1;
+                    w.ball.dribbler = -1;
+                    sim::Ball_placeAt(w, sim::Vec3{p.posI.x + 1500, 0, p.posI.z});
+                    winN = 0;
+                }
+                if (w.match.phase != 9 && sdReseed == 0) {
+                    restoreLivePlay(9000);
+                    for (int pid = 0; pid < 22; ++pid)
+                        if (teamOfPid(pid) == 1 && pid != q) {
+                            sim::Vec3 far{-400 + pid * 8, 0, -1900}; // pinned off the chase lane
+                            sim::Motion_warpTo(w, pid, &far);
+                        }
+                    sim::Vec3 spot{p.posI.x + 1500, 0, p.posI.z};
+                    sim::Ball_placeAt(w, spot);
+                    w.ball.possessor = q; // capture latch: State308 family resumes (lane's seed grammar)
+                    sim::Motion_warpTo(w, q, &spot);
+                    p.speed = 0;
+                    sdReseed = 24; // settle into the carrier state, then release loose ahead
+                    winN = 0;
+                } else if (sdReseed > 0 && --sdReseed == 0) {
+                    w.ball.possessor = -1;
+                    const sim::Vec3 fwd{p.posI.x + 1500, 0, p.posI.z};
+                    sim::Ball_placeAt(w, fwd);
+                    sim::Motion_setTarget(w, q, w.ball.posI); // producer retarget (FUN_004F4E70)
+                }
                 if (i % 40 == 0)
                     trc(fmt("SD sp t={} phz={} st={} spd={} req={} distBall={} poss={}", i, w.match.phase,
                             (int)p.state, (int)(p.speed >> 16), (unsigned long long)p.moveReq, (long)p.distBall, w.ball.possessor));

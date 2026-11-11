@@ -1,11 +1,11 @@
 // Derived from fifa99-native (same author), ported for World Cup 98
 // Ball-table provenance gate (pass-15, docs/reverse-engineering/GAMEPLAY_VALIDATION.md §3.2):
 // the runtime ball tables are pinned to FIFAWC.EXE DGROUP rows at their **measured** WC98 addresses
-// (the FIFA-99-era cites in ball_tables.inc comments are stale), and the flight-solver constant gap
-// is encoded: kFlightSets rows all exist in WC98, while 13 of the 18 kFlightConst rows do not occur
-// in the image at all - those closed-form solver constants are FIFA-99-derived, which is exactly
-// what the register (GAMEPLAY_DISCREPANCIES.md) tracks as an open correction lane. A future pass
-// that re-derives them from WC98 will flip the "absent" assertions to "present at new VA".
+// (the FIFA-99-era cites in ball_tables.inc comments are stale), and the closed-form solver rows
+// installed by pass-16kick are pinned too: kExpTable / kLambertA / kLambertB / kKickPool byte-exact
+// at DAT_00590a20 / DAT_00590be8 / DAT_00590fe8 / DAT_005913e8. The 13 FIFA-99-only closed-form
+// constant cites (literal rows below) do not occur in the image at all - the D-49 correction lane,
+// now flipped to Fixed; the gate asserts they stay absent from flight.cpp's grammar.
 #include "check.hpp"
 #include "ball_tables.inc"
 
@@ -63,12 +63,32 @@ int main() {
     for (int i = 0; i < 257; ++i) CHECK(u32At(kAtan16VA + 4 * i) == std::uint32_t(balltab::kAtan16[i]));
     for (int i = 0; i < 256; ++i) CHECK(gImg[at(kIsqrtVA) + i] == balltab::kIsqrt[i]);
 
-    // --- flight-set rows: all present in WC98 (interleaved layout, not a contiguous array) ------
-    for (const std::int32_t v : balltab::kFlightSets) CHECK(valuePresent(std::uint32_t(v)));
+    // --- pass-16kick closed-form solver rows (D-49): byte-exact WC98 lanes ---------------------
+    constexpr std::uintptr_t kExpTableVA = 0x590a20, kLambertAVA = 0x590be8, kLambertBVA = 0x590fe8,
+                             kKickPoolVA = 0x5913e8;
+    for (int i = 0; i < 124; ++i) CHECK(u32At(kExpTableVA + 4 * i) == std::uint32_t(balltab::kExpTable[i]));
+    auto u16At = [](const std::vector<std::uint8_t>& img, std::uintptr_t va, int idx) {
+        const std::uint8_t* b = img.data() + (va - kDataDelta) + 2 * idx;
+        return std::uint32_t(b[0]) | (std::uint32_t(b[1]) << 8);
+    };
+    for (int i = 0; i < 512; ++i) {
+        CHECK(u16At(gImg, kLambertAVA, i) == balltab::kLambertA[i]);
+        CHECK(u16At(gImg, kLambertBVA, i) == balltab::kLambertB[i]);
+    }
+    for (int i = 0; i < 22; ++i) CHECK(u32At(kKickPoolVA + 4 * i) == std::uint32_t(balltab::kKickPool[i]));
+    CHECK(u32At(0x5913e8) == 0xadf8545u); // lambert scale slot
+    CHECK(u32At(0x5913ec) == 0x10000u);   // fx ONE slot
+    CHECK(balltab::kNormScale[0] == 0x6a09e6u && balltab::kNormBias[0] == 0x98u); // FUN_004f2f10 seed row
 
-    // --- documented gap: closed-form flight constants absent from the WC98 image ---------------
-    static constexpr int kAbsentRows[] = {2, 3, 4, 5, 6, 7, 9, 12, 13, 14, 15, 16, 17};
-    for (const int i : kAbsentRows) CHECK(!valuePresent(std::uint32_t(balltab::kFlightConst[i])));
+    // --- FIFA-99-only closed-form cites: absent from WC98 (the D-49 gap, now closed) ------------
+    static constexpr std::uint32_t kAbsentF99[] = {
+        0xfffc5250u /* -0x3adb0 */,   0xffcc6895u /* -0x33976b */, 0x116e068u,
+        0xc7cc5751u /* -0x3833a8af */,0xfd84db43u /* -0x27b24bd */, 0xfffec26eu /* -0x13d92 */,
+        0xffee99acu /* -0x1166054 */, 0xffd0a400u /* -0x2f5c00 */, 0xe874ab47u /* -0x178b53b9 */,
+        0xff8b2c0du /* -0x74d3f3 */,  0xffaa9833u /* -0x567cd */,   0xea60caacu /* -0x159f354 */,
+        0xffdb7eaau /* -0x24816 */,
+    };
+    for (const std::uint32_t v : kAbsentF99) CHECK(!valuePresent(v));
 
     // --- .text constant pins (pass-16, D-14): net-rest bounce write mov [ball+0xb9c],imm32=0x2468
     // at VA 0x4bfaf8 (the avy<0x147 lane of the FUN_004c0150 family). Gravity (-0x2468, FUN_004b2a40)
@@ -77,7 +97,7 @@ int main() {
     static constexpr std::uint8_t kBounceBytes[] = {0xC7, 0x86, 0x9C, 0x0B, 0x00, 0x00, 0x68, 0x24,
                                                     0x00, 0x00};
     for (std::size_t i = 0; i < sizeof(kBounceBytes); ++i) CHECK(gImg[atText(0x4bfaf8) + i] == kBounceBytes[i]);
-    std::printf("ball tables: 9 runtime tables byte-exact, flight-set rows present, %zu solver rows absent\n",
-                sizeof(kAbsentRows) / sizeof(*kAbsentRows));
+    std::printf("ball tables: 9 runtime tables byte-exact, solver rows (exp/lambert/pool) pinned, %zu FIFA-99 cites absent\n",
+                sizeof(kAbsentF99) / sizeof(*kAbsentF99));
     return 0;
 }

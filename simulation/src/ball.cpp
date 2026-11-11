@@ -829,7 +829,6 @@ void Ball_setSurface(World& w, int col) {
     b.restitution = kRestitution[i];
     b.bounceRetain = kBounceRetain[i];
     b.rollFriction = kRollFriction[i];
-    Flight_selectSet(w, w.opt.surfaceRow == 0 ? 1 : col);
     Ball_buildLobTable(w);
 }
 

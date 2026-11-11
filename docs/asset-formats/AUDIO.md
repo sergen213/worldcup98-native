@@ -96,3 +96,25 @@ commentary is PT chains + PBK phrase fetch, timed by the CRDl event stream. MIDx
 event music (MIDI payload) remains a stub — no MIDI device emulation yet.
 
 Speech phrase record-table API + tolerant mirror rules: [SPEECH_PHRASES.md](SPEECH_PHRASES.md) (`formats/src/phrs.cpp`).
+
+## Scene sound-level layer (pass-17s6)
+
+The exe mixes scene volumes through a global percent table **`DAT_00632778[6]`** (.bss; runtime
+values `{80,80,80,80,65,80}` measured live under Wine in pass-7, idx4 = speech 65): init producer
+`FUN_00490728` writes all six percents = 100 (one-time flag `DAT_00632774`); setter **`FUN_0049067c`**
+stores a percent and dispatches the channel notifier from table `DAT_004904b0[1..5]` =
+{`FUN_0048d7a0` commentary (gate `DAT_006324b4`), `FUN_0048e430` music (gates `DAT_006325b0/5b8`,
+stop flag 5b4), `FUN_0048fca0` stream (gate `DAT_006326b0`), `FUN_0048ec38` EA-XA speech queue
+(gate `DAT_00632644`, apply `FUN_004e6aa0`), `FUN_0049091c` CD (gates/positions `DAT_00632790/7a8/7ac`)};
+slot [0] is NULL. Gain rows: **`FUN_004906a4`** computes Q7 = `(pct*0x7f)/100` clamped up to 1, and
+**`FUN_004906d0`** the signed scaled multiply `(val*pct*0x7f)/100`. Speech sentences pass through
+the gate `ready && DAT_00632644 && q7 > 0` (`FUN_0048eb4c/eb98`, called by the .SCI scene loaders).
+Port: `audio/src/scene_levels.cpp` (grammar) + wiring in `app/game_audio.cpp` (music + crowd-stream
+Q7 gains); gate `test_scene_levels`. Dossier `analysis/pass17s6audio/{NOTES.md,DECOMPILE/}`.
+
+**Refuted seeds:** the pass-16 "streamer/envelope" family is the **THRASH 2-D renderer**, not audio —
+`DAT_00632a68` = `_THRASH_drawline@8` import slot (string @0x567854, installed by `FUN_004916b0` via
+LoadLibraryA/GetProcAddress), `DAT_005e6020` = clip-rect bound float (31 hits, all x87 compares in
+rasterizers), 0x42a140 "streamerloop" = drawline endpoint interpolation. Cited VAs `musicsetup 0x42b780`
+and `volenvelope 0x439c70` have no function, zero refs, and zero exec byte-scan hits;
+`FUN_00409cac` is a scene-boot init dispatcher (disp32 count 0), not an audio device installer.

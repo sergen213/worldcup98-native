@@ -3,6 +3,7 @@
 
 #include "wc98/file.hpp"
 #include "wc98/formats/bnk.hpp"
+#include "wc98/audio/scene_levels.hpp"
 
 #include <algorithm>
 #include <memory>
@@ -49,7 +50,9 @@ bool startMenuMusic(audio::Mixer& mixer, const std::filesystem::path& tree, std:
             auto file = std::make_shared<std::vector<std::uint8_t>>(readFile(p));
             const auto streams = formats::scanSchl(*file);
             if (streams.empty()) continue;
-            mixer.stream(file, streams.front(), 1.0f, /*loop=*/true);
+// Scene-level layer (FUN_004906a4): the exe applies the percent-table Q7 gain of the
+// music channel on top of the stream volume; default init 100 => unity.
+            mixer.stream(file, streams.front(), float(audio::sceneLevels().gainQ7(audio::kSceneMusic)) / 0x7f, /*loop=*/true);
             if (trackOut) *trackOut = p.filename().string();
             return true;
         } catch (const std::exception&) { // try the next track
@@ -65,9 +68,10 @@ MatchAudio::MatchAudio(const std::filesystem::path& tree) {
 }
 
 void MatchAudio::startCrowd() {
-    // ponytail: fixed gain loop; the exe layers CROWD.CRD chant cards + CMIDI.BNK MIDx streams
-    // (FUN_0048e78c) with scene-volume ramps — add proximity/chant layers when RE'd.
-    if (mixer_ && crowd_.frames() && !crowdId_) crowdId_ = mixer_->play(crowd_, 0.6f, /*loop=*/true);
+    // Scene-level layer (DAT_00632778 idx3 = stream channel, FUN_004906a4 Q7 gain) scales this
+    // loop; the base level is pass-8 acoustic tuning. Chant-card + MIDx ramp layers stay a RE lane.
+    if (mixer_ && crowd_.frames() && !crowdId_)
+        crowdId_ = mixer_->play(crowd_, 0.6f * float(audio::sceneLevels().gainQ7(audio::kSceneStream)) / 0x7f, /*loop=*/true);
 }
 
 void MatchAudio::trigger(const sim::SimEvent& e) {

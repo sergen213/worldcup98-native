@@ -21,6 +21,18 @@ project goals.
   character-class table at text-edit sites (D-02), `FUN_005108b0` is an FE keyboard-combo gate (D-08);
   D-07 heading-slot consumer enumeration landed. Suite 119/119, self-test 15/15.
 
+- **Scene sound-level layer ported (pass-17s6audio)**: the exe's percent-table mix layer is decoded
+  and installed — `DAT_00632778[6]` init 100 (`FUN_00490728`), setter + per-channel notifier dispatch
+  over `DAT_004904b0[1..5]` (commentary/music/stream/EA-XA queue/CD, `FUN_0049067c`), Q7 gain
+  `(pct*0x7f)/100` clamp-to-1 (`FUN_004906a4`) and signed scaled multiply (`FUN_004906d0`); runtime
+  scene row `{80,80,80,80,65,80}` measured live in pass-7. Port: `audio/src/scene_levels.cpp`, music +
+  crowd-stream Q7 wiring in `app/game_audio.cpp`, gate `test_scene_levels`. Headline refutation: the
+  pass-16 "streamer/envelope" seeds are the **THRASH 2-D renderer** (`DAT_00632a68` =
+  `_THRASH_drawline@8` import slot, string @0x567854, installed by `FUN_004916b0`; clip-rect float
+  `DAT_005e6020`; drawline interpolation at 0x42a140); cited VAs `musicsetup 0x42b780` /
+  `volenvelope 0x439c70` have no function, zero refs, zero byte hits. Dossier
+  `analysis/pass17s6audio/{NOTES.md,DECOMPILE/}`; docs section in AUDIO.md. Suite 120/120.
+
 - **Closed-form flight/solve rebuilt on WC98 grammar (pass-16kick, D-49)**: the FIFA-99 log/exp
   decomposition is deleted; `flight.cpp` now uses the decoded WC98 math band (fx dot / EA fast-norm
   over `DAT_00591490/0x591514` / cross-pair / rotate2d) with the solver pool `DAT_005913e8..0x59143c`

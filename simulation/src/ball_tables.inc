@@ -3,53 +3,55 @@
 #pragma once
 #include <cstdint>
 namespace wc98::sim::balltab {
-// exe 0x581cbc, 10 x fx (tools/sim-tables/dump.py)
+// WC98 DAT_00581bd8 (raw 0x1801d8), 10 x fx - byte-exact vs FIFAWC.EXE (pass-15, test_ball_tables).
 inline constexpr std::int32_t kRestitution[10] = {
     0x9eb8, 0x9eb8, 0x9eb8, 0x9eb8, 0x9eb8, 0x9999, 0xa666, 0x8000, 0x4000, 0x8ccc,
 };
-// exe 0x581ce4, 10 x fx (tools/sim-tables/dump.py)
+// WC98 DAT_00581c00 (raw 0x180200), 10 x fx - byte-exact vs FIFAWC.EXE (pass-15).
 inline constexpr std::int32_t kBounceRetain[10] = {
     0xbae1, 0xbae1, 0xbae1, 0xbae1, 0xbae1, 0xb851, 0xcccc, 0xb333, 0xe666, 0xc000,
 };
-// exe 0x581d0c, 10 x fx (tools/sim-tables/dump.py)
+// WC98 DAT_00581c28 (raw 0x180228), 10 x fx - byte-exact vs FIFAWC.EXE (pass-15).
 inline constexpr std::int32_t kRollFriction[10] = {
     0xfae1, 0xfae1, 0xfae1, 0xfae1, 0xfae1, 0xfae1, 0xfae1, 0xf5c2, 0xf333, 0xf851,
 };
-// exe 0x588f38, 48 x fx (tools/sim-tables/dump.py)
+// WC98 DAT_0058ad8c, 48 x fx - byte-exact vs FIFAWC.EXE (pass-15); stale cite 0x588f38.
 inline constexpr std::int32_t kLobInit[48] = {
     0x18000, 0x0, 0x0, 0x0, 0x20000, 0x0, 0x0, 0x0, 0x22666, 0x0, 0x0, 0x0,
     0x23333, 0x0, 0x0, 0x0, 0x24000, 0x0, 0x0, 0x0, 0x28000, 0x0, 0x0, 0x0,
     0x2c000, 0x0, 0x0, 0x0, 0x30000, 0x0, 0x0, 0x0, 0x34000, 0x0, 0x0, 0x0,
     0x38000, 0x0, 0x0, 0x0, 0x40000, 0x0, 0x0, 0x0, 0x48000, 0x0, 0x0, 0x0,
 };
-// exe 0x590680, 20 x i32 (tools/sim-tables/dump.py)
+// WC98 DAT_0059490c, 20 x i32 - byte-exact vs FIFAWC.EXE (pass-15); FIFA-99 cite 0x590680 stale.
 inline constexpr std::int32_t kMaxKickSpeed[20] = {
     20, 21, 22, 23, 23, 23, 24, 24, 24, 25, 26, 27,
     28, 29, 29, 30, 30, 30, 30, 30,
 };
-// exe 0x5902f0, 33 x u32 (tools/sim-tables/dump.py)
+// WC98 DAT_00591490, 33 x u32 - byte-exact vs FIFAWC.EXE (pass-15); FIFA-99 cite 0x5902f0 stale.
 inline constexpr std::uint32_t kSqrtSlope[33] = {
     6949350, 4913933, 3474675, 2456966, 1737338, 1228483, 868669, 614242, 434334, 307121, 217167, 153560,
     108584, 76780, 54292, 38390, 27146, 19195, 13573, 9598, 6786, 4799, 3393, 2399,
     1697, 1200, 848, 600, 424, 300, 212, 150, 106,
 };
-// exe 0x590374, 33 x u32 (tools/sim-tables/dump.py)
+// WC98 DAT_00591514, 33 x u32 - byte-exact vs FIFAWC.EXE (pass-15); FIFA-99 cite 0x590374 stale.
 inline constexpr std::uint32_t kSqrtBase[33] = {
     152, 215, 304, 430, 608, 860, 1217, 1721, 2433, 3441, 4867, 6883,
     9734, 13765, 19467, 27531, 38934, 55061, 77868, 110122, 155736, 220244, 311472, 440488,
     622945, 880977, 1245890, 1761954, 2491779, 3523908, 4983558, 7047816, 9967116,
 };
-// exe 0x5902a0, 20 x fx (tools/sim-tables/dump.py)
+// WC98 flight-set band ~DAT_00591440 (interleaved layout; all 20 row values verified present in the
+// image, pass-15 test_ball_tables); FIFA-99 cite 0x5902a0 is a uniform-band slot, not this table.
 inline constexpr std::int32_t kFlightSets[20] = {
     -0xa5802, -0xa5802, -0x14e69e, -0x1a431d, -0xf9859, 0x320000, 0x320000, 0x190000, 0x140000, 0x215555, 0x147a, 0x147a,
     0x28f5, 0x3333, 0x1eb8, -0x317f91, -0x317f91, -0x187f21, -0x137ee7, -0x20d4ae,
 };
-// exe 0x590248, 18 x fx (tools/sim-tables/dump.py)
+// PROVENANCE GAP (pass-15): rows 2..7, 9, 12..17 do NOT occur anywhere in FIFAWC.EXE bytes - the
+// closed-form flight/solve constants are FIFA-99-derived; WC98 uses its own pool at DAT_005913c0+.
 inline constexpr std::int32_t kFlightConst[18] = {
     0xadf8545, 0x10000, -0x3adb0, -0x33976b, 0x116e068, -0x3833a8af, -0x27b24bd, -0x13d92, -0x4f6, -0x1166054, 0xeb000, 0xeb00,
     -0x2f5c00, -0x178b53b9, -0x74d3f3, -0x567cd, -0x159f354, -0x24816,
 };
-// exe 0x58e558, 257 x i32 (tools/sim-tables/dump.py)
+// WC98 DAT_0058ec6c, 257 x i32 - byte-exact vs FIFAWC.EXE (pass-15); FIFA-99 cite 0x58e558 stale.
 inline constexpr std::int32_t kAtan16[257] = {
     0, 41, 81, 122, 163, 204, 244, 285, 326, 367, 407, 448,
     489, 529, 570, 610, 651, 692, 732, 773, 813, 854, 894, 935,
@@ -74,7 +76,7 @@ inline constexpr std::int32_t kAtan16[257] = {
     7856, 7877, 7899, 7920, 7942, 7963, 7984, 8005, 8026, 8047, 8068, 8089,
     8110, 8131, 8151, 8172, 8192,
 };
-// exe 0x592a80, 256 x u8 (tools/sim-tables/dump.py)
+// WC98 DAT_00593d88, 256 x u8 - byte-exact vs FIFAWC.EXE (pass-15); FIFA-99 cite 0x592a80 stale.
 inline constexpr std::uint8_t kIsqrt[256] = {
     16, 22, 27, 32, 35, 39, 42, 45, 48, 50, 53, 55,
     57, 59, 61, 64, 65, 67, 69, 71, 73, 75, 76, 78,
@@ -99,7 +101,8 @@ inline constexpr std::uint8_t kIsqrt[256] = {
     248, 248, 249, 249, 250, 250, 251, 251, 252, 252, 253, 253,
     254, 254, 255, 255,
 };
-// exe 0x58f880, 626 x u32 (tools/sim-tables/dump.py)
+// UNVERIFIED (pass-15): the 626-row flight data table does not occur as a contiguous array in
+// FIFAWC.EXE; provenance pending the solver-constant mapping slice (analysis/pass15ball2).
 inline constexpr std::uint32_t kFlightData[626] = {
     3230019138, 65537, 65538, 65539, 65540, 65541, 65542, 65543, 65544, 65545, 65546, 65547,
     65548, 65549, 65550, 65551, 65552, 65553, 65554, 65555, 65556, 65557, 65558, 65559,

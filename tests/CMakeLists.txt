@@ -88,6 +88,10 @@ endforeach()
 # absent, quadrant-boundary exactness of sinCos/atan2i. Tree-gated (exit 77 skip).
 wc98_test(test_trig_tables unit/test_trig_tables.cpp)
 target_link_libraries(test_trig_tables PRIVATE wc98_simulation)
+# Ball-table provenance gate (pass-15): runtime tables byte-exact at measured WC98 VAs, flight-set
+# rows present, 13 closed-form kFlightConst rows asserted absent from the image (solver-constant gap).
+wc98_test(test_ball_tables unit/test_ball_tables.cpp)
+target_include_directories(test_ball_tables PRIVATE ${CMAKE_SOURCE_DIR}/simulation/src)
 
 # Input layer: synthetic SDL events (keyboard pad words, virtual gamepad, hot-plug).
 wc98_test(test_input unit/test_input.cpp)

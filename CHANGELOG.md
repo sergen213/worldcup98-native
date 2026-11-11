@@ -15,6 +15,32 @@ project goals.
   presence, and the **absence** of the 13 FIFA-99-derived closed-form `kFlightConst` rows (solver-constant
   gap, register D-49). All stale FIFA-99 cite addresses in `trig_tables.inc`/`ball_tables.inc`/`fixed.hpp`
   corrected to measured WC98 VAs; parity registry rows 21/22 -> PV.
+
+- Motion table provenance gate + shared rows (pass-15 S2, register D-55): `kSpeedCap`/`kTurnClass` are now
+  the byte-exact WC98 rows at **`DAT_0058aee4`** / **`DAT_0058aef0`** in a public header
+  (`simulation/include/wc98/sim/motion_tables.inc`) shared by `motion.cpp`, `test_motion_tables` and the
+  self-test step-13 replica — one source of truth. The gate pins caps + thresholds + block adjacency against
+  FIFAWC.EXE and asserts the FIFA-99 cites `0x58AD60`/`0x58AD6C` are zeros; parity row 1 records the
+  runtime-built u16 companions (D-61) as non-static.
+- Self-test animation-timing step (§14 subsystem coverage): a strike's ball velocity must appear strictly
+  **after** the shooter's action clip is selected (kick-clip → contact-frame seam), measured on ticks inside
+  the shot window (`app/selftest.cpp`, step `animation`).
+- Stop-distance ladder re-tuned for the byte-exact rows (pass-15 S2): the old detector leaned on the
+  FIFA-99 threshold rows' cap-clamp pin; under WC98's cls-0 row {228,469} straight-line sprint runs on
+  clip-stride rates that gait transitions re-rate. Top-band evidence is now an 8-sample window inside
+  [runMax*3/4, ·] with spread <= 1 fx unit, and the release fires AT the sustained pin (pad released
+  mid-sprint). Measured: release = runMax band, 15-tick ladder to v=0, displacement integral within tol
+  vs replica. Assertions unchanged — per-tick exact-match against the shared rows stays the parity core.
+- Pass-15 S3 input-layer dossier registered as rows **D-64…D-72**: gesture held-thresholds are `frames > 7`
+  in the exe vs ≥12 in states 1/4/6/8 (D-64 High), state 7 has no timer reset (D-65), the queue-gate table is
+  a single 96-byte array at `0x58c750` — the port's copy is shifted +2 and sized 98 (D-66), WC98 **drops**
+  queueable actions during `anim&4` with no FIFO (the 348-byte controller record has none of the FIFA-99 tail
+  fields; D-67 High), pause/skip-request sub-gates inverted + missing replay gate (D-68 High), one device read
+  per frame vs the port's per-tick deque (D-69/D-70), dev5 ctx row value (D-71), FE menu pad layer shape (D-72).
+- Register D-56 stays **Open** with a measured regression: consumer-only re-gating of the cap chain zeroed the
+  self-test movement/turning/stop-distance windows, so the coordinated producer+consumer bit remap is queued
+  behind the input dossier (D-57) instead of landing half-done.
+
 - Camera trig lane made exact (pass-15, register D-54): orbit/lead polar offsets (`sin16x`/`cos16x`) now
   compute `fx(dist, sine16x16/cosine16x16)` — the byte-exact WC98 quarter-wave table sine (FUN_00497740 over
   `DAT_00585898`) with the engine's `(prod >> 16) + bit-15 carry` fixed-multiply rounding — replacing the libm

@@ -23,6 +23,7 @@
 #include "wc98/sim/world.hpp"
 #include "wc98/sim/events.hpp"
 #include "wc98/sim/rules.hpp"
+#include "wc98/sim/motion_tables.inc" // replica rows = DAT_0058aee4 / DAT_0058aef0
 
 #include "fe_flow.hpp"    // fcdbTeamFromList: reuse the interactive boot path
 #include "livematch.hpp"  // MatchBoot (the interactive match bootstrap)
@@ -115,7 +116,7 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                                   {"physics", false, ""},    {"ai", false, ""},
                                   {"goalkeeper", false, ""}, {"match-state", false, ""},
                                   {"foul-card", false, ""},  {"penalty", false, ""},
-                                  {"stop-distance", false, ""}};
+                                  {"stop-distance", false, ""}, {"animation", false, ""}};
 
     const auto teamOfPid = [&](int pid) -> int {
         return w.players[std::size_t(pid)].team == 1 ? 1 : 2; // PlayerState::team is the plain index (player.cpp:727)
@@ -377,6 +378,8 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
         bool shotActed = false; // kick released: possession left the taker and the ball is in flight
         const auto [gkX0, gkY0] = gk >= 0 ? posOf(gk) : std::pair<long, long>{0, 0};
         long gkDisp = 0; // keeper's farthest displacement during the shot flight (motion evidence)
+    int seqAtPress = -1, seqChangeTick = -1, contactTick = -1; // kick-clip/physics seam ticks (animation step)
+    bool shotForced = false; // warp-anchored attempt flag
         long oppMove = 0; // farthest an opposing field player travels from its ai-window start pos
         int shPid = curPid();
         for (int attempt = 0; attempt < 4 && !shotActed; ++attempt) {
@@ -392,14 +395,21 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                 const int side = gz0_ < 0 ? -1 : 1;
                 const sim::Vec3 b{w.ball.posI.x, 0, w.ball.posI.z}, aim{0, 0, int(w.ball.posI.z + side * 450)};
                 sim::Motion_warpTo(w, q, &b, &aim);
+                shotForced = true; // warp-anchored attempt (synthetic positioning, not natural chase)
                 for (int i = 0; i < 24 && runner.tick(); ++i) pad(0);
             }
             shPid = curPid();
+            seqAtPress = w.players[std::size_t(shPid)].anim.seq; // kick clip selection observable
+            seqChangeTick = contactTick = -1;
             pad(1 | kShoot);
             for (int i = 0; i < 6 && runner.tick(); ++i) {} // press edge hold
             pad(0);
             for (int i = 0; i < 260 && runner.tick(); ++i) { // release + flight + follow-through window
                 const auto& b = w.ball;
+                if (seqChangeTick < 0 && w.players[std::size_t(shPid)].anim.seq != seqAtPress)
+                    seqChangeTick = i; // action clip selected on the shooter
+                if (contactTick < 0 && b.possessor < 0 && (b.tvel.x != 0 || b.tvel.z != 0))
+                    contactTick = i; // ball velocity appears only at the kick's contact frame
                 if (!shotActed && b.possessor < 0 && (b.tvel.x != 0 || b.tvel.z != 0)) shotActed = true;
                 apex = std::max(apex, iu(b.tpos.y));       // ball height (tpos.y is 16.16)
                 minGround = std::min(minGround, iu(b.tpos.y));
@@ -475,6 +485,13 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                               iu(b.tvel.x), iu(b.tvel.z), shotDist, apex);
         steps[6].passed = (moving && apex > 0) || minGround < apex; // arc + ground interaction evidence
         steps[6].detail = fmt("ball arc apex={} minGround={}", apex, minGround);
+        // Animation-timing gate (§12 subsystem coverage, §14 animation state): the strike's ball
+        // velocity must appear only AFTER the shooter's action clip was selected (the kick fires at
+        // the clip's contact frame), never instantly on input. Ticks index the shot window.
+        steps[13].passed = seqChangeTick >= 0 && contactTick > seqChangeTick && contactTick >= 2;
+        steps[13].detail = fmt("kick seam: anim seq {} ->{} selected tick {}, ball release tick {} (forced={})",
+                               seqAtPress, w.players[std::size_t(shPid)].anim.seq, seqChangeTick,
+                               contactTick, shotForced);
 
         const bool gkActed = gk >= 0 && gkDisp > 0; // keeper moved off its line in reaction to the shot
         // §14 "opponent AI responded to possession": the defensive line must show real locomotion
@@ -647,8 +664,8 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
         // integration), ported in simulation/src/motion.cpp l.354-428 / l.438-516; the replica
         // below re-derives every value from fields captured on the live PlayerState at the tick
         // boundary (p.accel/p.decel/p.sprintAccel/p.runMax/p.sprintMax/p.mB0 are attr-derived in
-        // player.cpp:349 from byte-verified WC98 table dumps, SIM_TABLES_WC98.md; kSpeedCap =
-        // exe 0x58AD60, kTurnClass = exe turn-class thresholds). No magic reference numbers.
+        // player.cpp:349 from byte-verified WC98 table dumps, SIM_TABLES_WC98.md; the replica's
+        // kSpeedCap / kTurnClass are the shared DAT_0058aee4 / DAT_0058aef0 rows (no magic numbers).
         // Tolerances (justified where asserted):
         //  * v(t) tick series: ±1 fx unit/tick on root-motion ticks. The ramp is pure integer
         //    arithmetic on Fixed fields, so the replica is exact; the slack absorbs one unit of
@@ -701,9 +718,11 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
             };
             const Fixed kMin = 0x4ccc; // "counts as standing" (exe 0x4CBB78 gate in the step)
             auto wrap = [](std::int32_t v) { v &= 0x3ff; return v > 0x200 ? v - 0x400 : v; };
-            // Tables as recovered: kSpeedCap exe 0x58AD60, turn-class thresholds (motion.cpp l.13-15).
-            const Fixed kSpeedCap[3] = {0xc0000, 0x50000, 0x50000};
-            const std::int32_t kTurnClass[3][2] = {{171, 455}, {114, 455}, {114, 398}};
+            // Byte-exact WC98 rows, single source of truth with motion.cpp
+            // (`wc98/sim/motion_tables.inc`: caps DAT_0058aee4, thresholds DAT_0058aef0; provenance
+            // gate test_motion_tables). The FIFA-99 cites 0x58AD60 / 0x58AD6C are zeros in WC98.
+            using sim::kSpeedCap;
+            using sim::kTurnClass;
             struct Res { bool root; Fixed ns, step; };
             // Pure replica of Motion_rootMotionPre (ebx) + Motion_rootMotionStep (ns/step), all
             // inputs from the tick-boundary capture; mutates nothing.
@@ -768,7 +787,11 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                             newCls = amt > kTurnClass[c.turnClass][1] ? 2 : 1;
                     }
                 }
-                // Motion_rootMotionStep: cap chain from live fields.
+                // Motion_rootMotionStep cap chain from live fields (FIFA-99 consumer grammar). The
+                // WC98 exe's own M+0xD8 bit tests differ: cascade bits 0x40/0x80/0x100 first, penalty
+                // mask 0x6000000, ebx-collapse gated by byte bit 4 (cand_rootstep_004f4380 l.30-103).
+                // The port's producers are FIFA-99-shaped, so the coordinated producer+consumer fix is
+                // register D-56 — blocked on the pad-decode grammar of the pass-15 S3 dossier.
                 Fixed cap = c.speedCap;
                 if (!(c.moveFlags & 1) && c.targetDist < 0xa0) {
                     const Fixed v = c.targetDist < 8 ? Fixed(0) : Fixed(((c.targetDist << 16) >> 5) + 0x10000);
@@ -816,25 +839,34 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
             // Straight-line locomotion runs root-motion anim clips: per-tick speed is the clip
             // stride rate (len/dt of the clip's root displacement, Motion_rootMotionStep), not the
             // accel ladder — the exe derives sprint velocity from the anim system, so the ramp is
-            // measured, not replica-asserted. Top-speed evidence = a run of >=8 ticks pinned at a
-            // stable stride rate (|dv| <= 1 fx) while far outside the arrival band (distBall >
-            // 0xa0: distance never limits it) and at a quarter of runMax or more (runMax is the
-            // attr-derived running ceiling, player.cpp): the carrier is in its free-run band. The
-            // release happens entering the arrival band at stride speed.
+            // measured, not replica-asserted. Top-speed evidence under the byte-exact WC98 rows:
+            // 8 consecutive samples all inside the top band (>= runMax*3/4) with a total spread
+            // <= one fx unit; the release fires AT that pin (= pad released mid-sprint, the exe's
+            // "player ceases steering while sprinting" grammar). Gait transitions re-rate the clip
+            // stride (seq alternates 533/459/324), so "pinned" is a bounded-spread window, not
+            // exact-tick equality; the band floor stays the attr-derived running ceiling (runMax,
+            // player.cpp). The deceleration ladder runs from that top-band speed down.
             bool plateauOk = false;
-            Fixed plateau = 0, prevV = 0; int plateauTicks = 0;
+            const Fixed bandMin = (p.runMax * 3) / 4;
+            Fixed win[8] = {}; int winN = 0, winHead = 0;
             for (int i = 0; i < 360 && runner.tick(); ++i) {
                 pad(4 | kSprint); // straight +x chase toward the placed ball
                 if (!runner.tick()) break;
                 const Fixed v = p.speed;
-                if (i >= 8 && v > kMin && std::abs(v - prevV) <= 1 && (p.distBall > 0xa0 || w.ball.possessor == q)) {
-                    if (plateauTicks == 0) plateau = v;
-                    ++plateauTicks;
-                } else plateauTicks = 0;
-                plateauOk = plateauTicks >= 8 && plateau * 4 >= p.runMax;
-                prevV = v;
-                // Release pad + sprint entering the arrival band at stride speed.
-                if (plateauOk && p.distBall <= 0x130) break;
+                win[winHead] = v; winHead = (winHead + 1) & 7; if (winN < 8) ++winN;
+                plateauOk = false;
+                if (winN == 8 && v > kMin && (p.distBall > 0xa0 || w.ball.possessor == q)) {
+                    Fixed lo = win[0], hi = win[0]; bool allBand = true;
+                    for (int j = 1; j < 8; ++j) {
+                        const Fixed s = win[j];
+                        if (s < bandMin) { allBand = false; break; }
+                        if (s < lo) lo = s;
+                        if (s > hi) hi = s;
+                    }
+                    plateauOk = allBand && hi - lo <= 0x10000; // one fx unit of spread
+                }
+                // Release pad + sprint AT the sustained top-band pin.
+                if (plateauOk) break;
             }
             // Release the pad AND hand the carrier back to the AI (controller unassigned): the
             // exe's own grammar for "player no longer steered" — his state handler re-targets the
@@ -884,7 +916,7 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
             // Sprint evidence: the pad window drove the carrier to at least three quarters of the
             // attr-derived run ceiling (p.runMax) before release; the deceleration gate below then
             // measures the ladder from that band down.
-            (void)plateau; (void)prevV; (void)plateauTicks; (void)stopped; (void)lastMismatch; // ramp telemetry kept for the trace lane
+            (void)stopped; (void)lastMismatch; // ramp telemetry kept for the trace lane
 
 const bool sprintOk = vRelease * 4 >= p.runMax * 3;
             steps[12].passed = sprintOk && distOk;

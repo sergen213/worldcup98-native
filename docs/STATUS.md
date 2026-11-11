@@ -149,6 +149,17 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
   FIFA-99-derived (register D-49, open); net-contact "Critical" claims refuted against the raw dumps;
   camera trig lane now uses the byte-exact WC98 table sine with engine fixed-multiply rounding
   (`test_presentation` replay-eye replica), closing the documented last-ulp drift.
+- Pass-15 S2/S3 (2026-11-11): motion caps + turn-threshold rows landed byte-exact at `DAT_0058aee4` /
+  `DAT_0058aef0` as a shared public header (`simulation/include/wc98/sim/motion_tables.inc`) consumed by
+  `motion.cpp`, the new `test_motion_tables` gate and the self-test step-13 replica (the replica had carried its
+  own stale FIFA-99 copy). Self-test now runs 14 steps incl. an animation-timing seam assert (kick clip selected
+  before ball velocity appears). Input layer mapped end-to-end from FIFAWC.EXE (20 controllers stride 0x15C, player
+  ptr +0x154, ctx machine slots @0x58d314 → fused gesture+predict → dispatch): `kButtonMask[9][8]`, `kCtxKeep[14][14]`,
+  `kActionTable` (256/256 rows) and the dir index/remap pages are byte-exact **MATCH**; divergences registered as
+  D-64…D-72 (gesture held-threshold ≥8 vs port ≥12, queue-gate table +2 offset / 96 size, WC98 drops queueable actions
+  during `anim&4` — no FIFO in the 348-byte controller record, pause-skip sub-gates inverted, one device read per frame).
+  D-56 (cap-chain bit grammar) stays Open after a measured zero-speed regression: producer + consumer remap lands as
+  one coordinated patch.
 - Release: tag `v0.3.0` + GitHub release (AppImage + `.sha256`/`.version` sidecars): playable live match,
   authentic FE fonts/language knob, FEFLOW11 team-select grid, measured percent-table scene defaults;
   game smoke exit 0 under Xvfb, launcher offscreen self-test pass, `update.sh --check` -> "up to date";

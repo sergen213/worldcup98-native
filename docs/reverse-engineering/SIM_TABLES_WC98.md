@@ -34,6 +34,28 @@ All FIFA99 addresses are retained in the header comments as fallback provenance.
 - The input_tables.inc row ("pending" WC98 re-dump): **closed** — kButtonMask/kCtxTable/kCtxKeep verified byte-identical at 0x58c7b4 / 0x58d314 / 0x58d8fc; kActionTable + kActionQueueAllowed re-dumped from WC98 (0x58cb14, 0x58c752); kActionQueueable documented as absent-equivalent.
 - §3(b) "cross-verified" class can now include these tables; the FIFA-99-era provenance flag in §3(a) applies only to ball_tables.inc kick constants (unchanged by this pass).
 
+## WC98 ↔ port motion-record offset map (pass-15 S2, register D-62)
+
+WC98's motion record (M = player+0xB8 agent object) equals the FIFA-99-derived port layout with the
+`targetDist..flags` block shifted **+0xC**. Site-by-site proof: `analysis/pass15motion/MOTION_CLAIMS.md` §0.
+
+| WC98 M offset | field | port field (`player.hpp`) |
+|---|---|---|
+| +0x60 / +0x64 / +0x68 | targetDist, dx, dz (oct-dist) | `targetDist/Dx/Dz` @M+0x54/58/5C |
+| +0x9C | turn class index | `turnClass` @M+0x90 |
+| +0xA0 | speed (16.16) | `speed` @M+0x94 |
+| +0xB0 | desired/cap speed | `speedCap` @M+0xA4 |
+| +0xB4 / +0xB8 / +0xBC | sprintMax, runMax, penalty value | `sprintMax` @A8, `runMax` @AC, `mB0` @B0 |
+| +0xC0 / +0xC4 / +0xC8 | decel Δv, accelRun, accelSprint | `decel/accel/sprintAccel` @B4/B8/BC |
+| +0xCC / +0xD0 / +0xD4 | recipRun, recipSprint, recipDecel (multiply) | `accelRecip/sprintAccelRecip/decelRecip` @C0/C4/C8 |
+| +0xD8 | motion flags dword (cascade 0x1c0 bits 0x40/0x80/0x100, sprint 0x100000, penalty 0x6000000, collapse bit 4, class-eval bit 2) | `moveReq` @C(+0xD8) |
+| +0xDC | motion status byte (bits set by rootstep l.77/97/101) | `moveStatus` @D0 |
+| +0x84 / +0x88 / +0x94 | facing, facingDesired, dir8 | `facing/facingDesired/dir8` @0x78/0x7C/0x88 |
+
+Unshifted blocks (identical to the port's comments): pos/target +0x1C..+0x4C and the anim-facing pair
+0x10/+0x14. Tables: speed caps `DAT_0058aee4` stride 4, turn thresholds `DAT_0058aef0` stride 8
+(both pinned by `test_motion_tables`; installed rows in `simulation/include/wc98/sim/motion_tables.inc`).
+
 ## Follow-ups (ranked)
 
 1. kActionQueueable: WC98's queueability gate lives on the dword block at 0x58c6f0 — decode its per-action dword semantics and replace the kept FIFA99 byte array with a faithful WC98 model (input.cpp:352 currently consumes the FIFA99 table).

@@ -4,15 +4,16 @@
 
 #include "wc98/sim/world.hpp"
 #include "player_states.hpp"
+// Speed caps + turn thresholds, byte-exact WC98 rows (DAT_0058aee4 stride 4 / DAT_0058aef0
+// stride 8; pass-15 S2 BYTES.md). Provenance gate: tests/unit/test_motion_tables.cpp. The
+// FIFA-99 cites 0x58AD60 / 0x58AD6C name zeros in WC98, not tables. Public header shared with
+// the self-test step-13 replica and the gate (one source of truth).
+#include "wc98/sim/motion_tables.inc" // kSpeedCap, kTurnClass
 
 namespace wc98::sim {
 
 namespace {
 
-// exe 0x58AD60, 3 x fx: speed cap by turn class.
-constexpr Fixed kSpeedCap[3] = {0xc0000, 0x50000, 0x50000};
-// exe 0x58AD6C, {class 1, class 2} thresholds per current turn class (stride 8).
-constexpr std::int32_t kTurnClass[3][2] = {{171, 455}, {114, 455}, {114, 398}};
 
 const Vec3& targetVec(const PlayerState& p) { return p.targetRef ? p.altTarget : p.target; }
 

@@ -92,6 +92,12 @@ target_link_libraries(test_trig_tables PRIVATE wc98_simulation)
 # rows present, 13 closed-form kFlightConst rows asserted absent from the image (solver-constant gap).
 wc98_test(test_ball_tables unit/test_ball_tables.cpp)
 target_include_directories(test_ball_tables PRIVATE ${CMAKE_SOURCE_DIR}/simulation/src)
+# Motion cap/turn-table provenance gate (pass-15 S2): speed caps + turn-class rows byte-exact at
+# DAT_0058aee4 / DAT_0058aef0, FIFA-99 cite addresses (0x58AD60/0x58AD6C) asserted zeros; the cls-0
+# row 228/469 the port never used is pinned (register D-55). Tree-gated.
+wc98_test(test_motion_tables unit/test_motion_tables.cpp)
+target_include_directories(test_motion_tables PRIVATE ${CMAKE_SOURCE_DIR}/simulation/src)
+target_link_libraries(test_motion_tables PRIVATE wc98_simulation)
 
 # Input layer: synthetic SDL events (keyboard pad words, virtual gamepad, hot-plug).
 wc98_test(test_input unit/test_input.cpp)

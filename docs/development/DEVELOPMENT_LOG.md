@@ -2,6 +2,39 @@
 
 Newest entries first. One entry per meaningful milestone (project rule).
 
+## 2026-11-11 — Pass-15 S2/S3 forensic slices: motion tables landed, input layer registered
+
+- **Motion table provenance (D-55) fixed**: the port's `kSpeedCap`/`kTurnClass` cited FIFA-99 VAs
+  `0x58AD60`/`0x58AD6C`, which are zeros in WC98. Real rows measured at `DAT_0058aee4` (caps
+  12.0/5.0/5.0) and `DAT_0058aef0` (`{228,469}/{171,455}/{114,398}`, stride 8) — dossier
+  `analysis/pass15motion/BYTES.md`. Installed byte-exact in the public header
+  `simulation/include/wc98/sim/motion_tables.inc`, now shared by `motion.cpp`,
+  `test_motion_tables` and the self-test step-13 replica (previously the replica carried its own
+  FIFA-99 copy — exactly the divergence class the gate catches). Gate: caps + thresholds + adjacency
+  byte lane, plus the zeros-cite assert. Parity row 1 records the u16 companions as runtime-built
+  (`FUN_004fc2c0` RNG producer, D-61/D-63), so static byte-exactness only covers the stride-0x12 gait table.
+- **Self-test animation-timing step** added (§14 coverage): the strike's ball velocity must appear after
+  the shooter's action clip is selected — kick-clip→contact seam measured on shot-window ticks (step
+  `animation`, green: kick clip selected tick 0, ball release tick 5 (measured at this commit).
+- **Input layer dossier (S3)** registered as D-64…D-72 (`analysis/pass15input/`): gesture held-thresholds
+  ≥8 frames vs port ≥12 in states 1/4/6/8 (D-64 High), state-7 timer never resets (D-65), queue-gate table
+  +2 offset / 96 size (D-66), WC98 drops queueable actions during `anim&4` — no FIFO in the 348-byte
+  controller record, player ptr at +0x154 (D-67 High), pause-skip sub-gates inverted + missing `+0x774`
+  replay gate (D-68 High), one device read per frame vs per-tick deque (D-69/D-70), dev5 ctx row (D-71),
+  FE menu pad layer (D-72). Tables verified MATCH byte-exact: `kButtonMask[9][8]`, `kCtxKeep[14][14]`,
+  `kActionTable` 256/256 rows, dir index/X/Z + all four remap pages.
+- **Stop-distance ladder re-tuned under the byte-exact rows**: the FIFA-99 threshold rows made cls-0 sprint
+  clamp to a cap pin (window = "at cap, then decay"); WC98's `{228,469}` row runs straight-line sprint on
+  clip-stride rates (v oscillates ~runMax±1 fx, class stays 0). Detector now takes an 8-sample window in the
+  top band (≥ runMax*3/4, spread ≤1 fx) and releases AT the sustained pin; measured release = runMax band,
+  15-tick ladder to v=0, displacement integral inside tol vs replica. Assertions unchanged (per-tick
+  exact-match stays the parity core).
+- **D-56 kept Open with a measured regression**: re-gating the rootstep cap chain to the exe's M+0xD8 bits
+  (cascade 0x40/0x80/0x100, penalty mask 0x6000000, byte-bit-4 collapse) zeroed the self-test
+  movement/turning/stop-distance windows — the port's `moveReq` producers are FIFA-99-shaped. Edits reverted;
+  the coordinated producer+consumer remap lands as one patch with the locomotion windows re-measured (plan in
+  register §"Totals and plan").
+
 ## 2026-11-01 — Milestone 1 complete: research merged; port dispatched
 
 Four parallel probes completed; results merged into docs (hexdump

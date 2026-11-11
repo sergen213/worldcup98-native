@@ -28,6 +28,15 @@ Layout note: WC98's DGROUP layout mirrors FIFA99's exactly for these families �
 
 All FIFA99 addresses are retained in the header comments as fallback provenance. The anim clip ids index the WC98 `COMMON/ANIM.MO` clip set (max id ~534, ANIM.MO member range), consistent with `wc98::formats::AnimClip`, not the FIFA 99 MOAI set — this is exactly why values differ and gait-shape tables do not.
 
+**D-61 (pass-17 S5, docs): row-1 sub-claim downgraded to runtime-built.** The u16 loco/turn/skill
+pair grids at `DAT_005916a4 / 0x591780 / 0x5917ee` (and the trio base `DAT_00591698`) are **rewritten
+at runtime** by the gaitspeedtbl builder `FUN_004FC2C0` (`gaitspeedtbl_004fc2c0.txt` l.28-38/41-60:
+writes from RNG `FUN_004FCCD0` + 64-bit divide pairs scaled `>>5`). The byte-diffs above are against
+the **pre-fill image bytes**, so the "byte-exact" wording for those five u16 tables is invalid as a
+runtime claim: they match only at load time, before the builder runs. The stride-0x12 u8 gait table
+`kGaitType @ 0x59159c` remains the static byte-exact PV (its consumer `mov al,[ebp+0x59159c]` reads
+the image bytes unmodified; pass-15 S4 canonical layout is measured on the runtime-built block).
+
 ## Consequences for GAMEPLAY_PARITY.md §3(a)
 
 - The "WC98 re-capture pending" row for anim_tables (kGaitType/kLoco/kTurnL/kTurnR/kSkillA/kSkillB): **closed** — kGaitType confirmed byte-identical; the five u16 tables re-dumped from WC98 and installed in `simulation/src/anim_tables.inc`.

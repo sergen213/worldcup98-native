@@ -87,7 +87,42 @@ void Motion_warpTo(World& w, int pid, const Vec3* pos) {
     refreshBall(w, p);
 }
 
-// 0x4CB884 (EAX = M, EDX = pos): position snap without target reset.
+// WC98 FUN_004F5000 (EAX = M, EDX = pos; D-06 integration entry, pass-17 S5): the band's
+// setPosAndTarget - frac-zeroed pos pair, setTarget(pos) inserted before the heading tail,
+// facing=facingDesired=atan2(ball) pair (+0x84/+0x88), turnAmount/turnClass zero, dir8 quantize
+// of facing, updateHeadAim tail, speed/m98/m9c zero, refreshBall + facingDesired/turnDelta tail.
+// Dossier analysis/pass17s5/. Gate: test_sim_scenarios scenarioSetPosAndTarget (D-06).
+void Motion_setPosAndTarget(World& w, int pid, const Vec3& pos) {
+    PlayerState& p = w.players[pid];
+    p.posI.x = pos.x;
+    p.posI.z = pos.z;
+    p.frac.x = 0;
+    p.frac.z = 0;
+    p.pos.x = static_cast<Fixed>(static_cast<std::uint32_t>(pos.x) << 16);
+    p.pos.z = static_cast<Fixed>(static_cast<std::uint32_t>(pos.z) << 16);
+    Motion_setTarget(w, pid, pos); // FUN_004f4e70 site 0x4f5042: target := pos (+delta block)
+    refreshBall(w, p);             // l.13-14: refreshBall x2 inside the ECX!=0 branch (D-60 precedent)
+    refreshBall(w, p);
+    const Vec3 v = {w.ball.tpos.x - p.posI.x, 0, w.ball.tpos.z - p.posI.z}; // FUN_004f3db4 atan2 pair
+    const std::int32_t face = static_cast<std::int32_t>(atan2i(v.x, v.z));
+    p.facing = face;               // +0x84 = facing (D-62 map row "facing/facingDesired/dir8")
+    p.facingDesired = face;        // +0x88
+    p.turnAmount = 0;              // +0x98 zeroed with turnClass
+    p.turnClass = 0;               // +0x9c
+    p.dir8 = ((p.facing + 0x40) & 0x3ff) >> 7; // +0x94 = ((+0x84 + 0x40) & 0x3ff) >> 7
+    Motion_updateHeadAim(w, pid, 1);           // FUN_004fd1c0 tail (EBX = 1 site lane)
+    p.speed = 0;                   // +0xa0/+0xa4/+0xa8: speed/m98/m9c zero (D-62 map rows)
+    p.m98 = 0;
+    p.m9c = 0;
+    refreshBall(w, p);             // l.30: refreshBall before the +0x7c/+0x80 tail writes
+    const Vec3 b = {w.ball.tpos.x - p.posI.x, 0, w.ball.tpos.z - p.posI.z};
+    p.facingDesired = static_cast<std::int32_t>(atan2i(b.x, b.z)); // -> [M+0x7C] tail (warpTo pattern)
+    p.turnDelta = p.angleBall;                                      // copy [M+0x70] -> [M+0x80]
+}
+
+// 0x4CB884 (EAX = M, EDX = pos): position snap without target reset. FIFA-99-derived shape kept
+// for the self-snap sites; the WC98 body is not located (D-06 open lane - pass-17 S5 band scan:
+// 0x4f4exx holds setTarget/warpTo/setPosAndTarget only, no target-less snap).
 void Motion_snapTo(World& w, int pid, const Vec3& pos) {
     PlayerState& p = w.players[pid];
     p.posI.x = pos.x;

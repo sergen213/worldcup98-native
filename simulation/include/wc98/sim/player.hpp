@@ -93,7 +93,7 @@ struct AnimCtl {
     std::uint8_t b34[20];       // +0x34 s16 angle, +0x36 u8 type, +0x37 u8 flags, +0x39 int driftX, +0x41 int driftZ
                                 // (unaligned; driftZ overlaps the low byte of the +0x44 dword, as in the exe)
     std::int32_t driftFrames;   // +0x48 frames of drift left (Anim_setDrift 0x4CD2F0)
-    Fixed rateScale;            // +0x4C anim rate scale (Player_setSpeedScale 0x4BBB84)
+    Fixed m4c;            // +0x4C anim rate dword (WC98 has no speed-class writer: FIFA-99 switch dropped, D-09)
     std::int32_t f50;           // +0x50 = 1 by Anim_init
 
     // +0x37 flags: 1 face-update, 2 no-drift, 4 input-block, 8 root motion, 0x10 ball at the dribble
@@ -407,7 +407,8 @@ bool Player_arrivalCallback(World& w, int pid, std::int32_t cb); // call through
 void Motion_setTarget(World& w, int pid, const Vec3& t);      // 0x4CB778
 bool Motion_setTargetAlt(World& w, int pid, const Vec3& t);   // 0x4CB7FC (alt target +0x40, flag 1)
 void Motion_warpTo(World& w, int pid, const Vec3* pos); // WC98 FUN_004f4f80 (0x4CB904); no facing handling (D-60)
-void Motion_snapTo(World& w, int pid, const Vec3& pos);       // 0x4CB884
+void Motion_setPosAndTarget(World& w, int pid, const Vec3& pos); // WC98 FUN_004f5000 (pass-17 S5)
+void Motion_snapTo(World& w, int pid, const Vec3& pos);          // 0x4CB884 FIFA-99-derived; WC98 body not located (D-06)
 Angle Motion_dirToTarget(World& w, int pid);                  // 0x4CB9F8
 void Motion_update(World& w, int pid, Fixed dt);              // 0x4CB510
 void Motion_applyTurnAndRootPos(World& w, int pid, Fixed dt, int ebx); // 0x4CB1E8

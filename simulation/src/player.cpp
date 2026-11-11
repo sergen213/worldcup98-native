@@ -362,17 +362,15 @@ void Player_initMoveParams(World& w, int pid) {
     p.anim.pitchLimit = static_cast<std::int16_t>(lim);
 }
 
-// 0x4BBB84: anim rate scale player+0xB0 (anim ctl +0x4C) by speed class A[0x36].
+// WC98 bind-time reset (FIFA-99 name cites 0x4BBB84). The FIFA-99 speed-class anim-rate switch
+// {e666,f777,10888,11999} is removed: f777/11999 are absent from FIFAWC.EXE (pass-17 S5 dword-immediate
+// sweep), the only xref consumer of the 0x581be0 ladder is FUN_004b1690 storing FE config constants to
+// DAT_00645c74+0xD4C.. indexed by (DAT_00640fc4 = FE mode, stride 0x14), and the e666/10888 sites
+// 0x50199d/0x512a52/0x53b732 are camera FOV / FE action store / match-clock scorer (D-09 closure).
+// WC98 anim rate = global aimRate from simDt (anim.cpp lane, D-63 gait grammar). Provenance gate:
+// test_motion_tables kFeConfig rows pin the ladder bytes + the FUN_004b1690 index grammar.
 void Player_setSpeedScale(World& w, int pid) {
-    PlayerState& p = w.players[pid];
     PlayerAttr& a = attrOf(w, pid);
-    if (p.slot == 0) p.anim.rateScale = 0x10000;
-    else switch (a.at(0x36)) {
-        case 0: p.anim.rateScale = 0xe666; break;
-        case 1: p.anim.rateScale = 0xf777; break;
-        case 2: p.anim.rateScale = 0x10888; break;
-        default: p.anim.rateScale = 0x11999; break;
-        }
     a.f10 = 0;
     a.f14 = 0;
     Player_initMoveParams(w, pid);

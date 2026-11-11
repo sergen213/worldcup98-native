@@ -230,7 +230,7 @@ Gates: named ctest gates cited = **25** (`test_sim_core`, `test_sim_players`, `t
 `test_input`, `test_anim`, `test_gen4tbls`, `test_fcdb`, `test_phrs`, `test_speechqueue`,
 `test_commentary`, `test_gameaudio`, `test_trig_tables`, `test_ball_tables`, `test_motion_tables`,
 `test_input_tables`);
-suite total 117/117 green incl. the pass-15 provenance gates and the pass-15 S3 input/motion grammar
+suite total 119/119 green incl. the pass-15 provenance gates, the pass-15 S3 input/motion grammar
 gates in `test_sim_players` (cap-chain per-bit equality, pad-decode fixture pins, gesture boundary
 probes, queue-drop, pause-skip matrix), plus the goal §14 lane `wc98-native --self-test FILE.json`
 (`self_test_gameplay`) driving a real exhibition match with scripted pad words: movement/sprint/

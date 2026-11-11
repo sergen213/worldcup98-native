@@ -2676,6 +2676,60 @@ void scenarioTeamShape() {
                 "bandWorst=%d/%d bPairs=%d keeperSamples=%d\n",
                 tolX, tolZ, maxDevX, maxDevZ, maxDevB, bandWorstNum, bandWorstDen, bPairs, keeperSamples);
 }
+
+// 31. D-06 (pass-17 S5): Motion_setPosAndTarget = WC98 FUN_004F5000, the pos-store + moveToward integration
+// entry (setTarget(pos) inserted before the warp tail). The FIFA-99 0x4CB884 body has no WC98
+// counterpart (audit §3 laneA/laneB MISSING); grammar asserted per DECOMPILE dossier: frac-zeroed
+// pos pair, int<<16 fixed-point store, target := pos (+delta recompute), speed/m98/m9c and
+// turnAmount/turnClass zeroing, facing=facingDesired=atan2(ball) pair with dir8 = ((facing+0x40)&0x3ff)>>7,
+// turnDelta tail copy; determinism tuple on re-apply.
+void scenarioSetPosAndTarget() {
+    gName = "set-pos-and-target";
+    MatchData md = makeMd();
+    Options opt{};
+    SimRunner r(md, opt, kSeed);
+    auto& w = r.world();
+    int forceIn = 0, prevPhase = -1; // M7 kickoff-settle grammar (scenario 2 note)
+    for (int i = 1; i <= 900 && !r.finished() && w.match.phase != 9; ++i) {
+        step(r);
+        if (w.match.phase == 0 && prevPhase != 0) forceIn = 154;
+        prevPhase = w.match.phase;
+        if (forceIn > 0 && --forceIn == 0 && w.match.phase == 0) Match_dispatchEvent(w, 0xb, w.match.phaseTeam);
+    }
+    auto& p = w.players[13];
+    const Vec3 spot{123, 7, 456};
+    setPos(w, 13, 999, -999); // far from the ball: refreshBall inputs stay meaningful
+    Ball_placeAt(w, {40, 2, 380});
+    p.speed = 0x12345;
+    p.m98 = 7;
+    p.m9c = 9;
+    p.turnAmount = 3;
+    p.turnClass = 2;
+    p.dir8 = 5;
+    p.facing = 0x111;
+    p.facingDesired = -0x321;
+    p.moveFlags |= 1u; // setTarget must clear the alt-target bit (byte 0x5E &= ~1)
+    Motion_setPosAndTarget(w, 13, spot);
+    ck(p.posI.x == 123 && p.posI.z == 456, "snap posI store mismatch");
+    ck(p.frac.x == 0 && p.frac.z == 0, "snap frac pair not zeroed");
+    ck(p.pos.x == Fixed(std::uint32_t(123) << 16) && p.pos.z == Fixed(std::uint32_t(456) << 16),
+       "snap fixed-point pos not int<<16");
+    ck(p.target.x == 123 && p.target.z == 456, "setTarget(pos) insertion missing");
+    ck((p.moveFlags & 1u) == 0, "alt-target flag not cleared by setTarget");
+    ck(p.speed == 0 && p.m98 == 0 && p.m9c == 0, "speed/m98/m9c zeroing (FUN_004f5000 +0xa0..a8) missing");
+    ck(p.turnAmount == 0 && p.turnClass == 0, "turn block (+0x98/+0x9c) not zeroed by snap");
+    const std::int32_t face = atan2i(w.ball.tpos.x - 123, w.ball.tpos.z - 456); // FUN_004f3db4 pair store
+    ck(p.facing == face && p.facingDesired == face, "facing/facingDesired pair not the atan2(ball) store");
+    ck(p.dir8 == ((p.facing + 0x40) & 0x3ff) >> 7, "dir8 quantize row ((facing+0x40)&0x3ff)>>7 mismatch");
+    ck(p.turnDelta == p.angleBall, "turnDelta tail copy [M+0x70] mismatch");
+    const std::int32_t t1[6] = {p.posI.x, p.facing, p.dir8, p.turnDelta, p.targetDist, std::int32_t(p.speed)};
+    Motion_setPosAndTarget(w, 13, spot); // re-apply: determinism tuple over the full asserted state
+    const std::int32_t t2[6] = {p.posI.x, p.facing, p.dir8, p.turnDelta, p.targetDist, std::int32_t(p.speed)};
+    for (int i = 0; i < 6; ++i) ck(t1[i] == t2[i], "snap determinism tuple diverged on re-apply");
+    std::printf("set-pos-and-target asserts %02d/%02d PASS\n", gChecks, gChecks);
+    std::printf("setPosAndTarget: face=0x%X dir8=%d turnDelta=%d targetDist=%d\n",
+                unsigned(p.facing), p.dir8, p.turnDelta, p.targetDist);
+}
 } // namespace
 
 int main() {
@@ -2708,5 +2762,6 @@ int main() {
     scenarioFallRecovery();
     scenarioHeaderDuel();
     scenarioSpinNetSurface();
+    scenarioSetPosAndTarget();
     return 0;
 }

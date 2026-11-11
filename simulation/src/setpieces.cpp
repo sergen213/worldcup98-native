@@ -8,6 +8,7 @@
 
 #include <cmath>
 #include <cstdlib>
+#include <initializer_list>
 
 namespace wc98::sim {
 namespace {

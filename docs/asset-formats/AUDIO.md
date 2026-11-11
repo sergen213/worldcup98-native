@@ -146,3 +146,37 @@ The exe implements the EA `iSND*` sound API itself and binds two backends (evide
   classifier (param bits {1,2,4,8} × EBX {0,4,7,8,9}, rate threshold `< 0x1a`, line ids 399/0x1a8/0x1ca).
   The codec loops mirror the MicroTalk/EA-XA decoders already ported in `formats/` (PhraseBank lane);
   a native SMIX needs only the ctx/starter scaffolding plus decoder reuse.
+
+## SMIX native mixer (pass-18smix)
+
+The 2D mixer + voice service grammar of `mix\smixer.c` / `win\sdriver.c` is ported natively in
+`audio/include/wc98/audio/smix_{resampler,mixer,voice}.hpp`, gated by `test_smix_grammar`.
+Grammar source: `analysis/pass17audio/NOTES.md` rows audio11–audio15 + `DECOMPILE2/`,
+`DECOMPILE3/`; no further RE was needed (spec closed).
+
+- **Q16 resampler** (`FUN_0054d4fb` seek/advance, `FUN_0054d4b5` step delta): nearest-neighbour
+  walk over packed stereo-pair dwords; accumulator is a full-adder CARRY4 (32-bit add carry-out),
+  `mode==1` block head emits one hold-register word, `step==0x10000` installs identity-copy
+  passthrough; step specials `<0x10000` delta form / `>0x10001` u64 form pinned per row.
+- **Pan-law installer** (`FUN_0054ccfe`): stages L/R volume ints as floats `int * DAT_00596560`
+  (= 1.0f/127, Q7 stereo volumes) and installs the mix handler by combo table
+  `{(0,0)->FUN_0054d091 silent, (x,0)->FUN_0054ce8d, (0,x)->FUN_0054cf09, (7F,7F)->FUN_0054ce1e,
+  (7F,x)->FUN_0054d00b, (x,7F)->FUN_0054cf86, general->FUN_0054cd8e}`. Each handler is ported
+  with the exe frame-count loop grammar (unrolled body + mono tail run).
+- **General mix** (`FUN_0054cd8e`): float accumulation, 2x2 stereo→quad pan matrix per pair:
+  `dst[0]+=L*vl, dst[1]+=L*vr, dst[2]+=R*vl, dst[3]+=R*vr`. Mix is **float**, not integer Q7.
+- **Voice block** (base `DAT_00661068`, stride 0xDE4, 16 slots): active flag `+0x00` gates every
+  writer (`0xffffffff` return when inactive); pan setter `FUN_00548a58` stores the s8 pair at
+  `+0x6C/+0x6D`, compares vs prev pair `+0x69/+0x6A` and sets signed ramp-direction flags
+  `+0x6E/+0x6F` {1 rising, 0xFF falling/equal}, always arms the ramp helper `FUN_00548a08`
+  (dword-band byte math: midpoint store then scaled-product overwrite); frequency setter
+  `FUN_005489c0` clamps to **0x80000**. L/R label mapping pinned by the iSNDpan setter order
+  (first int → +0x6C, second → +0x6D).
+- **App wiring** (`app/game_audio.cpp`, additive lane): each stream/SFX voice runs the installer
+  on scene-Q7 ints behind the existing `scene_levels` gains; at 100% levels the installer float is
+  exactly unity (int 0x7F → 1.0f), keeping v0.3.0 stream gains bit-identical. MicroTalk/EA-XA
+  PhraseBank streams are untouched by this lane.
+
+Open rows unchanged: envelope/streamer semantics live inside EACSND-side dispatch (`audio3`
+director state machine) and stay an RE lane; HW3D `pos3d` quadrant (`FUN_005490f0`) is documented,
+not ported.

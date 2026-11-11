@@ -415,6 +415,11 @@ target_include_directories(test_gameaudio PRIVATE ${CMAKE_SOURCE_DIR}/simulation
 # Scene sound-level layer grammar (DAT_00632778 percent table + Q7 gain + notifier dispatch).
 wc98_test(test_scene_levels unit/test_scene_levels.cpp)
 target_link_libraries(test_scene_levels PRIVATE wc98_audio)
+
+# SMIX native mixer grammar (pass-18smix): Q16 resampler FUN_0054d4fb boundary rows, pan-law
+# installer combo table + i/127 normalization, 2x2 pan-matrix handlers, voice-block ramp flags.
+wc98_test(test_smix_grammar unit/test_smix_grammar.cpp)
+target_link_libraries(test_smix_grammar PRIVATE wc98_audio)
 wc98_test(test_sqf unit/test_sqf.cpp)
 wc98_test(test_sci unit/test_sci.cpp)
 wc98_test(test_res unit/test_res.cpp)

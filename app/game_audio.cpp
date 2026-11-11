@@ -3,6 +3,7 @@
 
 #include "wc98/file.hpp"
 #include "wc98/formats/bnk.hpp"
+#include "wc98/audio/smix_voice.hpp"
 #include "wc98/audio/scene_levels.hpp"
 
 #include <algorithm>
@@ -32,6 +33,21 @@ formats::Pcm decodeSlot(const std::filesystem::path& file, std::uint32_t slot) {
     return {};
 }
 
+// SMIX native mixer lane (pass-18smix, additive): the exe's DirectSound 2D voice path installs
+// per-voice L/R volume ints through FUN_0054ccfe and mixes with the installer floats; scene Q7
+// percents (FUN_004906a4) feed those ints. Mirror it behind the existing scene-level gains:
+// each lane's play gain = base * installer float at (gainQ7(ch), gainQ7(ch)). At 100% levels
+// the installer is exactly unity (int 0x7F -> 1.0f, gated in test_smix_grammar), so streams
+// keep bit-identical v0.3.0 gains; lowering a scene percent drives the voice through SMIX.
+float smixLaneGain(int channel) {
+    audio::SmixVoice v;                    // record model of the DAT_00661068 slot band
+    v.active = true;
+    audio::Smix_setPan(v, 0x7F, 0x7F);     // FUN_00548a58 grammar: centre, ramps armed
+    const int q7 = audio::sceneLevels().gainQ7(channel);
+    v.setVolume(q7, q7);                   // FUN_0054ccfe installer on the scene Q7 ints
+    return v.gainRef().volL;               // mono voice: L-slot float gain
+}
+
 } // namespace
 
 bool startMenuMusic(audio::Mixer& mixer, const std::filesystem::path& tree, std::string* trackOut) {
@@ -50,9 +66,11 @@ bool startMenuMusic(audio::Mixer& mixer, const std::filesystem::path& tree, std:
             auto file = std::make_shared<std::vector<std::uint8_t>>(readFile(p));
             const auto streams = formats::scanSchl(*file);
             if (streams.empty()) continue;
-// Scene-level layer (FUN_004906a4): the exe applies the percent-table Q7 gain of the
-// music channel on top of the stream volume; default init 100 => unity.
-            mixer.stream(file, streams.front(), float(audio::sceneLevels().gainQ7(audio::kSceneMusic)) / 0x7f, /*loop=*/true);
+            // Scene-level layer (FUN_004906a4): the exe applies the percent-table Q7 gain of the
+            // music channel on top of the stream volume; default init 100 => unity. The SMIX voice
+            // lane (pass-18smix) supplies that gain as the FUN_0054ccfe installer float, exactly
+            // unity at 100%.
+            mixer.stream(file, streams.front(), smixLaneGain(audio::kSceneMusic), /*loop=*/true);
             if (trackOut) *trackOut = p.filename().string();
             return true;
         } catch (const std::exception&) { // try the next track
@@ -69,9 +87,10 @@ MatchAudio::MatchAudio(const std::filesystem::path& tree) {
 
 void MatchAudio::startCrowd() {
     // Scene-level layer (DAT_00632778 idx3 = stream channel, FUN_004906a4 Q7 gain) scales this
-    // loop; the base level is pass-8 acoustic tuning. Chant-card + MIDx ramp layers stay a RE lane.
+    // loop through the SMIX voice lane; the base level is pass-8 acoustic tuning. Chant-card +
+    // MIDx ramp layers stay a RE lane.
     if (mixer_ && crowd_.frames() && !crowdId_)
-        crowdId_ = mixer_->play(crowd_, 0.6f * float(audio::sceneLevels().gainQ7(audio::kSceneStream)) / 0x7f, /*loop=*/true);
+        crowdId_ = mixer_->play(crowd_, 0.6f * smixLaneGain(audio::kSceneStream), /*loop=*/true);
 }
 
 void MatchAudio::trigger(const sim::SimEvent& e) {
@@ -80,11 +99,11 @@ void MatchAudio::trigger(const sim::SimEvent& e) {
     case sim::EventType::PeriodEnd:
     case sim::EventType::MatchEnd: // whistle chain FUN_004bedb0 -> FUN_0051d480 (match event sites)
         ++whistles_;
-        if (mixer_ && whistle_.frames()) mixer_->play(whistle_, 1.0f);
+        if (mixer_ && whistle_.frames()) mixer_->play(whistle_, 1.0f * smixLaneGain(audio::kSceneMaster));
         break;
     case sim::EventType::Shot: // ball strike; the exe plays it at the kick code points
         ++kicks_;
-        if (mixer_ && kick_.frames()) mixer_->play(kick_, 0.8f);
+        if (mixer_ && kick_.frames()) mixer_->play(kick_, 0.8f * smixLaneGain(audio::kSceneMaster));
         break;
     default: break;
     }

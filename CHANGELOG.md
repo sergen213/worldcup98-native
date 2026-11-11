@@ -8,6 +8,22 @@ project goals.
 ## [Unreleased]
 ### Added
 
+- **EACSND music-setup + volume-envelope grammar (pass-18envelope, D-54 residual)**: PyGhidra pass
+  over the true lane — the exe-side EA `SND*` manager (`cmn_svol/sautovol/span/bend/release/stagpat`
+  cluster; dossier `analysis/pass18envelope/{NOTES.md,DECOMPILE/}`, scripts `GhidraWc98Env{1,2,3}.py`)
+ — recovers the **volume envelope** as a linear Q16 ramp triple (target `vol<<16` @+0x1C, step
+  `(target−current)/ticks` @+0x18, current @+0x20 on the unified voice record base `DAT_006597e8`,
+  stride 0x60 × 16 slots): SNDautovol/SNDvol arm rows, pan-law compose (mode/scale/offset/clamp +
+  signed-char curve tables), volume compose `/0x1F417F` (=127³) with curve override, pitch compose
+  `((pb−0x40)*pitchQ16hi)>>6`, ADSR `{time,value}` stride-8 envelope pairs with release re-arm rows,
+  and the audio3 music director (`FUN_004e3bd4` MIDI event parser → SNDvol/SNDpan/SNDpitchbend/
+  SNDrelease per note; velocity scaling `(trackVol>>16 * perNote)/0x7f`). The brief's seeds are
+  re-refuted with full-function evidence: `0x42a140` = drawline interpolation, `0x4386d8` = render
+  frame routine, both zero-caller THRASH internals. Per-tick ramp **application** stays Open (no
+  static consumer of the Q16 triple; xref scan evidence). Ported as pure functions in
+  `audio/include/wc98/audio/snd_channel.hpp` (no-op-safe), gated in `test_voice_layer` §"SND channel
+  envelope" (ramp sweeps, clamp boundaries, /127³ replica, ADSR/release rows). Suite **123/123**.
+
 - **Striker↔keeper contact resolution + D-30 premise refutation (pass-18keeper)**: RE pass over the
   brief's cited sites (`analysis/pass18keeper/DECOMPILE/keeper1.txt`, PyGhidra script
   `ghidra-scripts/GhidraWc98Keeper1.py`) shows the "contact branch" region `0x4c0980..0x4c0a20` is

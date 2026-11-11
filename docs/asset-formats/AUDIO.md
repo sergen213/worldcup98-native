@@ -214,7 +214,45 @@ Grammar source: `analysis/pass17audio/NOTES.md` audio6-audio15 + `DECOMPILE2/dsn
 - Default serve-pump slot is a no-op: the app lane runs the record grammar without an active mixer
   pump, so v0.3.0 stream gains stay bit-identical (gate sweep verifies gain = i/127 float).
 
-Open rows unchanged: envelope/streamer semantics live inside EACSND-side dispatch (`audio3`
-director state machine) and stay an RE lane; HW3D `pos3d` quadrant (`FUN_005490f0`) is documented,
-not ported. The vtable[0x377] per-voice serve hook and the 8a/93 streamer pointers are recorded as
-EACSND-lane interfaces, not wired to playback (the port's own `audio/src/mixer.cpp` decodes streams).
+## SND channel layer: music setup + volume envelope (pass-18envelope)
+
+The exe-side EA `SND*` manager over one unified **voice record** (base `DAT_006597e8`, stride
+**0x60**, 16 slots; fanout end `DAT_00659de8`) drives every music/SFX voice. Field grammar and
+evidence rows: dossier `analysis/pass18envelope/{NOTES.md,DECOMPILE/}` (PyGhidra scripts
+`ghidra-scripts/GhidraWc98Env{1,2,3}.py`). Ported as pure functions in
+`audio/include/wc98/audio/snd_channel.hpp`, gated by `test_voice_layer` §"SND channel envelope".
+
+- **Volume envelope** = linear Q16 ramp triple: target `vol<<16` @+0x1C, per-tick step
+  `(target − current)/ticks` @+0x18 (ticks clamped ≥1), current Q16 @+0x20. Arms from
+  **SNDautovol** `FUN_004e2b30` (`cmn_sautovol.c`, gate target ∈ [−1,0x7f]) and the immediate
+  setter path **SNDvol** `FUN_0052c71c→FUN_0052c660` (`cmn_svol.c`: equality-skip, step=0).
+  Scene-percent application is **SNDstreamautovol** `FUN_004e6aa0` (global stream vol byte +
+  autovol ramp) — the row already wired through `scene_levels`.
+- **ADSR lane**: envelope pointer @+0x48 = `{s32 time, s32 value}` stride-8 pairs; segment index
+  byte @+0x35, release trigger @+0x36 (<0 → iSNDstop). Arm rows in the iSNDplaytaggedpatch core
+  `FUN_0052e394` (`cmn_stagpat.c`: time<0 → 0x7fffffff, env[0].time==0 → "ENVELOPE IS MALFORMED"
+  line 0x178; step @+0x24 = `(env.value<<16 − vol2@+0x28)/time`); release re-arm rows in
+  **SNDrelease** `FUN_0052f020` (`cmn_srelease.c` lines 0x8c/0xae). Velocity scaling row
+  `(trackVol>>16 * perNoteByte)/0x7f`.
+- **Pan law** (SNDpan `FUN_0052f1f0`, `cmn_span.c`): mode byte @+0x37==1 direct, else
+  `scale*(pan−0x40)+0x40`; `+offsetByte@+0x2F − 0x40`; clamp [0,0x7f]; signed-char curve table
+  @+0x58 lookup → byte @+0x0F.
+- **Volume compose** `FUN_00544bd0`: final = `(master × currentQ16hi × groupVolByte × vol2Q16hi)/0x1F417F`
+ (= 127³); curve-override branch `(curve[idx@+0x3E] × scaleByte@+0x34)/0x7f`; handle-table row.
+- **Pitch compose** `FUN_00544b50`: word@+0x12 += `((pbByte@+0x33 − 0x40) × (pitchQ16@+0x40>>16))>>6`
+ gated on word@+0x42≠0 (+ bend curve @+0x54, + pan-curve term @+0x5C). **SNDpitchbend**
+ `FUN_0052eee0/0x52efb4` (`cmn_sbend.c`) writes the pb byte.
+- **Music director (audio3)**: MIDI event parser `FUN_004e3bd4` — 16 track slots stride 0x24,
+  voice pool 24×{note,data,?,handle} @`DAT_0064bddc`; CC7 → SNDvol per channel notes, CC10 →
+  SNDpan, 0xE0 bend `(data+lsb*0x80)>>7` → SNDpitchbend, note-on → alloc via playtaggedpatch
+  wrapper `FUN_004e2d74`, note-off → SNDrelease, F0/2F end-of-stream → drain. Boot/shutdown gates
+  `DAT_006325b0/b4/b8` (`FUN_0048e78c` RNG track pick / `FUN_0048e84c` drain).
+- **Seed refutation re-confirmed**: full decompiles of `0x42a140`/`0x4386d8` (DECOMPILE
+  `full_*.txt`) show THRASH renderer internals with zero callers — not stream loop / crowd mix.
+
+Open rows: the per-tick **ramp application** of {step,target,current} has no statically reachable
+consumer (exhaustive xref scan on `DAT_00659800/804/808` yields only the arm/setter/compose sites
+above; accumulation rides the SMIX serve pump / vtable[0x377] hook) — envelope setup is closed,
+application stays Open. HW3D `pos3d` quadrant (`FUN_005490f0`) documented, not ported. The
+vtable[0x377] per-voice serve hook and the 8a/93 streamer pointers stay EACSND-lane interfaces
+(the port's own `audio/src/mixer.cpp` decodes streams).

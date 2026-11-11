@@ -5,11 +5,13 @@
 // (*DAT_0066eeac)), FUN_005489c0 frequency clamp boundaries, the FUN_005492b0 centi-ratio
 // pitch table (DAT_00596144 = 2^(2^k/1200)) feeding ROUND + SetFrequency, and the TLV
 // sample-format parser of iSNDplatformPlay FUN_0052d290 (+ FUN_0052e160 sign-extend rows).
-// Dossier: analysis/pass17audio/{NOTES.md audio6-audio15,DECOMPILE2/} + pass18voice/.
+// Grammar: analysis/pass17audio/{NOTES.md audio6-audio15,DECOMPILE2/} + pass18voice/.
+// SND channel envelope rows (pass-18envelope): autovol ramp, vol-set, pan law, volume/pitch
+// compose, ADSR arm/release. Dossier: analysis/pass18envelope/{NOTES.md,DECOMPILE/}.
 #include "check.hpp"
 
 #include "wc98/audio/smix_voice.hpp"
-
+#include "wc98/audio/snd_channel.hpp"
 #include <cmath>
 #include <cstdint>
 #include <initializer_list>
@@ -247,7 +249,112 @@ int main() {
         Smix_startVoiceFromSample(v, block, sizeof(block), 0x7F);
         CHECK(v.active && v.rate == 44100);
     }
+    // ---- SND channel envelope rows (pass-18envelope) --------------------------------
+    {
+        // Record geometry: fanout loop end DAT_00659de8 = base + 16*0x60.
+        CHECK(kSndVoiceSlots * kSndVoiceStride == 0x600);
+        CHECK(kSndOffEnvPtr + 2 * sizeof(std::int32_t) <= kSndVoiceStride);
 
+        // SNDautovol gate row (cmn_sautovol.c line 0x61): target accepted [-1, 0x7f].
+        CHECK(Snd_autovolTargetOk(-1) && Snd_autovolTargetOk(0) && Snd_autovolTargetOk(0x7f));
+        CHECK(!Snd_autovolTargetOk(-2) && !Snd_autovolTargetOk(0x80));
+
+        // Ramp arm: target<<16, step = (target - current)/ticks with ticks >= 1 clamp.
+        for (int t = 0; t <= 0x7f; ++t) {
+            for (const int ticks : {1, 2, 3, 5, 64}) {
+                const auto arm = Snd_autovolRamp(t, 0, ticks);
+                CHECK(arm.targetQ16 == static_cast<std::int32_t>(t) << 16);
+                CHECK(arm.stepQ16 == (static_cast<std::int32_t>(t) << 16) / ticks);
+            }
+        }
+        // Negative current keeps C truncation-toward-zero semantics.
+        CHECK(Snd_autovolRamp(0, -0x10000, 8).stepQ16 == 0x2000);
+        // ticks clamped to 1 (exe `if (ticks < 1) ticks = 1`).
+        CHECK(Snd_autovolRamp(5, 0, 0).stepQ16 == 0x50000);
+        CHECK(Snd_autovolRamp(5, 0, -3).stepQ16 == 0x50000);
+
+        // SNDvol rows (cmn_svol.c line 0x92): range [0, 0x80), Q16 store.
+        CHECK(Snd_volSetOk(0) && Snd_volSetOk(0x7f));
+        CHECK(!Snd_volSetOk(-1) && !Snd_volSetOk(0x80));
+        for (int v = 0; v < 0x80; ++v) {
+            CHECK(Snd_volSetNewCurrent(v) == static_cast<std::int32_t>(v) << 16);
+            CHECK((Snd_volSetNewCurrent(v) >> 16) == v);   // equality-skip reads hi word
+        }
+    }
+
+    {
+        // Pan law (cmn_span.c line 0x65): mode==1 direct, scale/offset compose, clamp.
+        const SndPanLaw direct{1, 0x40, nullptr};
+        CHECK(Snd_panCompose(0x00, direct) == 0);           // lower clamp boundary
+        CHECK(Snd_panCompose(0x40, direct) == 0x40);        // center identity
+        CHECK(Snd_panCompose(0x7f, direct) == 0x7f);        // upper identity
+        const SndPanLaw scaled{2, 0x40, nullptr};
+        CHECK(Snd_panCompose(0x60, scaled) == 0x7f);        // 2*(0x20)+0x40 = 0x80 -> clamp
+        const SndPanLaw offZero{1, 0x00, nullptr};
+        CHECK(Snd_panCompose(0x7f, offZero) == 0x3f);       // unsigned byte offset row
+        const SndPanLaw under{0x55, 0x00, nullptr};
+        CHECK(Snd_panCompose(0x00, under) == 0);            // negative -> clamp 0
+        static const signed char kCurve[128] = {
+            0,   1,   2,   3,   4,   5,   6,   7,   8,   9,   10,  11,  12,  13,  14,  15,
+            16,  17,  18,  19,  20,  21,  22,  23,  24,  25,  26,  27,  28,  29,  30,  31,
+            32,  33,  34,  35,  36,  37,  38,  39,  40, -1,  42,  43,  44,  45,  46,  47,
+            48,  49,  50,  51,  52,  53,  54,  55,  56,  57,  58,  59,  60,  61,  62,  63,
+            64,  65,  66,  67,  68,  69,  70,  71,  72,  73,  74,  75,  76,  77,  78,  79,
+            80,  81,  82,  83,  84,  85,  86,  87,  88,  89,  90,  91,  92,  93,  94,  95,
+            96,  97,  98,  99,  100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111,
+            112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127};
+        const SndPanLaw curved{1, 0x40, kCurve};
+        CHECK(Snd_panCompose(0x2a, curved) == 42);          // identity entry row (idx 42)
+        CHECK(Snd_panCompose(0x29, curved) == -1);          // signed table value (idx 41)
+    }
+
+    {
+        // Volume compose (FUN_00544bd0): /127^3 normalization + curve override rows.
+        for (const int vol : {0, 1, 0x3f, 0x40, 0x7e, 0x7f})
+            CHECK(Snd_volCompose(127, vol << 16, 127, 127 << 16) == vol);
+        CHECK(Snd_volCompose(100, 60 << 16, 90, 50 << 16) == (100 * 60 * 90 * 50) / 0x1F417F);
+        static const signed char kTab[8] = {0x40, -40, 0, 0, 0, 0, 0, 0};
+        CHECK(Snd_volComposeCurve(kTab, 0, 127) == 64);     // (0x40*127)/0x7f
+        CHECK(Snd_volComposeCurve(kTab, 1, 127) == -40);    // signed curve row
+    }
+
+    {
+        // Pitch compose (FUN_00544b50): gate word, bend term >>6, pan-curve term.
+        SndPitchState p{0x1234, 0x40, 0, 0x40000, nullptr, nullptr, 0};
+        CHECK(Snd_pitchCompose(p) == 0x1234);               // gate word zero: passthrough
+        p.bendGate = 1;
+        CHECK(Snd_pitchCompose(p) == 0x1234);               // center bend 0x40: no term
+        p.bendByte = 0x7f;
+        CHECK(Snd_pitchCompose(p) == 0x1234 + ((0x3f * 4) >> 6));   // (pb-0x40)*hi>>6
+        p.bendByte = 0x00;
+        CHECK(Snd_pitchCompose(p) == 0x1234 - 4);           // (-0x40*4)>>6 = -4
+        static const signed char kBend[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+        p.bendCurve = kBend;                                // curve maps pb 0x00 -> kTab value
+        CHECK(Snd_pitchCompose(p) == 0x1234 - 4);           // curve[0]=0 -> same term
+        p.bendCurve = nullptr;
+        SndPitchState q{0x1234, 0x40, 0, 0x40000, nullptr, nullptr, 0};
+        static const signed char kPan[8] = {0x40, 0x00, 0, 0, 0, 0, 0, 0};
+        q.panCurve = kPan; q.curveIdx = 1;                  // panCurve[1]=0 -> -4 term
+        CHECK(Snd_pitchCompose(q) == 0x1234 - 4);           // independent of bend gate
+    }
+
+    {
+        // ADSR arm (FUN_0052e394 rows): time/value step math + malformed row.
+        const auto a = Snd_adsrArm({4, 0x40}, 0);
+        CHECK(a.timeTicks == 4 && a.stepQ16 == 0x100000 && !a.malformed); // (0x40<<16)/4
+        const auto neg = Snd_adsrArm({-8, 0}, 0x400000);
+        CHECK(neg.timeTicks == 0x7fffffff && neg.stepQ16 == 0);   // saturation + trunc
+        const auto bad = Snd_adsrArm({0, 0x20}, 0);
+        CHECK(bad.malformed && bad.stepQ16 == 0);                 // line 0x178 row
+
+        // Release re-arm (FUN_0052f020 rows): trig<0 stop, rising seg step math.
+        CHECK(Snd_adsrRelease(-1, 0, 1, {8, 0x3f}, 0x40 << 16).stopRequested);
+        CHECK(!Snd_adsrRelease(0, 3, 3, {8, 0x3f}, 0x40 << 16).advanced);
+        const auto r = Snd_adsrRelease(0, 2, 3, {8, 0x3f}, 0x40 << 16);
+        CHECK(r.advanced && r.timeTicks == 8 && r.stepQ16 == -0x2000); // (0x3F0000-0x400000)/8
+        const auto rb = Snd_adsrRelease(0, 0, 1, {0, 0x3f}, 0);
+        CHECK(rb.advanced && rb.malformed);                          // line 0x8c/0xae row
+    }
     std::printf("test_voice_layer: ALL CHECKS PASS\n");
     return 0;
 }

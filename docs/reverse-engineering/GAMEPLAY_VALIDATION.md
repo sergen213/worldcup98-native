@@ -84,6 +84,18 @@ anchor cited in STATUS.md: file `0x38440` == VA `0x439040`); data delta `VA - 0x
   `0x4b2c0a/0x4b2c2f`, `0x2710` at `0x4b2e50/0x4b2e75`; plus record-offset immediates
   (`0xb48..0xbb0`). These are handed to slice S1 for semantic mapping against the port's collision /
   kick-application model (D-13/D-14).
+- **Runtime table provenance closed at measured VAs (pass-15, `analysis/pass15ball/TABLES.md`):** trig
+  sin quarter-wave == exe rows at `DAT_00585898`, atan octant byte table == `DAT_00594CAC`; ball tables
+  kRestitution/kBounceRetain/kRollFriction/kLobInit/kMaxKickSpeed/kSqrtSlope/kSqrtBase/kAtan16/kIsqrt ==
+  exe rows at `0x581bd8/0x581c00/0x581c28/0x58ad8c/0x59490c/0x591490/0x591514/0x58ec6c/0x593d88`,
+  zero mismatches. The FIFA-99-era cites in the `.inc` files (`0x582EB4`, `0x59F104`, …) point at a zeros
+  region and a float table — every cite corrected to the measured VA; gates `test_trig_tables`,
+  `test_ball_tables`.
+- **Closed-form flight constants proven absent:** 13 of 18 `kFlightConst` rows (incl. gravity `-0x2f5c00`)
+  occur zero times in the image, and slot `DAT_005913e8` has no ball-band consumer (only odd-address FE
+  branch-target xrefs); `kFlightData[626]` absent as a contiguous array. The pool slots with real ball
+  consumers are the sqrt pair `0x591490/0x591514` and kick-power builder `FUN_004f1e50@0x4f1ee3` — map in
+  `analysis/pass15ball2/TABLES.md`. Register rows D-47..D-54 carry this; D-49 is the open correction.
 
 
 ## 4. Tolerance policy (objective §13)
@@ -107,6 +119,10 @@ table stride, per-tick integration quantum), never a percentage chosen to make t
 | D-01 | `input.cpp:352` predicate uses FIFA-99-only `kActionQueueable`; WC98 single-table shape measured above | pending | `test_input` + new queue step | — |
 | D-10..D-16 (ball) | self-test physics/shooting rows above; BounceRoll/NetRest/spin gates green on FIFA-99-shaped model | pending per constant map | named ball gates | — |
 | D-27 (set pieces) | SetPieces/PenaltyKick/scenarioKickoffPlacement green on FIFA-99 phase body | pending case-map | per-restart placement gates | — |
+| D-47/D-48 | `.inc` cites were FIFA-99 addresses; runtime rows unproven at any WC98 VA | trig + 9 ball tables byte-exact at measured VAs (list in §3.1); cites rewritten | `test_trig_tables`, `test_ball_tables` | **Fixed** — parity rows 21/22 PV |
+| D-49 | closed-form kick/flight solvers use FIFA-99 constants (13/18 `kFlightConst` rows, all of `kFlightData`) | constants absent from image; consumer map built (`pass15ball2/TABLES.md`) | after fix: `self_test_gameplay` kick/lob + new scenario | **Open** — correction pending re-derivation from `FUN_004f1e50`/sqrt-pair consumers |
+| D-50 | dribble cadence claims (`& 7`, `* 0x5000`) asserted in dossier | `FUN_004f3590` = multiply helper; claims REFUTED, WC98 touch gate not located | after locating: `scenarioDribbleCadence` | **Open** — no divergence claim retained; xref lane on `B+0xE0C` writers |
+| D-51 | net reflect/damp claimed Critical/High numeric defects | raw dumps match port exactly (`ball.cpp:195-209`, `275-294`) | existing `scenarioNetRest`, `scenarioSpinNetSurface` | **Non-defect** — claims withdrawn, no code change |
 
 ## 6. What this pass will never claim
 

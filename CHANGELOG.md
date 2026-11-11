@@ -7,6 +7,14 @@ project goals.
 
 ## [Unreleased]
 ### Added
+- Ball/trig table provenance gate pair (pass-15): `tests/unit/test_trig_tables.cpp` asserts the port's
+  sin-quarter and atan-octant rows are **byte-exact** against FIFAWC.EXE at measured VAs
+  `DAT_00585898`/`DAT_00594CAC` (+ quadrant-boundary exactness), and `tests/unit/test_ball_tables.cpp`
+  asserts the nine runtime ball tables byte-exact at their measured VAs (`0x581bd8`, `0x581c00`,
+  `0x581c28`, `0x58ad8c`, `0x59490c`, `0x591490`, `0x591514`, `0x58ec6c`, `0x593d88`), flight-set row
+  presence, and the **absence** of the 13 FIFA-99-derived closed-form `kFlightConst` rows (solver-constant
+  gap, register D-49). All stale FIFA-99 cite addresses in `trig_tables.inc`/`ball_tables.inc`/`fixed.hpp`
+  corrected to measured WC98 VAs; parity registry rows 21/22 -> PV.
 - Gap-B stop-distance gate: `self_test_gameplay` step 13 (`app/selftest.cpp`) - sprint-chase
   release on a controlled carrier, then per-tick v(t) exact-match against an independent replica of
   `Motion_rootMotionPre` + root-ladder cap chain (speedCap -> sprintMax/runMax-mB0 -> turn-class

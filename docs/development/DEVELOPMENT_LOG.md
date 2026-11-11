@@ -277,3 +277,27 @@ see analysis/patches/PENDING.md).
   DAT_0060133c/0060143c) -> resmemalloc registration per file; descriptor array = {nameptr,id,sentinel,idx};
   .SCI header model: u32 recordCount@+0, payload base @ +0x08hi (GENGOL c9 / GEN4SO 15f verified),
   record table @0x40 stride 16B {type,size,flags,next-offset}. Interpreter opcode-semantics loop = remaining open lane.
+
+## 2026-11-10 — pass-15forensic: table provenance closed at measured WC98 VAs; dossier claims audited
+- Byte-lane discipline established (data delta `VA - 0x401a00`, `.text` delta `VA - 0x400c00`) and the
+  second-pass discrepancy register started: `docs/reverse-engineering/GAMEPLAY_DISCREPANCIES.md` D-01..D-54,
+  validation lanes in `GAMEPLAY_VALIDATION.md` (Wine in-match capture remains blocked; no live-original
+  claims).
+- **Provenance closed:** trig sin-quarter == exe rows at `DAT_00585898`, atan octant == `DAT_00594CAC`;
+  nine runtime ball tables byte-exact at measured VAs (`0x581bd8` restitution, `0x581c00` bounce-retain,
+  `0x581c28` roll-friction, `0x58ad8c` lob-init, `0x59490c` max-kick-speed, `0x591490/0x591514` sqrt pair,
+  `0x58ec6c` atan16, `0x593d88` isqrt). Every stale FIFA-99 cite in the `.inc` files rewritten to the
+  measured VA (the claimed `0x582EB4` is a zeros region; `0x59F104` a float table). Gates:
+  `test_trig_tables`, `test_ball_tables`; parity registry rows 21/22 -> PV.
+- **High-value gap recorded (D-49):** 13 of 18 closed-form `kFlightConst` rows — incl. gravity `-0x2f5c00`
+  and drag `-0x178b53b9` — occur zero times in the image, `kFlightData[626]` is absent, and slot
+  `DAT_005913e8` has no ball-band consumer (only odd-address FE branch-target xrefs). The port's per-tick
+  integration constants are verified WC98 values; its closed-form kick/flight solvers are FIFA-99-derived.
+  Consumer map: `analysis/pass15ball2/TABLES.md` (sqrt pair consumed by `FUN_004b2f80`@`0x4b30da`,
+  net-reflect trio, collideStep `0x4c05ce/0x4c05fd`; kick-power builder `FUN_004f1e50@0x4f1ee3`).
+- **Claims refuted against the raw dumps** (dossier record corrected in `analysis/pass15ball/INVESTIGATION.md`):
+  net-reflect "Critical" and net-damp "High" defects — the exe implements exactly the port's
+  vector-reflect (`ball.cpp:195-209`) and per-case `-fx(v,0x4000)` damp (`ball.cpp:275-294`); dribble
+  cadence claims (`(possessionTime & 7)`, `* 0x5000`) — `FUN_004f3590` is a 74-byte multiply/offset helper,
+  WC98 touch gate not yet located (next lane: xrefs of ball-slot `B+0xE0C` writers); `kMaxKickSpeed`
+  "absent" — present at `0x59490c` with a real consumer.

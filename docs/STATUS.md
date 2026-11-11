@@ -142,6 +142,11 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
 
 
 ## Progress snapshot (2026-11-06, v0.3.0 released)
+- Second-pass forensic audit in progress (pass-15, 2026-11-10): discrepancy register + validation doc
+  landed (`GAMEPLAY_DISCREPANCIES.md` D-01..D-54, `GAMEPLAY_VALIDATION.md`); trig + nine runtime ball
+  tables proven byte-exact at **measured WC98 VAs** and gated by new `test_trig_tables` /
+  `test_ball_tables`; stale FIFA-99 cites corrected; closed-form kick/flight constants recorded as
+  FIFA-99-derived (register D-49, open); net-contact "Critical" claims refuted against the raw dumps.
 - Release: tag `v0.3.0` + GitHub release (AppImage + `.sha256`/`.version` sidecars): playable live match,
   authentic FE fonts/language knob, FEFLOW11 team-select grid, measured percent-table scene defaults;
   game smoke exit 0 under Xvfb, launcher offscreen self-test pass, `update.sh --check` -> "up to date";

@@ -8,6 +8,19 @@ project goals.
 ## [Unreleased]
 ### Added
 
+- **Pass-17 S5 — snap band, anim-rate closure, FE pad gate**: WC98 `FUN_004F5000` decoded as
+  setPosAndTarget and installed as `Motion_setPosAndTarget` (pos store + `setTarget(pos)` insertion +
+  atan2(ball) facing pair + dir8 quantize + zeroing block; gate `scenarioSetPosAndTarget`) — the band
+  0x4f4exx contains no target-less snap, so `Motion_snapTo` is documented FIFA-99-derived (D-06 residual).
+  D-09 closed: the FIFA-99 anim-rate switch `{e666,f777,10888,11999}` is removed from
+  `Player_setSpeedScale` — f777/11999 have zero occurrences in the image; the `DAT_00581bd8..0x581c4f`
+  ladder is FE config (single ref @VA 0x4b16b7, `FUN_004b1690`); gate byte pin + scans in
+  `test_motion_tables`. D-61 closed (docs): u16 gait/turn grids are runtime-built by `FUN_004FC2C0`,
+  byte-exactness = pre-fill only. D-72 closed measured: self-test step `fe-nav` drives the headless FE
+  shell with scripted pad words (hub cycle → FEFLOW07 open/back). Anchors refuted: `DAT_00580200` is a
+  character-class table at text-edit sites (D-02), `FUN_005108b0` is an FE keyboard-combo gate (D-08);
+  D-07 heading-slot consumer enumeration landed. Suite 119/119, self-test 15/15.
+
 - **Closed-form flight/solve rebuilt on WC98 grammar (pass-16kick, D-49)**: the FIFA-99 log/exp
   decomposition is deleted; `flight.cpp` now uses the decoded WC98 math band (fx dot / EA fast-norm
   over `DAT_00591490/0x591514` / cross-pair / rotate2d) with the solver pool `DAT_005913e8..0x59143c`

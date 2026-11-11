@@ -10,9 +10,11 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <format>
 #include <fstream>
 #include <string>
 #include <vector>
+#include <string_view>
 
 #include "wc98/config/settings.hpp" // Action enum + actionBit (the live loop's pad-word model)
 #include "wc98/input/input.hpp"

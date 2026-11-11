@@ -118,3 +118,31 @@ LoadLibraryA/GetProcAddress), `DAT_005e6020` = clip-rect bound float (31 hits, a
 rasterizers), 0x42a140 "streamerloop" = drawline endpoint interpolation. Cited VAs `musicsetup 0x42b780`
 and `volenvelope 0x439c70` have no function, zero refs, and zero exec byte-scan hits;
 `FUN_00409cac` is a scene-boot init dispatcher (disp32 count 0), not an audio device installer.
+
+## Driver layer: `win\sdriver.c` iSND* dispatch + `mix\smixer.c` SMIX (pass-17audio)
+
+The exe implements the EA `iSND*` sound API itself and binds two backends (evidence
+`analysis/pass17audio/{NOTES.md,DECOMPILE2/}`):
+
+- **Loader** `FUN_0052c948`: `LoadLibraryA("eacsnd.dll")`, version gate `== 0x80000`, binds slots
+  `DAT_00659e6c=caps, 70=start, 74=stop, 78=serve, 7c=create3dbuf, 80=removebuf, 84=play3d,
+  88=pos3d, 8c=vol, 90=rate, 94=stopbuf` (stdcall exports `_iSNDdirect*@N`, shipped `EACSND.DLL`/
+  `EACSNDD.DLL` export exactly these 13 + `dllversion`). The 7 pointers handed to
+  `_iSNDdirectsetfunctions@28` are exe trampolines (`FUN_0052c830→FUN_0052bf94`,
+  `0x52c854→FUN_00548ec4`, `0x52c8ec→*DAT_006597c0=&LAB_0052ba50`): the DLL receives all OS/DirectSound
+  services from the exe, so a native backend can satisfy the same contract in C++.
+- **iSND dispatch** keys on the voice type byte (`DAT_00659e9d + slot*0x10`: {0/1/2 = DirectSound 2D,
+  3 = HW3D slots}): `FUN_0052daac` pan (pos3d slot / 2D `FUN_00548a58`), `FUN_0052ddbc` stop (stopbuf
+  slot + release `FUN_0052bf94` / `FUN_00548960`), `FUN_0052df68` pitchbend (`FUN_004973b0` float scale →
+  rate slot / `FUN_005489c0`, which clamps the value to **0x80000** and calls the buffer-object vtable),
+  `FUN_0052d290` = iSNDplatformPlay: TLV sample-format parser (tags `0x81` rate, `0x82`, `0x84` waveformat
+  magic, `0x8a` data ptr, `0x93`, `0xfc` escape, end `0xff/0xfe`; rate tags {8000, 11025(0x2b11), 16000,
+  22050(0x5622), 32000, 44100(0xac44)}). Errors carry `win\sdriver.c` line ids (0x477/0x67e/0x6fe/0x75d).
+- **SMIX** (`FUN_00548098` init, `mix\smixer.c`): installs the serve pump into `DAT_0066eeac`, zeroes
+  **16 voice slots (stride 0xDE4)** + two 512-byte scratch buffers; per-format decode starters live in a
+  static fnptr band `PTR_LAB_005954a8..e4` (`FUN_0054cce0` mono-PCM starter installs decode loop
+  `FUN_0054ccfe`; `FUN_0054d460` ADPCM-family starter installs `{fill FUN_0054d4a0, decode FUN_0054d4b5,
+  seek FUN_0054d4fb}`; header templates @0x54DE30/EB0/F30/FB0); `FUN_005483bc` = iSNDmixstart format
+  classifier (param bits {1,2,4,8} × EBX {0,4,7,8,9}, rate threshold `< 0x1a`, line ids 399/0x1a8/0x1ca).
+  The codec loops mirror the MicroTalk/EA-XA decoders already ported in `formats/` (PhraseBank lane);
+  a native SMIX needs only the ctx/starter scaffolding plus decoder reuse.

@@ -236,7 +236,9 @@ Fixed stadiumWall(const Vec3& prev, const Vec3& pos, Vec3* n) {
     return -1;
 }
 
-// 0x482004 / 0x4820F8: post (x/z plane) and crossbar (y/z plane) bounce.
+// WC98 post (x/z plane) FUN_004bf660 / crossbar (y/z plane) FUN_004bf760.
+// FUN_004bf660 (WC98 post bounce; pass-16 line-by-line vs decompile dossier): atan2 mirror,
+// sqrt(vx^2+vz^2)*0x8000 damping, tvel.y*0x8000.
 void postBounce(BallState& b, Fixed nx, Fixed nz) {
     const std::int32_t a = Math_atan2_16(nx, nz) * 2 - Math_atan2_16(b.tprev.x - b.tpos.x, b.tprev.z - b.tpos.z);
     Fixed s, c;
@@ -247,7 +249,7 @@ void postBounce(BallState& b, Fixed nx, Fixed nz) {
     b.tvel.z = fx(h, c);
 }
 
-void barBounce(BallState& b, Fixed ny, Fixed nz) { // Ball_bounceCrossbar 0x4820F8
+void barBounce(BallState& b, Fixed ny, Fixed nz) { // FUN_004bf760 (WC98; atan2 mirror y/z plane, sqrt*0x8000, tvel.x*0xc000)
     const std::int32_t a = Math_atan2_16(ny, nz) * 2 - Math_atan2_16(b.tprev.y - b.tpos.y, b.tprev.z - b.tpos.z);
     Fixed s, c;
     Math_sinCos16(a, &s, &c);
@@ -272,6 +274,8 @@ void Ball_markGoal(World& w, BallEntry& e) { // 0x483228
 }
 
 // 0x483C34: damp the velocity component pointing out of the net the ball rests in.
+// FUN_004c12e0 (WC98 netDamp): switch on netCase {1 roof, 2/3 side-net, 4 back}; gates vs absX/net[2]
+// bands; damp = -fx(v,0x4000) when velocity sign == tpos sign. Pass-16 verified row-for-row.
 void netDamp(World& w) {
     BallState& b = w.ball;
     const Goal g(w);
@@ -308,7 +312,7 @@ void sideNetZ(World& w, Fixed pz) {
     else b.netPos.z += fx(b.tvel.z, 0x78000);
 }
 
-void Ball_resolveCollision(World& w, BallEntry& e, int kind, const Vec3& p) { // 0x4832EC
+void Ball_resolveCollision(World& w, BallEntry& e, int kind, const Vec3& p) { // FUN_004c09a0 (WC98 switch 1..10; post/bar helpers FUN_004bf660/0x4bf760; wall clamp ±0x50000 under flag 0x40; netCase stores +0xb60, contactMode/timer rows 1/0x3c — pass-16 verified)
     BallState& b = w.ball;
     const Goal g(w);
     switch (kind) {
@@ -422,7 +426,7 @@ void Ball_resolveCollision(World& w, BallEntry& e, int kind, const Vec3& p) { //
     }
 }
 
-void Ball_collideGoalMouth(World& w, BallEntry& e, Fixed* best, int* kind) { // 0x483EF0
+void Ball_collideGoalMouth(World& w, BallEntry& e, Fixed* best, int* kind) { // FUN_004c159c (WC98; geometry predicates netBack=FUN_004bf9e0, netSide=FUN_004bfb40, netRoof=FUN_004bfcc0, crossing=FUN_004bfdd0 + FUN_004c08d0 — pass-16 verified)
     BallState& b = w.ball;
     const Goal g(w);
     if (b.net[2] <= b.absZ) {
@@ -461,7 +465,7 @@ void heightMarker(BallState& b, BallEntry& e, Fixed y, std::uint32_t flag, std::
     }
 }
 
-void Ball_collideStep(World& w, BallEntry& e) { // 0x48407C
+void Ball_collideStep(World& w, BallEntry& e) { // FUN_004c0150 net-rest tail (WC98; retest switch, roof lane 0x4ccc/0x30000..0x50000/0x3333, reflect helper FUN_004bf490, rng-trig exit — pass-16 verified)
     BallState& b = w.ball;
     const Goal g(w);
     int kind = 0;
@@ -661,7 +665,7 @@ void netContact(World& w) {
             const Vec3 n{0, sc.c, sc.s};
             const Fixed avy = iabs(v.y);
             if (avy < 0x147) {
-                v = {0, 0x2f5c, 0};
+                v = {0, 0x2468, 0}; // WC98 mov [ball+0xb9c],0x2468 @VA 0x4bfaf8 (was FIFA-99 0x2f5c)
             } else if (avy < 0x20000) {
                 reflect(b, n, 0xfae1);
             } else if (v.y < 0) {
@@ -811,7 +815,7 @@ void possessionMarks(World& w, int pid) {
 // 0x482AB0): tests/unit/test_sim_scenarios.cpp scenarioSpinNetSurface drives the net-surface
 // case table directly; behavior of the helpers themselves is untouched.
 void Test_ballResolveCollision(World& w, BallEntry& e, int kind, const Vec3& p) {
-    Ball_resolveCollision(w, e, kind, p); // 0x4832EC
+    Ball_resolveCollision(w, e, kind, p); // FUN_004c09a0 (WC98)
 }
 void Test_netContact(World& w) { netContact(w); } // 0x482AB0
 
@@ -988,9 +992,9 @@ void Ball_integrateTrajectory(World& w, int n) {
                     v.x = v.z = 0;
             }
         } else { // airborne
-            v.x -= fx(0xeb, v.x);
-            v.y -= fx(0xeb, v.y);
-            v.z -= fx(0xeb, v.z);
+            v.x -= fx(0xcb, v.x); // drag rows measured in FUN_004b2a40 companion lane (WC98; was FIFA-99 0xeb)
+            v.y -= fx(0xcb, v.y);
+            v.z -= fx(0xcb, v.z);
             if (b.tspin) {
                 if (w.opt.funModes & 4) {
                     v.x += fx(fx(b.tspin, v.z), 0x4e200);
@@ -1002,7 +1006,7 @@ void Ball_integrateTrajectory(World& w, int n) {
                 }
                 b.tspin = fx(b.tspin, 0xf9db);
             }
-            v.y -= 0x2f5c;
+            v.y -= 0x2468; // WC98 gravity row (FUN_004b2a40 companion -0x2468 + collidestep bounce pair; was FIFA-99 0x2f5c)
         }
         // first velocity reversal stamps (x then z)
         if ((old.x > 0 && v.x <= 0) || (old.x < 0 && v.x >= 0)) b.stamp[0] = static_cast<std::int16_t>(b.step);

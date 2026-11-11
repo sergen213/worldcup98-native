@@ -437,6 +437,7 @@ void Team_attackAi_4D2A44(World& w, int team) {
     std::int32_t ds = 0, ms = 0;
     for (int i = 0; i < T.playerCount && (nd < 2 || nm < 2); ++i) {
         const int pid = T.players[i];
+        if (pid < 0) continue; // empty roster slot
         const PlayerState& p = w.players[pid];
         if (p.state != 4 || injured(w, pid) || (p.flags22c & 0x6000)) continue;
         if (p.role == 2 || p.curSlot == 1) {
@@ -491,7 +492,9 @@ void Team_attackAi_4D2A44(World& w, int team) {
     for (int pass = 0; pass < 2; ++pass) {
         const std::int32_t* tab = pass == 0 ? kMarkSlot1 : kMarkSlot2;
         for (int i = 0; i < T.playerCount; ++i) {
-            PlayerState& p = w.players[T.players[i]];
+            const int qT = T.players[i];
+            if (qT < 0) continue; // empty roster slot
+            PlayerState& p = w.players[qT];
             if (pass == 0) p.f254 = 0;
             if (p.state != 4 || (pass == 1 && p.f254 != 0)) continue;
             bool ok;
@@ -536,6 +539,7 @@ void Team_attackAi_4D2F24(World& w, int team) {
     }
     for (int i = 0; i < T.playerCount; ++i) {
         const int pid = T.players[i];
+        if (pid < 0) continue; // empty roster slot
         PlayerState& p = w.players[pid];
         p.curSlot = p.slotCopy = p.slot;
         p.role = p.baseRole;
@@ -561,6 +565,7 @@ void Team_attackAi_4D2F24(World& w, int team) {
     if (w.match.phase == 9) {
         for (int i = 0; i < T.playerCount; ++i) {
             const int pid = T.players[i];
+            if (pid < 0) continue; // empty roster slot
             PlayerState& p = w.players[pid];
             if (p.role == 4) continue;
             if (p.ctrl == 0) {
@@ -588,7 +593,9 @@ void Team_attackAi_4D2F24(World& w, int team) {
         std::int32_t A[17];
         for (std::int32_t& a : A) a = -1;
         for (int i = 0; i < T.playerCount; ++i) {
-            const PlayerState& p = w.players[T.players[i]];
+            const int qT = T.players[i];
+            if (qT < 0) continue; // empty roster slot
+const PlayerState& p = w.players[qT];
             if (!(p.flags22c & 0x800) && (p.curSlot == 1 || p.role == 2 || p.role == 3)) A[p.curSlot] = i;
         }
         if (edi > 0 && edi < defN) {
@@ -618,6 +625,7 @@ void Team_attackAi_4D35AC(World& w, int team) {
     const std::int32_t hi = s1 ? bz + 0x60 : bz - 0x60, lo = s1 ? bz - 0x30 : bz + 0x30;
     for (int i = 0; i < T.playerCount; ++i) {
         const int pid = T.players[i];
+        if (pid < 0) continue; // empty roster slot
         const PlayerState& p = w.players[pid];
         if (p.slot == 0 || (p.flags22c & 1) || injured(w, pid)) continue;
         const std::int32_t z = p.posI.z;
@@ -641,6 +649,7 @@ void Team_defendAi_4D39E4(World& w, int team) {
     const std::int32_t fr = w.time.simFrames;
     for (int i = 0; i < T.playerCount; ++i) {
         const int pid = T.players[i];
+        if (pid < 0) continue; // empty roster slot
         PlayerState& p = w.players[pid];
         if (p.f258 > 0) p.f258 -= fr;
         p.flags22c &= ~2u;
@@ -704,7 +713,7 @@ void Team_defendAi_4D39E4(World& w, int team) {
         }
         if (w.players[T.f1e8].markTarget == 0) Team_mark(w, T.f1e8, T.f1ec);
     }
-    for (int i = 0; i < T.playerCount; ++i) w.players[T.players[i]].flags22c &= ~2u;
+    for (int i = 0; i < T.playerCount; ++i) { const int qT = T.players[i]; if (qT < 0) continue; w.players[qT].flags22c &= ~2u; }
 }
 
 // 0x4DA3C4: team+0x378 mode machine (jump table 0x4DA3B4): 1 offside trap, 2/3 wait for a dead
@@ -739,6 +748,7 @@ void Team_ai_4DA3C4(World& w, int team) {
         std::int32_t n = T.w37c[2];
         for (int i = 0; i < T.playerCount; ++i) {
             const int pid = T.players[i];
+            if (pid < 0) continue; // empty roster slot
             const PlayerState& p = w.players[pid];
             if ((p.flags22c & 0x200000) || p.ctrl != 0 || p.slot == 0) continue;
             if (T.side == 1 ? p.posI.z < line : p.posI.z > line) continue;

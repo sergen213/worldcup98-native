@@ -96,6 +96,7 @@ int nearestTo(const World& w, const Vec3& pos, int t, int excl, Skip skip) {
     std::uint32_t bestD = 0x7fff8000u;
     for (int i = 0; i < T.playerCount; ++i) {
         const int q = T.players[i];
+        if (q < 0) continue; // empty roster slot
         const PlayerState& o = P(w, q);
         if ((o.flags22c & 2) || excl == o.curSlot || (o.flags22c & 1) || skip(q, o)) continue;
         const auto d = static_cast<std::uint32_t>(octLength(pos.x - o.posI.x, pos.z - o.posI.z));
@@ -778,6 +779,7 @@ int Team_bestFacing_452100(const World& w, int team, int excl) {
     std::uint32_t bestS = 0x80000000u;
     for (int i = 0; i < T.playerCount; ++i) {
         const int q = T.players[i];
+        if (q < 0) continue; // empty roster slot
         const PlayerState& o = P(w, q);
         if ((o.flags22c & 2) || excl == o.curSlot || (o.flags22c & 1) || o.ctrl != 0 || o.slot == 0) continue;
         const auto s = static_cast<std::uint32_t>(o.distBall * kW[absDiff(o.angleBall - a) >> 4]);
@@ -813,6 +815,7 @@ int Team_nearestToBall_4522FC(const World& w, int team, int skipSlot) {
     std::uint32_t bestD = 0x7fff8000u;
     for (int i = 0; i < T.playerCount; ++i) {
         const int q = T.players[i];
+        if (q < 0) continue; // empty roster slot
         const PlayerState& o = P(w, q);
         if ((o.flags22c & 2) || o.curSlot == skipSlot || (o.flags22c & 1)) continue;
         if (static_cast<std::uint32_t>(o.distBall) < bestD) {
@@ -862,8 +865,11 @@ void Player_assignControlToReceiver(World& w, int pid, int except) {
 // 0x45299C: the team's goalkeeper (slot 0), -1 none (0x4D03A4 is called for its result only).
 int Team_findKeeper(const World& w, int team) {
     const TeamState& T = w.teams[static_cast<std::size_t>(team)];
-    for (int i = 0; i < T.playerCount; ++i)
-        if (P(w, T.players[i]).slot == 0) return T.players[i];
+    for (int i = 0; i < T.playerCount; ++i) {
+        const int qT = T.players[i];
+        if (qT < 0) continue; // empty roster slot
+        if (P(w, qT).slot == 0) return qT;
+    }
     return -1;
 }
 

@@ -1079,8 +1079,11 @@ int Anim_yawAt(const World& w, int animId, int sel) { // 0x4CD998
     return wrap200(y + rec.angle);
 }
 
-Fixed Anim_rootHeight(World& w, int pid) { return rootY(w, I(w, C(w, pid).inst)); }
-Vec3 Anim_ballBonePos(World& w, int pid) { return cachedBone(w, I(w, C(w, pid).inst), 0x10000); }
+// inst==0 (no anim instance allocated) has no root motion / no bone cache: the exe lanes run
+// only for a live instance; guarded so debug builds trap nothing where release read adjacent
+// fields through ref-1 = -1. Height 0 keeps pos.y on the ground in Motion_rootMotionStep.
+Fixed Anim_rootHeight(World& w, int pid) { const int r = C(w, pid).inst; if (r <= 0) return 0; return rootY(w, I(w, r)); }
+Vec3 Anim_ballBonePos(World& w, int pid) { const int r = C(w, pid).inst; if (r <= 0) return {}; return cachedBone(w, I(w, r), 0x10000); }
 
 // 0x4CD00C (EAX = ctl player+0x64, EDX = M, EBX = position warped this frame, ECX = force placement):
 // re-place the anim instance on the movement object (angle, root) and step the head yaw / pitch

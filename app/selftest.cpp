@@ -508,7 +508,6 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                 w.pl.current = q;
                 sim::Player_executeKick(w, q, 4, w.ball.posI.y); // shot plan: canonical strike clip + natural contact frame
                 const int kanim = int(w.players[std::size_t(q)].kick.animId);
-                const int kframe = int(w.players[std::size_t(q)].kick.contactFrame);
                 sim::Kick_arm(w, q); // FUN_004D0BB4: Anim_start(strike clip) = action-clip selection tick
                 seamLane = true;
                 for (int i = 0; i < 260 && runner.tick(); ++i) { // strike clip select -> contact-frame release seam + flight

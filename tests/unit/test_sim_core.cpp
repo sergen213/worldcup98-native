@@ -16,7 +16,7 @@ int main() {
     CHECK(fx(1, 0x7fff) == 0);
     CHECK(fx(-1, 0x8000) == 0);      // -0.5 ulp rounds up to 0
     CHECK(fx(-1, 0x8001) == -1);
-    CHECK(fx(0x2f5c0, 0xeb) == 0x2b8); // gravity-sized value times drag
+    CHECK(fx(0x2468, 0xcb) == 0x1d); // WC98 gravity value times drag row
     CHECK(fxt(-1, 0x8000) == -1);    // truncating variant floors
     CHECK(fdiv(0x10000, 0x30000) == 0x5555);
     CHECK(fdiv(-0x10000, 0x30000) == -0x5555); // idiv truncates toward zero

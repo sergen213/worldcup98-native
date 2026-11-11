@@ -198,7 +198,9 @@ int pickOnPitch(const World& w, int t, std::int32_t mask, const std::int32_t* us
     const TeamState& T = w.teams[t];
     int list[kPlayersPerTeam], n = 0;
     for (int i = 0; i < T.playerCount; ++i) {
-        const PlayerState& p = w.players[T.players[i]];
+        const int qT = T.players[i];
+        if (qT < 0) continue; // empty roster slot
+const PlayerState& p = w.players[qT];
         if (used[p.index] == 0 && (static_cast<u32>(mask) & (1u << (p.f004 & 0x1f)))) list[n++] = i;
     }
     if (n == 0) return 0xff;
@@ -420,7 +422,9 @@ void Squad_applyLineup_49F140(World& w, int t) {
                 if (get16(e, 4) == x) set16(e, 4, y);
                 else if (get16(e, 4) == y) set16(e, 4, x);
             }
-        if (w.players[T.players[i]].slot == 0) dropTaker(w, t, S[i]);
+        const int qT = T.players[i];
+        if (qT < 0) continue; // empty roster slot
+        if (w.players[qT].slot == 0) dropTaker(w, t, S[i]);
         if (w.players[T.players[j]].slot == 0) dropTaker(w, t, S[j]);
     }
     for (int i = 0; i < n; ++i) {
@@ -568,7 +572,9 @@ static int aiPickTired(World& w, int t, int* mode) {
     std::int32_t fit[kPlayersPerTeam];
     std::int32_t sum = 0;
     for (int i = 0; i < n; ++i) {
-        const PlayerAttr& a = w.attrs[w.players[T.players[i]].attr];
+        const int qT = T.players[i];
+        if (qT < 0) continue; // empty roster slot
+        const PlayerAttr& a = w.attrs[w.players[qT].attr];
         std::int32_t f = 0;
         for (int off = 0x2f; off <= 0x35; ++off) f += a.at(off);
         for (int off = 0x37; off <= 0x3a; ++off) f += a.at(off);
@@ -582,7 +588,9 @@ static int aiPickTired(World& w, int t, int* mode) {
     int list[3 * kPlayersPerTeam], cnt = 0;
     for (int i = 0; i < n; ++i) {
         if (!(avg > fit[i])) continue;
-        const PlayerState& p = w.players[T.players[i]];
+        const int qT = T.players[i];
+        if (qT < 0) continue; // empty roster slot
+const PlayerState& p = w.players[qT];
         if (p.slot == 0) continue;
         if (*mode == 1) {
             if (p.role == 2 || p.curSlot == 1) list[cnt++] = i;
@@ -616,7 +624,9 @@ void Team_aiSubstitutions_453E58(World& w) {
     int pid = aiPickTired(w, static_cast<int>(t), &mode);
     if (pid < 0 && static_cast<u32>(T.w360[4]) > 0 && static_cast<u32>(Squad_subsLeft_49ED4C(w, t)) > 0) {
         for (int i = 0; i < T.playerCount; ++i) {
-            if (w.attrs[w.players[T.players[i]].attr].at(0x40) & 1) {
+            const int qT = T.players[i];
+            if (qT < 0) continue; // empty roster slot
+            if (w.attrs[w.players[qT].attr].at(0x40) & 1) {
                 pid = T.players[i];
                 mode = 0;
                 break;
@@ -703,7 +713,9 @@ void Team_assignPositions_49EB10(World& w, int t) {
         if (!e[0]) continue;
         const int tag = get16(e, 4);
         for (int i = 0; i < T.playerCount; ++i) {
-            PlayerState& p = w.players[T.players[i]];
+            const int qT = T.players[i];
+            if (qT < 0) continue; // empty roster slot
+            PlayerState& p = w.players[qT];
             if (p.dbPlayer == tag) { // 0x65EF60[t*0x4D + tag] == player+0x24
                 p.f004 = s;
                 break;

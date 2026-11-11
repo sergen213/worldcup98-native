@@ -26,8 +26,11 @@ int teamAttackingZ(const World& w, std::int32_t z) {
 // FUN_0045299C(EAX = team): first player of the team list with slot 0.
 int findKeeper(World& w, int t) {
     const TeamState& T = w.teams[t];
-    for (int i = 0; i < T.playerCount; ++i)
-        if (w.players[T.players[i]].slot == 0) return T.players[i];
+    for (int i = 0; i < T.playerCount; ++i) {
+        const int qT = T.players[i];
+        if (qT < 0) continue; // empty roster slot
+        if (w.players[qT].slot == 0) return qT;
+    }
     if (w.opt.gameMode != 1) (void)Team_tooFewPlayers(w, t);
     return -1;
 }
@@ -38,7 +41,9 @@ int nearestPlayer(const World& w, const Vec3& pos, int t, int excl, std::int32_t
     u32 best = 0x7fff8000;
     int found = -1;
     for (int i = 0; i < T.playerCount; ++i) {
-        const PlayerState& p = w.players[T.players[i]];
+        const int qT = T.players[i];
+        if (qT < 0) continue; // empty roster slot
+const PlayerState& p = w.players[qT];
         if (p.flags22c & 2) continue;
         if (p.curSlot == excl) continue;
         if (p.flags22c & 1) continue;
@@ -190,7 +195,9 @@ void buildKickOrder(World& w, int t) {
     }
     int keeper = 0xff;
     for (int i = 0; i < T.playerCount; ++i) {
-        const PlayerState& p = w.players[T.players[i]];
+        const int qT = T.players[i];
+        if (qT < 0) continue; // empty roster slot
+const PlayerState& p = w.players[qT];
         if (used[p.index]) continue;
         if (p.slot == 0) {
             keeper = p.index;
@@ -779,6 +786,7 @@ static int teamActionPending(const World& w, int t) {
     const TeamState& T = w.teams[t];
     for (int i = 0; i < T.playerCount; ++i) {
         const int p = T.players[i];
+        if (p < 0) continue; // empty roster slot
         const std::int32_t s = w.players[p].state;
         if (Player_isState100Kind1(w, p) || Player_isState100Kind0(w, p) || Player_isState100Kind2(w, p)) return 1;
         if (s == 0x82 || s == 0x80 || s == 0x81 || s == 0x83 || s == 0x84 || s == 0x85 || s == 0x18f) return 1;

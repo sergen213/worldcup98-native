@@ -20,6 +20,7 @@ namespace {
 constexpr std::uintptr_t kDataDelta = 0x401a00; // DGROUP VA -> file offset (measured pass-15)
 
 std::vector<std::uint8_t> gImg;
+std::size_t atText(std::uintptr_t va) { return std::size_t(va - 0x400000); } // .text VA -> file offset
 std::size_t at(std::uintptr_t va) { return std::size_t(va - kDataDelta); }
 std::uint32_t u32At(std::uintptr_t va) {
     const std::uint8_t* b = gImg.data() + at(va);
@@ -69,6 +70,13 @@ int main() {
     static constexpr int kAbsentRows[] = {2, 3, 4, 5, 6, 7, 9, 12, 13, 14, 15, 16, 17};
     for (const int i : kAbsentRows) CHECK(!valuePresent(std::uint32_t(balltab::kFlightConst[i])));
 
+    // --- .text constant pins (pass-16, D-14): net-rest bounce write mov [ball+0xb9c],imm32=0x2468
+    // at VA 0x4bfaf8 (the avy<0x147 lane of the FUN_004c0150 family). Gravity (-0x2468, FUN_004b2a40)
+    // and drag (0xcb, same companion lane) are register-computed immediates with no imm32 encoding in
+    // .text; their rows are pinned behaviorally by self_test_gameplay physics + match_demo_frames.
+    static constexpr std::uint8_t kBounceBytes[] = {0xC7, 0x86, 0x9C, 0x0B, 0x00, 0x00, 0x68, 0x24,
+                                                    0x00, 0x00};
+    for (std::size_t i = 0; i < sizeof(kBounceBytes); ++i) CHECK(gImg[atText(0x4bfaf8) + i] == kBounceBytes[i]);
     std::printf("ball tables: 9 runtime tables byte-exact, flight-set rows present, %zu solver rows absent\n",
                 sizeof(kAbsentRows) / sizeof(*kAbsentRows));
     return 0;

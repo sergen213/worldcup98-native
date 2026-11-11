@@ -876,7 +876,10 @@ void scenarioNetRest() {
             ++meas;
         }
         // Net-region velocity trace: the ball enters with speed and netDamp (0x483C34) decays it to zero.
-        if (w.ball.posI.z < -2496 && w.ball.posI.z > -2760) {
+        // WC98 gravity/drag rows: netDamp bleeds the x/z velocity to zero right after the line
+        // crossing (measured trace: 17k fx at -2460 -> 0 by -2505), then the contactMode=2 netPos
+        // crawl carries the ball into the netting. Capture speed from just past the goal line.
+        if (w.ball.posI.z < -2440 && w.ball.posI.z > -2760) {
             const long spd = std::llabs(w.ball.tvel.x) + std::llabs(w.ball.tvel.z);
             spdCross = std::max(spdCross, spd);
         }
@@ -884,7 +887,7 @@ void scenarioNetRest() {
     ck(goalTick != 0, "no Goal event in the net-rest run");
     const long zGoalLine = -static_cast<long>(w.pitch.halfLength);
     ck(zLate < zGoalLine + 16, "ball did not cross the goal line into the net");
-    ck(spdCross > 0 && spdLate == 0, "net damping (0x483C34) does not bleed the ball to rest");
+    ck(spdCross > 0 && spdLate == 0, "net damping (FUN_004c12e0) does not bleed the ball to rest");
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1155,15 +1158,16 @@ void scenarioFallRecovery() {
                     w.ball.lastToucher = feed;
                     w.ball.flags |= 0x20;
                     forceKick(w, feed, 1, 2); // ground pass row along the corridor (probe-measured stop point)
+
                     int midDef = -1;
                     long bestD = 1L << 30;
                     for (int q = 11; q < 22; ++q) { // team-1 fielders: nearest to the stop zone
                         if (w.players[static_cast<std::size_t>(q)].slot == 0) continue;
                         const auto& qP = w.players[static_cast<std::size_t>(q)];
-                        const long d = std::llabs(qP.posI.x - (-1041)) + std::llabs(qP.posI.z - (-1598));
+                        const long d = std::llabs(qP.posI.x - (-1097)) + std::llabs(qP.posI.z - (-2134));
                         if (d < bestD) { bestD = d; midDef = q; }
                     }
-                    setPos(w, midDef, -1041, -1598); // at the probe-measured pass stop point: natural capture wins
+                    setPos(w, midDef, -1097, -2134); // at the probe-measured pass stop point (pass-16 gravity re-baseline): natural capture wins
                     for (int q = 0; q < 11; ++q) if (q != feed && q != recv) setPos(w, q, w.ball.posI.x - 2500, w.ball.posI.z); // deep side
                     for (int q = 11; q < 22; ++q) if (tmOf(w, q) == 1 && q != midDef && w.players[static_cast<std::size_t>(q)].slot != 0) setPos(w, q, -2500, w.ball.posI.z);
                     forceIn = 0;
@@ -2090,8 +2094,8 @@ void scenarioShotVariants() {
     // ---- Lane B: player-side volley landing kick (end-to-end).
     // Feed geometry candidates (carrier x/z, striker park x/z); the probe picks the first whose ball
     // enters the State301 contact band — scripted placement is RNG-free at feed time.
-    const int geo[4][4] = {{-1200, 900, -770, -510}, {1200, 900, 770, -510}, {-1200, -900, -770, 510},
-                           {1200, -900, 770, 510}}; // receiver at the band-window point of the descent
+    const int geo[4][4] = {{-1200, 900, -640, -980}, {1200, 900, 770, -510}, {-1200, -900, -770, 510},
+                           {1200, -900, 770, 510}}; // receiver at the band-window point of the descent (pass-16: WC98 gravity/drag re-baseline)
     const int codes[] = {1, 23, 2, 22};            // aimSP(3) / aimSP(4) loft rows
     int feedTick = -1, gX = 0, gZ = 0, sX = 0, sZ = 0, gCode = 0;
     for (int code : codes) {
@@ -2105,7 +2109,7 @@ void scenarioShotVariants() {
 
     SimRunner r(md, opt, kSeed);
     auto& w = r.world();
-    int prevPhase = -1, forceIn = 0;
+    int prevPhase = -1, forceIn = 0, armAt = 0;
     const int sh = 13; // striker (team 1); controller bound via the Input_assignController grammar
     bool armed = false, fired = false;
     std::int32_t cross85Seen = -1, ballYatKick = -1, apexHeightMax = 0;
@@ -2117,28 +2121,30 @@ void scenarioShotVariants() {
         prevPhase = w.match.phase;
         if (forceIn > 0 && --forceIn == 0 && w.match.phase == 0) {
             Match_dispatchEvent(w, 0xb, w.match.phaseTeam); // forced in-ball (scenario 2 note)
+            armAt = gTick + 4; // ShotGoal grammar: feed fires 4 ticks after the dispatch (probe alignment)
+        }
+        if (armAt && gTick == armAt) {
+            armAt = 0;
             setPos(w, 12, 0, -1500); // opponent keeper off its line: no early interception
             const int feed = 14; // wide player carrier (probe-verified row)
             setPos(w, feed, gX, gZ);
             w.players[static_cast<std::size_t>(feed)].facing = atan2i(sX - gX, sZ - gZ);
-            w.match.setPiecePartner = 12;
+            w.match.setPiecePartner = sh; // cross receiver: the parked striker (probe grammar)
+            setPos(w, sh, sX, sZ);
             Ball_placeAt(w, {gX, 2, gZ});
             w.ball.possessor = feed;
             w.ball.dribbler = feed;
             w.ball.lastToucher = feed;
             w.ball.flags |= 0x20;
             forceKick(w, feed, gCode, 2); // cross row selected by the probe (documented forcing site)
-            setPos(w, sh, sX, sZ);
             Input_assignController(w, 0, 1, 0); // controller binding grammar (self-test / scenario 15):
                                                  // binds to the team-1 player nearest the ball at feed time.
          }
-        if (w.ball.posI.y >= 0x20 && w.ball.posI.y <= 0x160) std::fprintf(stderr, "M t=%d p=%d c85=%d poss=%d y=0x%X ap=%d x=%d z=%d d=%d st=%X\n", gTick, w.match.phase, w.ball.cross85Count, w.ball.possessor, w.ball.posI.y, w.ball.apexHeight, w.ball.posI.x, w.ball.posI.z, w.players[static_cast<std::size_t>(sh)].distBall, w.players[static_cast<std::size_t>(sh)].state);
         if (armed && !fired) {
             const auto& P = w.players[static_cast<std::size_t>(sh)];
             // Contact gate (kick.cpp l.605 + trap reach 0x60): fire the pad-grammar volley strike
             // as the ball descends through the band, before the control/trap state consumes it.
             if (P.distBall < 0x60 && w.ball.posI.y >= 0x39 && w.ball.posI.y <= 0x72 && w.ball.possessor == -1) {
-                std::fprintf(stderr, "STRIKE d=%d y=0x%X st=%X\n", P.distBall, w.ball.posI.y, P.state);
                 // Pad-grammar volley strike (State301 contact grammar, player_states_action l.598-641):
                 // the no-direction pad pick of 0x53DB80 row [16] is recorded in the event-mapping field
                 // (kick.cpp l.699), then the shot family plans with the exe's sentinel arm parameters
@@ -2224,8 +2230,8 @@ void scenarioHeaderCross() {
     MatchData md = makeMd();
     Options opt{};
 
-    const int geo[4][4] = {{-1200, 900, -770, -510}, {1200, 900, 770, -510}, {-1200, -900, -770, 510},
-                           {1200, -900, 770, 510}}; // same probe-verified descent geometry as lane B
+    const int geo[4][4] = {{-1200, 900, -722, -932}, {1200, 900, 770, -510}, {-1200, -900, -770, 510},
+                           {1200, -900, 770, 510}}; // descent-path park for the header window (pass-16 re-baseline)
     const int codes[] = {1, 23, 2, 22};
     int feedTick = -1, gX = 0, gZ = 0, sX = 0, sZ = 0, gCode = 0;
     for (int code : codes) {
@@ -2239,7 +2245,7 @@ void scenarioHeaderCross() {
 
     SimRunner r(md, opt, kSeed);
     auto& w = r.world();
-    int prevPhase = -1, forceIn = 0;
+    int prevPhase = -1, forceIn = 0, armAt = 0;
     const int sh = 13; // striker (team 1)
     bool armed = false, fired = false;
     std::int32_t ballYatHeader = -1, apexHeightMax = 0;
@@ -2250,18 +2256,22 @@ void scenarioHeaderCross() {
         prevPhase = w.match.phase;
         if (forceIn > 0 && --forceIn == 0 && w.match.phase == 0) {
             Match_dispatchEvent(w, 0xb, w.match.phaseTeam); // forced in-ball (scenario 2 note)
+            armAt = gTick + 4; // ShotGoal grammar: feed fires 4 ticks after the dispatch (probe alignment)
+        }
+        if (armAt && gTick == armAt) {
+            armAt = 0;
             setPos(w, 12, 0, -1500); // opponent keeper off its line: no early interception
             const int feed = 14; // wide player carrier (probe-verified row)
             setPos(w, feed, gX, gZ);
             w.players[static_cast<std::size_t>(feed)].facing = atan2i(sX - gX, sZ - gZ);
-            w.match.setPiecePartner = 12;
+            w.match.setPiecePartner = sh; // cross receiver: the parked striker (probe grammar)
+            setPos(w, sh, sX, sZ);
             Ball_placeAt(w, {gX, 2, gZ});
             w.ball.possessor = feed;
             w.ball.dribbler = feed;
             w.ball.lastToucher = feed;
             w.ball.flags |= 0x20;
             forceKick(w, feed, gCode, 2); // lofted cross row selected by the probe
-            setPos(w, sh, sX, sZ);
             Input_assignController(w, 0, 1, 0); // controller binding grammar (volley lane)
         }
         if (!armed && w.match.phase == 9 && w.ball.possessor == -1 && w.ball.cross85Count > 0) {
@@ -2288,7 +2298,9 @@ void scenarioHeaderCross() {
         if (armed && !fired) {
             const auto& P = w.players[static_cast<std::size_t>(sh)];
             // Header contact window 0x5B..0xB4 (State301 header gate): strike with the header code.
-            if (P.distBall < 0x60 && w.ball.posI.y >= 0x5B && w.ball.posI.y <= 0x72 && w.ball.possessor == -1) {
+            // Reach: State301 aerial-duel lock stands the player off ~115 units from the duel
+            // point; the animClass-0x10 lunge extends contact reach beyond the ground pass 0x60.
+            if (P.distBall < 0xC8 && w.ball.posI.y >= 0x5B && w.ball.posI.y <= 0xB4 && w.ball.possessor == -1) {
                 // Codes 9/10 = header/chest family: solver kind 6 (kick.cpp l.360 note), event lane
                 // maps code 9 explicitly to EventType::Header (kick.cpp l.364-366). Sentinel arm as
                 // in the volley lane (State301 grammar animClass 0x10 row).

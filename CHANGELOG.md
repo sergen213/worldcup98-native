@@ -8,6 +8,16 @@ project goals.
 ## [Unreleased]
 ### Added
 
+- **Ball collision/goal-mouth grammar closure (pass-16, D-14)**: WC98 bodies decompiled and
+  verified row-for-row — net-rest tail `FUN_004c0150`, resolve switch `FUN_004c09a0` (post/bar
+  bounce helpers `FUN_004bf660/0x4bf760`, netDamp `FUN_004c12e0`, reflect `FUN_004bf490`), goal-mouth
+  classifier `FUN_004c159c` (geometry predicates `FUN_004bf9e0/0x4bfb40/0x4bfcc0/0x4bfdd0`). The
+  FIFA-99-shaped physics pair installed from measured rows: gravity `-0x2468` (was 0x2f5c), air drag
+  `0xcb` (was 0xeb), net-rest bounce `0x2468` (byte-pinned `mov [ball+0xb9c],imm32` @VA `0x4bfaf8`).
+  All ball.cpp cites rewritten to WC98 VAs. Gates: NetRest scenario re-baselined to the measured
+  trace (17k fx entry speed bled to rest, netPos crawl), `test_ball_tables` byte pin, fx sample row
+  in `test_sim_core`. Registry D-14 → Fixed; roof-lane reflect coefficients stay `[C]` (D-15).
+
 - **Motion remainder batch (pass-15 S4)**: `Motion_setTarget` = FUN_004F4E70 unconditional store
   (bit-0 clear + dx/dz/oct-dist, no flag/equality gates), `Motion_warpTo` = FUN_004F4F80 pure snap
   (pos int+frac, refresh pair, atan2 facing write, turnDelta copy; flags/target untouched — post-warp

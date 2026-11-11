@@ -420,3 +420,34 @@ stop-distance ladder + per-tick replica green; suite **117/117**, JSON self-test
 D-56, D-57, D-58, D-64…D-68 → Fixed (G-section totals updated); the shared motion-tables header
 (`simulation/include/wc98/sim/motion_tables.inc`, D-55) is now a public include so the self-test replica
 and `test_motion_tables` pin one source of truth.
+
+## Pass 16 — ball collision/goal-mouth grammar closure (D-14)
+
+WC98 decompile dossiers `analysis/pass16ball/DECOMPILE/` (PyGhidra lane, scripts
+`ghidra-scripts/GhidraWc98Ball{1..7}.py`): net-rest tail `FUN_004c0150`, resolve switch
+`FUN_004c09a0` (audit lane "0x4c0997" = pad tail; entry 0x4c09a0), goal-mouth `FUN_004c159c`,
+helpers post/bar bounce `FUN_004bf660/0x4bf760` (atan2 mirror + sqrt*0x8000 damping), netDamp
+`FUN_004c12e0` (netCase switch {1,2/3,4}; damp `-fx(v,0x4000)` gated on velocity==tpos sign),
+reflect `FUN_004bf490`, geometry predicates `FUN_004bf9e0/0x4bfb40/0x4bfcc0/0x4bfdd0` + crossing
+`FUN_004c08d0`. Port verified **row-for-row**: field map (tvel@+0xb98, tpos@+0xba4 fx triple,
+tprev@+0xbb0, absX@+0xbbc, netCase@+0xb60, contactMode/timer 1/0x3c), damping rows
+(0xc000 wall/roof, 0x4000 netDamp, 0x4ccc roof bounce + clamp [0x30000,0x50000], 0x3333 x/z,
+0x78000 sideNetZ), clamps ±0x50000 under flag 0x40, bands/timers. Delta found and installed: the
+FIFA-99 gravity/bounce constant `0x2f5c` (audit "DATA-DELTA .760") → WC98 `-0x2468`
+(`FUN_004b2a40` companion lane + net-rest bounce, byte-pinned `mov [ball+0xb9c],imm32` @VA
+`0x4bfaf8`) and air drag `0xeb` → `0xcb`. Roof-lane reflect coefficients (`0xfae1/0x4ccc`) are
+register-computed immediates with no imm encoding in `.text`: left `[C]`, tracked under D-15.
+
+Gate re-baselines: NetRest scenario region widened to just-past-the-line capture (measured trace:
+entry speed 17k fx at z=-2460, netDamp bleeds tvel.x/z to 0 by -2505, then contactMode=2 netPos
+crawl carries the ball ~1u/tick into the netting; spdLate=0 rest preserved), `test_ball_tables`
+adds the `.text` byte pin, `test_sim_core` fx sample re-pinned to WC98 rows (fx(0x2468,0xcb)=0x1d).
+Registry D-14 → Fixed.
+
+Debug-tree (ASan+UBSan) hardening found latent UB the release gates couldn't see: `Anim_rootHeight`/
+`Anim_ballBonePos` indexed `inst-1` with controller `inst==0` (no anim instance — reads through
+ref-1 = -1), and 23 roster-scan loops in ai/input/rules/squad/team_phase/player_helpers read
+`T.players[i]` unguarded against `-1` empty-slot placeholders (team.hpp default fill). Guards
+installed at every scan site (`if (q < 0) continue; // empty roster slot`) + height/bone return-0
+lanes. Canonical sanitizer suite invocation: `QT_QPA_PLATFORM=offscreen ASAN_OPTIONS=detect_leaks=0
+ctest -j8` in build/debug (Qt/Vulkan exit-time arena allocations are intentional; LSAN-only noise).

@@ -444,6 +444,7 @@ int Player_selectReceiver(World& w, const Vec3& origin, int pid, int team, Angle
     const TeamState& T = w.teams[static_cast<std::size_t>(team)];
     for (int i = 0; i < T.playerCount; ++i) {
         const int q = T.players[i];
+        if (q < 0) continue; // empty roster slot (-1 placeholder): not a candidate receiver
         const PlayerState& o = P(w, q);
         if ((o.flags22c & 2) || o.curSlot == slot || (o.flags22c & 1)) continue;
         int keeper = 0;

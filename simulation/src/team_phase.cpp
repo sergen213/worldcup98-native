@@ -23,6 +23,7 @@ int nearestTarget(World& w, const Vec3& pt, int team, int skipSlot, bool checkFl
     int found = -1;
     for (int i = 0; i < T.playerCount; ++i) {
         const int pid = T.players[i];
+        if (pid < 0) continue; // empty roster slot
         const PlayerState& p = P(w, pid);
         if (p.flags22c & 2) continue;
         if (p.curSlot == skipSlot) continue;
@@ -58,6 +59,7 @@ void Team_setPlayersState(World& w, int team, int state, int exceptState, int ex
     const TeamState& T = w.teams[team];
     for (int i = 0; i < T.playerCount; ++i) {
         const int pid = T.players[i];
+        if (pid < 0) continue; // empty roster slot
         PlayerState& p = P(w, pid);
         if (p.state == exceptState || p.curSlot == exceptSlot) continue;
         if (p.kick.flags & 4) Kick_clearPending(w, pid); // +0x1E4 bit 2
@@ -71,6 +73,7 @@ void Team_setPlayersStateFiltered(World& w, int team, int state, int exceptSlot)
     const TeamState& T = w.teams[team];
     for (int i = 0; i < T.playerCount; ++i) {
         const int pid = T.players[i];
+        if (pid < 0) continue; // empty roster slot
         PlayerState& p = P(w, pid);
         if (p.curSlot == exceptSlot) continue;
         if (p.state >= 0x80 && p.state <= 0x85) continue;
@@ -87,8 +90,11 @@ int Team_playerForSlotTag(const World& w, int team, int k) {
     const TeamState& T = w.teams[team];
     const std::uint8_t* b = T.blk + (0x160 - 0x0C) + k * 2;
     const std::int32_t tag = b[0] | (b[1] << 8);
-    for (int i = 0; i < T.playerCount; ++i)
-        if (w.attrs[static_cast<std::size_t>(P(w, T.players[i]).attr)].squadIndex == tag) return T.players[i];
+    for (int i = 0; i < T.playerCount; ++i) {
+        const int qT = T.players[i];
+        if (qT < 0) continue; // empty roster slot
+        if (w.attrs[static_cast<std::size_t>(P(w, qT).attr)].squadIndex == tag) return qT;
+    }
     if (T.playerCount == 11) return -1;
     return T.players[T.playerCount - 1];
 }
@@ -99,6 +105,7 @@ void Team_resetAnimFlag4(World& w, int team) {
     const TeamState& T = w.teams[team];
     for (int i = 0; i < T.playerCount; ++i) {
         const int pid = T.players[i];
+        if (pid < 0) continue; // empty roster slot
         PlayerState& p = P(w, pid);
         if (!(p.flags22c & 4)) continue;
         Anim_start(w, pid, 0x166, 0, p.facing);
@@ -113,6 +120,7 @@ void Team_resetAnimFlag1(World& w, int team, int keeperAnim, int outfieldAnim) {
     const TeamState& T = w.teams[team];
     for (int i = 0; i < T.playerCount; ++i) {
         const int pid = T.players[i];
+        if (pid < 0) continue; // empty roster slot
         PlayerState& p = P(w, pid);
         const int anim = p.slot == 0 ? keeperAnim : outfieldAnim;
         if ((p.flags22c & 1) && anim != 0x26) {
@@ -128,7 +136,7 @@ void Team_resetAnimFlag1(World& w, int team, int keeperAnim, int outfieldAnim) {
 void Team_lineUpWall(World& w, int team) {
     const TeamState& T = w.teams[team];
     const int n = T.playerCount;
-    for (int i = 0; i < n; ++i) P(w, T.players[i]).flags22c &= ~4u;
+    for (int i = 0; i < n; ++i) { const int qT = T.players[i]; if (qT >= 0) P(w, qT).flags22c &= ~4u; }
 
     const Vec3& r = w.ball.restartPos;           // 0x66919C
     const std::int32_t hw6 = w.pitch.halfWidth / 6; // 0x65F368 / 6 (idiv)
@@ -175,7 +183,9 @@ void Team_lineUpWall(World& w, int team) {
         Player_moveToward_4BE804(w, pid, spot);
     }
     for (int i = 0; i < n; ++i) {
-        PlayerState& p = P(w, T.players[i]);
+        const int qT = T.players[i];
+        if (qT < 0) continue; // empty roster slot
+        PlayerState& p = P(w, qT);
         if (p.flags22c & 4) p.flags22c &= ~2u;
     }
 }

@@ -1,29 +1,30 @@
-// WC98 provenance (pass-16cam, register D-54) for this file's exe cites:
+// WC98 provenance (pass-16cam / pass-17cam, register D-54 CLOSED) for this file's exe cites:
 //   - FOV/task-height rows: **WC98-proven** at DAT_0057FB82 (`cam_wc98_tables.inc`, gate
 //     `test_cam_tables`). The FIFA-99 cite `FOV i16 0x57FAD8` is REFUTED for WC98 — that VA holds an
 //     ascending u16 pair table ({0005,0004,0007,0006,..}), not FOV halfwords.
 //   - camera-record defaults + mode-broadcast constants: **WC98-proven** code immediates of the init
 //     FUN_004a0810 (FOV default `cam+0x78 = 0xe28`) and accessor FUN_004a0790 (`analysis/pass16cam/`).
-//   - per-mode **parameter rows** in `kModes` below: FIFA-99 family cites only. The FIFA-99 zone-table
-//     row signatures ({60900,61050,..}, {-2000,-750,750,2000}, {12250,..}, height triples {0,800,-3000})
-//     occur ZERO times in the WC98 image (`analysis/pass16cam/absent_scan.txt`), and WC98's camera
-//     model is preset-record based (stride-0x2c records DAT_00586xxx, selector FUN_004ca880 —
-//     `analysis/pass16cam/cam_presets.txt`), so these numbers have no byte-level counterpart.
+//   - per-mode **parameter rows**: WC98 preset records (stride 0x2c, DAT_00586xxx band) selected by
+//     the mode word DAT_00580df0 in selector FUN_004ca880 — grammar + live-patch lanes decoded in
+//     `analysis/pass17cam/NOTES.md`; every value below is byte-exact from FIFAWC.EXE and gated by
+//     `test_cam_tables` (port table == image bytes). The FIFA-99 zone-table row signatures
+//     ({60900,61050,..}, {-2000,-750,750,2000}, {12250,..}, height triples {0,800,-3000}) occur ZERO
+//     times in the WC98 image (`analysis/pass16cam/absent_scan.txt`): those FIFA-99 `kModes` rows are
+//     deleted; the camera model here is the preset-record model.
 //   - Gen3 family confirmation: docs/reverse-engineering/GHIDRA_PASS5_IG.md (sim clock l.125).
-// Resolved (pass-15): the orbit/lead trig lane uses the WC98 fixed-point table sine (`sine16x16` /
+// Resolved (pass-15): the orbit trig lane uses the WC98 fixed-point table sine (`sine16x16` /
 // FUN_00497740 over DAT_00585898, byte-exact + asserted) with the engine's fixed-multiply rounding —
 // the old libm path drifted by one unit of the 16-bit angle. `atan2_16` keeps a libm approximation
 // (the WC98 accessor site is not located yet, register D-53).
 #include "wc98/presentation/camera.hpp"
 
-#include "exe_tables.inc"
 #include "cam_wc98_tables.inc"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
-#include <numbers>
 #include <iterator>
+#include <numbers>
 
 namespace wc98::presentation {
 
@@ -31,113 +32,6 @@ namespace {
 
 constexpr double kTurn = 65536.0;
 
-struct HeightKey {
-    int xAdd, y, zKey;
-};
-
-struct ModeParams {
-    // rotation (0x589C50 flags, 0x589C84..)
-    unsigned flags;
-    int pitchA, pitchB, yawA, yawB, yawDiv, pitchDiv;
-    std::span<const int> yawZoneKeys;  // thresholds (entries 1..n-2 of 0x589D6C), key ball z
-    std::span<const int> yawMax, yawMin; // e08[i], de4[i]
-    std::span<const int> pitchZoneKeys; // thresholds of 0x589CA8, key ball x if flag 0x4000 else z
-    std::span<const int> pitchMax, pitchMin; // d44[i], d20[i]
-    int yawBox[4], pitchBox[4];          // x0, x1, z0, z1 (flags 0x20000 / 0x10000)
-    int hiY, hiTrig, hiPitchB, hiPitchA, hiDiv;
-    glm::ivec3 hiOff;
-    int looseOn, looseOff, looseB, looseA, looseDiv;
-    std::span<const int> leadKeys;       // thresholds of 0x673800 (key look-at z)
-    std::span<const int> lead0, lead1;   // 0x673818 (side 0) / 0x67382C (side 1)
-    // position (0x59F610..)
-    unsigned posFlags; // 2 = height table
-    int offX, height, offZ, div, hdiv;
-    int boxX0, boxX1, boxZ0, boxZ1;
-    std::span<const HeightKey> table0, table1;
-};
-
-constexpr unsigned kYawZones = 0x400, kPitchZones = 0x200, kPitchKeyX = 0x4000, kYawBox = 0x20000, kPitchBox = 0x10000;
-constexpr unsigned kHighBall = 0x100000, kLooseYaw = 0x200000;
-
-// Tele (0)
-constexpr int kTeleYawKeys[] = {-2000, 2000}, kTeleYawMax[] = {16768, 18768, 24576}, kTeleYawMin[] = {8192, 14000, 15500};
-constexpr int kXKeys[] = {-1000, -500, 500, 1000};
-constexpr int kTelePitchMax[] = {60900, 61050, 61200, 61350, 61500}, kTelePitchMin[] = {60500, 60700, 60900, 61100, 61300};
-constexpr int kLeadKeys[] = {-1750, -250, 250, 1750};
-constexpr int kTeleLead0[] = {100, 100, 200, 300, 300}, kTeleLead1[] = {300, 300, 200, 100, 100};
-// Height tables {x add, height, z key}: FIFA-99.EXE static data (`exe_tables.inc` header); absent from the WC98 image (D-54).
-template <std::size_t N> constexpr std::array<HeightKey, N> heights(const std::int32_t (&t)[N][3]) {
-    std::array<HeightKey, N> r{};
-    for (std::size_t i = 0; i < N; ++i) r[i] = {t[i][0], t[i][1], t[i][2]};
-    return r;
-}
-constexpr auto kTeleH0 = heights(exe::kCamHeightTele0), kTeleH1 = heights(exe::kCamHeightTele1);
-// Sideline (1)
-constexpr int kSidePitchMax[] = {61750, 61750, 61750, 61750, 61750}, kSidePitchMin[] = {61400, 61400, 61400, 61400, 61400};
-constexpr int kLead100[] = {100, 100, 100, 100, 100};
-constexpr auto kSideH0 = heights(exe::kCamHeightSide0), kSideH1 = heights(exe::kCamHeightSide1);
-// Action (2)
-constexpr int kActionPitchMax[] = {61500, 61500, 61500, 61500, 61500}, kActionPitchMin[] = {60000, 60000, 60000, 60000, 60000};
-constexpr int kLead300[] = {300}, kLead200[] = {200}, kLead150[] = {150};
-// Goal (3)
-constexpr int kGoalPitchKeys[] = {-1500, -500, 500, 1000};
-constexpr int kGoalPitchMax[] = {63000, 63000, 63000, 62000, 62000}, kGoalPitchMin[] = {59700, 59700, 59700, 59700, 59700};
-constexpr auto kGoalH = heights(exe::kCamHeightGoal);
-// Stadium (4)
-constexpr int kStadYawKeys[] = {-2000, -750, 750, 2000}, kStadYawMax[] = {12250, 12000, 11750, 11500, 11250}, kStadYawMin[] = {7000, 7000, 7000, 7000, 7000};
-constexpr int kStadPitchMax[] = {61500, 61500, 61500, 61500, 61500}, kStadPitchMin[] = {59000, 59400, 59800, 61000, 61000};
-// Tower (7)
-constexpr int kTowerLeadKeys[] = {-1750, -250, 250}, kLead500[] = {500, 500, 500, 500};
-
-// Mode table, index = CameraMode for 0..5 and 7 (6 = Ball Cam has its own update). Every numeric row
-// below is a FIFA-99 family carryover: the per-mode init cites are FIFA-99 addresses and the values
-// have no byte-level counterpart in FIFAWC.EXE (scan `analysis/pass16cam/absent_scan.txt`); WC98's own
-// camera parameters live as stride-0x2c preset records DAT_00586xxx selected by FUN_004ca880
-// (dossier `analysis/pass16cam/cam_presets.txt`). The FOV lane IS WC98-exact (`kTaskHeights` /
-// DAT_0057FB82, gate `test_cam_tables`) — register D-54 is partial, not fully closed.
-constexpr ModeParams kModes[8] = {
-    // 0 Tele (FIFA-99 CamRot_initTele 0x4C3BAC / CamPos_initTele 0x544FAC; FIFA-99 family, not byte-exact in WC98)
-    {kPitchBox | kPitchKeyX | kYawZones | kPitchZones, 62500, 61900, 24576, 8192, 50, 48, kTeleYawKeys, kTeleYawMax, kTeleYawMin, kXKeys,
-     kTelePitchMax, kTelePitchMin, {0, 0, 0, 0}, {-2000, 2000, 3000, 3500}, 240, 100, 59500, 62000, 30, {0, -100, 0}, 100, 5, 13000, 20000,
-     20, kLeadKeys, kTeleLead0, kTeleLead1, 2, 1700, 650, 0, 24, 64, 50, 3350, -2500, 2500, kTeleH0, kTeleH1},
-    // 1 Sideline (FIFA-99 0x4C413C / 0x5450D0; FIFA-99 family, not byte-exact in WC98)
-    {kPitchKeyX | kPitchZones, 63000, 58000, 19200, 14000, 40, 30, {}, {}, {}, kXKeys, kSidePitchMax, kSidePitchMin, {0, 0, 0, 0},
-     {0, 0, 0, 0}, 100, 100, 32768, 63500, 30, {0, -75, 0}, 50, 1, 12000, 21000, 20, kLeadKeys, kLead100, kLead100, 2, 1200, 550, 0, 20, 64,
-     -200, 2800, -2700, 2700, kSideH0, kSideH1},
-    // 2 Action (FIFA-99 0x4C43BC / 0x54517C; FIFA-99 family, not byte-exact in WC98)
-    {kPitchZones, 62000, 60000, 1000, 64500, 50, 50, {}, {}, {}, kXKeys, kActionPitchMax, kActionPitchMin, {0, 0, 0, 0}, {0, 0, 0, 0}, 240,
-     100, 32768, 62500, 40, {0, 0, 0}, 100, 5, 62000, 3000, 20, {}, kLead300, kLead300, 0, 0, 700, -1500, 20, 64, -1800, 1800, -3800, 800,
-     {}, {}},
-    // 3 Goal (End) (FIFA-99 0x4C4598 / 0x545214; FIFA-99 family, not byte-exact in WC98 — WC98's own
-    // preset-record pitch field DAT_00586268 = 63000 is a separate lane, `cam_presets.txt`)
-    {kPitchZones, 63000, 58000, 1500, 64000, 50, 50, {}, {}, {}, kGoalPitchKeys, kGoalPitchMax, kGoalPitchMin, {0, 0, 0, 0}, {0, 0, 0, 0},
-     160, 100, 32768, 63200, 30, {0, 0, 0}, 50, 1, 61000, 3500, 20, {}, kLead200, kLead200, 2, 0, 700, -1350, 20, 64, -1800, 1800, -3900,
-     900, kGoalH, kGoalH},
-    // 4 Stadium (FIFA-99 0x4C4778 / 0x5452B8; FIFA-99 family, not byte-exact in WC98)
-    {kYawBox | kPitchBox | kPitchKeyX | kYawZones | kPitchZones, 62000, 59500, 13500, 6000, 50, 40, kStadYawKeys, kStadYawMax, kStadYawMin,
-     kXKeys, kStadPitchMax, kStadPitchMin, {-2000, 1600, -3250, 3500}, {-2000, 1000, -4000, 4000}, 240, 100, 32768, 62200, 25, {0, 0, 0},
-     100, 5, 4500, 10500, 20, {}, kLead200, kLead200, 0, 1000, 700, -1100, 32, 64, 0, 2900, -3450, 1350, {}, {}},
-    // 5 Shoulder (FIFA-99 0x4C4A68 / 0x545338; FIFA-99 family, not byte-exact in WC98)
-    {0, 63000, 62000, 10500, 3000, 50, 50, {}, {}, {}, {}, {}, {}, {0, 0, 0, 0}, {0, 0, 0, 0}, 160, 100, 32768, 63500, 30, {0, 0, 0}, 50, 1,
-     3000, 8200, 20, {}, kLead150, kLead150, 0, 950, 600, -1650, 24, 64, -750, 2750, -3850, 2450, {}, {}},
-    // 6 Ball Cam (FIFA-99 BallCam_update 0x4E90B4; FIFA-99 family cite) has its own update; row unused
-    {0, 0, 0, 0, 0, 1, 1, {}, {}, {}, {}, {}, {}, {0, 0, 0, 0}, {0, 0, 0, 0}, 0, 0, 0, 0, 1, {0, 0, 0}, 0, 0, 0, 0, 1, {}, {}, {}, 0, 0, 240, 0,
-     1, 1, 0, 0, 0, 0, {}, {}},
-    // 7 Tower (FIFA-99 0x4C3EE0 / 0x545058, flags 0x6000 zones off; FIFA-99 family, not byte-exact in WC98)
-    {kPitchKeyX | 0x2000, 57500, 56500, 17600, 15000, 65, 50, {}, {}, {}, {}, {}, {}, {0, 0, 0, 0}, {0, 0, 0, 0}, 200, 100, 49152, 58500, 30,
-     {0, 0, 0}, 150, 5, 13500, 19500, 25, kTowerLeadKeys, kLead500, kLead500, 0, 1600, 1520, 0, 24, 64, -150, 3150, -2550, 2550, {}, {}},
-};
-constexpr int kReplayFov = 0xE28; // WC98-proven: caminit FUN_004a0810 writes 0xe28 to cam+0x78 (FOV default,
-                                   // the target of FOV-table sentinel -5); gate test_cam_tables.
-static_assert(exe::kCamFov[8] == -5); // FIFA-99 sibling row; WC98 sentinel word kTaskHeights[9] = 0xfffb
-
-double rad(int a16) { return double(a16) * 2.0 * std::numbers::pi / kTurn; }
-// Exe polar-offset idiom (`dist * trig(x)`, OrbitCam_update 0x48D18C / BallCam_update 0x4E90B4):
-// fixed-point product of the distance with FUN_00497740/4977b0 table sine/cosine (quadrant-folded
-// DAT_00585898, slope term `* 0x6487e >> 9`), rounded by the engine's fixed-multiply pattern
-// `(prod >> 16) + bit-15 carry` (FUN_00517f20). Replaces the libm path that drifted in the last ulp
-// of the 16-bit angle; `sine16x16/cosine16x16` are byte-exact against the image table (pass-12cam,
-// asserted in test_presentation), so orbit/lead offsets are now exact by construction.
 int fxTrig(int len, int trig16) {
     const std::int64_t v = std::int64_t(len) * trig16;
     return int((v >> 16) + ((v & 0x8000) ? 1 : 0));
@@ -147,7 +41,6 @@ int cos16x(int len, int a16) { return fxTrig(len, cosine16x16(a16)); }
 int hdist(int dx, int dz) { return int(std::sqrt(double(dx) * dx + double(dz) * dz)); }
 int wrap16(int a) { return a & 0xFFFF; }
 int signed16(int a) { return std::int16_t(std::uint16_t(a)); }
-int absDiff16(int a, int b) { return std::abs(signed16(a - b)); } // Angle16_absDiff 0x4C2F80
 
 struct Angles {
     int yaw, pitch;
@@ -159,15 +52,52 @@ Angles anglesTo(glm::ivec3 eye, glm::ivec3 t) {
     return {wrap16(0x18000 - atan2_16(d.x, d.z)), wrap16(0x10000 - atan2_16(d.y, hd))};
 }
 
-int zoneOf(int key, std::span<const int> thresholds) {
-    int i = 0;
-    for (int t : thresholds) i += key >= t;
-    return i;
+glm::ivec3 toInt(glm::vec3 v) { return {int(v.x), int(v.y), int(v.z)}; }
+
+// --- WC98 preset-record grammar (selector FUN_004ca880; pass-17cam NOTES.md) --------------------
+// The live camera parameters of one mode are a stride-0x2c static record picked by the selector on
+// the mode word DAT_00580df0 {1,2,3,5} + sign pairs of the ball position (DAT_00644858 x,
+// DAT_00644860 z). Eye trio = camera-record fields cam+0x108 / cam+0x10c / cam+0x110 fed from record
+// bytes +0xa/+0xc/+0xe (FUN_004caa70 direct lane, FUN_004a0f40 orbit lane). The byte-exact record
+// table is `kPresets` in camera.hpp (+ case-5 patch constants); gated field-for-field by test_cam_tables.
+
+// Selector FUN_004ca880 preset pick: DAT_00580df0 mode + sign pairs (ball x/z) + sub-mode-3 gate
+// (record field rec+0x10 == 3, written by the scene setup). Returns kPresets slot or -1 for modes
+// without a static record (selector default lane: Tele/Stadium/Ball/Tower/Replay keep the task lane).
+int presetSlot(CameraMode m, bool xNeg, bool zNeg) {
+    switch (m) {
+        case CameraMode::Sideline: return xNeg ? 0 : 1;
+        case CameraMode::Action:   return 2 + (xNeg ? (zNeg ? 0 : 1) : (zNeg ? 2 : 3));
+        case CameraMode::End:      return zNeg ? 6 : 7; // live-match scene gate rec+0x10 == 3 [P]
+        case CameraMode::Shoulder: return 10;
+        default:                   return -1;
+    }
 }
 
-bool inBox(const int b[4], glm::ivec3 p) { return p.x > b[0] && p.x < b[1] && p.z > b[2] && p.z < b[3]; }
+// DAT_00580df0 mode space per port enum (WC98-proven: selector FUN_004ca880 dispatches the word via
+// mov eax,[df0]/dec/cmp-4 at 0x4ca88f; gate test_cam_tables pins those dispatch bytes):
+int exeModeOf(CameraMode m) {
+    switch (m) {
+        case CameraMode::Tele:     return 0;
+        case CameraMode::Sideline: return 1;
+        case CameraMode::Action:   return 2;
+        case CameraMode::End:      return 3;
+        case CameraMode::Stadium:  return 4;
+        case CameraMode::Shoulder: return 5;
+        default:                   return -1; // no exe mode (FOV lane falls to the grid default)
+    }
+}
 
-glm::ivec3 toInt(glm::vec3 v) { return {int(v.x), int(v.y), int(v.z)}; }
+constexpr int kReplayFov = 0xE28; // WC98-proven: caminit FUN_004a0810 writes 0xe28 to cam+0x78 (FOV default,
+                                  // the target of FOV-table sentinel -5); gate test_cam_tables.
+
+double rad(int a16) { return double(a16) * 2.0 * std::numbers::pi / kTurn; }
+// Exe polar-offset idiom (`dist * trig(x)`, OrbitCam_update 0x48D18C / BallCam_update 0x4E90B4):
+// fixed-point product of the distance with FUN_00497740/4977b0 table sine/cosine (quadrant-folded
+// DAT_00585898, slope term `* 0x6487e >> 9`), rounded by the engine's fixed-multiply pattern
+// `(prod >> 16) + bit-15 carry` (FUN_00517f20). Replaces the libm path that drifted in the last ulp
+// of the 16-bit angle; `sine16x16/cosine16x16` are byte-exact against the image table (pass-12cam,
+// asserted in test_presentation), so orbit offsets are now exact by construction.
 
 } // namespace
 
@@ -209,10 +139,21 @@ float verticalFovDeg4x3(int fovHalf16) {
     return float(2.0 * std::atan(std::tan(rad(fovHalf16)) * 3.0 / 4.0) * 180.0 / std::numbers::pi);
 }
 
+// FOV target of a mode: selector FUN_004ca880 entry calls the accessor FUN_004a0790 (FOV grid row
+// 13, word[14] = sentinel -1) and stores the result in rec+0x14. The grid expands per exe mode:
+// 1 -> 0x1280; 2 -> ball x >= 0 ? 0x1280 : 0x440 (DAT_00644858 > -1); 3 -> scene sub-mode-3 gate
+// ? 0x1980 : 0x1100; modes without a table entry -> 0x1540. Sign/sub-mode sampled at mode set.
+int MatchCamera::fovTargetFor(CameraMode m, bool ballXPos) const {
+    if (m == CameraMode::Replay) return kReplayFov;
+    const int exeM = exeModeOf(m);
+    return tabATaskHeight(13, exeM < 0 ? -1 : exeM, ballXPos, m == CameraMode::End,
+                          task_.playerHeight(), task_.camHeight());
+}
+
 void MatchCamera::setMode(CameraMode m) {
     mode_ = m;
     reset_ = true;
-    int target = m == CameraMode::Replay ? kReplayFov : exe::kCamFov[std::size_t(m)];
+    int target = fovTargetFor(m, smoothBall_.x >= 0);
     if (started_ && target != fov_) fovFrom_ = fov_, fovTo_ = target, fovGlide_ = 0; // Cam_startFovGlide 0x4E9CEC
     else fov_ = fovFrom_ = fovTo_ = target;
 }
@@ -227,8 +168,7 @@ void MatchCamera::tick(const MatchSnapshot& s, int frames) {
         fov_ = fovFrom_ + int(float(fovTo_ - fovFrom_) * (3 * u * u - 2 * u * u * u));
     }
     const glm::ivec3 ball = toInt(s.ball.pos);
-    // WC98 deviation: prefer the live sim pitch dims; the FIFA 99 size-index table (camera height
-    // tables are keyed to pitch size) stays as fallback when pitchUnits is unset.
+    // WC98 deviation: prefer the live sim pitch dims; fallback when pitchUnits is unset.
     const glm::vec2 dims = (s.pitchUnits.x > 0.0f && s.pitchUnits.y > 0.0f) ? s.pitchUnits : pitchDimensions(s.pitchSize);
     const int halfW = int(dims.x) / 2, halfL = int(dims.y) / 2;
     const PlayerView* holder = s.possessor >= 0 && s.possessor < int(s.players.size()) ? &s.players[std::size_t(s.possessor)] : nullptr;
@@ -268,109 +208,89 @@ void MatchCamera::tick(const MatchSnapshot& s, int frames) {
         return;
     }
 
-    const ModeParams& m = kModes[std::size_t(mode_)];
-    // --- position (CamPos_follow 0x5448B8) ---
-    int gx = smoothBall_.x + m.offX, gz = smoothBall_.z + m.offZ, yT = m.height;
+    // --- position: WC98 preset-record lane (selector FUN_004ca880, records DAT_00586xxx) ---------
     const bool gliding = task_.dollyActive(); // WC98 timer C dolly owns the position lane (section 7 delta 1)
-    if (gliding) {
-        task_.advanceDolly(frames);      // FUN_00517be0: advance live counter, snap A = B on completion
-        eye_ = task_.eye();              // snapshot A + signed fixed-point products (FUN_00517f20)
-    } else if (m.posFlags & 2) {
-        if (holder) side_ = holderDir >= 0 ? 1 : 0;
-        std::span<const HeightKey> tab = side_ ? m.table1 : m.table0;
-        int key = eye_.z, n = int(tab.size()), k = 1;
-        while (k < n - 1 && key >= tab[std::size_t(k)].zKey) ++k;
-        const HeightKey &a = tab[std::size_t(k - 1)], &c = tab[std::size_t(k)];
-        float t = float(key - a.zKey) / float(c.zKey - a.zKey); // 16.16 in the exe, not clamped
-        yT = a.y + int(float(c.y - a.y) * t);
-        gx += a.xAdd + int(float(c.xAdd - a.xAdd) * t);
-        if (!reset_) {
-            int q = (yT - eye_.y) / m.hdiv;
-            if (q) eye_.y += q * frames;
-            else eye_.y += std::clamp(yT - eye_.y, -frames, frames);
-        }
-    } else {
-        eye_.y = m.height;
+    const int slot = presetSlot(mode_, smoothBall_.x < 0, smoothBall_.z < 0);
+    const CamPreset& p = kPresets[slot >= 0 ? std::size_t(slot) : 0];
+    // Mode smoothing divisor [P]: the exe lerp duration lives in runtime task records (no static
+    // byte); derive it from the record's smoothing word (+0x26), which scales with cam speed.
+    const int div = slot >= 0 ? std::max(4, int(p.speed) >> 8) : 16;
+
+    if (!gliding && !reset_ && mode_ == CameraMode::Action) {
+        // Mode-2 FOV sign lane DAT_00644858 is live: resample the grid when the ball crosses x = 0.
+        const int target = fovTargetFor(mode_, smoothBall_.x >= 0);
+        if (target != fovTo_) fovFrom_ = fov_, fovTo_ = target, fovGlide_ = 0;
     }
 
+    glm::ivec3 tgt{};
+    int yawT = yaw_, pitchT = pitch_;
     if (gliding) {
+        task_.advanceDolly(frames); // FUN_00517be0: advance live counter, snap A = B on completion
+        eye_ = task_.eye();         // snapshot A + signed fixed-point products (FUN_00517f20)
         velX_ = velZ_ = 0; // dolly handoff: no residual follow velocity when the task releases
-    } else if (reset_) {
-        eye_ = {std::clamp(smoothBall_.x + m.offX, m.boxX0, m.boxX1), m.height, std::clamp(smoothBall_.z + m.offZ, m.boxZ0, m.boxZ1)};
-        velX_ = velZ_ = 0;
     } else {
-        gx = std::clamp(gx, m.boxX0, m.boxX1);
-        gz = std::clamp(gz, m.boxZ0, m.boxZ1);
-        velX_ = (velX_ + (gx - eye_.x) / m.div * frames) / 2;
-        velZ_ = (velZ_ + (gz - eye_.z) / m.div * frames) / 2;
-        eye_.x += velX_;
-        eye_.z += velZ_;
-    }
-
-    // --- look-at (FollowCam_computeLookat 0x4C30D8): ball, led ahead of the ball holder ---
-    glm::ivec3 look = ball;
-    if (holder) {
-        int i = zoneOf(look.z, m.leadKeys);
-        std::span<const int> leads = holderDir >= 0 ? m.lead1 : m.lead0;
-        int lead = leads[std::size_t(std::min<int>(i, int(leads.size()) - 1))];
-        if (holder->role == Role::Goalkeeper) look.z += holder->pos.z > 0 ? -lead : lead; // flag 0x1000
-        else {
-            int h = int(holder->facing) << 6;
-            look.x += sin16x(lead, h), look.z += cos16x(lead, h);
-        }
-    }
-    Angles S = anglesTo(eye_, look);
-
-    // --- angle windows (0x4C37A0 step 5) ---
-    bool yawZones = (m.flags & kYawZones) && !((m.flags & kYawBox) && inBox(m.yawBox, ball));
-    bool pitchZones = (m.flags & kPitchZones) && !((m.flags & kPitchBox) && inBox(m.pitchBox, ball));
-    if (yawZones) {
-        int i = zoneOf(ball.z, m.yawZoneKeys);
-        S.yaw = clampYaw16(S.yaw, m.yawMax[std::size_t(i)], m.yawMin[std::size_t(i)]);
-    } else {
-        S.yaw = clampYaw16(S.yaw, m.yawA, m.yawB);
-    }
-    if (pitchZones) {
-        int i = zoneOf((m.flags & kPitchKeyX) ? ball.x : ball.z, m.pitchZoneKeys);
-        S.pitch = clampPitch16(S.pitch, m.pitchMax[std::size_t(i)], m.pitchMin[std::size_t(i)]);
-    } else {
-        S.pitch = clampPitch16(S.pitch, m.pitchA, m.pitchB);
-    }
-
-    // --- loose-ball overrides (FollowCam_looseBallOverride 0x4C3634) ---
-    if (!holder) {
-        glm::ivec3 p = ball;
-        if (p.y > m.hiY) {
-            p += m.hiOff;
-            Angles q = anglesTo(eye_, p);
-            if (overrides_ & kHighBall) {
-                S.pitch = clampPitch16(q.pitch, m.hiPitchA, m.hiPitchB);
-            } else {
-                glm::ivec3 d = eye_ - p;
-                int raw = wrap16(atan2_16(d.y, hdist(d.x, d.z))); // Cam_anglesToRaw: un-negated (original quirk)
-                if (absDiff16(raw, S.pitch) > m.hiTrig) S.pitch = clampPitch16(raw, m.hiPitchA, m.hiPitchB), overrides_ |= kHighBall;
-            }
+        if (slot < 0) {
+            // No static record in WC98 for these modes (the selector default lane keeps the previous
+            // preset; the task-handler lane drives cut-scenes). Live fallback [P]: high central
+            // broadcast orbit at the byte-proven h12 preset height 0x7b8, polar offset scaled by the
+            // caminit rec+0x8c default kPolarSpeed (960 units); yaw/pitch auto-atan toward the ball.
+            tgt = {p.cx + fxTrig(smoothBall_.z, CameraTask::kPolarSpeed), cameraPresetH12(0).height,
+                   p.cz - fxTrig(smoothBall_.x, CameraTask::kPolarSpeed)};
+            Angles ang = anglesTo(tgt, smoothBall_);
+            yawT = ang.yaw;
+            pitchT = ang.pitch;
+        } else if (mode_ == CameraMode::Shoulder) {
+            // Case-5 live patches: eye x/z offsets proportional to the ball coords with multiplier
+            // DAT_00586244, rounded and negated by the selector; height 0x180; pitch target 63000.
+            tgt = {-fxTrig(smoothBall_.x, kCase5Mul), kCase5Height, -fxTrig(smoothBall_.z, kCase5Mul)};
+            Angles a = anglesTo(tgt, smoothBall_); // FUN_004ca7b0 case-5 prelude: atan(ball-eye)+0x4000
+            yawT = wrap16(a.yaw + 0x4000);
+            pitchT = signed16(kCase5Pitch);        // selector-patched rec+0x20 (record word 0xf618)
+        } else if (mode_ == CameraMode::End) {
+            // Goal camera: eye.x follows the ball (selector writes rec+0xa = DAT_00649330 = ball x);
+            // z lane = ±(goal-line distance + 0x210) mirrored by the ball-z sign (DAT_00644860).
+            const int src = std::abs(smoothBall_.z); // DAT_0064477c goal-distance lane [P mapping]
+            tgt = {smoothBall_.x, p.height, smoothBall_.z < 0 ? -(src + 0x210) : src + 0x210};
+            yawT = wrap16(p.yawRaw);                 // direct yaw record word (+0x1c: 0 / 0x7fa6 side)
+            pitchT = anglesTo(tgt, smoothBall_).pitch;
         } else {
-            overrides_ &= ~kHighBall;
+            // Polar orbit lane (FUN_004caa70): ball rotated by the base angle scaled to the record
+            // radius around the (+0x18,+0x1a) center pair. Base angle FUN_004ca7b0: mode 1 =
+            // (-player facing & 0x3ff) << 6 (DAT_00644848 lane); mode 2 default = quarter turn 0x4000.
+            const int a = mode_ == CameraMode::Action ? 0x4000
+                          : signed16((-(holder && holder->role != Role::Goalkeeper
+                                             ? wrap16(int(std::lround(holder->facing * kTurn / (2.0 * std::numbers::pi))))
+                                             : 0) & 0x3ff) << 6);
+            const int rx = cos16x(smoothBall_.x, a) + sin16x(smoothBall_.z, a); // ball rotated by base angle
+            const int rz = -sin16x(smoothBall_.x, a) + cos16x(smoothBall_.z, a);
+            tgt = {p.cx + fxTrig(rx, p.radius), p.height, p.cz + fxTrig(rz, p.radius)};
+            Angles ang = anglesTo(tgt, smoothBall_); // flag &4 auto-pitch/atan look lane
+            yawT = ang.yaw;
+            pitchT = ang.pitch;
         }
-        Angles q = anglesTo(eye_, p);
-        int d = absDiff16(q.yaw, S.yaw);
-        if (overrides_ & kLooseYaw) {
-            if (d < m.looseOff) overrides_ &= ~kLooseYaw;
-        } else if (d > m.looseOn) {
-            S.yaw = clampYaw16(q.yaw, m.looseA, m.looseB);
-            overrides_ |= kLooseYaw;
+
+        if (reset_) {
+            eye_ = tgt;
+            velX_ = velZ_ = 0;
+        } else {
+            const int qx = (tgt.x - eye_.x) / div * frames;
+            const int qy = (tgt.y - eye_.y) / div * frames;
+            const int qz = (tgt.z - eye_.z) / div * frames;
+            velX_ = (velX_ + qx) / 2;
+            velZ_ = (velZ_ + qz) / 2;
+            eye_.x += velX_;
+            eye_.z += velZ_;
+            if (qy) eye_.y += qy * frames; // [P] height lane: same fixed divisor, no velocity state
+            else eye_.y += std::clamp(tgt.y - eye_.y, -frames, frames);
         }
-    } else {
-        overrides_ &= ~(kHighBall | kLooseYaw);
     }
 
-    // --- smoothing (Angle16_follow 0x4C2FC4) ---
+    // --- angles: direct-pitch record lanes clamp to their byte-derived targets, rest auto-atan ----
     if (reset_) {
-        yaw_ = S.yaw, pitch_ = S.pitch, velYaw_ = velPitch_ = 0;
+        yaw_ = wrap16(yawT), pitch_ = wrap16(pitchT), velYaw_ = velPitch_ = 0;
     } else {
-        pitch_ = follow16(pitch_, S.pitch, (overrides_ & kHighBall) ? m.hiDiv : m.pitchDiv, velPitch_, frames);
-        yaw_ = follow16(yaw_, S.yaw, (overrides_ & kLooseYaw) ? m.looseDiv : m.yawDiv, velYaw_, frames);
+        pitch_ = follow16(pitch_, pitchT, div, velPitch_, frames);
+        yaw_ = follow16(yaw_, yawT, slot == 7 ? 32 : div, velYaw_, frames); // End yawRaw lane: slow yaw [P]
     }
     reset_ = false;
 }

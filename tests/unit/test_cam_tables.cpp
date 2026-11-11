@@ -7,7 +7,8 @@
 //   * h12/h14/h28 preset rows (DAT_00585FEA, DAT_00586046 stride 10; DAT_005862D2) and the case-5
 //     preset-record pitch field DAT_00586268 = 63000 (WC98's own per-preset pitch lane).
 // Provenance hygiene: FIFA-99 cite `FOV i16 0x57FAD8` is REFUTED (ascending u16 pair table there), and
-// the kModes[] FIFA-99 zone-table row signatures occur ZERO times in WC98 -> rows stay family carryover.
+// the kModes[] FIFA-99 zone-table row signatures occur ZERO times in WC98 -> those FIFA-99 rows are
+// deleted from camera.cpp, replaced by byte-derived WC98 preset records (pass-17cam, section 12).
 #include "check.hpp"
 #include "wc98/presentation/camera.hpp"
 
@@ -143,8 +144,8 @@ int main() {
     CHECK(u16AtData(kFifa99FovCite + 4) == 0x0007 && u16AtData(kFifa99FovCite + 6) == 0x0006);
     CHECK(countBytes(kFifa99FovCite, 32, seq16({0x0cc0, 0x0cc0, 0x0cc0, 0x0a00})) == 0); // WC98 FOV run absent there
 
-    // 10. kModes[] FIFA-99 zone-table row signatures: zero occurrences in the WC98 image
-    // (analysis/pass16cam/absent_scan.txt) -> rows are family carryover, NOT WC98 data.
+    // 10. FIFA-99 zone-table row signatures (the deleted `kModes` rows, pass-17cam): zero occurrences
+    // in the WC98 image (analysis/pass16cam/absent_scan.txt) -> WC98 uses preset records instead.
     CHECK(countWhole(seq({60900, 61050, 61200, 61350, 61500})) == 0); // Tele pitchMax
     CHECK(countWhole(seq({60500, 60700, 60900, 61100, 61300})) == 0); // Tele pitchMin
     CHECK(countWhole(seq({61750, 61750, 61750, 61750, 61750})) == 0); // Sideline pitchMax
@@ -160,6 +161,33 @@ int main() {
 
     // 11. WC98's live per-mode FOV words [1..8] occur exactly once: the DAT_0057FB82 table itself.
     CHECK(countWhole(seq16({0x0cc0, 0x0cc0, 0x0cc0, 0x0a00, 0x0cc0, 0x0880, 0x0ac0, 0x0f00})) == 1);
+
+    // 12. WC98 preset-record grammar (pass-17cam, register D-54 CLOSED): the port's kPresets table ==
+    // image bytes field-for-field for all 11 selector FUN_004ca880 targets (stride 0x2c band DAT_00586xxx).
+    {
+        constexpr std::uintptr_t va[11] = {0x58613c, 0x586168, 0x586194, 0x5861c0, 0x5861ec, 0x586218,
+                                           0x58608c, 0x5860b8, 0x5860e4, 0x586110, 0x586248};
+        for (int i = 0; i < 11; ++i) {
+            const auto& p = kPresets[std::size_t(i)];
+            CHECK(u16AtData(va[std::size_t(i)] + 0x8) == p.flags);                     // task-lane flags
+            CHECK(u16AtData(va[std::size_t(i)] + 0xa) == std::uint16_t(p.radius));     // radius/x lane
+            CHECK(u16AtData(va[std::size_t(i)] + 0xc) == std::uint16_t(p.height));     // eye height
+            CHECK(u16AtData(va[std::size_t(i)] + 0xe) == std::uint16_t(p.zOff));       // signed z lane
+            CHECK(u16AtData(va[std::size_t(i)] + 0x18) == std::uint16_t(p.cx));        // center pair
+            CHECK(u16AtData(va[std::size_t(i)] + 0x1a) == std::uint16_t(p.cz));
+            CHECK(u16AtData(va[std::size_t(i)] + 0x1c) == p.yawRaw);                   // direct yaw word
+            CHECK(u16AtData(va[std::size_t(i)] + 0x20) == p.pitch);                    // pitch target lane
+            CHECK(u16AtData(va[std::size_t(i)] + 0x26) == p.speed);                    // smoothing word
+        }
+        // Case-5 (Shoulder) live-patch inputs: multiplier DAT_00586244 + selector immediates. The
+        // pitch write 63000 is pinned in section 8; the height patch equals the record static.
+        CHECK(u16AtData(0x586244) == kCase5Mul);                          // 0x3e0 = 992/65536 scale
+        CHECK(u16AtData(0x586248 + 0xc) == std::uint16_t(kCase5Height));  // record static == patch 0x180
+        // Mode-word dispatch (DAT_00580df0): selector entry loads the word, dec + range-checks
+        // {1..4} (case 5 falls to default), and FUN_004ca7b0 gates case-3 on cmp eax,3.
+        CHECK(countBytes(0x4ca88f, 16, std::vector<std::uint8_t>{0xa1, 0xf0, 0x0d, 0x58, 0x00, 0x48, 0x83, 0xf8, 0x04}) == 1);
+        CHECK(countBytes(0x4ca7b5, 16, std::vector<std::uint8_t>{0xa1, 0xf0, 0x0d, 0x58, 0x00, 0x83, 0xf8, 0x03}) == 1);
+    }
 
     std::printf("cam tables: FOV DAT_0057FB82 + caminit/preset rows byte-exact; FIFA-99 cites refuted\n");
     return 0;

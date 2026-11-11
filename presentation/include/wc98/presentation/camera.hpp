@@ -55,6 +55,41 @@ struct CameraPresetRow {
 [[nodiscard]] CameraPresetRow cameraPresetH14(int slot);
 // h28 singleton preset at DAT_005862D2/2D4/2D6/2D8.
 [[nodiscard]] CameraPresetRow cameraPresetH28();
+// WC98 camera preset records (stride 0x2c band DAT_00586xxx) picked by the mode word DAT_00580df0 in
+// selector FUN_004ca880; fields are byte-exact u16 reads at the record offsets, gated byte-for-byte by
+// test_cam_tables. Grammar + live-patch lanes: analysis/pass17cam/NOTES.md (register D-54 CLOSED).
+struct CamPreset {
+    std::uint16_t flags; // +0x8: task-lane bits &1 direct yaw (+0x1c raw), &4 auto-pitch atan,
+                         //     &0x40 orbit radius lane, &0x80 ball retarget (FUN_004a0f40 branches)
+    int radius;          // s16@+0xa: polar orbit radius / End-mode x lane / Shoulder live-patch -> cam+0x108
+    int height;          // u16@+0xc: eye height -> cam+0x10c (case-5 selector patch writes 0x180)
+    int zOff;            // s16@+0xe: eye z lane -> cam+0x110 (case-3/case-5 live patches override)
+    int cx, cz;          // s16@+0x18 / +0x1a: orbit-center pair feeding the FUN_004caa70 x/z anchors
+    std::uint16_t yawRaw;// u16@+0x1c direct yaw (flag &1 lane; End side z>=0 record = 0x7fa6)
+    std::uint16_t pitch; // u16@+0x20 pitch target (case-5 selector patch writes 63000)
+    std::uint16_t speed; // u16@+0x26 smoothing word (cam+0x114 FOV-sentinel -4 lane family) [P]
+};
+
+// Selector FUN_004ca880 order; VA comments are the record addresses (raw = VA - 0x401a00).
+inline constexpr CamPreset kPresets[] = {
+    {0x8400, 0x0910, 0x01e0, 0x0000, -576,   0, 0x0000, 0x0000, 0x1130}, // DAT_0058613C case-1 ball x < 0
+    {0x8400, 0x0280, 0x01e0, 0x0000,  224,   0, 0x0000, 0x0000, 0x12c0}, // DAT_00586168 case-1 ball x >= 0
+    {0x8000, 0x0c90, 0x0230, 0x0116, -544, 235, 0x0000, 0x0000, 0x0c58}, // DAT_00586194 case-2 x<0 z<0
+    {0x8000, 0x0c90, 0x0230, -278,   -544,-235, 0x0000, 0x0000, 0x0c58}, // DAT_005861C0 case-2 x<0 z>=0
+    {0x8000, 0x03a0, 0x0230,  -96,    220, 172, 0x0000, 0x0000, 0x0f50}, // DAT_005861EC case-2 x>=0 z<0
+    {0x8000, 0x03a0, 0x0230,   96,    220,-172, 0x0000, 0x0000, 0x0f50}, // DAT_00586218 case-2 x>=0 z>=0
+    {0xc000,    0,   0x00c0, -640,    32,   0, 0x0000, 0x0000, 0x1518}, // DAT_0058608C case-3 (rec+0x10==3) z<0
+    {0xc000,    0,   0x00c0,  640,    32,   0, 0x7fa6, 0x0000, 0x1518}, // DAT_005860B8 case-3 (rec+0x10==3) z>=0
+    {0x8400,    0,   0x00e0, -800,    32,   0, 0x0000, 0x0000, 0x1100}, // DAT_005860E4 case-3 (rec+0x10!=3) z<0
+    {0x8400,    0,   0x00e0,  800,    32,   0, 0x0000, 0x0000, 0x1100}, // DAT_00586110 case-3 (rec+0x10!=3) z>=0
+    {0xc000, 0x0410, 0x0180,    0,   -80,   0, 0x0000, 0xf618, 0x0d48}, // DAT_00586248 case-5 (Shoulder)
+};
+// Case-5 live patches written by the selector into DAT_00586248: eye x/z offsets = -(coord *
+// DAT_00586244) >> 16 with fixed-multiply rounding; height pinned to 0x180 (record +0xc static);
+// pitch target pinned to 63000 (record word +0x20 = 0xf618). Selector sites 0x4caa05/0x4caa2f.
+inline constexpr std::uint16_t kCase5Mul = 0x3e0; // DAT_00586244 first word (multiplier)
+inline constexpr int kCase5Height = 0x180;        // selector writes rec+0xc = 0x180
+inline constexpr std::uint16_t kCase5Pitch = 63000; // selector writes rec+0x20 dword = 63000
 
 // tabA_pre height prelude FUN_004a0790: packed u32 at DAT_0057FB82 + idx*2, sign-extended top
 // halfword = DAT_0057FB82[idx+1]. Sentinels -5 -> playerHeight (rec+0x78), -4 -> camHeight
@@ -183,13 +218,14 @@ public:
     [[nodiscard]] const CameraTask& task() const { return task_; }
 
 private:
+    // FOV target of a mode via the WC98 accessor grid (row 13, DAT_0057FB82 sentinel -1): Replay ->
+    // kReplayFov; exe modes {1,2,3,5} expand per tabATaskHeight with `ballXPos` = live ball x >= 0.
+    [[nodiscard]] int fovTargetFor(CameraMode m, bool ballXPos) const;
     CameraMode mode_ = CameraMode::Tele;
     bool reset_ = true, started_ = false;
     glm::ivec3 eye_{0, 650, 0}, smoothBall_{};
     int yaw_ = 0, pitch_ = 0, velYaw_ = 0, velPitch_ = 0, velX_ = 0, velZ_ = 0;
-    int side_ = 0;           // height-table side (possessing team's attack direction)
     int quality_ = 1;      // DAT_00644778 scene-level quality word (h23 tier lane, default low)
-    unsigned overrides_ = 0; // loose-ball override flags 0x100000 / 0x200000
     int fov_ = 3200, fovFrom_ = 3200, fovTo_ = 3200;
     float fovGlide_ = 1.5f;  // seconds into the 1.5 s glide
     int ballSide_ = -1;      // Ball Cam attacking side

@@ -8,6 +8,18 @@ project goals.
 ## [Unreleased]
 ### Added
 
+- **Camera preset-record grammar decoded + FIFA-99 `kModes` deleted (pass-17cam, D-54 closed)**: the
+  live per-mode camera grammar is byte-derived from WC98 — 11 selector FUN_004ca880 records at
+  DAT_00586{08c..248} (stride 0x2c) installed as port `kPresets` (camera.hpp: flags@+0x8, s16 radius/x
+  lane +0xa, height +0xc, s16 z-lane +0xe, center pair +0x16/+0x1a, yaw word +0x1c, pitch word +0x20,
+  smoothing word +0x26); consumers decoded (FUN_004caa70 case-3 direct eye-trio writes cam+0x108/
+  0x10c/0x110; case-1 orbit anchors DAT_00649324/28 + side clamp ±(DAT_0064477c+0x140) + yaw window
+  {0..0x7fa6} wrap-clamp; FUN_004a0f40 task-setup field reads). Live-patch inputs documented: case-3
+  rec+0xe = ±(DAT_0064477c+0x210) / rec+0xa = DAT_00649330, case-5 (DAT_00586244·coord)>>16 round-pair
+  + height 0x180 + pitch 63000. Gate `test_cam_tables` §12 pins all 11 records × 9 fields == image
+  bytes, the case-5 constants, and mode dispatch bytes at 0x4ca88f/0x4ca7b5 (selector DAT_00580df0).
+  Dossier `analysis/pass17cam/{NOTES.md,DECOMPILE/consumers.txt}`. Suite 120/120.
+
 - **Pass-17 S5 — snap band, anim-rate closure, FE pad gate**: WC98 `FUN_004F5000` decoded as
   setPosAndTarget and installed as `Motion_setPosAndTarget` (pos store + `setTarget(pos)` insertion +
   atan2(ball) facing pair + dir8 quantize + zeroing block; gate `scenarioSetPosAndTarget`) — the band

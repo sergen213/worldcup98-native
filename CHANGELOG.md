@@ -8,6 +8,18 @@ project goals.
 ## [Unreleased]
 ### Added
 
+- **Pass-lane dribble/pass grammar cutover (pass-17ai, D-22 closed)**: `team_ai_ball.cpp` onBallAct
+  lane re-modeled on the WC98 passlane dossier (`analysis/pass17ai/DECOMPILE/passlane_0x50cf50.txt`) —
+  fused retarget gate `L_4de3b8` = own-box flag || loose-ball designation (team +0xF0) || attacking-half
+  flag → shot-select retarget (dossier L.410-412); budget ladder local_68 table base + scratch draw
+  local_78 high-half semantics (L.310/313/557), near-chaser `distBall>>6` clamp [0x18..0x30] (L.362-372),
+  counter DAT_006561dc exit increments consolidated net-0 (L.359-361, 378/383/390, 698/701); header-pass
+  body drops the [0..0x640] lift clamp tail (belongs to pass-lane LAB_0050d7c3 only; hdrpass dossier
+  L.252-275) with kickSpec kind/cls from fr codes. Self-test shooting/physics steps gate release
+  attribution on `ball.lastToucher == shooter && towardGoal` and close the arc window when the keeper
+  deflection takes the touch (driven apex obs/pred 23/22 MATCH). Registry D-22 closed; D-21/D-23 grammar
+  rows marked installed. Suite 120/120, self-test 15/15.
+
 
 - **Pass-17 ref — referee lane live capture bounded; motion-record array located (D-28 narrowed)**:
   the WC98 per-slot motion record array is decoded from the tick chain (`FUN_0049daf0` callees):

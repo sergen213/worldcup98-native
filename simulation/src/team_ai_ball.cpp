@@ -810,7 +810,8 @@ struct ActFrame {
     PassRec recs[11];           // +0x0D0
     PassRec shots[5];           // +0x288
     const Vec3* p350 = nullptr; // +0x350 shot target
-    std::int32_t budgetScratch = 0; // WC98 local_78: high-half draw budget (LAB_0050d24b [P])
+    std::int32_t budgetBase = 0;   // WC98 local_68 (passlane dossier L.310): budget table base, no draw addend
+    std::int32_t budgetScratch = 0; // WC98 local_78: high-half draw budget (dossier L.313 [P])
     std::int32_t hi[0xb] = {};  // +0x354..+0x37F
     std::int32_t& at(int o) { return o < 0xd0 ? lo[o >> 2] : hi[(o - 0x354) >> 2]; }
     std::int32_t* ptr(int o) { return &at(o); }
@@ -1160,6 +1161,7 @@ L_4dd6ad: {
     // (FIFA-99: t.f210 == 1 -> >>= 3).
     const std::int32_t d10 = static_cast<std::int32_t>(w.rng.next());
     f(0x74) = kDribbleBudget[a32] + (d10 & 0xf);
+    F.budgetBase = kDribbleBudget[a32]; // dossier L.310 local_68 = table base; f(0x74) = local_84 (L.314)
     F.budgetScratch = d10 >> 8; // WC98 local_78 = high half of the same draw [P] (rng is a 16-bit stream)
     if (t.f210 == 1 && m != 0) { f(0x74) >>= 2; F.budgetScratch >>= 3; } // WC98 0x50d266 dual shift [P]
     std::int32_t d4 = (f(0x54) - p.facingDesired) & 0x3ff;
@@ -1192,6 +1194,7 @@ L_4dd6ad: {
 }
 L_4dd814:
     if (static_cast<std::int16_t>(p.pendingCode & 0xffff) < 0) goto L_4df000;
+    // dossier L.698/701 lane-exit DAT_006561dc += 1 (short<0 branch -> port L_4df000 tail ++).
     ++w.pl.g67320c;
     if ((p.pendingCode & 0xffff) == 0x71) goto L_4defa5; // WC98 skill code (FIFA-99 0x73; anim ids shift -2)
     Player_setState(w, pid, 0x30d, 0, 0, false, true);
@@ -1396,7 +1399,7 @@ L_4df000: { // dribble: dribble vector toward +0x9C, turned along the touch / go
     }
     t.f1e0 = -1;
     for (int k = 0; k < 4; ++k) w.pl.dribbleVec[k] = f(0x9c + k * 4);
-    ++w.pl.g67320c;
+    ++w.pl.g67320c; // dossier L.698 dribble-tail exit increment (DAT_006561dc += 1)
     return 0;
 }
 L_4de05e: // an opponent chases (+0x88)
@@ -1406,11 +1409,12 @@ L_4de05e: // an opponent chases (+0x88)
         const std::int32_t d = P(w, ch).distBall;
         if (d < 0xc0 || (d < 0x180 && f(0x00) == 0)) { // WC98 0x50CF50: near-chaser dribble gate 0x150/0x1b0 -> 0xc0/0x180
             dribbleDir_4DC0D8(w, pid, ch, f(0x4c), f(0x54), f(0x34), F.ptr(0x9c));
-            --w.pl.g67320c;
+            --w.pl.g67320c; // dossier L.359-361 near-chaser gate: FUN_0050c530 + DAT_006561dc - 1 (net 0 at lane exit)
             goto L_4dd814;
         }
     }
     w.rng.next(); // 0x4DE0D7: drawn, unused
+    // WC98 dossier L.362-372 budget ladder: default 0x18; sector in {0,1,7} -> chaser distBall >> 6 clamp [0x18..0x30].
     f(0x37c) = 0x18;
     if (f(0x00) == 0 || f(0x00) == 1 || f(0x00) == 7) {
         f(0x37c) = P(w, ch).distBall >> 6;
@@ -1426,7 +1430,7 @@ L_4de05e: // an opponent chases (+0x88)
     }
     f(0x37c) = f(0x0c) + aiD32(0x59fd28) > P(w, ch).distBall ? 0 : 1;
     if (f(0x37c) != 0 && f(0x34) == 0) Player_requestSprint(w, pid);
-    --w.pl.g67320c;
+    --w.pl.g67320c; // dossier L.378/383/390: side-branch & atan-lane decrements consolidated at one exit (net 0)
     goto L_4dd814;
 L_4de21d: // free of the chaser
     if (static_cast<std::uint32_t>(t.humans) == 0 && t.f1b8 != -1 && P(w, ch).distBall <= 0x240) t.f1b8 = -1;
@@ -1456,7 +1460,12 @@ L_4de3b8: { // the chaser is tackling
     f(0x37c) = iabs(p.posI.x) - w.pitch.goalHalfWidth;
     const std::int32_t e2 = (w.pitch.halfLength - iabs(p.posI.z)) * 2;
     if (f(0x18) >= 0 && f(0x2c) != 0 && !(f(0x37c) >= 0 && e2 < f(0x37c))) goto L_4def38;
-    if (f(0x18) >= 0 && t.f1bc != -1) {
+    // WC98 passlane dossier L.410-412 fused retarget gate: local_70 (= f(0x20), ball in own box) || loose-ball
+    // designation t.f1bc (team record +0xF0, term added at L.412; pass-14 Team_updateTactics pair) || the
+    // attacking-half flag f(0x1c). The dossier's first sub-term (player +0x774 == 0 && record +0xEC != 0,
+    // an in-flight pass designation) has no modeled port field [P]. FIFA-99's "shot && f1bc" pair is a subset.
+    // retarget slot -> shot-select LAB_0050d9c8.
+    if (f(0x18) >= 0 && (f(0x20) != 0 || t.f1bc != -1 || f(0x1c) != 0)) {
         framePasses_4DD2BC(w, pid, F);
         f(0x37c) = f(0xb4);
         if (f(0x48) < F.recs[f(0x37c)].score) {
@@ -1532,6 +1541,8 @@ L_4de80d:
     goto L_4dd814;
 L_4de946:
     if (f(0x20) != 0) goto L_4de6ce;
+    // WC98 dossier L.516-517 pointer compare: (local_80 == f(0x1c)) && player != team-record +0xF0 designation
+    // (port pid == t.f1bc); distBall > 0x23f escapes the gate [P].
     if (f(0x1c) != 0 || pid == t.f1bc) {
         if (P(w, ch).distBall < 0x240) goto L_4de6ce;
     }
@@ -1567,11 +1578,13 @@ L_4de946:
 L_4deb5b:
     // WC98 LAB_0050e... (pair 46): the kSectorClose table gate is replaced by `(reach + attr [+half]) >> 1 < distBall`.
     if (static_cast<std::int32_t>(f(0x0c) >> 1) < P(w, ch).distBall || (w.rng.next() & 0xf)) {
-        // WC98 0x50ded2/0x50def5: two flag-gated counter tests - budget vs f(0x34), scratch draw vs f(0x24).
-        if (f(0x34) != 0 && w.pl.g67320c < f(0x74)) {
+        // WC98 dossier L.532/533: two flag-gated counter tests - local_3c (= f(0x28), NOT the FIFA-99
+        // f(0x34) lane flag) vs budget+draw, and the scratch draw vs f(0x24).
+        if (f(0x28) != 0 && w.pl.g67320c < f(0x74)) {
             dribbleDir_4DC0D8(w, pid, ch, f(0x4c), f(0x54), f(0x34), F.ptr(0x9c));
             goto L_4dd814;
         }
+        // dossier L.533: local_50 (= f(0x24)) && DAT_006561dc < local_78 (budgetScratch).
         if (f(0x24) != 0 && w.pl.g67320c < F.budgetScratch) {
             dribbleDir_4DC0D8(w, pid, ch, f(0x4c), f(0x54), f(0x34), F.ptr(0x9c));
             goto L_4dd814;
@@ -1592,7 +1605,9 @@ L_4deb5b:
     }
     edx = f(0xb4);
     if (f(0x44) <= F.recs[edx].score) goto L_4ddd8e;
-    if (f(0x74) >= w.pl.g67320c) goto L_4dec04;
+    // WC98 dossier L.557: (DAT_006561dc <= local_68) -> dribble tail; the counter compare uses the budget
+    // TABLE base, not the draw-scaled f(0x74). Second OR term (slot-C score < DAT_0058bfd1 = Thr91) follows.
+    if (w.pl.g67320c <= F.budgetBase) goto L_4dec04;
     edx = f(0xbc);
     if (f(0x40) > F.recs[edx].score) goto L_4dec04;
     goto L_4ddd8e;
@@ -1763,9 +1778,9 @@ L_4dfa95: {
     rel[2] = d.dz;
 }
 L_4df7fd:
-    if (kind != 3 && lift < 0) lift = (rel[0] >> 7) + (rel[0] >> 5);
-    else if (kind != 3 && lift > 0x640) lift = 0x640;
-    else if (lift == 0) lift = (rel[0] >> 7) + (rel[0] >> 5);
+    // WC98 hdrpass dossier L.252-275: no lift-clamp tail in the header-pass body - the [0..0x640] clamp
+    // block is pass-lane LAB_0050d7c3 (passlane dossier L.626-631) only. r10/lift flows raw from its
+    // producers; kickSpec derives kind/cls from the fr code below (dossier L.253-262).
     {
         const std::int32_t fr = kind == 3 ? 0x40 : (kind == 1 ? 0x10 : 0x20);
         const std::uint32_t ks = kickList_4D175C(p.facing, p.posI.y, h, p.slot == 0 ? 1 : 0, fr, rel[1], rel[2]);
@@ -1773,6 +1788,9 @@ L_4df7fd:
         kind = spec.kind;
         cls = spec.cls;
     }
+    // WC98 dossier L.267-275 tail-call arg semantics: Kick_plan(dist = target-record +4 -> port rel[0], slot 0,
+    // kind = local_20 (spec-derived), spec = local_2c, bool = 0 < player posI.y) - Watcom register args flow
+    // through the port's explicit parameter list [P].
     if (k6e != nullptr) Kick_planToPoint(w, pid, rel, k6e, lift, k6e->y, 0, kind, cls, p.posI.y > 0 ? 1 : 0, 3);
     else Kick_planToPoint(w, pid, rel, nullptr, lift, -1, 0, kind, cls, p.posI.y > 0 ? 1 : 0, 2);
     rel[1] = iabs(rel[1]);

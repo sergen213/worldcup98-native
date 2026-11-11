@@ -617,14 +617,24 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                 const auto& b = w.ball;
                 if (armedShot && seqChangeTick < 0 && w.players[std::size_t(shPid)].anim.seq != seqAtPress)
                     seqChangeTick = i; // action clip selected on the shooter
-                if (armedShot && contactTick < 0 && b.possessor < 0 && (b.tvel.x != 0 || b.tvel.z != 0))
+                // Release attribution (pass-17 D-22 re-baseline): a kick is identified by ball.lastToucher ==
+                // the shooter (set in Kick_planToPoint, flight.cpp) and its velocity travelling toward the
+                // opponent goal. The fused retarget gate (pass-lane dossier L.410-412) fires WC98 pass-kicks
+                // from deep attackers; those release the ball too and must not be recorded as this shot.
+                const long dirX = gkX0 - iu(b.tpos.x), dirZ = gkY0 - iu(b.tpos.z);
+                const bool towardGoal = (std::int64_t(b.tvel.x) * dirX + std::int64_t(b.tvel.z) * dirZ) > 0;
+                if (armedShot && contactTick < 0 && b.possessor < 0 && (b.tvel.x != 0 || b.tvel.z != 0) &&
+                    b.lastToucher == shPid && towardGoal)
                     contactTick = i; // ball velocity appears only at the kick's contact frame
-                if (!shotActed && b.possessor < 0 && (b.tvel.x != 0 || b.tvel.z != 0)) {
+                if (!shotActed && armedShot && b.possessor < 0 && (b.tvel.x != 0 || b.tvel.z != 0) &&
+                    b.lastToucher == shPid && towardGoal) {
                     shotActed = true;
                     shotVy = b.tvel.y; shotY0 = b.tpos.y; // apex prediction seeds (FUN_0051e9e0/ea70)
                 }
-                apex = std::max(apex, iu(b.tpos.y));       // ball height (tpos.y is 16.16)
-                minGround = std::min(minGround, iu(b.tpos.y));
+                if ((contactTick >= 0 || shotActed) && b.lastToucher == shPid) { // arc window from the attributed contact frame, closed when the shooter loses touch (keeper deflection lofts the ball; that response is measured by gkDisp)
+                    apex = std::max(apex, iu(b.tpos.y));       // ball height (tpos.y is 16.16)
+                    minGround = std::min(minGround, iu(b.tpos.y));
+                }
                 if (gk >= 0) {
                     const auto [gx, gz] = posOf(gk);
                     gkDisp = std::max(gkDisp, len(gx - gkX0, gz - gkY0));
@@ -673,13 +683,18 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                     if (seqChangeTick < 0 && (w.players[std::size_t(q)].anim.seq == kanim ||
                                               w.players[std::size_t(q)].anim.seq == kanim + 1))
                         seqChangeTick = i; // canonical action clip selected on the shooter
-                    if (contactTick < 0 && b.possessor < 0 && (b.tvel.x != 0 || b.tvel.z != 0)) {
+                    if (contactTick < 0 && b.possessor < 0 && (b.tvel.x != 0 || b.tvel.z != 0) &&
+                        b.lastToucher == q &&                                          // shooter attribution
+                        std::int64_t(b.tvel.x) * (gx1_ - iu(b.tpos.x)) +               // toward the keeper goal
+                            std::int64_t(b.tvel.z) * (gz1_ - iu(b.tpos.z)) > 0) {       // (pad-lane rule)
                         contactTick = i; // ball velocity appears only at the kick's contact frame
                         shotActed = true;
                         if (shotVy == 0) { shotVy = b.tvel.y; shotY0 = b.tpos.y; }
                     }
-                    apex = std::max(apex, iu(b.tpos.y));
-                    minGround = std::min(minGround, iu(b.tpos.y));
+                    if (contactTick >= 0 && b.lastToucher == q) { // arc window from contact, closed on shooter-touch loss (see pad-lane rule)
+                        apex = std::max(apex, iu(b.tpos.y));
+                        minGround = std::min(minGround, iu(w.ball.tpos.y));
+                    }
                     if (gk >= 0) {
                         const auto [gx, gz] = posOf(gk);
                         gkDisp = std::max(gkDisp, len(gx - gkX0, gz - gkY0));

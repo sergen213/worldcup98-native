@@ -49,4 +49,19 @@ struct SciFile {
     static SciFile parse(std::span<const std::uint8_t> data);
 };
 
+// One decoded record-stream op: 16-byte record = {type, seven operand slots}. Grammar proven
+// tree-wide (pass-17sci): operands f1/f5 are always zero, f2 pitch delta i16 within ±0x384,
+// f3 duration ticks u16 <= 0x214. Per-type notes: TASK_HANDLERS_WC98.md §9.
+struct SciOp {
+    std::uint16_t type = 0;              // fields[0]; observed set {1,2,4,6,9,A,B,C,D,10,13,15}
+    std::array<std::int16_t, 7> ops{};   // f1..f7 operand slots (f2=dx, f3=dur, f4=angle, f7=id)
+    std::size_t offset = 0;              // file offset of the record
+};
+
+// Decode the record stream into an op stream: one SciOp per 16-byte record. Throws FormatError if
+// any record violates the tree-wide grammar (type outside the observed set, f1/f5 non-zero, f2 out
+// of ±0x384). Semantics stay data-table level: there is no runtime opcode dispatcher in
+// FIFAWC.EXE; tasks consume these rows by index (TASK_HANDLERS_WC98.md §9).
+std::vector<SciOp> decodeOpcodeStream(const SciFile& file);
+
 } // namespace wc98::formats

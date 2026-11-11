@@ -1,5 +1,7 @@
 // Derived from fifa99-native (same author), ported for World Cup 98
 #include <wc98/formats/sci.hpp>
+#include <algorithm>
+#include <ranges>
 
 namespace wc98::formats {
 namespace {
@@ -88,6 +90,35 @@ SciFile SciFile::parse(std::span<const std::uint8_t> data) {
         f.trailer.push_back(p);
     }
     return f;
+}
+
+// Tree-wide observed record types (pass-17sci survey over all 87 COMMON/*.SCI files, 15305
+// records): the stream is a data table of typed rows, not bytecode — see INTERPRETER.md.
+std::vector<SciOp> decodeOpcodeStream(const SciFile& file) {
+    static constexpr std::uint16_t kObserved[] = {0x1, 0x2, 0x4, 0x6, 0x9, 0xa, 0xb,
+                                                  0xc, 0xd, 0x10, 0x13, 0x15};
+    std::vector<SciOp> ops;
+    ops.reserve(file.records.size());
+    for (std::size_t i = 0; i < file.records.size(); ++i) {
+        const auto& r = file.records[i];
+        const auto t = static_cast<std::uint16_t>(r.fields[0]);
+        if (std::ranges::find(kObserved, t) == std::end(kObserved))
+            throw FormatError(std::format("SCI: record @0x{0:x} type {1:x} outside observed set",
+                                          0x30 + i * 16, t));
+        if (r.fields[1] != 0 || r.fields[5] != 0)
+            throw FormatError(std::format("SCI: record @0x{0:x} operand f1/f5 non-zero", 0x30 + i * 16));
+        const auto dx = r.fields[2];
+        if (dx < -0x384 || dx > 0x384)
+            throw FormatError(std::format("SCI: record @0x{0:x} f2 pitch delta {1:x} out of ±0x384",
+                                          0x30 + i * 16, dx));
+        SciOp op{};
+        op.type = t;
+        for (int j = 0; j < 7; ++j)
+            op.ops[static_cast<std::size_t>(j)] = r.fields[static_cast<std::size_t>(j + 1)];
+        op.offset = 0x30 + i * 16;
+        ops.push_back(op);
+    }
+    return ops;
 }
 
 } // namespace wc98::formats

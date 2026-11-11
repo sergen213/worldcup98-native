@@ -58,6 +58,15 @@ int main() {
         for (const auto& r : f.records) hist[static_cast<int>(r.fields[0])]++;
     }
 
+    // Pass-17sci opcode-stream gate: every record stream decodes under the observed-type
+    // grammar (INTERPRETER.md); head sequences pinned from tree bytes.
+    std::size_t totalOps = 0;
+    for (const auto& p : files) {
+        const auto ops = decodeOpcodeStream(SciFile::parse(slurp(p)));
+        CHECK(!ops.empty());
+        totalOps += ops.size();
+    }
+
     // Dossier-verified named facts (§6 header/record/tail examples).
     const auto gengol = slurp(common / "GENGOL00.SCI");
     const SciFile g = SciFile::parse(gengol);
@@ -82,6 +91,21 @@ int main() {
     } else {
         CHECK(false);
     }
+
+    if (const auto gops = decodeOpcodeStream(g); gops.size() >= 8) {
+        const std::uint16_t want[] = {0x10, 0x13, 0x13, 0x13, 0x13, 0x15, 0xb, 0xa}; // GENGOL00 head [P]
+        for (int i = 0; i < 8; ++i) CHECK(gops[static_cast<std::size_t>(i)].type == want[i]);
+        CHECK(gops[0].offset == 0x30);
+    } else {
+        CHECK(false);
+    }
+    if (const auto cops = decodeOpcodeStream(c); cops.size() >= 8) {
+        const std::uint16_t want[] = {0x10, 0x15, 0xb, 0xa, 0x4, 0xd, 0xb, 0xa}; // CLAINC00 head [P]
+        for (int i = 0; i < 8; ++i) CHECK(cops[static_cast<std::size_t>(i)].type == want[i]);
+    } else {
+        CHECK(false);
+    }
+    std::fprintf(stderr, "SCI opcode gate: %zu ops decoded across tree\n", totalOps);
 
     int used = 0;
     for (int t = 0; t < 32; ++t) if (hist[t]) ++used;

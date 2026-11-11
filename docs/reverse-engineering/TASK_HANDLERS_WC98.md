@@ -342,3 +342,25 @@ Ranked actionable deltas:
   (wrapper `FUN_0047aa48` → driver 0x47aa8e).
 - tabA tick bodies (`FUN_004c9e60/4ca870/...`) share handler semantics; individual decompiles not
   included here — follow-up if a slot's tick behavior matters for parity.
+
+## 9. Interpreter lane — D-29 closed as data model (pass-17sci) [P]
+
+Full dossier: `analysis/pass17sci/INTERPRETER.md` (probes, descriptor-table decode, grammar table;
+pseudocode dump `analysis/pass17sci/DECOMPILE/all_functions.txt`, 5320 functions). Summary:
+
+- **No .SCI VM exists in FIFAWC.EXE.** Exhaustive probes (magic/tag/anchor-reader grep over the full
+  pseudocode, switch/case sweep on every observed record type, `.sci` string scan of .text — zero;
+  fileopen `_fsize` consumer enumeration = loader + modem lanes only) find no bytecode fetch/dispatch
+  structure. The scripted-task "interpreter" is this document's §1 scheduler pair with tabA/tabB
+  vector dispatch, consuming `.SCI` payload rows as **data tables** through the preset-row model of
+  §3/§5 (h12/h14/h28 row = `(rec+0x60)*10`).
+- Descriptor table at VA 0x580A9C decoded: stride-32 `{nameptr,id,tag,idx}`; tag `0xffffffff` = data
+  packs, tags {0x30, 0x82, 0x2e} carry the per-scene code-pack modules (ids 970/972). Back-pointer
+  sentinel at 0x580d3c.
+- Payload grammar shipped as an opcode decoder: `decodeOpcodeStream` in `formats/src/sci.cpp` +
+  header; 12 observed types {0x1,0x2,0x4,0x6,0x9,0xa,0xb,0xc,0xd,0x10,0x13,0x15} with tree-wide
+  invariants (f1/f5 always zero, f2 pitch delta ±0x384, f3 dur ≤ 0x214) — `test_sci` decodes all
+  15,305 records across the 87 tree files and pins head sequences (GENGOL00 {0x10,0x13×4,0x15,0xb,
+  0xa}, CLAINC00 {0x10,0x15,0xb,0xa,0x4,0xd,0xb,0xa}).
+- Residual: per-handler row-capture parity (runtime capture blocked by the SQF/EULZ negative lane),
+  not an interpreter implementation. D-29 flipped to **Resolved (data model)**.

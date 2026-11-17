@@ -961,10 +961,6 @@ void FeFlow::back() {
     if (slView_)   { slView_ = false; return; }
     if (credView_) { credView_ = false; return; }
     if (histScreen_) { histScreen_ = 0; return; } // Esc from feflow90/91 -> hub ('fe06'/'quit' exit tags)
-    if (recScreen_) { // Esc = 'fe28' return edge (pages) / 'quit' exit (page 28 closes to opener)
-        recScreen_ = (recScreen_ == 28) ? 0 : 28;
-        return;
-    }
     if (igMode_) { igMode_ = 0; return; }         // Esc closes the in-game option popup to its parent
     if (wcCfg_) { // Esc = 'quit' edge: pop the decoded parent chain (wcStack_), else close to hub flow
         if (!wcStack_.empty()) {
@@ -1586,7 +1582,8 @@ void FeFlow::recordsTriviaMove(int delta) { // page 34 trpb/trnb: section cursor
 }
 
 void FeFlow::recordsRowMove(int delta) { // pages 29/30/88 sbar: 9-row window scroll [C]
-    recRow_ = std::clamp(recRow_ + delta, 0, 31); // 40-pool max: 31 = 40 - 9-row window
+    const int n = recZwcup_ ? int(recZwcup_->ids.size()) : (recHis_ ? int(recHis_->teamIds.size()) : 10);
+    recRow_ = std::clamp(recRow_ + delta, 0, std::max(0, n - 1 - 9)); // pairs = pool - own; window 9
 }
 
 void FeFlow::paintRecordsTable(const formats::ScreenLayout& sc, const formats::ResFile& res,
@@ -2604,12 +2601,16 @@ int FeFlow::pointerActivate() {
         if (recScreen_ == 34) {
             for (const char* n : {"trpb", "trnb"}) {
                 const formats::LayoutObject* o = rec34_.object(n);
-                if (o && widgetHit(*o, float(ptrX_), float(ptrY_))) { recordsTriviaMove(n[2] == 'r' ? 1 : -1); return -1; }
+                if (o && widgetHit(*o, float(ptrX_), float(ptrY_))) { recordsTriviaMove(n[1] == 'n' ? 1 : -1); return -1; }
             }
         }
         for (const char* n : {"quit", "fe06"}) {
             const formats::LayoutObject* o = sc->object(n);
-            if (o && widgetHit(*o, float(ptrX_), float(ptrY_))) { recScreen_ = 0; return -1; } // 'quit' exit tag
+            // 'quit'/'fe06' exit tag mirrors back(): page 28 closes to the hub, pages return to 28.
+            if (o && widgetHit(*o, float(ptrX_), float(ptrY_))) {
+                if (recScreen_ == 28) { recScreen_ = 0; hubView_ = true; } else openRecords(28);
+                return -1;
+            }
         }
         return -1;
     }

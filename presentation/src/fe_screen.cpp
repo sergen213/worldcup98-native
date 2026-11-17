@@ -703,13 +703,15 @@ void paintMultitext(render::SpriteBatch& ui, const formats::LayoutObject& widget
         const auto next = section.find('{', i);
         const std::string_view chunk = next == std::string_view::npos ? section.substr(i) : section.substr(i, next - i);
         i = next == std::string_view::npos ? section.size() : next;
+        // Raw \r\n are source-line separators: every cell line arrives as "\r\n{n}...".
+        // The {n} token is the newline; skipping raw newlines avoids a blank line per source line.
         std::size_t k = 0;
         while (k < chunk.size()) {
-            const auto nl = chunk.find('\n', k);
-            const std::size_t end = nl == std::string_view::npos ? chunk.size() : nl;
+            std::size_t end = k;
+            while (end < chunk.size() && chunk[end] != '\n' && chunk[end] != '\r') ++end;
             addText(chunk.substr(k, end - k));
-            if (nl != std::string_view::npos) flush();
-            k = end + 1;
+            while (end < chunk.size() && (chunk[end] == '\n' || chunk[end] == '\r')) ++end;
+            k = end;
         }
     }
     flush();

@@ -164,9 +164,10 @@ void paintSliderThumb(render::SpriteBatch& ui, const formats::LayoutObject& trac
 // feflow31/34/88, docs/asset-formats/MULTITEXT.md). Token grammar, measured on shipped blobs:
 // {n} newline, {t} tab, {centre}/{left} line alignment, {wrap}/{nowrap} word wrap at the widget
 // right edge, {tabs lA lB} widget-relative tab stops, {lmargin N} left indent, {font N} face id
-// (FeText 0..10), {colour N} FE text palette (0 = white, 1 = yellow). Raw \n in the blob acts
-// as {n}. Layout coordinates are widget-relative; the exact engine pixel metrics are [P]
-// (Windows capture lane is dead), the token semantics above are [C] from blob content.
+// (FeText 0..10), {colour N} FE text palette (0 = white, 1 = yellow). The raw \r\n source-line
+// separators are skipped; the {n} tokens are the newlines. Layout coordinates are
+// widget-relative; the exact engine pixel metrics are [P] (Windows capture lane is dead), the
+// token semantics above are [C] from blob content.
 void paintMultitext(render::SpriteBatch& ui, const formats::LayoutObject& widget,
                     std::string_view section, const FeText& txt, FeDrawStats& st);
 

@@ -61,6 +61,8 @@ public:
                : popKind_           ? popName_.c_str()
                : setup07View_       ? "FEFLOW07"
                : stad08View_        ? "FEFLOW08"
+               : cfg32View_ == 32      ? "FEFLOW32"
+               : cfg32View_ == 33      ? "FEFLOW33"
                : leagueCfg_         ? cfgName_.c_str()
                : mgmtView_         ? "FEFLOW43"
                : lsView_           ? (lsView_ == 41 ? "FEFLOW41" : "FEFLOW42")
@@ -163,6 +165,23 @@ public:
     bool openStad08();   // friendly-confirm 'fe08' chain / --fe-stadium08 gate; false = layout absent
     [[nodiscard]] bool onStad08() const { return stad08View_; }
     presentation::FeDrawStats drawStad08(render::SpriteBatch& ui) const; // composite + tile/name overlays
+    // ---- Controller/2-player selection family FEFLOW32/33 (pass-20cfg; MENU_NAV_WC98 rows) ------
+    // feflow32 = single-player controller select: one team-pool cursor (tick FUN_00432170 mirrors
+    // [0x607fd4] into [0x608064] [C]; arrow tokens ltlb/ltlr decrement, ltrb increment [C init name
+    // compares 0x6c746c62/0x6c746c72/0x6c747262). feflow33 = 2-player: two pool cursors, tick
+    // FUN_00457f8c present-only, event FUN_0044a770 token set ltlb/ltrb/rtlb/rtrb [C asm].
+    bool openCfg32(int screen);  // 32 = one pool cursor; 33 = two; false = layout absent
+    [[nodiscard]] bool onCfg32() const { return cfg32View_ != 0; }
+    presentation::FeDrawStats drawCfg32(render::SpriteBatch& ui) const; // composite + names/shields/bars
+    [[nodiscard]] int cfg32Idx() const { return cfg32Idx_; }
+    [[nodiscard]] int cfg33Left() const { return cfg33Left_; }
+    [[nodiscard]] int cfg33Right() const { return cfg33Right_; }
+    [[nodiscard]] int cfg33Side() const { return cfg33Side_; }
+    void setCfg33Side(int s) { cfg33Side_ = s != 0; }
+    // Pool-cursor grammar: count = pool size (0x608074); pure helper for the selftest gate.
+    static int cfgCursor(int prev, int delta, int count) {
+        return ((prev + delta) % count + count) % count;
+    }
     // ---- FEFLOW43 management grid + feflow41 LOAD / feflow42 SAVE lists (MENU_PARITY.md rows 29/30) --
     // FEFLOW43.LAY (analysis/pass13 sweep dump): the full team-management grid — back collage, bt00..bt07
     // formation/kick-takers/strategy/positioning/aggression/custom/line-up/bias edit buttons + canc/save/
@@ -470,6 +489,13 @@ public:
     bool stad08View_ = false;   // FEFLOW08 shown ('fe08' friendly-confirm chain / --fe-stadium08 gate)
     int s08Sel_ = 0;            // mpNN tile cursor (mp00..mp09, mod 10; nslt/nsrt arrows cycle)
     int s08Half_ = 0, s08Weather_ = 0, s08Night_ = 0; // sint/wint/hint fake-interface cycle state [H]
+    formats::ScreenLayout cfg32_, cfg33_;               // controller-select family layouts
+    bool haveCfg32_ = false, haveCfg33_ = false;        // present on this tree
+    int cfg32View_ = 0;                                 // 0/32/33 = shown screen
+    int cfg32Idx_ = 0;                                  // feflow32 pool cursor ([0x607fd4]/[0x608064])
+    int cfg33Left_ = 0, cfg33Right_ = 1;                // feflow33 per-side pool cursors
+    int cfg33Side_ = 0;                                 // 0 = left side focused (UP/DOWN)
+    std::vector<std::string> cfg32Visible_, cfg33Visible_;
     // FEFLOW43 management grid (public API block): layout + scene-ownership whitelist. The vNNN/aNNN/
     // oNNN/pyNN animseq runtime surfaces, mmod mode slot and chat widgets stay hidden (composite paints
     // the iNNn button chain + back collage; dynamic content is painted as overlays from FCDB data).

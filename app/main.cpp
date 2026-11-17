@@ -118,6 +118,8 @@ int run(int argc, char** argv) {
     int feStad08 = -1;    // --fe-stadium08 N: friendly chain -> FEFLOW08 stadium select, tile cursor +N moves
     int feRecords = -1;     // --fe-records N: records family gate; N = page*100 + team-cursor moves (pass-20records)
     int feRecordsRow = 0;   // --fe-records-row N: 9-row results window offset (sbar) +N moves
+    int feCfg = -1;       // --fe-cfg N: FEFLOW32/33 controller-select gate; N = screen*100 + cursor moves (pass-20cfg)
+    int feCfgSide = 0;    // --fe-cfg-side N: feflow33 focused side (0=left 1=right)
     int feControl = -1; // --fe-control N: CONTROL1 controller page from the options chain, nav cursor +N (§H)
     int feIgMode = 0;       // --fe-igoptns a|g|m: open the in-game option popup (igaoptns/iggoptns/igmoptns)
     std::string fePopupName; // --fe-popup NAME: shared popup lane gate (feflow10/37, igconsel/mesg/Feflow86)
@@ -165,6 +167,8 @@ int run(int argc, char** argv) {
         else if (a == "--fe-control") { feMode = true, smokeFrames = 1, feControl = std::stoi(next()); }       // CONTROL1 controller-page gate; N = npll/nplr nav-cursor moves (§H)
         else if (a == "--fe-records") { feMode = true, smokeFrames = 1, feRecords = std::stoi(next()); }        // records family gate; N = page*100 + team-cursor moves
         else if (a == "--fe-records-row") { feRecordsRow = std::stoi(next()); }        // sbar window offset moves
+        else if (a == "--fe-cfg") { feMode = true, smokeFrames = 1, feCfg = std::stoi(next()); }              // feflow32/33 gate; N = screen*100 + cursor moves
+        else if (a == "--fe-cfg-side") { feCfgSide = std::stoi(next()); }              // feflow33 side focus
         else if (a == "--fe-save-manager") { feMode = true, smokeFrames = 1, feSave42 = std::stoi(next()); }   // feflow42 SAVE confirm gate; N = row moves + Enter write
         else if (a == "--fe-igoptns") { // igoptns captions lane gate: a=audio g=game m=mouse popup
             feMode = true, smokeFrames = 1;
@@ -333,6 +337,15 @@ int run(int argc, char** argv) {
                 std::fprintf(stderr, "rec: page=%d team=%d row=%d\n", feRecords / 100, fe->recordsTeam(), fe->recordsRow());
             }
         }
+        if (fe && feCfg >= 0) { // --fe-cfg N: FEFLOW32/33 (N/100 = screen, N%100 = pool-cursor moves)
+            if (!fe->openCfg32(feCfg / 100)) std::fprintf(stderr, "fe: controller-select screen unavailable\n");
+            else {
+                if (feCfg / 100 == 33) fe->setCfg33Side(feCfgSide);
+                for (int i = 0; i < feCfg % 100; ++i) fe->adjustValue(+1); // ltrb/rtrb grammar [C]
+                std::fprintf(stderr, "cfg: screen=%d idx=%d left=%d right=%d side=%d\n",
+                             feCfg / 100, fe->cfg32Idx(), fe->cfg33Left(), fe->cfg33Right(), fe->cfg33Side());
+            }
+        }
         if (fe && feLoad41 >= 0) { // --fe-load-game N: feflow41 LOAD list over the port slot dir, rows +N
             fe->ensureFixtureSlots(); // deterministic SLOT00/SLOT01 fixture when the dir is empty [H]
             if (!fe->openLoadGame()) std::fprintf(stderr, "fe: load game unavailable\n");
@@ -415,7 +428,7 @@ int run(int argc, char** argv) {
             // Setup (FEFLOW09/50) + options (feflow15 lst rows): up/down move the row cursor,
             // left/right cycle its value (the original's two-axis scheme); TAB switches feflow15
             // tab pages ('ops2' event family). On the other screens arrows cycle entries/pick rows.
-            const bool setup = fe->onSetup() || fe->onOptions() || fe->onSetup07() || fe->onStad08();
+            const bool setup = fe->onSetup() || fe->onOptions() || fe->onSetup07() || fe->onStad08() || fe->onCfg32();
             if (sc == SDL_SCANCODE_UP) fe->move(-1);
             else if (sc == SDL_SCANCODE_DOWN) fe->move(+1);
             else if (sc == SDL_SCANCODE_LEFT) { if (setup) fe->adjustValue(-1); else fe->move(-1); }
@@ -429,7 +442,7 @@ int run(int argc, char** argv) {
         }
         for (const int d : ev.padNav) { // gamepad nav: same actions as the arrow keys
             if (!fe) break;
-            const bool setup = fe->onSetup() || fe->onOptions() || fe->onSetup07() || fe->onStad08();
+            const bool setup = fe->onSetup() || fe->onOptions() || fe->onSetup07() || fe->onStad08() || fe->onCfg32();
             if (d == platform::Window::kPadNavUp) fe->move(-1);
             else if (d == platform::Window::kPadNavDown) fe->move(+1);
             else if (d == platform::Window::kPadNavLeft) { if (setup) fe->adjustValue(-1); else fe->move(-1); }

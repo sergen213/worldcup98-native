@@ -381,6 +381,17 @@ if(DEFINED WC98_TREE)
     # row, no OOB). The exe over-reads mapped DGROUP (D-73); port must render, not abort.
     add_test(NAME fe_records_window_tail COMMAND wc98-native --fe-records 2931 --fe-records-row 31 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/recwin31)
     set_tests_properties(fe_records_window_tail PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "rec: page=29 team=31 row=31" FAIL_REGULAR_EXPRESSION "records page unavailable")
+    # Controller-select family FEFLOW32/33 (MENU_PARITY rank 2, pass-20cfg): composite art +
+    # team-name/shield/bar overlays; 3203 = pool-cursor nav proof (three ltrb ring moves);
+    # 3310 side=1 = right-side focus (UP/DOWN two-axis grammar, rtlb/rtrb lane).
+    add_test(NAME fe_cfg32 COMMAND wc98-native --fe-cfg 3200 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/cfg32)
+    set_tests_properties(fe_cfg32 PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW32: shapes=[1-9][0-9]* texts=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 |texts=0 |controller-select screen unavailable")
+    add_test(NAME fe_cfg33 COMMAND wc98-native --fe-cfg 3300 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/cfg33)
+    set_tests_properties(fe_cfg33 PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW33: shapes=[1-9][0-9]* texts=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 |texts=0 |controller-select screen unavailable")
+    add_test(NAME fe_cfg32_nav COMMAND wc98-native --fe-cfg 3203 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/cfg32nav)
+    set_tests_properties(fe_cfg32_nav PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "cfg: screen=32 idx=3" FAIL_REGULAR_EXPRESSION "controller-select screen unavailable")
+    add_test(NAME fe_cfg33_side COMMAND wc98-native --fe-cfg 3302 --fe-cfg-side 1 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/cfg33side)
+    set_tests_properties(fe_cfg33_side PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "cfg: screen=33 idx=0 left=0 right=3 side=1" FAIL_REGULAR_EXPRESSION "controller-select screen unavailable")
     # Between-round tournament presentation (FEFLOW35/25/26/27, LAY_COMPOSITOR_NOTES.md "Tournament
     # presentation scenes"): one stat line per screen; fails on zero shapes/texts/cursors.
     add_test(NAME fe_render_present COMMAND wc98-native --fe-smoke 1 --fe-present --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/present)

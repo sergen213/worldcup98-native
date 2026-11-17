@@ -35,6 +35,19 @@ bool run() {
     for (int i = 0; i < 8; ++i)
         expect(std::string_view{FeFlow::kCheatLabels[std::size_t(i)]} == kExpected[i], "cheat row caption");
     expect(std::string_view{FeFlow::kCheatTitle} == "Cheats", "'titl' pane caption string");
+    // Controller-select pool-cursor ring (FeFlow::cfgCursor; feflow32/33 arrow tokens ltlb/ltlr/
+    // ltrb/rtlb/rtrb cycle the pool index, count = 0x608074 pool size [C] FUN_00432170/FUN_0044a770):
+    // Euclidean wrap on both ends, full-cycle identity, single-entry pool stays put.
+    expect(FeFlow::cfgCursor(0, -1, 40) == 39, "ltlb at pool head wraps to tail");
+    expect(FeFlow::cfgCursor(39, +1, 40) == 0, "ltrb at pool tail wraps to head");
+    expect(FeFlow::cfgCursor(10, +5, 40) == 15, "ltrb mid-pool increment");
+    expect(FeFlow::cfgCursor(10, -5, 40) == 5, "ltlr mid-pool decrement");
+    expect(FeFlow::cfgCursor(3, +1, 4) == 0, "4-entry ring increment");
+    expect(FeFlow::cfgCursor(0, -1, 4) == 3, "4-entry ring decrement");
+    expect(FeFlow::cfgCursor(2, -40, 40) == 2, "full-cycle decrement is identity");
+    expect(FeFlow::cfgCursor(3, +80, 40) == 3, "full-cycle increment is identity");
+    expect(FeFlow::cfgCursor(0, +1, 1) == 0, "single-entry pool never moves");
+    expect(FeFlow::cfgCursor(0, 0, 40) == 0, "no move");
     return failures == 0;
 }
 } // namespace

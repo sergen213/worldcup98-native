@@ -270,6 +270,15 @@ FeFlow::FeFlow(render::Renderer& r, fs::path tree, std::string lang) : tree_(std
                 haveStad08_ = true;
             }
         } catch (const std::exception& e) { lastError_ = std::string("FEFLOW08: ") + e.what(); }
+        // FEFLOW16 lineups board (pass-21igscn §2): scene edge [C] edges_table.txt:22
+        // (feflow08 helper FUN_0043ce4c @0x43cf27 pushes NAME:feflow16 0x562020).
+        const std::string t16 = presentation::readLayout((tree_ / "FE/PACK/LAYOUTS/LAYOUTS.BIG").string() + "@FEFLOW16.LAY", d);
+        try {
+            if (!t16.empty()) {
+                lineup16_ = formats::ScreenLayout::build("FEFLOW16", formats::LayoutDocument::parse(std::string_view(t16)), nullptr, nullptr, "PC");
+                haveLineup16_ = true;
+            }
+        } catch (const std::exception& e) { lastError_ = std::string("FEFLOW16: ") + e.what(); }
         // Scene-ownership whitelists (§B-evidence widget map). Excluded on FEFLOW07: chat/cha2/cha3
         // (netplay chat surfaces), ltll/ltlr/rtlr/rtrr + the null shad shadow (invisible hit polygons),
         // shtg/pssg/rnng/dfce/ovrl (soup textids 429-433 = FC strings "Confirms selection..."/
@@ -284,6 +293,15 @@ FeFlow::FeFlow(render::Renderer& r, fs::path tree, std::string lang) : tree_(std
         if (haveStad08_)
             stad08Visible_ = {"back", "titl", "flag", "quit", "fe06", "fe15", "fe89", "fe41", "fe07",
                               "fe16", "flgp", "nslt", "nsrt", "stme", "sint", "wint", "hint"};
+        // FEFLOW16 whitelist: all 49 widgets are scene-owned art (back/shdr/shdl panels, ftix
+        // footix pane 188x173, tmlt/tmrt name slots, lpNN/lsNN/rpNN/rsNN row slots textid=0;
+        // dynamic roster rows paint as overlays, pass-21igscn NOTES §2).
+        if (haveLineup16_) {
+            lineup16Visible_ = {"back", "shdr", "shdl", "ftix", "tmlt", "tmrt"};
+            for (int i = 0; i < 11; ++i)
+                for (const char* c : {"lp", "ls", "rp", "rs"})
+                    lineup16Visible_.push_back(std::string(c) + std::format("{:02d}", i));
+        }
         // Controller-select family FEFLOW32/33 (registry rows 0x562294/0x5622a0 cluster; init
         // FUN_00432170/FUN_00457920, tick FUN_00432170 mirror / FUN_00457f8c present-only, event
         // FUN_0044a770 token compares [C asm]). Scene-ownership whitelists: excluded on both =
@@ -569,6 +587,7 @@ bool FeFlow::loadCaptureScreen(std::string_view name, std::string& err) {
 
 FeDrawStats FeFlow::drawCaptureScreen(render::SpriteBatch& ui) const {
     FeDrawStats st = presentation::composite(captureScreen_, ui, const_cast<ScreenArt&>(art_), text_.get());
+    ui.draw(0, {0.f, 100.f, 640.f, 3.f}, {0.f,0.f,1.f,1.f}, render::packRgba(255, 0, 0, 255)); // probe
     drawCursor(ui, st); // MAUS.PAK arrow overlay like every other FE composite
     return st;
 }
@@ -577,6 +596,7 @@ FeDrawStats FeFlow::drawCurrent(render::SpriteBatch& ui) const {
     if (useCapture_) return drawCaptureScreen(ui); // --fe-screen lane replaces the menu composite
     if (popKind_) return drawPopup(ui); // shared popup lane over the caller scene (pass 13)
     if (setup07View_) return drawSetup07(ui); // FEFLOW07 matchup screen (hub fe07 wedge)
+    if (lineup16View_) return drawLineup16(ui); // FEFLOW16 lineups board (fe16 wedge on the map)
     if (stad08View_) return drawStad08(ui);   // FEFLOW08 stadium select (fe08 confirm chain)
     if (cfg32View_) return drawCfg32(ui);  // FEFLOW32/33 controller-select family (pass-20cfg)
     if (mgmtView_) return drawMgmtGrid(ui);  // FEFLOW43 management grid (--fe-mgmt-grid gate)
@@ -758,6 +778,7 @@ void FeFlow::move(int delta) {
         lsRow_ = std::clamp(lsRow_ + delta, 0, n - 1);
         return;
     }
+    if (lineup16View_) return; // lineups board: arrow keys inert (no cursor widgets)
     if (stad08View_) { s08Sel_ = (s08Sel_ + delta + 10) % 10; return; }         // mpNN tile ring cursor
     if (wcCfg_) { // keyloop_notes.txt/wcfamily_notes.txt: 18 = tmNN row cursor [H]; 23/24 strk/stsc button
         // focus (engine mouse-only, port maps up/down to the two buttons); 35 = ssnN table rows.
@@ -912,6 +933,12 @@ bool FeFlow::enter() {
         if (haveSetup_) { setupScreen_ = true; setupPractise_ = false; return false; }
         return true;                                     // no friendly-config art: shell launches the match
     }
+    if (lineup16View_) { // Enter on the lineups board = kickoff the friendly [C] fe16 chain
+        lineup16View_ = false; stad08View_ = false;
+        sel_ = int(FeEntry::Exhibition);
+        pick_ = poolIds_.empty() ? -1 : int(poolIds_[std::size_t(s07Left_)]);
+        return true;
+    }
     if (stad08View_) { stad08View_ = false; return true; } // stadium confirm: shell starts the match [H]
     if (cfg32View_ == 32) { cfg32View_ = 0; return true; } // 'fe50' forward: CPU match with pool team [C]
     if (cfg32View_ == 33) { cfg32View_ = 0; hubView_ = true; return false; } // 'fe87' -> fcdb editor (open)
@@ -1000,6 +1027,7 @@ void FeFlow::back() {
         return;
     }
     if (setup07View_) { setup07View_ = false; hubView_ = true; return; } // Esc -> hub ('fe06' exit wedge [C] help=77)
+    if (lineup16View_) { lineup16View_ = false; return; } // Esc pops the board back to the map
     if (stad08View_) { stad08View_ = false; if (!setupScreen_) hubView_ = true; return; } // Esc -> parent scene
     if (cfg32View_) { cfg32View_ = 0; hubView_ = true; return; } // Esc -> hub ('fe06' exit tag [C])
     // Esc = the scenes' 'back'/'quit' widget tags (feflow15 tag 'back' @0x44f29a, feflow41 family
@@ -1634,6 +1662,109 @@ FeDrawStats FeFlow::drawStad08(render::SpriteBatch& ui) const {
                     ui.draw(ftex, q.dst, q.uv, q.rgba);
                 ++st.texts; // help-pane caption (helppaneid semantics)
             }
+        }
+    }
+    drawCursor(ui, st);
+    return st;
+}
+// ---- FEFLOW16 lineups board (pass-21igscn §2) -------------------------------------------------
+// Scene edge [C] analysis/pass12/edges_table.txt:22: feflow08 helper FUN_0043ce4c site 0x43cf27
+// pushes NAME:feflow16 (0x562020). LAY grid (FEFLOW16.LAY, dump /tmp/lays21): 11 left rows
+// lsNN (align 1, x=6, jersey number) + lpNN (align 1, x=6+30, "pos.name"), 11 right rows
+// rsNN (align 2, x=640-8) + rpNN (align 2, x=630-30), rows y=0..170 / y=293..463 step 17;
+// tmlt/tmrt center-align (alignment=3) team names at x=191/449 y=220 fontID 4; ftix footix pane
+// stays art. Row content = the friendly matchup sides' FCDB squads (roster slots 0..10, the
+// starting eleven); pos label = FCDB position nibble (0=GK 1=D 2=M 3=F) + '.' + name.
+bool FeFlow::openLineup16() {
+    if (!haveLineup16_) { lastError_ = "FEFLOW16.LAY is absent from this tree"; return false; }
+    lineup16View_ = true;
+    return true;
+}
+
+FeDrawStats FeFlow::drawLineup16(render::SpriteBatch& ui) const {
+    FeDrawStats st = presentation::composite(lineup16_, ui, const_cast<ScreenArt&>(art_), text_.get(), &lineup16Visible_);
+    // shdr/shdl widgets carry the LAY's baked f001/f002 placeholder art; the engine paints the
+    // selected teams' flag shapes (global\FNNN f000) over those slots [C] drawFlag pattern.
+    const auto flagOver = [&](const char* slot, int poolIdx) {
+        const formats::LayoutObject* o = lineup16_.object(slot);
+        if (!o || poolIdx < 0 || std::size_t(poolIdx) >= poolFlagFile_.size() || poolFlagFile_[std::size_t(poolIdx)].empty()) return;
+        const ScreenArt::Shape sh = const_cast<ScreenArt&>(art_).shape("..\\global\\", poolFlagFile_[std::size_t(poolIdx)], "f000", -1);
+        if (sh.tex) { ui.draw(sh.tex, {float(o->x), float(o->y), float(sh.w), float(sh.h)}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu); ++st.shapes; }
+    };
+    flagOver("shdl", s07Left_);
+    flagOver("shdr", s07Right_);
+    if (!fcdb_ || !text_ || !text_->ready()) { drawCursor(ui, st); return st; } // data-less: art-only
+    const formats::FfnFont* f = text_->face(4); // board rows: face-4 green (face-5 atlas renders invisible glyphs)
+    render::TextureId ftex = text_->faceTexture(4);
+    if (!f || !ftex) { f = text_->font(); ftex = text_->texture(); }
+    const formats::FfnFont* f4 = text_->face(4);
+    render::TextureId ftex4 = text_->faceTexture(4);
+    if (!f4 || !ftex4) { f4 = f; ftex4 = ftex; }
+    if (!f || !ftex) { drawCursor(ui, st); return st; }
+    auto teamFor = [&](int poolIdx) -> const formats::FcdbTeam* {
+        if (poolIdx < 0 || std::size_t(poolIdx) >= poolIds_.size()) return nullptr;
+        const auto it = std::ranges::find(fcdb_->teams, poolIds_[std::size_t(poolIdx)], &formats::FcdbTeam::id);
+        return it == fcdb_->teams.end() ? nullptr : &*it;
+    };
+    const std::uint32_t kInk = render::packRgba(245, 235, 200, 255);
+    // Team-name captions (tmlt/tmrt center-align slots, fontID 4).
+    struct Side { const formats::FcdbTeam* team; const char* slot; float cx; };
+    const Side sides[2] = {{teamFor(s07Left_), "tmlt", 191.f}, {teamFor(s07Right_), "tmrt", 449.f}};
+    for (const Side& s : sides) {
+        if (!s.team) continue;
+        const std::string name = poolName(s.team->id);
+        if (name.empty()) continue;
+        float w = 0.f;
+        const auto q0 = presentation::layoutText(*f4, name, 0.f, 220.f, 14.f, kInk);
+        for (const auto& q : q0) w = std::max(w, q.dst.x + q.dst.w);
+        for (const auto& q : presentation::layoutText(*f4, name, s.cx - w * 0.5f, 220.f, 14.f, kInk))
+            ui.draw(ftex4, q.dst, q.uv, q.rgba);
+        ++st.texts;
+    }
+    // Row grammar [C] FUN_00451c2c (analysis/pass21igmenu/grid_dec2): per row the lp/rs widget
+    // gets "%c.%s" (string @0x562bd0) = player-name initial + surname (name after the first
+    // space), the ls/rs widget gets the shirt number; empty slot (id -1) paints blank. WC98
+    // squads are starter-first ordered in FCDB (byte-3 "slot" is schema garbage, values
+    // 136..176), so the XI = roster[0..10] [H].
+    for (const Side& s : sides) {
+        const bool right = s.slot[2] == 'r'; // tmrt side paints the right grid (index 2: t-m-r-t)
+        const float baseY = right ? 293.f : 0.f;
+        for (int i = 0; i < 11; ++i) {
+            const int pid = s.team && std::size_t(i) < s.team->roster.size() ? s.team->roster[std::size_t(i)] : 0;
+            const formats::FcdbPlayer* pl = nullptr;
+            std::size_t pidx = 0;
+            if (pid != 0) {
+                const auto it = std::ranges::find(fcdb_->players, std::uint16_t(pid), &formats::FcdbPlayer::id);
+                if (it != fcdb_->players.end()) { pl = &*it; pidx = std::size_t(std::distance(fcdb_->players.begin(), it)); }
+            }
+            const float y = baseY + float(i) * 17.f;
+            const std::string_view nm = (pl && pidx < fcdbPlayerNames_.size()) ? fcdbPlayerNames_[pidx] : std::string_view{};
+            std::string label, num;
+            if (!nm.empty()) {
+                // [C] "%c.%s": initial of the name + the surname (text after the first space).
+                const auto sp = nm.find(' ');
+                label = std::string(1, nm[0]) + "." + std::string(sp == nm.npos ? nm : nm.substr(sp + 1));
+                num = std::to_string(pl->shirtNumber);
+            }
+            auto drawL = [&](const char* slot, const std::string& txt, float x, float yoff) {
+                if (txt.empty() || !lineup16_.object(slot)) return;
+                for (const auto& q : presentation::layoutText(*f, txt, x, y + yoff, 14.f, kInk))
+                    ui.draw(ftex, q.dst, q.uv, q.rgba);
+                ++st.texts;
+            };
+            auto drawR = [&](const char* slot, const std::string& txt, float rightEdge, float yoff) {
+                if (txt.empty() || !lineup16_.object(slot)) return;
+                float w = 0.f;
+                const auto q0 = presentation::layoutText(*f, txt, 0.f, y + yoff, 14.f, kInk);
+                for (const auto& q : q0) w = std::max(w, q.dst.x + q.dst.w);
+                for (const auto& q : presentation::layoutText(*f, txt, rightEdge - w, y + yoff, 14.f, kInk))
+                    ui.draw(ftex, q.dst, q.uv, q.rgba);
+                ++st.texts;
+            };
+            const std::string ln = std::format("lp{:02d}", i), sn = std::format("ls{:02d}", i);
+            const std::string rp = std::format("rp{:02d}", i), rs = std::format("rs{:02d}", i);
+            if (!right) { drawL(sn.c_str(), num, 6.f, 0.f); drawL(ln.c_str(), label, 36.f, 0.f); }
+            else        { drawR(rp.c_str(), label, 630.f, 0.f); drawR(rs.c_str(), num, 640.f, 0.f); }
         }
     }
     drawCursor(ui, st);
@@ -2765,6 +2896,9 @@ int FeFlow::pointerActivate() {
         return -1; // clicks inside the matchup panel never launch a match from here
     }
     if (stad08View_) { // mpNN tile click moves the cursor; nslt/nsrt cycle; fe07 icon = back edge [C]
+        if (lineup16View_) return -1; // board covers the map: no live widgets behind it
+        if (const formats::LayoutObject* o = stad08_.object("fe16"); // fe16 wedge opens lineups [C 0x43cf27]
+            o && widgetHit(*o, float(ptrX_), float(ptrY_))) { openLineup16(); return -1; }
         for (int i = 0; i < kStadTiles; ++i) {
             const formats::LayoutObject* o = stad08_.object(std::format("mp{:02d}", i));
             if (o && widgetHit(*o, float(ptrX_), float(ptrY_))) { s08Sel_ = i; return -1; }

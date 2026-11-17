@@ -364,6 +364,10 @@ if(DEFINED WC98_TREE)
     # existing saveTournament path and flips cros(idle) -> tick(tic1); evidence line pins the write.
     add_test(NAME fe_savemgr42 COMMAND wc98-native --fe-save-manager 0 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/save42)
     set_tests_properties(fe_savemgr42 PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE};XDG_DATA_HOME=/tmp/wc98port-slots-save" PASS_REGULAR_EXPRESSION "fe: saved slot 00" FAIL_REGULAR_EXPRESSION "save FAILED |FEFLOW42: shapes=0 ")
+    # feflow16 lineups board (pass-21igscn grid grammar): 6 shapes (4 LAY + 2 team-flag overdraws),
+    # 46 texts = 2 FC-bank captions + 22 left rows (x=6 y=0..169) + 22 right rows (x=630/640 y=293..463).
+    add_test(NAME fe_lineups16 COMMAND wc98-native --fe-lineups16 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/fe16)
+    set_tests_properties(fe_lineups16 PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW16: shapes=[1-9][0-9]* texts=46 " FAIL_REGULAR_EXPRESSION "texts=0 |shapes=0 ")
     # Records/trivia family FEFLOW28..31/34/88 (MENU_PARITY rank 5, pass-20records): composite
     # scene art + overlays from FE/TEAMHIST.ENG (.HIS multitext cells, .TRI pool) and .RES
     # head-to-head tables; 2905 = team-cursor nav proof (page 29, five pool-id ring moves).

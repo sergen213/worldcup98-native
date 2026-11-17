@@ -583,6 +583,138 @@ int sliderValueAt(const formats::LayoutObject& track, float x, float y, int lo, 
     return lo + int(std::clamp(pos / ext, 0.f, 1.f) * float(span) + 0.5f);
 }
 
+void paintMultitext(render::SpriteBatch& ui, const formats::LayoutObject& widget,
+                    std::string_view section, const FeText& txt, FeDrawStats& st) {
+    // "[multitext]" section painter; grammar in the header comment (docs/asset-formats/MULTITEXT.md).
+    // Line model: runs accumulate at a widget-relative pen; {n} flushes the line (applying
+    // {centre} shift), advancing the pen to {lmargin}. {wrap} breaks at word boundaries when the
+    // pen passes the widget right edge. Tab stops from {tabs lA lB} are widget-relative.
+    if (section.empty() || !txt.ready()) return;
+    const float x0 = float(widget.x), y0 = float(widget.y);
+    const float w = widget.width > 0 ? float(widget.width) : 640.f;
+
+    struct Run { std::string_view text; float x, width; int font; std::uint32_t rgba; };
+    std::vector<Run> runs;
+    float pen = 0.f, lineY = 0.f, lineH = 16.f, lmargin = 0.f;
+    std::vector<float> tabs;
+    bool wrap = false, centre = false;
+    int font = 0, colour = 0;
+
+    auto faceOf = [&](int f) -> const formats::FfnFont* {
+        const formats::FfnFont* p = txt.face(f);
+        return p ? p : txt.font();
+    };
+    auto sizeOf = [&](int f) { const auto* p = faceOf(f); return p && p->lineHeight ? float(p->lineHeight) : 16.f; };
+    auto rgbaOf = [](int c) { return c == 1 ? render::packRgba(255, 224, 96, 255) : render::packRgba(235, 235, 235, 255); };
+
+    auto flush = [&] {
+        float shift = 0.f;
+        if (!runs.empty() && centre) {
+            const float lw = runs.back().x + runs.back().width - runs.front().x;
+            shift = (w - lw) * 0.5f;
+            if (shift < 0.f) shift = 0.f;
+        }
+        for (const auto& r : runs) {
+            const formats::FfnFont* f = faceOf(r.font);
+            if (!f) continue;
+            const render::TextureId tex = txt.faceTexture(r.font) ? txt.faceTexture(r.font) : txt.texture();
+            for (const auto& q : presentation::layoutText(*f, r.text, x0 + r.x + shift, y0 + lineY, sizeOf(r.font), r.rgba)) {
+                ui.draw(tex, q.dst, q.uv, q.rgba);
+                ++st.texts;
+            }
+        }
+        runs.clear();
+        lineY += lineH;
+        lineH = 16.f;
+        pen = lmargin;
+        centre = false;
+    };
+
+    auto addText = [&](std::string_view s) {
+        std::size_t i = 0;
+        while (i < s.size()) {
+            const std::size_t j = s.find(' ', i);
+            const std::string_view word = j == std::string_view::npos ? s.substr(i) : s.substr(i, j - i);
+            if (!word.empty() && faceOf(font)) {
+                const float sz = sizeOf(font);
+                const float wwid = presentation::textWidthPx(*faceOf(font), word, sz);
+                if (wrap && !runs.empty() && pen + wwid > w) flush();
+                runs.push_back({word, pen, wwid, font, rgbaOf(colour)});
+                pen += wwid;
+                if (sz > lineH) lineH = sz;
+            }
+            if (j == std::string_view::npos) break;
+            pen += faceOf(font) ? presentation::textWidthPx(*faceOf(font), " ", sizeOf(font)) : 8.f;
+            i = j + 1;
+        }
+    };
+
+    std::size_t i = 0;
+    while (i < section.size()) {
+        if (section[i] == '{') {
+            const auto close = section.find('}', i);
+            if (close == std::string_view::npos) break;
+            const std::string_view tok = section.substr(i + 1, close - i - 1);
+            i = close + 1;
+            if (tok == "n") {
+                flush();
+            } else if (tok == "t") {
+                float next = pen + 16.f;
+                for (float s : tabs) if (s > pen + 0.5f) { next = s; break; }
+                pen = next;
+            } else if (tok == "centre") {
+                centre = true;
+            } else if (tok == "left") {
+                centre = false;
+            } else if (tok == "wrap") {
+                wrap = true;
+            } else if (tok == "nowrap") {
+                wrap = false;
+            } else if (tok.starts_with("tabs")) {
+                tabs.clear();
+                std::size_t k = 4;
+                while (k < tok.size()) {
+                    while (k < tok.size() && tok[k] == ' ') ++k;
+                    const std::size_t s = k;
+                    while (k < tok.size() && tok[k] != ' ') ++k;
+                    if (s < k && (tok[s] == 'l' || tok[s] == 'r')) {
+                        float v = 0.f;
+                        for (std::size_t d = s + 1; d < k; ++d) v = v * 10.f + float(tok[d] - '0');
+                        tabs.push_back(v);
+                    }
+                }
+                std::ranges::sort(tabs);
+            } else if (tok.starts_with("lmargin")) {
+                float v = 0.f;
+                for (const char ch : tok.substr(7)) if (ch >= '0' && ch <= '9') v = v * 10.f + float(ch - '0');
+                lmargin = v;
+                pen = v;
+            } else if (tok.starts_with("font")) {
+                int v = 0;
+                for (const char ch : tok.substr(4)) if (ch >= '0' && ch <= '9') v = v * 10 + (ch - '0');
+                font = std::clamp(v, 0, 10);
+            } else if (tok.starts_with("colour")) {
+                int v = 0;
+                for (const char ch : tok.substr(6)) if (ch >= '0' && ch <= '9') v = v * 10 + (ch - '0');
+                colour = v;
+            }
+            continue;
+        }
+        const auto next = section.find('{', i);
+        const std::string_view chunk = next == std::string_view::npos ? section.substr(i) : section.substr(i, next - i);
+        i = next == std::string_view::npos ? section.size() : next;
+        std::size_t k = 0;
+        while (k < chunk.size()) {
+            const auto nl = chunk.find('\n', k);
+            const std::size_t end = nl == std::string_view::npos ? chunk.size() : nl;
+            addText(chunk.substr(k, end - k));
+            if (nl != std::string_view::npos) flush();
+            k = end + 1;
+        }
+    }
+    flush();
+}
+
 void paintListRows(render::SpriteBatch& ui, const formats::LayoutObject& box, std::span<const std::string> captions,
                    int cursorRow, const FeText& txt, int fontId, FeDrawStats& st) {
     // objecttype 9 listbox (widget_slice_spec.md §1): ROWHEIGHT stride rows painted inside the LAY

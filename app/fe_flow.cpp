@@ -10,6 +10,8 @@
 #include "wc98/config/settings.hpp"        // settings.ini [audio] volume rows (Phase 2)
 #include "wc98/audio/mixer.hpp"            // live master-gain updates from the options screen
 #include "wc98/formats/slot.hpp"           // slotFileName()
+#include "wc98/formats/multitext.hpp"      // .HIS cell multitext panes (pass-20records)
+#include <fstream>                         // TEAMHIST data file bytes (loadRecordsData)
 // §H CONTROL1 controller page: live gamepad axis polling (SDL_GetGamepads = opened pads).
 #include <SDL3/SDL.h>
 
@@ -204,6 +206,48 @@ FeFlow::FeFlow(render::Renderer& r, fs::path tree, std::string lang) : tree_(std
             hist91Visible_ = {"back", "flag", "titl", "ltfg", "rtfg", "quit", "fe06", "fe15", "fe07",
                               "fe08", "help", "ovr0", "ovr1", "ovr2", "ovr3",
                               "alp0", "alp1", "alp2", "alp3", "arp0", "arp1", "arp2", "arp3"};
+        }
+    }
+    // Records/trivia/history bookmarks family (FEFLOW28..31/34/88, pass-20records): same tolerant
+    // reader; absent layouts keep the lane closed. Bookmark ribbon = per-page nav widgets
+    // (fe28/fe29/fe30/fe31/fe34/fe88 + febk on 28); results rows top/tpl/two/tdr/tlo (objecttype
+    // 21..25) are engine-filled slots [C sbar handler 0x457345: played=w+d+l @+0x34, won @+0x40,
+    // drawn @+0x3c, lost @+0x38], multitext panes mtex/mttr/mtxl/mtxr (objecttype 35) paint from
+    // .HIS cells, tnam/tmnm (type 0) from poolName.
+    {
+        const char* kSpec[] = {"FEFLOW28.LAY", "FEFLOW29.LAY", "FEFLOW30.LAY", "FEFLOW31.LAY",
+                               "FEFLOW34.LAY", "FEFLOW88.LAY"};
+        const char* kName[] = {"FEFLOW28", "FEFLOW29", "FEFLOW30", "FEFLOW31", "FEFLOW34", "FEFLOW88"};
+        formats::ScreenLayout* tgt[] = {&rec28_, &rec29_, &rec30_, &rec31_, &rec34_, &rec88_};
+        for (int i = 0; i < 6; ++i) {
+            try {
+                fs::path d;
+                const std::string t = presentation::readLayout((tree_ / "FE/PACK/LAYOUTS/LAYOUTS.BIG").string() + "@" + kSpec[i], d);
+                *tgt[i] = formats::ScreenLayout::build(kName[i], formats::LayoutDocument::parse(std::string_view(t)), nullptr, nullptr, "PC");
+                haveRecords_ = true;
+            } catch (const std::exception&) { // member absent on this tree: that page stays closed
+            }
+        }
+        if (haveRecords_) {
+            // Scene-ownership whitelists: back collage + banner/ribbon art + flag + titl + nav
+            // icons + bookmark bar + arrows + headers + help pane are scene art; chat/cha2/cha3/
+            // masc runtime surfaces and the null-named widgets stay hidden; t*/mt*/tmnm/tnam/
+            // shld/sbar-thumb paint as overlays.
+            rec28Visible_ = {"back", "bnnr", "flag", "titl", "febk", "fe29", "fe30", "fe31", "fe34",
+                             "fe88", "ltlb", "ltrb", "ltll", "ltlr", "help"};
+            // hd* header widgets: LAY textids are stale bank indices ("Paris", "Continues" -
+            // measured FCENG.BIN 1318/444..447); the engine fills localized captions at runtime
+            // (FUN_0045721c sbar branch writes via FUN_00443360/FUN_0049168e). Overlaid in
+            // paintRecordsTable from the FC bank, so they stay out of the composite whitelist.
+            rec29Visible_ = {"back", "sbck", "bnnr", "flag", "titl", "sbar", "ribn", "fe28", "fe29",
+                             "fe30", "fe31", "fe34", "fe88", "help"};
+            rec30Visible_ = rec29Visible_;
+            rec31Visible_ = {"back", "bnnr", "flag", "titl", "ribn", "fe28", "fe29", "fe30", "fe31",
+                             "fe34", "fe88", "help"};
+            rec34Visible_ = {"back", "bnnr", "flag", "titl", "ribn", "fe28", "fe29", "fe30", "fe31",
+                             "fe34", "fe88", "help", "trpb", "trnb"};
+            rec88Visible_ = {"back", "sbck", "bnnr", "flag", "titl", "sbar", "ribn", "fe28", "fe29",
+                             "fe30", "fe31", "fe34", "fe88", "help"};
         }
     }
         // Single-player setup family (IG_FAMILIES_SPEC.md §B; MENU_NAV_WC98.md feflow07/08 rows):
@@ -510,6 +554,7 @@ FeDrawStats FeFlow::drawCurrent(render::SpriteBatch& ui) const {
     if (leagueCfg_) return drawLeagueCfg(ui); // FEFLOW72/74/75/76/79/80 config family
     if (wcCfg_) return drawWcFamily(ui); // FEFLOW18/23/24/35 world-cup family screens
     if (histScreen_) return drawHistory(ui); // feflow90/91 world-cup history boards (pass 13)
+    if (recScreen_) return drawRecords(ui); // FEFLOW28..31/34/88 records family (pass-20records)
     if (igMode_) return drawIgOptns(ui);     // igaoptns/iggoptns/igmoptns captions lane (pass 13)
     if (cheatsView_) return drawCheats(ui); // feflow95 cheats screen (MENU_PARITY.md §8)
     if (leagueView_) return drawLeague(ui);
@@ -691,6 +736,11 @@ void FeFlow::move(int delta) {
         return;
     }
     if (histScreen_) { moveHistory(delta); return; } // feflow90 year cursor ('ysla'/'yslc'/'ysrb')
+    if (recScreen_) { // up/down = 9-row results window (29/30/88 sbar), else team cursor
+        if (recScreen_ == 29 || recScreen_ == 30 || recScreen_ == 88) recordsRowMove(delta);
+        else recordsTeamMove(delta);
+        return;
+    }
     if (igMode_) { moveIgOption(delta); return; }     // igoptns list rows (up/down, bounded)
     if (cheatsView_) { moveCheat(delta); return; } // feflow95 rows btn0..btn7 (y=183+25i)
     if (leagueCfg_) { // config grids: up/down = kt/menu row cursor / s001 slider value (keyloop_notes.txt)
@@ -762,6 +812,11 @@ void FeFlow::adjustValue(int dir) {
         return;
     }
     if (histScreen_) return; // feflow90/91 keyloops carry no L/R tag [C] FUN_00468728/FUN_00468b50
+    if (recScreen_) { // left/right = team cursor (28), trivia section (34); no L/R tag on 29/30/31/88
+        if (recScreen_ == 28) recordsTeamMove(dir);
+        else if (recScreen_ == 34) recordsTriviaMove(dir);
+        return;
+    }
     if (igMode_) {           // left/right cycles the focused row's FC-caption value (two-axis rows)
         if (igRow_ >= 0 && std::size_t(igRow_) < igRows_.size() && igVals_.size() > std::size_t(igRow_)) {
             const OptRow& r = igRows_[std::size_t(igRow_)];
@@ -832,6 +887,11 @@ bool FeFlow::enter() {
         return false; // 35/81/82 stats boards: no launch edge from these screens
     }
     if (histScreen_ == 90) { histScreen_ = 91; return false; } // 'fe91' Enter chain -> feflow91 [C] FUN_004857a8
+    if (recScreen_) { // Enter = focused bookmark (febk/fe28 ring) [H]: page 28 arrows, 34 next-trivia
+        if (recScreen_ == 28) recordsTeamMove(1);
+        else if (recScreen_ == 34) recordsTriviaMove(1);
+        return false;
+    }
     if (histScreen_) return false;                             // feflow91 confirm: presentation-only board
     if (igMode_) return false; // row Enter = value select is mouse-only in the port; L/R cycles values
     if (cheatsView_) { toggleCheat(cheatRow_); return false; } // Enter flips the focused checkbox row
@@ -888,6 +948,11 @@ void FeFlow::back() {
     if (popKind_) { popKind_ = 0; return; } // Esc closes the popup to its caller scene (the 'cancel' branch)
     if (mgmtView_) { mgmtView_ = false; hubView_ = true; return; } // Esc -> hub ('quit' tag family [C])
     if (lsView_)   { lsView_ = 0; lsConfirm_ = 0; return; }        // 'exit' crs button closes the list
+    if (recScreen_) { // Esc: pages return to the hub page (bookmark bar), hub closes to the hub screen [C]
+        if (recScreen_ == 28) { recScreen_ = 0; hubView_ = true; }
+        else openRecords(28);
+        return;
+    }
     if (setup07View_) { setup07View_ = false; hubView_ = true; return; } // Esc -> hub ('fe06' exit wedge [C] help=77)
     if (stad08View_) { stad08View_ = false; if (!setupScreen_) hubView_ = true; return; } // Esc -> parent scene
     // Esc = the scenes' 'back'/'quit' widget tags (feflow15 tag 'back' @0x44f29a, feflow41 family
@@ -896,6 +961,10 @@ void FeFlow::back() {
     if (slView_)   { slView_ = false; return; }
     if (credView_) { credView_ = false; return; }
     if (histScreen_) { histScreen_ = 0; return; } // Esc from feflow90/91 -> hub ('fe06'/'quit' exit tags)
+    if (recScreen_) { // Esc = 'fe28' return edge (pages) / 'quit' exit (page 28 closes to opener)
+        recScreen_ = (recScreen_ == 28) ? 0 : 28;
+        return;
+    }
     if (igMode_) { igMode_ = 0; return; }         // Esc closes the in-game option popup to its parent
     if (wcCfg_) { // Esc = 'quit' edge: pop the decoded parent chain (wcStack_), else close to hub flow
         if (!wcStack_.empty()) {
@@ -1430,6 +1499,170 @@ bool FeFlow::openSaveGame() {
     if (!haveSave42_) { lastError_ = "FEFLOW42.LAY is absent from this tree"; return false; }
     lsView_ = 42; hubView_ = false; lsRow_ = 0; lsConfirm_ = 0;
     return true;
+}
+
+// ---- Records/trivia/history bookmarks family (FEFLOW28..31/34/88; pass-20records) -------------
+// Engine grammar [C] (analysis/pass20records dossier): the feflow29 sbar row handler (0x457230..
+// 0x4573f6) fills each row widget record via FUN_0048cc58 (RES pair lookup; directional swap of
+// byte0<->byte2, byte1 stays) writing played = sum of the triple, won = byte0 side, drawn = byte1,
+// lost = byte2 side. Rows skip the team's own pair and pairs with no history (all-zero triple).
+// Multitext panes (mtex/mttr/mtxl/mtxr, objecttype 35) paint from .HIS cells (EN.HIS column
+// layout: 13 columns per team, cell offset table [C]); tmnm/tnam captions = poolName of the RES
+// ids entry. Data files: FE/TEAMHIST.<LANG>/{XX.HIS,XX.TRI,ZWCUP.RES,ZINTER.RES} [C tree probe].
+
+namespace {
+std::string recLang2(std::string_view lang) {
+    // FCDB language code -> TEAMHIST file stem (EN/FR/GE/IT/SP/PT; tree ships 8 languages,
+    // the port's 6 codes all map; unknown codes fall back to EN at the caller).
+    static constexpr std::pair<std::string_view, std::string_view> kMap[] = {
+        {"eng", "EN"}, {"fre", "FR"}, {"ger", "GE"}, {"ita", "IT"}, {"spa", "SP"}, {"por", "PT"}};
+    for (auto& [k, v] : kMap)
+        if (k == lang) return std::string(v);
+    return "EN";
+}
+std::uint16_t recIdOf(const formats::ResFile* res, const formats::His* his, int row) {
+    if (res && row >= 0 && std::size_t(row) < res->ids.size()) return res->ids[std::size_t(row)];
+    if (his && row >= 0 && std::size_t(row) < his->teamIds.size()) return his->teamIds[std::size_t(row)];
+    return 0;
+}
+} // namespace
+
+void FeFlow::loadRecordsData() {
+    recDataLoaded_ = true;
+    const std::string stem = recLang2(cfgLang_);
+    // Directory name is the full uppercase FCDB code (TEAMHIST.ENG); stem is the file prefix.
+    std::string up = cfgLang_;
+    std::transform(up.begin(), up.end(), up.begin(), [](unsigned char c) { return char(std::toupper(c)); });
+    auto bytesOf = [](const fs::path& p) {
+        std::ifstream f(p, std::ios::binary);
+        std::vector<std::uint8_t> b;
+        if (!f) return b;
+        f.seekg(0, std::ios::end);
+        b.resize(std::size_t(f.tellg()));
+        f.seekg(0);
+        f.read(reinterpret_cast<char*>(b.data()), std::streamsize(b.size()));
+        return b;
+    };
+    const fs::path d = tree_ / ("FE/TEAMHIST." + up);
+    recHisBytes_ = bytesOf(d / (stem + ".HIS"));
+    recTriBytes_ = bytesOf(d / (stem + ".TRI"));
+    recZwcupBytes_ = bytesOf(d / "ZWCUP.RES");
+    recZinterBytes_ = bytesOf(d / "ZINTER.RES");
+    try {
+        if (!recHisBytes_.empty()) recHis_ = std::make_unique<formats::His>(formats::His::parse(std::span(recHisBytes_)));
+    } catch (const std::exception&) {}
+    try {
+        if (!recTriBytes_.empty()) recTri_ = std::make_unique<formats::Tri>(formats::Tri::parse(std::span(recTriBytes_)));
+    } catch (const std::exception&) {}
+    try {
+        if (!recZwcupBytes_.empty()) recZwcup_ = std::make_unique<formats::ResFile>(formats::ResFile::parse(std::span(recZwcupBytes_)));
+    } catch (const std::exception&) {}
+    try {
+        if (!recZinterBytes_.empty()) recZinter_ = std::make_unique<formats::ResFile>(formats::ResFile::parse(std::span(recZinterBytes_)));
+    } catch (const std::exception&) {}
+}
+
+bool FeFlow::openRecords(int screenId) {
+    if (!haveRecords_) { lastError_ = "FEFLOW28..31/34/88 layouts absent from this tree"; return false; }
+    const bool ok = (screenId == 28 && !rec28_.objects.empty()) || (screenId == 29 && !rec29_.objects.empty())
+        || (screenId == 30 && !rec30_.objects.empty()) || (screenId == 31 && !rec31_.objects.empty())
+        || (screenId == 34 && !rec34_.objects.empty()) || (screenId == 88 && !rec88_.objects.empty());
+    if (!ok) { lastError_ = "records page layout absent from this tree"; return false; }
+    if (!recDataLoaded_) loadRecordsData();
+    recScreen_ = screenId;
+    hubView_ = false;
+    return true;
+}
+
+void FeFlow::recordsTeamMove(int delta) {
+    const int n = recZwcup_ ? int(recZwcup_->ids.size()) : (recHis_ ? int(recHis_->teamIds.size()) : 1);
+    recTeam_ = (recTeam_ + delta % n + n) % n;
+    recRow_ = 0;
+}
+
+void FeFlow::recordsTriviaMove(int delta) { // page 34 trpb/trnb: section cursor over .TRI pool [C]
+    recTrivia_ = std::max(0, recTrivia_ + delta);
+    recRow_ = 0;
+}
+
+void FeFlow::recordsRowMove(int delta) { // pages 29/30/88 sbar: 9-row window scroll [C]
+    recRow_ = std::clamp(recRow_ + delta, 0, 31); // 40-pool max: 31 = 40 - 9-row window
+}
+
+void FeFlow::paintRecordsTable(const formats::ScreenLayout& sc, const formats::ResFile& res,
+                               render::SpriteBatch& ui, FeDrawStats& st) const {
+    const int n = int(res.ids.size());
+    // Header row (pages 29/30): localized at runtime by the engine, not from LAY textids
+    // (stale bank indices). FC bank: 1272 Opponent, 799 Games, 1954 Won, 614 Draws, 1009 Lost.
+    const std::pair<const char*, std::size_t> kHeaders[] = {
+        {"hdop", 1272}, {"hdpl", 799}, {"hdwo", 1954}, {"hddr", 614}, {"hdlo", 1009}};
+    for (const auto& [w, id] : kHeaders)
+        if (const formats::LayoutObject* o = sc.object(w); o)
+            if (const std::string_view s = text_->stringAt(id); !s.empty())
+                st.texts += paintCaption(*o, s, ui);
+    if (recTeam_ >= n) return;
+
+    int shown = 0;
+    for (int i = 0; i < n && recRow_ + shown < 9; ++i) {
+        if (i == recTeam_) continue;
+        const formats::ResTriple t = res.headToHead(std::size_t(recTeam_), std::size_t(i));
+        if (t.goalsA == 0 && t.venueFlag == 0 && t.goalsB == 0) continue; // pair with no history [C]
+        const int r = recRow_ + shown++;
+        const std::string col = std::format("{:d}", r);
+        if (const formats::LayoutObject* o = sc.object("top" + col); o)
+            st.texts += paintCaption(*o, poolName(res.ids[std::size_t(i)]), ui);
+        if (const formats::LayoutObject* o = sc.object("tpl" + col); o)
+            st.texts += paintCaption(*o, std::format("{:d}", int(t.goalsA) + int(t.venueFlag) + int(t.goalsB)), ui);
+        if (const formats::LayoutObject* o = sc.object("two" + col); o)
+            st.texts += paintCaption(*o, std::format("{:d}", t.goalsA), ui);
+        if (const formats::LayoutObject* o = sc.object("tdr" + col); o)
+            st.texts += paintCaption(*o, std::format("{:d}", t.venueFlag), ui);
+        if (const formats::LayoutObject* o = sc.object("tlo" + col); o)
+            st.texts += paintCaption(*o, std::format("{:d}", t.goalsB), ui);
+    }
+}
+
+void FeFlow::paintRecordsText(const formats::ScreenLayout& sc, const char* widget, int column,
+                              int section, render::SpriteBatch& ui, FeDrawStats& st) const {
+    if (!recHis_ || std::size_t(recTeam_) >= recHis_->teamIds.size()) return;
+    const std::string_view cell = recHis_->cellText(std::size_t(recTeam_), std::size_t(column));
+    if (cell.empty()) return;
+    formats::Multitext mt;
+    try {
+        mt = formats::Multitext::parse(cell);
+    } catch (const std::exception&) {
+        return;
+    }
+    if (std::size_t(section) >= mt.sections.size()) return;
+    if (const formats::LayoutObject* o = sc.object(widget); o)
+        presentation::paintMultitext(ui, *o, mt.sections[std::size_t(section)], *text_, st);
+}
+
+FeDrawStats FeFlow::drawRecords(render::SpriteBatch& ui) const {
+    const formats::ScreenLayout& sc = recScreen_ == 28 ? rec28_ : recScreen_ == 29 ? rec29_
+        : recScreen_ == 30 ? rec30_ : recScreen_ == 31 ? rec31_ : recScreen_ == 34 ? rec34_ : rec88_;
+    const std::vector<std::string>* vis = recScreen_ == 28 ? &rec28Visible_ : recScreen_ == 29 ? &rec29Visible_
+        : recScreen_ == 30 ? &rec30Visible_ : recScreen_ == 31 ? &rec31Visible_
+        : recScreen_ == 34 ? &rec34Visible_ : &rec88Visible_;
+    FeDrawStats st = presentation::composite(sc, ui, const_cast<ScreenArt&>(art_), text_.get(), vis);
+    if (recScreen_ == 28) { // hub page: team name caption + shield/ribbon art from composite
+        const std::uint16_t id = recIdOf(recZwcup_.get(), recHis_.get(), recTeam_);
+        if (const formats::LayoutObject* o = sc.object("tmnm"); o) st.texts += paintCaption(*o, poolName(id), ui);
+    } else if (recScreen_ == 29 || recScreen_ == 30) {
+        const formats::ResFile* res = recScreen_ == 29 ? recZwcup_.get() : recZinter_.get();
+        if (res) paintRecordsTable(sc, *res, ui, st);
+    } else if (recScreen_ == 31) {
+        if (const formats::LayoutObject* o = sc.object("tnam"); o)
+            st.texts += paintCaption(*o, poolName(recIdOf(recZwcup_.get(), recHis_.get(), recTeam_)), ui);
+        paintRecordsText(sc, "mtex", formats::kHisColGen, 0, ui, st);
+    } else if (recScreen_ == 34) {
+        paintRecordsText(sc, "mttr", formats::kHisColTriv, recTrivia_, ui, st);
+    } else if (recScreen_ == 88) {
+        paintRecordsText(sc, "mtxl", formats::kHisColGreats, 0, ui, st);
+        paintRecordsText(sc, "mtxr", formats::kHisColGreats, 1, ui, st);
+    }
+    drawCursor(ui, st);
+    return st;
 }
 
 // Sorted SLOT%.2d.SAV indices in the port's slot directory (app/saveload.cpp defaultSlotDir).
@@ -2349,6 +2582,36 @@ int FeFlow::pointerActivate() {
             if (o && widgetHit(*o, float(ptrX_), float(ptrY_))) { stad08View_ = false; return -1; }
         }
         return -1; // sint/wint/hint fake-interface buttons: cycle the value under the tile cursor [H]
+    }
+    if (recScreen_) { // bookmark bar + arrows + trivia arrows + back icons [C] LAY widget tags
+        const formats::ScreenLayout* sc = recScreen_ == 28 ? &rec28_ : recScreen_ == 29 ? &rec29_
+            : recScreen_ == 30 ? &rec30_ : recScreen_ == 31 ? &rec31_ : recScreen_ == 34 ? &rec34_ : &rec88_;
+        for (const char* n : {"febk", "fe28", "fe29", "fe30", "fe31", "fe34", "fe88"}) {
+            const formats::LayoutObject* o = sc->object(n);
+            if (o && widgetHit(*o, float(ptrX_), float(ptrY_))) {
+                int id = 28;
+                if (n[2] == 'b') id = 28; else id = std::stoi(std::string(n + 2)); // febk = fe28 [H]
+                openRecords(id);
+                return -1;
+            }
+        }
+        if (recScreen_ == 28) {
+            for (const char* n : {"ltlb", "ltrb"}) {
+                const formats::LayoutObject* o = rec28_.object(n);
+                if (o && widgetHit(*o, float(ptrX_), float(ptrY_))) { recordsTeamMove(n[2] == 'l' ? -1 : 1); return -1; }
+            }
+        }
+        if (recScreen_ == 34) {
+            for (const char* n : {"trpb", "trnb"}) {
+                const formats::LayoutObject* o = rec34_.object(n);
+                if (o && widgetHit(*o, float(ptrX_), float(ptrY_))) { recordsTriviaMove(n[2] == 'r' ? 1 : -1); return -1; }
+            }
+        }
+        for (const char* n : {"quit", "fe06"}) {
+            const formats::LayoutObject* o = sc->object(n);
+            if (o && widgetHit(*o, float(ptrX_), float(ptrY_))) { recScreen_ = 0; return -1; } // 'quit' exit tag
+        }
+        return -1;
     }
     if (histScreen_) { // year buttons + nav icons (LAY widgets, help= panes); feflow91 fe07 -> back
         const formats::ScreenLayout& sc = histScreen_ == 90 ? hist90_ : hist91_;

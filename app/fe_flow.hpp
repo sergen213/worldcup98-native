@@ -4,6 +4,9 @@
 // (FEFLOW05) with presentation::composite, and drives menu selection + entry points.
 // ponytail: minimal by design — a data-driven FE graph (LAY button objects -> command ids,
 // FC*.BIN text) is an open item in LAY_COMPOSITOR_NOTES.md; promote this table when it lands.
+#include "wc98/formats/his.hpp"
+#include "wc98/formats/tri.hpp"
+#include "wc98/formats/res.hpp"
 #include "wc98/formats/layout.hpp"
 #include "wc98/presentation/fe_screen.hpp"
 #include "team_select.hpp"
@@ -63,6 +66,9 @@ public:
                : setupScreen_       ? (setupPractise_ ? "FEFLOW50" : "FEFLOW09")
                : optsView_          ? "FEFLOW15"
                : slView_            ? "FEFLOW89"
+               : recScreen_         ? (recScreen_ == 28 ? "FEFLOW28" : recScreen_ == 29 ? "FEFLOW29"
+                                        : recScreen_ == 30 ? "FEFLOW30" : recScreen_ == 31 ? "FEFLOW31"
+                                        : recScreen_ == 34 ? "FEFLOW34" : "FEFLOW88")
                : credView_          ? "FEFLOW19"
                : (haveHub_ && hubView_) ? "FEFLOW06"
                                         : "FEFLOW05";
@@ -264,6 +270,20 @@ public:
     [[nodiscard]] int historyYearIndex() const { return histYear_; }
     void moveHistory(int dir); // 'ysla'/'yslc' -1, 'ysrb' +1 bounded year cursor [C] FUN_00468728
     presentation::FeDrawStats drawHistory(render::SpriteBatch& ui) const;
+    // ---- Records/trivia/history bookmarks family (FEFLOW28..31/34/88, pass-20records) ----
+    // Bookmarked pages under one LAY per page; data = FE/TEAMHIST.<lang>/ {histext .his/.tri +
+    // ZWCUP/ZINTER .RES} (formats::His/Tri/ResFile). Column grammar [C] sbar handler
+    // 0x457345-0x4573f6: triple = {won,drawn,lost}, played = sum, opponent name = poolName
+    // (FUN_00456c70). Dev gate --fe-records N opens page N (28=team select, 29/30=results,
+    // 31=general, 34=trivia, 88=greats); Esc from 28 closes, Esc from pages returns to 28.
+    bool openRecords(int screenId);
+    [[nodiscard]] bool onRecords() const { return recScreen_ != 0; }
+    [[nodiscard]] int recordsScreen() const { return recScreen_; }
+    [[nodiscard]] int recordsTeam() const { return recTeam_; }
+    void recordsTeamMove(int delta);   // left/right team cursor (pool ids order)
+    void recordsTriviaMove(int delta); // trivia section cursor (page 34 trpb/trnb)
+    void recordsRowMove(int delta);    // 9-row results window scroll (pages 29/30 sbar)
+    presentation::FeDrawStats drawRecords(render::SpriteBatch& ui) const;
     // ---- Shared popup lane (FEFLOW10 ok/canc + FEFLOW37 yes/no + IG boxes; analysis/pass13/POPUP_LANE_SPEC.md) --
     // The popups share one grammar: blur blackout (FE/GLOBAL/BLUR.FSH) + `popp` panel (feflow86.fsh#back,
     // 368x230 @136,140) + two nvicons buttons (crs1/crs5 = cancel/no, tic1/tic5 = ok/yes) + txtNN captions.
@@ -395,8 +415,27 @@ public:
     // year cursor is the port analogue of DAT_0057d1cc bounded by DAT_0057c970 = 9 [C].
     formats::ScreenLayout hist90_, hist91_;
     bool haveHistory_ = false;       // at least one board layout loaded
-    int histScreen_ = 0;             // active board: 90 feflow90, 91 continuation, 0 not shown
+    int histScreen_ = 0;           // 90/91 active board (0 = none)
     int histYear_ = 0;               // year cursor over kWcFinals (init clamp [C] FUN_004688e8)
+    // Records family (pass-20records): per-page layouts + cursors; data lazy on first open.
+    formats::ScreenLayout rec28_, rec29_, rec30_, rec31_, rec34_, rec88_;
+    bool haveRecords_ = false;
+    int recScreen_ = 0;   // active page 28/29/30/31/34/88 (0 = not on records)
+    int recTeam_ = 0;     // team cursor over pool ids order
+    int recTrivia_ = 0;   // trivia section cursor (page 34)
+    int recRow_ = 0;      // 9-row window top index (pages 29/30)
+    std::vector<std::string> rec28Visible_, rec29Visible_, rec30Visible_, rec31Visible_,
+        rec34Visible_, rec88Visible_;
+    std::unique_ptr<formats::His> recHis_;
+    std::unique_ptr<formats::Tri> recTri_;
+    std::unique_ptr<formats::ResFile> recZwcup_, recZinter_;
+    bool recDataLoaded_ = false;
+    std::vector<std::uint8_t> recHisBytes_, recTriBytes_, recZwcupBytes_, recZinterBytes_;
+    void loadRecordsData();               // FE/TEAMHIST.<LANG> bytes + parsers (once)
+    void paintRecordsTable(const formats::ScreenLayout& sc, const formats::ResFile& res,
+                           render::SpriteBatch& ui, presentation::FeDrawStats& st) const;
+    void paintRecordsText(const formats::ScreenLayout& sc, const char* widget, int column,
+                          int section, render::SpriteBatch& ui, presentation::FeDrawStats& st) const;
     std::vector<std::string> hist90Visible_, hist91Visible_;
     // ---- FEFLOW07 single-player match setup + FEFLOW08 stadium select (pass 13 §B) --------------
     // Layouts loaded eagerly in the ctor; scene-ownership whitelists exclude the netplay chat widgets

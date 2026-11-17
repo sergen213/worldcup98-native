@@ -33,8 +33,11 @@ wc98_test(test_audio unit/test_audio.cpp)
 # 142-dword table, fixed 100x25 rplyindx.dat) + writer round-trip.
 wc98_test(test_rply unit/test_rply.cpp)
 # .HIS/.TRI team-history pair: synthetic round trips + tree gate over the 8 language pairs
-# (participant id invariance, TRI record/pool parses; docs/asset-formats/TEAMHIST.md).
+# (team id invariance, 120 multitext cells, TRI record/pool parses; docs/asset-formats/TEAMHIST.md).
 wc98_test(test_histtri unit/test_histtri.cpp)
+# "[multitext]" section-blob parser: synthetic grammar gates + 8x120-cell tree sweep with
+# Ireland DU/EN pins (docs/asset-formats/TEAMHIST.md).
+wc98_test(test_multitext unit/test_multitext.cpp)
 # EA .DCT movie container (SCHl + mTCD, SRE v2 video plane): header framing walk across all
 # 30 tree videos, deterministic decode checksums; docs/asset-formats/VIDEO.md.
 wc98_test(test_dct unit/test_dct.cpp)
@@ -354,6 +357,23 @@ if(DEFINED WC98_TREE)
     # existing saveTournament path and flips cros(idle) -> tick(tic1); evidence line pins the write.
     add_test(NAME fe_savemgr42 COMMAND wc98-native --fe-save-manager 0 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/save42)
     set_tests_properties(fe_savemgr42 PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE};XDG_DATA_HOME=/tmp/wc98port-slots-save" PASS_REGULAR_EXPRESSION "fe: saved slot 00" FAIL_REGULAR_EXPRESSION "save FAILED |FEFLOW42: shapes=0 ")
+    # Records/trivia family FEFLOW28..31/34/88 (MENU_PARITY rank 5, pass-20records): composite
+    # scene art + overlays from FE/TEAMHIST.ENG (.HIS multitext cells, .TRI pool) and .RES
+    # head-to-head tables; 2905 = team-cursor nav proof (page 29, five pool-id ring moves).
+    add_test(NAME fe_records28 COMMAND wc98-native --fe-records 2800 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/rec28)
+    set_tests_properties(fe_records28 PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW28: shapes=[1-9][0-9]* texts=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 |texts=0 ")
+    add_test(NAME fe_records29 COMMAND wc98-native --fe-records 2900 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/rec29)
+    set_tests_properties(fe_records29 PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW29: shapes=[1-9][0-9]* texts=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 |texts=0 ")
+    add_test(NAME fe_records30 COMMAND wc98-native --fe-records 3000 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/rec30)
+    set_tests_properties(fe_records30 PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW30: shapes=[1-9][0-9]* texts=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 |texts=0 ")
+    add_test(NAME fe_records31 COMMAND wc98-native --fe-records 3100 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/rec31)
+    set_tests_properties(fe_records31 PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW31: shapes=[1-9][0-9]* texts=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 |texts=0 ")
+    add_test(NAME fe_records34 COMMAND wc98-native --fe-records 3400 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/rec34)
+    set_tests_properties(fe_records34 PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW34: shapes=[1-9][0-9]* texts=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 |texts=0 ")
+    add_test(NAME fe_records88 COMMAND wc98-native --fe-records 8800 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/rec88)
+    set_tests_properties(fe_records88 PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW88: shapes=[1-9][0-9]* texts=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 |texts=0 ")
+    add_test(NAME fe_records_nav COMMAND wc98-native --fe-records 2905 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/recnav)
+    set_tests_properties(fe_records_nav PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "rec: page=29 team=5" FAIL_REGULAR_EXPRESSION "records page unavailable")
     # Between-round tournament presentation (FEFLOW35/25/26/27, LAY_COMPOSITOR_NOTES.md "Tournament
     # presentation scenes"): one stat line per screen; fails on zero shapes/texts/cursors.
     add_test(NAME fe_render_present COMMAND wc98-native --fe-smoke 1 --fe-present --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/present)

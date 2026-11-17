@@ -6,25 +6,32 @@ evidence in `analysis/pass7/teamhist.txt` (GhidraWc98Tri.py run) and
 `docs/reverse-engineering/TOURNAMENT_WC98.md`. Reference implementations: `formats/src/his.cpp`,
 `formats/src/tri.cpp`; gated test `tests/unit/test_histtri.cpp`.
 
-## .HIS layout (measured 2026-11-03, all 8 languages identical)
+## .HIS layout (re-decoded 2026-11-17 pass-20ui, all 8 languages; supersedes the 2026-11-03
+"52x49 grid" view, which was a header misread: the u16 fields at 0x1e/0x20 are ids[13..14] of
+the id run — `...47,49,52...` — not counts; the cited loader predicate was derived from those
+fabricated counts)
 
 | offset | type | field | measured value |
 |--------|------|-------|----------------|
-| 0x00 | u32le | magic | `0x30028` (low half = declared index span 40 = 0x28) |
-| 0x04 | u16le[] | participant id run, ascending with gaps | 33 ids `{26,29,31,...,88}`, identical in all 8 files; ends where a string-offset subtable begins (first value ≥ 0x100) |
-| 0x1e | u16le | `nRows` (loader predicate input) | 49 — coincidentally the tail of the id run |
-| 0x20 | u16le | `nIdx` (loader predicate input) | 52 — coincidentally the tail of the id run |
-| 0x28 | u16le[nIdx] | index table (`His::index`, raw) | mixed: ids 57..88 continue, then offsets `{599,635,...}`, then alternating offset/zero pairs (u32 string-offsets `{2355,...,16363}`); NOT language-invariant past the id run |
-| 0x70 | u32le[nIdx][nRows] | record grid base (`His::cell(row,col)`, row-major) | semantics UNKNOWN; region is **not** byte-identical across languages (localized strings embedded inline in records) |
+| 0x00 | u16le | `nTeams` | 40 (all 8 files) |
+| 0x02 | u16le | `nCols` | 3 (all 8 files) |
+| 0x04 | u16le[nTeams] | team id run, ascending, FCDB id space | `{26,29,31,...,88}` national teams + club ids `{752,760,796,815}`; language-invariant |
+| 0x04+2*nTeams | u32le[nTeams*nCols] | cell offsets, strictly ascending flat | first cell at 568 (DU), last cell runs to EOF |
 
-Loader gate (exact predicate, `FUN_00489f58`): file size > 3 and
-`8 + nIdx*2 + nIdx*nRows*4 <= fileSize`. Measured: every shipped `.HIS` is 161.7 KB (SW) ..
-173.6 KB (FR); the minimum predicate bound is 10,304 bytes.
+Cell text = `[offsets[k], offsets[k+1] or EOF)`, cp1252. Per team: column 0 = greats (caps/goals
+list), 1 = gen (association blurb), 2 = triv (trivia, multi-section). Every cell starts with
+`[multitext]` (gated over all 8x120 cells in `test_histtri`); token grammar in
+`docs/asset-formats/MULTITEXT.md` (parser `formats/src/multitext.cpp`). Ireland (id 31) = team
+row 2: gen "The Football Association...", greats include Niall Quinn, trivia = 8 sections.
 
-The authoritative participant list = `wc98::formats::participants(his)` — the invariant id run at
-+0x04 (33 FCDB-space ids). The 52-row container's rows 43..51 are trailing BYE/qualifier slots per
-the tournament doc. Localized display names come from the paired `.TRI` pool (+ FE/FCDB string
-tables, see `FCDB_WC98.md`).
+Loader gate (`FUN_00489f58`): file size > 4 and the offset table fits
+(`4 + 2*nTeams + 4*nTeams*nCols <= fileSize`).
+
+The authoritative team list = `His::teamIds` (40 FCDB-space ids, identical in all 8 files; the
+same 40 as the `ZWCUP.RES`/`ZINTER.RES` head-to-head grids, parser `formats/src/res.cpp`,
+grid semantics in `docs/reverse-engineering/TOURNAMENT_WC98.md`). Localized display names come
+from FE/FCDB string tables (`FCDB_WC98.md`); the `.TRI` pool carries the trivia name/question
+strings.
 
 ## .TRI layout (measured 2026-11-03, DU/EN probed; structure identical across languages)
 
@@ -43,9 +50,9 @@ candidates); EN k=0 = `"Where was the first World Cup held?" / ...`.
 
 ## Open items (do NOT invent semantics)
 
-- 52x49 `.HIS` grid cell meaning: raw row-major u32 access only (`His::cell`), no named fields.
 - Per-record field count in `.TRI`: data-driven; the bracket loader copies **6** strings per team
   record (0x300-stride slots at `DAT_00631b18...`, truncation caps 255/127 B), so `record(k)` caps
   at 6 and stops at pool EOF. Exact per-record field boundaries = open.
-- `.HIS` inter-page record framing (stream API pages in 16-entry blocks, `FUN_004cfaa0`) and the
-  inline-string layout inside records = open; assigned to the tournament implementation slice.
+- Multitext layout semantics: tab-stop coordinate space (widget-relative vs absolute), `{centre}`
+  anchor, and section->widget binding on feflow31/34/88 = confirmed at handler level
+  (`analysis/pass20records/NOTES.md`), painted by `presentation::paintMultitext`.

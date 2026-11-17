@@ -6,41 +6,42 @@
 namespace wc98::formats {
 
 His His::parse(std::span<const std::uint8_t> data) {
-    // Loader gate (FUN_00489f58): file size > 3, then the geometry predicate.
+    // Loader gate (FUN_00489f58): file size > 4, then the geometry predicate.
     if (data.size() <= 4)
         throw FormatError(std::format("his: {} bytes, need more than 4", data.size()));
     Reader r(data);
     His h;
     h.data_ = data;
-    h.magic = r.u32le();
-    if (h.magic != kHisMagic)
-        throw FormatError(std::format("his: bad magic {:08x}, expected {:08x}", h.magic, kHisMagic));
-    r.seek(0x1e); // u16 fields at +0x1e/+0x20; Reader throws if the file is shorter
-    h.nRows = r.u16le();
-    h.nIdx = r.u16le();
-    const std::size_t need = 8 + std::size_t(h.nIdx) * 2 + std::size_t(h.nIdx) * h.nRows * 4;
-    if (data.size() < need)
-        throw FormatError(std::format("his: {} bytes, geometry needs {}", data.size(), need));
-    r.seek(0x28);
-    h.index.reserve(h.nIdx);
-    for (std::uint16_t i = 0; i < h.nIdx; ++i) h.index.push_back(r.u16le());
+    h.nTeams = r.u16le();
+    h.nCols = r.u16le();
+    if (h.nTeams == 0 || h.nCols == 0)
+        throw FormatError(std::format("his: degenerate header nTeams={} nCols={}", h.nTeams, h.nCols));
+    const std::size_t cells = std::size_t(h.nTeams) * h.nCols;
+    const std::size_t tableEnd = 4 + std::size_t(h.nTeams) * 2 + cells * 4;
+    if (data.size() < tableEnd)
+        throw FormatError(std::format("his: {} bytes, geometry needs {}", data.size(), tableEnd));
+    h.teamIds.reserve(h.nTeams);
+    for (std::uint16_t i = 0; i < h.nTeams; ++i) h.teamIds.push_back(r.u16le());
+    h.offsets.reserve(cells);
+    std::uint32_t prev = 0;
+    for (std::size_t k = 0; k < cells; ++k) {
+        const auto off = r.u32le();
+        if (k == 0 ? off < tableEnd : off <= prev)
+            throw FormatError(std::format("his: offset {} not ascending/in-range at {}", off, k));
+        h.offsets.push_back(off);
+        prev = off;
+    }
+    if (prev >= data.size())
+        throw FormatError(std::format("his: last offset {} past EOF {}", prev, data.size()));
     return h;
 }
 
-std::uint32_t His::cell(std::size_t row, std::size_t col) const {
-    Reader r(data_, 8 + std::size_t(nIdx) * 2 + (row * nRows + col) * 4);
-    return r.u32le(); // need() bounds-checks; the predicate covers every in-range cell
-}
-
-std::vector<std::uint16_t> participants(const His& h) {
-    std::vector<std::uint16_t> ids;
-    Reader r(h.data(), 4);
-    while (r.remaining() >= 2) {
-        const auto v = r.u16le();
-        if (v >= kHisIdRunCap) break; // string-offset subtable begins here (measured 599/568)
-        ids.push_back(v);
-    }
-    return ids;
+std::string_view His::cellText(std::size_t team, std::size_t col) const {
+    if (team >= nTeams || col >= nCols)
+        throw FormatError(std::format("his: cell ({}, {}) out of {}x{}", team, col, nTeams, nCols));
+    const std::size_t k = team * nCols + col;
+    const std::size_t end = k + 1 < offsets.size() ? offsets[k + 1] : data_.size();
+    return std::string_view(reinterpret_cast<const char*>(data_.data()) + offsets[k], end - offsets[k]);
 }
 
 } // namespace wc98::formats

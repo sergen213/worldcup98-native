@@ -160,6 +160,16 @@ void paintSliderThumb(render::SpriteBatch& ui, const formats::LayoutObject& trac
 // Click/drag on a slider track: value from pointer position (analysis/pass12/widget_slice_spec.md §4).
 [[nodiscard]] int sliderValueAt(const formats::LayoutObject& track, float x, float y, int lo, int hi);
 
+// "[multitext]" section painter (FE/TEAMHIST.ENG/*.HIS cells; records/trivia family screens
+// feflow31/34/88, docs/asset-formats/MULTITEXT.md). Token grammar, measured on shipped blobs:
+// {n} newline, {t} tab, {centre}/{left} line alignment, {wrap}/{nowrap} word wrap at the widget
+// right edge, {tabs lA lB} widget-relative tab stops, {lmargin N} left indent, {font N} face id
+// (FeText 0..10), {colour N} FE text palette (0 = white, 1 = yellow). Raw \n in the blob acts
+// as {n}. Layout coordinates are widget-relative; the exact engine pixel metrics are [P]
+// (Windows capture lane is dead), the token semantics above are [C] from blob content.
+void paintMultitext(render::SpriteBatch& ui, const formats::LayoutObject& widget,
+                    std::string_view section, const FeText& txt, FeDrawStats& st);
+
 // List-box painter (objecttype 9 Slider class): N row captions inside the LAY box rect at the
 // ROWHEIGHT stride (FC-bank strings via FeText), hilite pane on cursorRow. The widget_slice_spec.md
 // §1 requirement; league rows reuse paintRowLabel per-widget, this paints a whole box list.

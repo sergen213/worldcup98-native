@@ -376,6 +376,11 @@ if(DEFINED WC98_TREE)
     set_tests_properties(fe_records_nav PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "rec: page=29 team=5" FAIL_REGULAR_EXPRESSION "records page unavailable")
     add_test(NAME fe_records_window COMMAND wc98-native --fe-records 2900 --fe-records-row 12 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/recwin)
     set_tests_properties(fe_records_window PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "rec: page=29 team=0 row=12" FAIL_REGULAR_EXPRESSION "records page unavailable")
+    # Full-scroll over-read edge (pass-20records): slider max 31 [C records_dec11] with
+    # own==offset==31 -> running idx reaches pool idx 40; paint site guards oi>=n (blank
+    # row, no OOB). The exe over-reads mapped DGROUP (D-73); port must render, not abort.
+    add_test(NAME fe_records_window_tail COMMAND wc98-native --fe-records 2931 --fe-records-row 31 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/recwin31)
+    set_tests_properties(fe_records_window_tail PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "rec: page=29 team=31 row=31" FAIL_REGULAR_EXPRESSION "records page unavailable")
     # Between-round tournament presentation (FEFLOW35/25/26/27, LAY_COMPOSITOR_NOTES.md "Tournament
     # presentation scenes"): one stat line per screen; fails on zero shapes/texts/cursors.
     add_test(NAME fe_render_present COMMAND wc98-native --fe-smoke 1 --fe-present --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/present)

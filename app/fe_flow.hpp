@@ -29,6 +29,13 @@ namespace wc98::audio  { class Mixer; }       // audio mixer for live volume upd
 
 namespace wc98::app {
 
+// Records-table row-window grammar (sbar branch, FUN_004572xx family): pool-anchored running
+// index that skips the own slot only when the window crosses it [C records_dec10:149-192 +
+// dec7:42-59]. DAT_0060a070 = own slot (pool scan), DAT_0060a064 = last pool index
+// (poolSize-1; 0 when own is absent), DAT_0060a06e = running fetch index (offset+1 when
+// offset==own). Returns the pool index painted on row r, or -1 for the clear branch (blank
+// row when DAT_0060a064 < bound + r). Gate: selftest step records-window.
+int recordsRowIndex(int offset, int own, int lastIdx, int r);
 // FE menu entries the shell can launch. Index = selection state. The Windows mainmenu scene
 // (FE_MENU_SCREENS_WC98.md §4) draws four items, in registry string order: friendly -> feflow09
 // setup, league play -> feflow73+ league scenes, cup competition -> world-cup family, practise ->

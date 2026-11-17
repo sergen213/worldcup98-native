@@ -1583,7 +1583,24 @@ void FeFlow::recordsTriviaMove(int delta) { // page 34 trpb/trnb: section cursor
 
 void FeFlow::recordsRowMove(int delta) { // pages 29/30/88 sbar: 9-row window scroll [C]
     const int n = recZwcup_ ? int(recZwcup_->ids.size()) : (recHis_ ? int(recHis_->teamIds.size()) : 10);
-    recRow_ = std::clamp(recRow_ + delta, 0, std::max(0, n - 1 - 9)); // pairs = pool - own; window 9
+    // Slider bounds per tick handlers FUN_004574ac/0x45767c: FUN_00476d20 EDX=0 (min),
+    // FUN_00476d5c EDX=0x1f=31 (max) [C records_dec11]. Max offset 31 -> rows [31..39],
+    // so the last pool row IS reachable at full scroll (poolSize-9; the pairCount-9
+    // clamp was the pre-pass guess with no cite - refuted).
+    recRow_ = std::clamp(recRow_ + delta, 0, std::max(0, n - 9));
+}
+
+int recordsRowIndex(const int offset, const int own, const int lastIdx, const int r) {
+    int idx = offset;
+    if (idx == own) idx += 1; // DAT_0060a06e = offset+1 when offset==own (dec10:152)
+    int bound = offset;       // uStack_20 = offset + crossings so far
+    for (int k = 0; k <= r; ++k) {
+        if (lastIdx < bound + k) return -1; // clear branch (dec10:160)
+        if (k == r) return idx;
+        idx += 1;
+        if (idx == own) { bound += 1; idx += 1; } // crossing: uStack_20+1, sVar6+2 (dec10:179-182)
+    }
+    return -1;
 }
 
 void FeFlow::paintRecordsTable(const formats::ScreenLayout& sc, const formats::ResFile& res,
@@ -1599,18 +1616,18 @@ void FeFlow::paintRecordsTable(const formats::ScreenLayout& sc, const formats::R
                 st.texts += paintCaption(*o, s, ui);
     if (recTeam_ >= n) return;
 
-    // Window grammar per FUN_0045721c "sbar" branch [C records_dec10]: rows are
-    // pair-indexed [offset, offset+9) over the pool minus own team (fetch
-    // FUN_00456c70 skips the cursor slot). Out-of-range rows hit the clear
-    // branch, which NULs the sprintf'd string slots (+0x14 name, +0x34..+0x40
-    // numbers) - the %d fields live as pre-formatted strings, so the row
-    // paints blank, not zeros.
-    const int pairCount = n > 0 ? n - 1 : 0;
+    // Window grammar per FUN_0045721c "sbar" branch [C records_dec10:149-192 + dec7:42-59]:
+    // pool-anchored running index (DAT_0060a06e), skipping the own slot (DAT_0060a070) only
+    // when the window crosses it; rows past DAT_0060a064 (= last pool index) hit the clear
+    // branch, which NULs the sprintf'd string slots (+0x14 name, +0x34..+0x40 numbers) - the
+    // %d fields live as pre-formatted strings, so the row paints blank, not zeros.
     for (int r = 0; r < 9; ++r) {
-        const int j = recRow_ + r;
-        const int oi = (j < pairCount) ? (j < recTeam_ ? j : j + 1) : -1;
+        const int oi = recordsRowIndex(recRow_, recTeam_, n - 1, r);
         const std::string col = std::format("{:d}", r);
-        if (oi < 0) continue; // clear branch: blank row [C records_dec10]
+        // The exe over-reads the pool array here when offset==own==sliderMax (idx 40
+        // past 40 entries rides Watcom-mapped DGROUP without fault, D-73 pattern);
+        // the port blanks that row instead.
+        if (oi < 0 || oi >= n) continue; // clear branch + pool over-read guard
         const formats::ResTriple t = res.headToHead(std::size_t(recTeam_), std::size_t(oi));
         if (const formats::LayoutObject* o = sc.object("top" + col); o)
             st.texts += paintCaption(*o, poolName(res.ids[std::size_t(oi)]), ui);

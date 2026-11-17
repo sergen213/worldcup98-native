@@ -1482,6 +1482,37 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
     }
 
     {
+        // 14c. records-window (pass-20records): pure sbar row-window grammar gate
+        // [C records_dec10:149-192 + dec7:42-59] via app::recordsRowIndex. Pins the
+        // running-index mapping: own=0 special case (DAT_0060a06e=1), offset<own,
+        // offset==own (start own+1), offset>own (NO shift - the pre-pass pool-minus-own
+        // map shifted this window by one), a crossing window whose tail reaches the last
+        // pool row, and the DAT_0060a064 clear-branch boundary.
+        StepRes st{"records-window", false, ""};
+        const int last = 39; // poolSize-1 (DAT_0060a064 = DAT_0060a06c-1, dec7:51)
+        auto row = [last](int off, int own, int r) { return recordsRowIndex(off, own, last, r); };
+        bool ok = true;
+        for (int r = 0; r < 9; ++r) ok &= row(0, 0, r) == 1 + r;            // [1..9]
+        for (int r = 0; r < 9; ++r) ok &= row(0, 5, r) == (r < 5 ? r : 6 + r - 5); // [0..4,6..9]
+        for (int r = 0; r < 9; ++r) ok &= row(7, 5, r) == 7 + r;            // offset>own: no shift
+        for (int r = 0; r < 9; ++r) ok &= row(5, 5, r) == 6 + r;            // offset==own: own+1..
+        ok &= row(30, 35, 8) == 39;   // crossing tail reaches last pool row
+        ok &= row(31, 0, 8) == 39;    // 39 < 31+8 false -> fetch idx 39
+        ok &= row(31, 29, 8) == 39;   // slider max 0x1f=31 [C dec11]: last pool idx
+                                      // reachable at full scroll for own < 31
+        ok &= row(31, 35, 8) == -1;   // own inside window: 8 rows + tail blank
+        ok &= row(31, 31, 8) == 40;   // offset==own==sliderMax: the exe over-reads
+                                      // the pool array (idx 40, D-73 pattern); the
+                                      // paint site guards oi>=n to blank the row
+        ok &= row(32, 0, 8) == -1;    // 39 < 32+8 -> clear branch
+        st.passed = ok;
+        st.detail = fmt("records-window: own0={} lt={} gt={} eq={} tail={} clear={}",
+                        row(0, 0, 8), row(0, 5, 8), row(7, 5, 8), row(5, 5, 8),
+                        row(30, 35, 8), row(32, 0, 8));
+        steps.push_back(std::move(st));
+    }
+
+    {
         // D-27 set-piece grammar (FUN_004c1730 arbiter + FUN_004c09a0 machine, pass-17): pure
         // offline replica gates on the FUN_0049e400 band (stadium default {0xe40,0x13e0}). Each
         // restart case asserts the arbiter selector for a fixed sweep segment AND the exact rounded

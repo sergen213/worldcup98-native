@@ -33,10 +33,10 @@ bool ZwcupRes::findPair(std::uint16_t idA, std::uint16_t idB, ResPairRec& out) c
     if (off < 2 + 2 * static_cast<std::int64_t>(poolSize)) return false;
     const std::size_t triple = static_cast<std::size_t>((off - 2 - 2 * poolSize) / 3);
     out = pairs[triple];
-    if (swapped) { // directional access: byte0<->byte2 when team args flip (§2.5)
+    if (swapped) { // directional access: won<->lost when team args flip (§2.5)
         ResPairRec r = out;
-        out.goalsA = r.goalsB;
-        out.goalsB = r.goalsA;
+        out.won = r.lost;
+        out.lost = r.won;
     }
     return true;
 }

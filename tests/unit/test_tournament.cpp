@@ -83,7 +83,7 @@ static void testZwcupParse() {
     ResPairRec f, r;
     CHECK(res.findPair(x, y, f));
     CHECK(res.findPair(y, x, r));
-    CHECK(f.goalsA == r.goalsB && f.goalsB == r.goalsA && f.venueFlag == r.venueFlag);
+    CHECK(f.won == r.lost && f.lost == r.won && f.drawn == r.drawn);
     CHECK(!res.findPair(x, x, f));            // same team: no pair
     CHECK(!res.findPair(0xFFFF, y, f));       // id absent from header
 
@@ -282,7 +282,7 @@ int main() {
         const std::uint16_t x = res.ids[static_cast<std::size_t>(i)];
         const std::uint16_t y = res.ids[static_cast<std::size_t>(i + 7)];
         CHECK(res.findPair(x, y, f) && res.findPair(y, x, r));
-        CHECK(f.goalsA == r.goalsB && f.goalsB == r.goalsA);
+        CHECK(f.won == r.lost && f.lost == r.won);
     }
     // ZINTER.RES: same ids, pair bytes differ from offset 0x52 (§2.5 [H-cmp]).
     CHECK(inter.ids == res.ids);

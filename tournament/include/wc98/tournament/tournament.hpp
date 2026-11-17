@@ -15,11 +15,14 @@ inline constexpr std::uint32_t kNoTeam = 0xFFFFFFFF;
 // ---------------------------------------------------------------------------
 // ZWCUP.RES / ZINTER.RES pair matrix (§2.5, both files exactly 2422 B)
 // Layout: [u16 n=40][n * u16 ids][C(n,2) triples of u8].
-// Triple semantics (goalsA, venue/neutral flag, goalsB) = hyp (§5.4); histogram facts §2.5.
+// Triple semantics = head-to-head {won, drawn, lost} for the row team [C pass-20records:
+// feflow29 "sbar" painter FUN_0045721c writes slots +0x34=b0+b1+b2 (Games), +0x38=b0,
+// +0x3c=b1, +0x40=b2 under the Games/Won/Draws/Lost header row]. The pass-12
+// (goalsA, venue-flag, goalsB) reading is superseded (analysis/pass12tourn/ZWCUP_TRIPLE.md).
 struct ResPairRec {
-    std::uint8_t goalsA = 0;
-    std::uint8_t venueFlag = 0;
-    std::uint8_t goalsB = 0;
+    std::uint8_t won = 0;
+    std::uint8_t drawn = 0;
+    std::uint8_t lost = 0;
 };
 
 struct ZwcupRes {

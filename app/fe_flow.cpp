@@ -1601,17 +1601,19 @@ void FeFlow::paintRecordsTable(const formats::ScreenLayout& sc, const formats::R
 
     // Window grammar per FUN_0045721c "sbar" branch [C records_dec10]: rows are
     // pair-indexed [offset, offset+9) over the pool minus own team (fetch
-    // FUN_00456c70 skips the cursor slot); out-of-range rows clear the record
-    // fields, and the %d painter renders zeros (name slot 0 = empty string).
+    // FUN_00456c70 skips the cursor slot). Out-of-range rows hit the clear
+    // branch, which NULs the sprintf'd string slots (+0x14 name, +0x34..+0x40
+    // numbers) - the %d fields live as pre-formatted strings, so the row
+    // paints blank, not zeros.
     const int pairCount = n > 0 ? n - 1 : 0;
     for (int r = 0; r < 9; ++r) {
         const int j = recRow_ + r;
         const int oi = (j < pairCount) ? (j < recTeam_ ? j : j + 1) : -1;
-        const formats::ResTriple t = oi >= 0
-            ? res.headToHead(std::size_t(recTeam_), std::size_t(oi)) : formats::ResTriple{};
         const std::string col = std::format("{:d}", r);
+        if (oi < 0) continue; // clear branch: blank row [C records_dec10]
+        const formats::ResTriple t = res.headToHead(std::size_t(recTeam_), std::size_t(oi));
         if (const formats::LayoutObject* o = sc.object("top" + col); o)
-            st.texts += paintCaption(*o, oi >= 0 ? poolName(res.ids[std::size_t(oi)]) : std::string{}, ui);
+            st.texts += paintCaption(*o, poolName(res.ids[std::size_t(oi)]), ui);
         if (const formats::LayoutObject* o = sc.object("tpl" + col); o)
             st.texts += paintCaption(*o, std::format("{:d}", int(t.won) + int(t.drawn) + int(t.lost)), ui);
         if (const formats::LayoutObject* o = sc.object("two" + col); o)

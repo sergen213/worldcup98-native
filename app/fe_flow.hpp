@@ -82,6 +82,17 @@ public:
     // owned whitelist and paints tm/gm/qtm/ss dynamic content as overlays (TourneyModel + pool data).
     bool openWcCfg(int screenId); // --fe-wc-cfg N gate; false = layout absent on this tree
     [[nodiscard]] bool onWcCfg() const { return wcCfg_ > 0; }
+    // 'rand' plate visibility (pass-20uitick tick handlers FUN_004524f8/0x452884, bit-8 hidden flag
+    // FUN_0046bfcc/FUN_0046bfac, presenter gates FUN_0046c014/FUN_00464724): 18 shows it only when
+    // bd8<99 && bd4==0, 19 only when bd4<99; the staged animation (DAT_0057ce30) is synchronous in
+    // the port, so the busy term never spans a frame. 1 = visible, 0 = hidden, -1 = no rand widget.
+    [[nodiscard]] int wcRandVisible() const {
+        return wcCfg_ == 18 ? (wcRand18_ < 99 && wcRand19_ == 0 ? 1 : 0)
+                            : wcCfg_ == 19 ? (wcRand19_ < 99 ? 1 : 0) : -1;
+    }
+    // Zone order view for gates: feflow18's draw (bd8 layer) is the family's shared pool;
+    // feflow19 adds its staged re-draw layer (bd4) only after a pointer rand press on 19.
+    std::vector<int> wcZonesView() const { return wcZones(); }
     presentation::FeDrawStats drawWcFamily(render::SpriteBatch& ui) const; // composite + row/bracket overlays
 
     // Arbitrary-screen capture lane (--fe-screen NAME; "make all menus 1:1"): loads a chosen
@@ -394,7 +405,8 @@ public:
     int wcCfg_ = 0;                // active screen (18/19/20/21/23/24/35/81/82, 0 = none)
     int wcRow_ = 0;                // FEFLOW18 tm row cursor / 23-24 strk-stsc focus / 35 table row [H]
     int wcGroup_ = 0;              // FEFLOW35 group page (nglt/ngrt mod 8, decoded 1:1)
-    int wcRandCount_ = 0;          // feflow18 'rand' press press counter (engine cap 99 -> auto-advance)
+    int wcRand18_ = 0;             // bd8: feflow18 'rand' staged counter (cap 99; DAT_00608bd8)
+    int wcRand19_ = 0;             // bd4: feflow19 'rand' staged counter (cap 99; DAT_00608bd4)
     std::vector<int> wcStack_;     // parent chain (pass-20uitick: scene-switch edges open children)
     std::vector<std::string> wc18Visible_, wc19Visible_, wc20Visible_, wc21Visible_, wc23Visible_, wc24Visible_, wc35Visible_, wc81Visible_, wc82Visible_;
     // ---- Cheats screen (feflow95.lay; MENU_PARITY.md §8) ------------------------------------

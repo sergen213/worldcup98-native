@@ -1424,9 +1424,18 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                 const bool s18 = fe.onWcCfg() && name() == "FEFLOW18";
                 fe.enter(); // 'rand' staged redraw: stays on the board
                 const bool stay18 = name() == "FEFLOW18";
+                const bool rvMid = fe.wcRandVisible() == 1;  // bd8=1: mid-draw, plate visible
+                for (int i = 0; i < 99; ++i) fe.enter();     // staged presses reach the cap (bd8=99)
+                const bool rvDone = fe.wcRandVisible() == 0; // draw done: plate hidden [C 0x4524f8]
                 fe.back(); // Esc: 'quit' edge closes the family
                 const bool closed = !fe.onWcCfg();
+                const bool rvReset = fe.openWcCfg(18) && fe.wcRandVisible() == 1; // counters reset [C 0x44ded1-d3]
+                for (int i = 0; i < 3; ++i) fe.enter(); // 18: 3 gated staged rand presses
+                const auto z18 = fe.wcZonesView();      // draw order after the bd8 layer
+                fe.back();
                 const bool s19 = fe.openWcCfg(19) && name() == "FEFLOW19";
+                const bool rv19 = fe.wcRandVisible() == 1; // bd4=0: visible on entry
+                const bool rvOrder = z18 == fe.wcZonesView(); // 19's board = 18's draw order [C]
                 fe.enter(); // fe20 edge [C 0x4527aa]: single press opens FEFLOW20
                 const bool s20 = name() == "FEFLOW20";
                 fe.back(); // Esc pops the parent chain
@@ -1452,13 +1461,16 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                 const bool cyc = fe.openWcCfg(20) && fe.openWcCfg(19) && fe.openWcCfg(20) && name() == "FEFLOW20";
                 fe.back();
                 const bool popReturn = !fe.onWcCfg();
-                st.passed = s18 && stay18 && closed && s19 && s20 && back19 && closed2 &&
+                st.passed = s18 && stay18 && rvMid && rvDone && rvReset && rvOrder && closed &&
+                            s19 && rv19 && s20 && back19 && closed2 &&
                             s21 && s20b && back21 && closed3 && s20c && s86 && noQuit && closed4 &&
                             cyc && popReturn;
-                st.detail = fmt("fe wc-nav: s18={} stay18={} closed={} s19={} s20={} back19={} closed2={} "
+                st.detail = fmt("fe wc-nav: s18={} stay18={} rvMid={} rvDone={} rvReset={} rvOrder={} "
+                                "closed={} s19={} rv19={} s20={} back19={} closed2={} "
                                 "s21={} s20b={} back21={} closed3={} s20c={} s86={} noQuit={} closed4={} "
                                 "cyc={} popReturn={}",
-                                int(s18), int(stay18), int(closed), int(s19), int(s20), int(back19), int(closed2),
+                                int(s18), int(stay18), int(rvMid), int(rvDone), int(rvReset), int(rvOrder),
+                                int(closed), int(s19), int(rv19), int(s20), int(back19), int(closed2),
                                 int(s21), int(s20b), int(back21), int(closed3), int(s20c), int(s86), int(noQuit),
                                 int(closed4), int(cyc), int(popReturn));
             }

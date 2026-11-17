@@ -871,7 +871,7 @@ bool FeFlow::enter() {
     if (stad08View_) { stad08View_ = false; return true; } // stadium confirm: shell starts the match [H]
     if (wcCfg_) { // Enter = the decoded button press; the focus ring (drawWcFamily kBtn rows) names it
         if (wcCfg_ == 18) {
-            if (wcRandCount_ < 99) ++wcRandCount_; // 'rand' staged redraw (cap 99) [C]
+            if (wcRandVisible() && wcRand18_ < 99) ++wcRand18_; // staged redraw while plate visible [C]
         } else if (wcCfg_ == 19) {
             openWcCfg(20); // fe20 widget edge [C 0x4527aa]: the staged-draw counter stays on 'rand'
         } else if (wcCfg_ == 20 || wcCfg_ == 21) { // ring = {frwd, simu, stsc, strk}
@@ -2183,6 +2183,8 @@ bool FeFlow::openWcCfg(int screenId) {
         if (!wcStack_.empty() && wcStack_.back() == screenId) wcStack_.pop_back(); // return edge: pop, don't re-push
         else wcStack_.push_back(wcCfg_); // cyclic edges (18<->19<->20) stay bounded
     }
+    if (!wcCfg_ && screenId == 18) wcRand18_ = wcRand19_ = 0; // family open from closed: the
+                                                  // feflow11 pump init zeroes bd4/bd8 [C 0x44ded1-d3]
     wcCfg_ = screenId;
     cfgName_ = "FEFLOW" + std::to_string(screenId);
     wcRow_ = 0;
@@ -2194,8 +2196,12 @@ bool FeFlow::openWcCfg(int screenId) {
 std::vector<int> FeFlow::wcZones() const {
     std::vector<int> idx(std::min<std::size_t>(32, poolIds_.size()));
     for (int i = 0; i < int(idx.size()); ++i) idx[std::size_t(i)] = i;
-    std::mt19937 rng(0x98C0DE5u ^ (static_cast<std::uint32_t>(wcRandCount_) + 1u) * 0x9E3779B9u);
-    std::ranges::shuffle(idx, rng);
+    std::mt19937 rng(0x98C0DE5u ^ (static_cast<std::uint32_t>(wcRand18_) + 1u) * 0x9E3779B9u);
+    std::ranges::shuffle(idx, rng); // feflow18 draw order (bd8): the family's shared pool
+    if (wcCfg_ == 19 && wcRand19_ > 0) { // feflow19 staged re-draw layer (bd4) [C 0x452729]
+        std::mt19937 rng2(0x98C0DE5u ^ (static_cast<std::uint32_t>(wcRand19_) + 1u) * 0x9E3779B9u);
+        std::ranges::shuffle(idx, rng2);
+    }
     return idx;
 }
 
@@ -2259,7 +2265,8 @@ presentation::FeDrawStats FeFlow::drawWcFamily(render::SpriteBatch& ui) const {
             lineAt(sc->object("gm" + std::format("{:02d}", i)), std::string(1, char('A' + i / 4)), 14.f, kGold);
         }
         pane(sc->object("tm" + std::format("{:02d}", wcRow_)));
-        button("rand", "btup"); // 'rand' = the draw-refresh control (decoded press semantics)
+        if (wcRand18_ < 99 && wcRand19_ == 0) // tick gate [C 0x4524f8]: hide when draw done (bd8>=99)
+            button("rand", "btup");           // or a 19 staged draw is in flight (bd4!=0)
     }
     if (wcCfg_ == 23 || wcCfg_ == 24) {
         if (!haveTourney_) const_cast<FeFlow*>(this)->ensureTourney(); // lazy model (bracket data source)
@@ -2331,7 +2338,7 @@ presentation::FeDrawStats FeFlow::drawWcFamily(render::SpriteBatch& ui) const {
                 lineAt(sc->object("g" + std::to_string(g) + "t" + std::to_string(s)),
                        poolName(poolIds_[std::size_t(zones[std::size_t(g * 4 + s)])]), 13.f, kWhite);
         }
-        button("rand", "btup");
+        if (wcRand19_ < 99) button("rand", "btup"); // tick gate [C 0x452884]: hide at bd4>=99
     }
     if (wcCfg_ == 20) {
         if (!haveTourney_) const_cast<FeFlow*>(this)->ensureTourney();
@@ -2526,7 +2533,11 @@ int FeFlow::pointerActivate() {
             const formats::LayoutObject* o = sc.object(n);
             return o && widgetHit(*o, float(ptrX_), float(ptrY_));
         };
-        if (hit("rand") && wcRandCount_ < 99) { ++wcRandCount_; return -1; } // staged draw (cap 99) [C]
+        if (hit("rand") && wcRandVisible()) { // hidden plate takes no click (presenter gate) [C]
+            int& c = wcCfg_ == 19 ? wcRand19_ : wcRand18_;
+            if (c < 99) ++c;
+            return -1;
+        }
         if (hit("fe20") && (wcCfg_ == 19 || wcCfg_ == 23 || wcCfg_ == 24)) { openWcCfg(20); return -1; }
         if (hit("fe18") && wcCfg_ == 19) { openWcCfg(18); return -1; } // fe18 edge [C 0x45281a]
         if (hit("fe19") && wcCfg_ == 20) { openWcCfg(19); return -1; } // fe19 edge [C 0x452d2b-analog]

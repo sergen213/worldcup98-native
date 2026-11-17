@@ -117,6 +117,7 @@ int run(int argc, char** argv) {
     int feSave42 = -1;    // --fe-save-manager N: feflow42 SAVE list + tick confirm, rows +N then Enter
     int feStad08 = -1;    // --fe-stadium08 N: friendly chain -> FEFLOW08 stadium select, tile cursor +N moves
     int feRecords = -1;     // --fe-records N: records family gate; N = page*100 + team-cursor moves (pass-20records)
+    int feRecordsRow = 0;   // --fe-records-row N: 9-row results window offset (sbar) +N moves
     int feControl = -1; // --fe-control N: CONTROL1 controller page from the options chain, nav cursor +N (§H)
     int feIgMode = 0;       // --fe-igoptns a|g|m: open the in-game option popup (igaoptns/iggoptns/igmoptns)
     std::string fePopupName; // --fe-popup NAME: shared popup lane gate (feflow10/37, igconsel/mesg/Feflow86)
@@ -163,6 +164,7 @@ int run(int argc, char** argv) {
         else if (a == "--fe-load-game") { feMode = true, smokeFrames = 1, feLoad41 = std::stoi(next()); }      // feflow41 LOAD list gate; N = lstb row-cursor moves
         else if (a == "--fe-control") { feMode = true, smokeFrames = 1, feControl = std::stoi(next()); }       // CONTROL1 controller-page gate; N = npll/nplr nav-cursor moves (§H)
         else if (a == "--fe-records") { feMode = true, smokeFrames = 1, feRecords = std::stoi(next()); }        // records family gate; N = page*100 + team-cursor moves
+        else if (a == "--fe-records-row") { feRecordsRow = std::stoi(next()); }        // sbar window offset moves
         else if (a == "--fe-save-manager") { feMode = true, smokeFrames = 1, feSave42 = std::stoi(next()); }   // feflow42 SAVE confirm gate; N = row moves + Enter write
         else if (a == "--fe-igoptns") { // igoptns captions lane gate: a=audio g=game m=mouse popup
             feMode = true, smokeFrames = 1;
@@ -327,7 +329,8 @@ int run(int argc, char** argv) {
             if (!fe->openRecords(feRecords / 100)) std::fprintf(stderr, "fe: records page unavailable\n");
             else {
                 for (int i = 0; i < feRecords % 100; ++i) fe->recordsTeamMove(+1); // pool-id ring cursor [C]
-                std::fprintf(stderr, "rec: page=%d team=%d\n", feRecords / 100, fe->recordsTeam());
+                for (int i = 0; i < feRecordsRow; ++i) fe->recordsRowMove(+1);     // pair-index window scroll [C]
+                std::fprintf(stderr, "rec: page=%d team=%d row=%d\n", feRecords / 100, fe->recordsTeam(), fe->recordsRow());
             }
         }
         if (fe && feLoad41 >= 0) { // --fe-load-game N: feflow41 LOAD list over the port slot dir, rows +N

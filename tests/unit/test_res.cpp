@@ -49,29 +49,30 @@ int main() {
         for (const auto id : f.ids) if (id >= 256) ++placeholders;
         CHECK(placeholders == 7); // BYE/qualifier slots {599,760,704,796,635,815,752}
 
-        std::set<int> venues;
-        for (const auto& t : f.pairs) venues.insert(t.venueFlag);
-        CHECK(std::ranges::all_of(venues, [](int v) { return v <= 0x40; })); // venue enum bound
+        std::set<int> draws;
+        for (const auto& t : f.pairs) draws.insert(t.drawn);
+        CHECK(std::ranges::all_of(draws, [](int v) { return v <= 0x40; })); // draw-count bound
     }
 
-    // Dossier-validated triples (ZWCUP_TRIPLE.md): Brazil(59)-Scotland(35) = 2-1 venue'1';
-    // Italy(47)-Chile(63) = 1-1. Directional access must swap on order flip.
+    // Head-to-head W/D/L (records_dec10 FUN_0045721c slot grammar + bank headers Games/Won/
+    // Draws/Lost): Brazil(59)-Scotland(35) = W2 D1 L0; Italy(47)-Chile(63) = W1 D0 L1.
+    // Directional access must swap won<->lost on order flip.
     const ResFile zwcup = ResFile::parse(slurp(dir / "ZWCUP.RES"));
     const auto bs = zwcup.slotOf(59), sc = zwcup.slotOf(35);
     const ResTriple br = zwcup.headToHead(bs, sc);
-    CHECK(br.goalsA == 2 && br.venueFlag == 1 && br.goalsB == 0);
-    const ResTriple rv = zwcup.headToHead(sc, bs); // reverse direction swaps sides
-    CHECK(rv.goalsA == 0 && rv.venueFlag == 1 && rv.goalsB == 2);
+    CHECK(br.won == 2 && br.drawn == 1 && br.lost == 0);
+    const ResTriple rv = zwcup.headToHead(sc, bs); // reverse direction swaps won/lost
+    CHECK(rv.won == 0 && rv.drawn == 1 && rv.lost == 2);
 
     const auto it = zwcup.slotOf(47), cl = zwcup.slotOf(63);
     const ResTriple ic = zwcup.headToHead(it, cl);
-    CHECK(ic.goalsA == 1 && ic.venueFlag == 0 && ic.goalsB == 1);
+    CHECK(ic.won == 1 && ic.drawn == 0 && ic.lost == 1);
 
-    // Documented finals-score histogram (§2.5 byte0 in {0,1,2,3,5}); ZINTER carries larger
+    // Won-count histogram (§2.5 byte0 in {0,1,2,3,5}); ZINTER carries larger
     // aggregate values (international-history variant), so the bound is ZWCUP-scoped.
-    std::set<int> goalsA;
-    for (const auto& t : zwcup.pairs) goalsA.insert(t.goalsA);
-    CHECK(goalsA == std::set<int>({0, 1, 2, 3, 5}));
+    std::set<int> won;
+    for (const auto& t : zwcup.pairs) won.insert(t.won);
+    CHECK(won == std::set<int>({0, 1, 2, 3, 5}));
 
     // ZINTER shares the id section; pair bytes diverge from 0x52 on (international variant).
     const ResFile zinter = ResFile::parse(slurp(dir / "ZINTER.RES"));

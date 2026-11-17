@@ -108,8 +108,14 @@ split at NUL into 5 fields (`local_b4[0..5]` boundary table, built in the loop `
 - Id section = 33 FCDB ids in {26..88} interleaved with **7 placeholder values ≥256**
   (599,760,704,796,635,815,752) — qualifier/BYE slots, matching ".HIS rows 43..51 BYE" note in
   TEAMHIST.md. [H-res; prior doc TOURNAMENT_WC98.md §disk survey]
-- Triple semantics (hyp): `(goalsA, venue/neutral flag, goalsB)` head-to-head history —
-  histogram byte0∈{0,1,2,3,5}, byte1∈{0..3}, byte2∈{0..3}; 131 non-zero pairs; degrees 1..18 per
+- **Triple semantics = head-to-head `{won, drawn, lost}` for the row team** [C pass-20records]:
+  the feflow29 "sbar" painter `FUN_0045721c` (analysis/pass20records/decompiles/records_dec10.txt)
+  writes row record slots `+0x34 = b0+b1+b2`, `+0x38 = b0`, `+0x3c = b1`, `+0x40 = b2` as four
+  `%d` fields under the FC bank header row 1272 "Opponent" / 799 "Games" / 1954 "Won" /
+  614 "Draws" / 1009 "Lost" (bank indices in analysis/pass11/FCENG.BIN.json). Sum = Games played,
+  so the pass-12 `(goalsA, venue-flag, goalsB)` reading is superseded; the HOME_AWAY/HOME_HOME
+  venue enum lives in the SCHEDULE fixture grid (§2.7), not in `.RES`. Histogram
+  byte0∈{0,1,2,3,5}, byte1∈{0..3}, byte2∈{0..3}; 131 non-zero pairs; degrees 1..18 per
   team (qualifiers + finals history, not a single-tournament schedule). [H-res decode]
 - ZINTER.RES: identical structure/ids, pair bytes differ from offset 0x52 — same format for the
   intercontinental mode. [H-cmp first diff char 83] **Parser landed**: `formats/res.cpp` parses both
@@ -190,7 +196,7 @@ struct BracketRecord {           // §2.1 [P4]
 struct ZwcupRes {                // §2.5 [R1][H]
     uint16_t pool_size;          // 40
     uint16_t ids[40];            // FCDB ids + ≥256 placeholders
-    struct PairRec { uint8_t goals_a, venue_flag, goals_b; } pairs[780];
+    struct PairRec { uint8_t won, drawn, lost; } pairs[780];   // §2.5 [C pass-20records]
 };                               // pair i<a<b at 3*((2n-a-3)*a/2 + b -1)
 struct StandingsRow {            // app-side (binary block NOT located, §2.4)
     uint16_t team_id; int8_t p,w,d,l,gf,ga; int16_t gd,pts;
@@ -209,10 +215,12 @@ struct StandingsRow {            // app-side (binary block NOT located, §2.4)
    `FUN_0048ace4`, fixture adder `FUN_0048afb8` record stride 0x20, venue tables + grid
    bookkeeping: see §2.7 and `analysis/pass12tourn/SCHEDULE_GEN.md`. Knockout slot
    assignment (fixture chain 0x45a7xx UI writers) remains for per-round propagation (§5.5).
-4. **ZWCUP triple semantics — [CLOSED pass 12, `analysis/pass12tourn/ZWCUP_TRIPLE.md`]**:
-   (goals, venue-flag, goals) validated on Brazil–Scotland (2-1, '82/'98 identical line) and
-   Italy–Chile (1-1); data = finals H2H history snapshot ~pre-'98 (all 1998 group fixtures are
-   zero-recorded), ids map via FCDB.DBI + FCDB_ENG.DBI cross-index.
+4. **ZWCUP triple semantics — [CLOSED pass 12 + re-decoded pass-20records,
+   `analysis/pass12tourn/ZWCUP_TRIPLE.md`]**: bytes = `{won, drawn, lost}` (sum = Games) per the
+   feflow29 `%d` slot grammar + bank headers; the RSSSF score-line validation (Brazil–Scotland
+   (2,1,0), Italy–Chile (1,0,1)) is equally consistent with W/D/L counts. Data = finals H2H
+   history snapshot ~pre-'98 (all 1998 group fixtures zero-recorded), ids map via FCDB.DBI +
+   FCDB_ENG.DBI cross-index.
 5. **Knockout advancement writes**: node graph identified (§2.6); accessor chain decompiled
    (pass-12 knock, `/tmp/tourn_knock1.txt`): `FUN_0048f6a4/0x48fcc0` are post-event QUEUE-DRAIN
    wrappers - state probe `FUN_0048f664` returns {status,handle}, branch 2 drains the full queue

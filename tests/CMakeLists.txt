@@ -374,6 +374,8 @@ if(DEFINED WC98_TREE)
     set_tests_properties(fe_records88 PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW88: shapes=[1-9][0-9]* texts=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 |texts=0 ")
     add_test(NAME fe_records_nav COMMAND wc98-native --fe-records 2905 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/recnav)
     set_tests_properties(fe_records_nav PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "rec: page=29 team=5" FAIL_REGULAR_EXPRESSION "records page unavailable")
+    add_test(NAME fe_records_window COMMAND wc98-native --fe-records 2900 --fe-records-row 12 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/recwin)
+    set_tests_properties(fe_records_window PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "rec: page=29 team=0 row=12" FAIL_REGULAR_EXPRESSION "records page unavailable")
     # Between-round tournament presentation (FEFLOW35/25/26/27, LAY_COMPOSITOR_NOTES.md "Tournament
     # presentation scenes"): one stat line per screen; fails on zero shapes/texts/cursors.
     add_test(NAME fe_render_present COMMAND wc98-native --fe-smoke 1 --fe-present --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/present)

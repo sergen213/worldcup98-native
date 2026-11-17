@@ -1599,23 +1599,27 @@ void FeFlow::paintRecordsTable(const formats::ScreenLayout& sc, const formats::R
                 st.texts += paintCaption(*o, s, ui);
     if (recTeam_ >= n) return;
 
-    int shown = 0;
-    for (int i = 0; i < n && recRow_ + shown < 9; ++i) {
-        if (i == recTeam_) continue;
-        const formats::ResTriple t = res.headToHead(std::size_t(recTeam_), std::size_t(i));
-        if (t.goalsA == 0 && t.venueFlag == 0 && t.goalsB == 0) continue; // pair with no history [C]
-        const int r = recRow_ + shown++;
+    // Window grammar per FUN_0045721c "sbar" branch [C records_dec10]: rows are
+    // pair-indexed [offset, offset+9) over the pool minus own team (fetch
+    // FUN_00456c70 skips the cursor slot); out-of-range rows clear the record
+    // fields, and the %d painter renders zeros (name slot 0 = empty string).
+    const int pairCount = n > 0 ? n - 1 : 0;
+    for (int r = 0; r < 9; ++r) {
+        const int j = recRow_ + r;
+        const int oi = (j < pairCount) ? (j < recTeam_ ? j : j + 1) : -1;
+        const formats::ResTriple t = oi >= 0
+            ? res.headToHead(std::size_t(recTeam_), std::size_t(oi)) : formats::ResTriple{};
         const std::string col = std::format("{:d}", r);
         if (const formats::LayoutObject* o = sc.object("top" + col); o)
-            st.texts += paintCaption(*o, poolName(res.ids[std::size_t(i)]), ui);
+            st.texts += paintCaption(*o, oi >= 0 ? poolName(res.ids[std::size_t(oi)]) : std::string{}, ui);
         if (const formats::LayoutObject* o = sc.object("tpl" + col); o)
-            st.texts += paintCaption(*o, std::format("{:d}", int(t.goalsA) + int(t.venueFlag) + int(t.goalsB)), ui);
+            st.texts += paintCaption(*o, std::format("{:d}", int(t.won) + int(t.drawn) + int(t.lost)), ui);
         if (const formats::LayoutObject* o = sc.object("two" + col); o)
-            st.texts += paintCaption(*o, std::format("{:d}", t.goalsA), ui);
+            st.texts += paintCaption(*o, std::format("{:d}", t.won), ui);
         if (const formats::LayoutObject* o = sc.object("tdr" + col); o)
-            st.texts += paintCaption(*o, std::format("{:d}", t.venueFlag), ui);
+            st.texts += paintCaption(*o, std::format("{:d}", t.drawn), ui);
         if (const formats::LayoutObject* o = sc.object("tlo" + col); o)
-            st.texts += paintCaption(*o, std::format("{:d}", t.goalsB), ui);
+            st.texts += paintCaption(*o, std::format("{:d}", t.lost), ui);
     }
 }
 

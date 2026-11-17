@@ -21,7 +21,7 @@ Decoder = module under `formats/src/`; gate = ctest entry in the 114-test suite 
 | `.RES`, PCMD (14), GEN4 TBLS | `res.cpp`, `pcmd.cpp`, `gen4tbls.cpp` | `test_res`, `test_pcmd`, `test_gen4tbls` | FE resources, sound cmd, tournament tables | **Decoded + gated** |
 | `USER/OPTIONS.SAV` (`AFIFAFIF`) + save slots | `options.cpp`, `slot.cpp`, `saveframe.cpp` | `test_slot` | save/load (`app/saveload.cpp`) | **Decoded + gated** (`SAVESLOT_WC98.md`) |
 | `.RPLY` replays | `rply.cpp` | `test_rply` | replay playback (`app/replay.cpp`) | **Decoded + gated** (`REPLAY_WC98.md`) |
-| TEAMHIST / ZWCUP history (`.RES`/`ZINTER.RES`) | `his.cpp` | `test_histtri`, history FE gates (#66-68) | history screens, H2H display | **Decoded + gated**; triple semantics validated (pass-12 `{goals_a, venue_flag, goals_b}`) |
+| TEAMHIST / ZWCUP history (`.RES`/`ZINTER.RES`) | `his.cpp` | `test_histtri`, history FE gates (#66-68) | history screens, H2H display | **Decoded + gated**; triple = head-to-head `{won, drawn, lost}` (sum = Games) per feflow29 `%d` slot grammar (pass-20records) |
 | TRE (9), PNG export | `gen4tbls.cpp` (TRE tables), `png.cpp` | table gates; capture lane output | smoke/capture tooling | **Decoded / utility** |
 | PE structure (exe analysis aid) | `pe.cpp` | byte-lane scans (`REVERSE_ENGINEERING_NOTES.md` §1) | RE tooling only | Utility, not shipped-asset runtime path |
 

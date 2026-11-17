@@ -1,7 +1,9 @@
 // Team-history pair-matrix (.RES) parser. Layout + pair-index formula proven in
 // docs/reverse-engineering/TOURNAMENT_MODULE_WC98.md §2.5 (loader FUN_0048cae8, lookup
-// FUN_0048cc58); triple semantics validated against RSSSF history in analysis/pass12tourn/
-// ZWCUP_TRIPLE.md: {goalsA, venueFlag, goalsB} head-to-head finals snapshot.
+// FUN_0048cc58). Triple semantics = head-to-head {Won, Draws, Lost} for the row team,
+// sum = Games: proven by the feflow29 "sbar" painter FUN_0045721c (analysis/pass20records/
+// decompiles/records_dec10.txt) writing slots +0x34=sum, +0x38=byte0, +0x3c=byte1,
+// +0x40=byte2 under FC bank headers 799 "Games" / 1954 "Won" / 614 "Draws" / 1009 "Lost".
 #pragma once
 #include <wc98/reader.hpp>
 
@@ -13,9 +15,9 @@
 namespace wc98::formats {
 
 struct ResTriple {
-    std::uint8_t goalsA = 0;   // team-a side score (slot order as looked up)
-    std::uint8_t venueFlag = 0; // venue-pattern enum (HOME_AWAY / HOME_HOME / ... §3 vocabulary)
-    std::uint8_t goalsB = 0;
+    std::uint8_t won = 0;    // byte0: wins for the row team (draws symmetric)
+    std::uint8_t drawn = 0;  // byte1: draws (symmetric)
+    std::uint8_t lost = 0;   // byte2: losses for the row team
     bool operator==(const ResTriple&) const = default;
 };
 
@@ -28,7 +30,7 @@ struct ResFile {
     // Pair slot index for a<b (positions into `ids`); formula verified bijection over C(n,2).
     static std::size_t pairIndex(std::size_t n, std::size_t a, std::size_t b);
 
-    // Directional head-to-head: slotA/slotB positions into ids; swaps goalsA/goalsB on order flip.
+    // Directional head-to-head: slotA/slotB positions into ids; swaps won/lost on order flip.
     ResTriple headToHead(std::size_t slotA, std::size_t slotB) const;
 
     // Slot of team id (first occurrence), throws FormatError if absent.

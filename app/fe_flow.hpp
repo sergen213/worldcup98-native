@@ -283,6 +283,7 @@ public:
     void recordsTeamMove(int delta);   // left/right team cursor (pool ids order)
     void recordsTriviaMove(int delta); // trivia section cursor (page 34 trpb/trnb)
     void recordsRowMove(int delta);    // 9-row results window scroll (pages 29/30 sbar)
+    [[nodiscard]] int recordsRow() const { return recRow_; }
     presentation::FeDrawStats drawRecords(render::SpriteBatch& ui) const;
     // ---- Shared popup lane (FEFLOW10 ok/canc + FEFLOW37 yes/no + IG boxes; analysis/pass13/POPUP_LANE_SPEC.md) --
     // The popups share one grammar: blur blackout (FE/GLOBAL/BLUR.FSH) + `popp` panel (feflow86.fsh#back,

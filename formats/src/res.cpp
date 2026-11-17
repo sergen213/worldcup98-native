@@ -12,8 +12,8 @@ ResTriple ResFile::headToHead(std::size_t slotA, std::size_t slotB) const {
     if (slotA == slotB || slotA >= n || slotB >= n)
         throw FormatError("RES: pair slot out of range");
     if (slotA < slotB) return pairs[pairIndex(n, slotA, slotB)];
-    const ResTriple t = pairs[pairIndex(n, slotB, slotA)]; // directional swap byte0<->byte2
-    return {t.goalsB, t.venueFlag, t.goalsA};
+    const ResTriple t = pairs[pairIndex(n, slotB, slotA)]; // directional swap won<->lost
+    return {t.lost, t.drawn, t.won};
 }
 
 std::size_t ResFile::slotOf(std::uint16_t id) const {
@@ -42,9 +42,9 @@ ResFile ResFile::parse(std::span<const std::uint8_t> data) {
     const std::size_t base = 2 + 2 * n;
     for (std::size_t p = 0; p < pairsCount; ++p) {
         ResTriple t{};
-        t.goalsA = b[base + p * 3];
-        t.venueFlag = b[base + p * 3 + 1];
-        t.goalsB = b[base + p * 3 + 2];
+        t.won = b[base + p * 3];
+        t.drawn = b[base + p * 3 + 1];
+        t.lost = b[base + p * 3 + 2];
         f.pairs.push_back(t);
     }
     return f;

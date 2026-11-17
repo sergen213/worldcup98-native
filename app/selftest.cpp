@@ -31,6 +31,7 @@
 #include "livematch.hpp"  // MatchBoot (the interactive match bootstrap)
 #include "wc98/platform/window.hpp"   // D-72 FE lane: the interactive shell's window + renderer
 #include "wc98/renderer/vulkan.hpp"
+#include "wc98/audio/mixer.hpp" // fe-options gate: loopback Mixer + master-gain lane
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>
@@ -46,6 +47,7 @@ namespace {
 using namespace std::literals::string_literals;
 namespace sim = wc98::sim;
 namespace config = wc98::config;
+namespace audio = wc98::audio;
 namespace fs = std::filesystem;
 
 struct StepRes {
@@ -1477,6 +1479,101 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
         } catch (const std::exception& e) {
             st.passed = true; // documented environment skip (headless-CI pattern)
             st.detail = fmt("fe-wc-nav skipped: FE shell unavailable ({})", e.what());
+        }
+        steps.push_back(std::move(st));
+    }
+
+    {
+        // 14b2. fe-lineups (pass-21igscn §2): the fe16 wedge chain on the stadium map opens the
+        // FEFLOW16 lineups board [C] analysis/pass12/edges_table.txt:22 (feflow08 helper
+        // FUN_0043ce4c site 0x43cf27 pushes NAME:feflow16 0x562020). Assert open, screenName,
+        // Esc pop-back to the map, and Enter = kickoff (Exhibition entry, left-side pool team).
+        StepRes st{"fe-lineups", false, ""};
+        try {
+            platform::Window win("WC98-selftest-l16", 640, 480, false);
+            render::VulkanConfig vcfg;
+            vcfg.instanceExtensions = platform::Window::vulkanInstanceExtensions();
+            vcfg.createSurface = [&](VkInstance inst) {
+                VkSurfaceKHR s = VK_NULL_HANDLE;
+                SDL_Vulkan_CreateSurface(win.sdl(), inst, nullptr, &s);
+                return s;
+            };
+            vcfg.drawableSize = [&] { return win.pixelSize(); };
+            const auto renderer = render::createVulkanRenderer(vcfg, render::RenderSettings{});
+            FeFlow fe(*renderer, tree, "eng");
+            if (!fe.openStad08()) {
+                st.passed = true; // documented environment skip (tree lacks the layouts)
+                st.detail = fmt("fe-lineups skipped: FEFLOW08 unavailable ({})", fe.lastError());
+            } else {
+                const bool open16 = fe.openLineup16() && fe.onLineup16();
+                const bool nm16 = std::string(fe.screenName()) == "FEFLOW16";
+                fe.back(); // Esc pops the board back onto the stadium map
+                const bool pop08 = !fe.onLineup16() && fe.onStad08();
+                const bool re16 = fe.openLineup16();
+                const bool kick = fe.enter() && fe.selected() == int(FeEntry::Exhibition); // kickoff [C]
+                st.passed = open16 && nm16 && pop08 && re16 && kick;
+                st.detail = fmt("fe-lineups: open16={} nm16={} pop08={} re16={} kick={} entry={}",
+                                int(open16), int(nm16), int(pop08), int(re16), int(kick), fe.selected());
+            }
+        } catch (const std::exception& e) {
+            st.passed = true; // documented environment skip (headless-CI pattern)
+            st.detail = fmt("fe-lineups skipped: FE shell unavailable ({})", e.what());
+        }
+        steps.push_back(std::move(st));
+    }
+
+    {
+        // 14b3. fe-options (pass-22fe15): FEFLOW15 widget-tag grammar [C analysis/pass22fe15
+        // dec2.txt FE15_INIT FourCC dispatch]: 'save' 0x73617665 @0x44f2b4 = settings writer
+        // cluster (FUN_0046b0fc/b5c8/b3e0/b83c/b074 + options.sav FUN_0046b320 + click sfx
+        // FUN_004678b8) staying on screen (FUN_004461b4); 'deft' 0x64656674 = FUN_00459410
+        // cursor-state reset; 'fwrd' 0x66777264 = writers + scene pop; 'back' = Esc pop.
+        // Port: commitOptions -> audioDirty_ + live setMasterGain; defOptions -> row cursor 0;
+        // forwardOptions -> commit + optsView_ pop.
+        StepRes st{"fe-options", false, ""};
+        try {
+            platform::Window win("WC98-selftest-opts", 640, 480, false);
+            render::VulkanConfig vcfg;
+            vcfg.instanceExtensions = platform::Window::vulkanInstanceExtensions();
+            vcfg.createSurface = [&](VkInstance inst) {
+                VkSurfaceKHR s = VK_NULL_HANDLE;
+                SDL_Vulkan_CreateSurface(win.sdl(), inst, nullptr, &s);
+                return s;
+            };
+            vcfg.drawableSize = [&] { return win.pixelSize(); };
+            const auto renderer = render::createVulkanRenderer(vcfg, render::RenderSettings{});
+            FeFlow fe(*renderer, tree, "eng");
+            config::Settings cfg;
+            audio::Mixer mx{std::optional<std::uint32_t>{44100u}}; // loopback: no hardware device
+            fe.setAudioContext(&cfg, &mx);
+            if (!fe.openOptions()) {
+                st.passed = true; // documented environment skip (tree lacks the layout)
+                st.detail = fmt("fe-options skipped: FEFLOW15 unavailable ({})", fe.lastError());
+            } else {
+                const bool nm15 = std::string(fe.screenName()) == "FEFLOW15";
+                fe.cycleTab(1);
+                const bool tab1 = fe.optionTab() == 1;
+                fe.cycleTab(-1); // back to tab 0 (tbb1 rows exist: volume/padding lists)
+                fe.move(1);
+                const bool row1 = fe.optionRow() == 1;
+                fe.defOptions();
+                const bool deft0 = fe.optionRow() == 0;
+                const bool dirty = (fe.commitOptions(), fe.audioDirty()); // 'save' writers
+                const bool stay = fe.onOptions();                         // 'save' stays on screen
+                fe.forwardOptions();                                      // 'fwrd' commit + pop
+                const bool pop = !fe.onOptions();
+                const bool re = fe.openOptions();
+                fe.back(); // Esc = 'back' tag pop
+                const bool popEsc = !fe.onOptions();
+                st.passed = nm15 && tab1 && row1 && deft0 && dirty && stay && pop && re && popEsc;
+                st.detail = fmt("fe-options: nm15={} tab1={} row1={} deft0={} dirty={} stay={} "
+                                "pop={} re={} popEsc={}",
+                                int(nm15), int(tab1), int(row1), int(deft0), int(dirty), int(stay),
+                                int(pop), int(re), int(popEsc));
+            }
+        } catch (const std::exception& e) {
+            st.passed = true; // documented environment skip (headless-CI pattern)
+            st.detail = fmt("fe-options skipped: FE shell unavailable ({})", e.what());
         }
         steps.push_back(std::move(st));
     }

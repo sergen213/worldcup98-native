@@ -61,6 +61,7 @@ public:
         return useCapture_          ? captureName_.c_str()
                : popKind_           ? popName_.c_str()
                : setup07View_       ? "FEFLOW07"
+               : lineup16View_      ? "FEFLOW16"
                : stad08View_        ? "FEFLOW08"
                : cfg32View_ == 32      ? "FEFLOW32"
                : cfg32View_ == 33      ? "FEFLOW33"
@@ -166,6 +167,15 @@ public:
     bool openStad08();   // friendly-confirm 'fe08' chain / --fe-stadium08 gate; false = layout absent
     [[nodiscard]] bool onStad08() const { return stad08View_; }
     presentation::FeDrawStats drawStad08(render::SpriteBatch& ui) const; // composite + tile/name overlays
+    // ---- Lineups screen FEFLOW16 (pass-21igscn; analysis/pass21igscn/NOTES.md §2) -------------
+    // feflow16 = team lineups board: LAY grid lpNN/lsNN (left 11, number+name rows) and
+    // rpNN/rsNN (right 11), tmlt/tmrt center-aligned team-name slots (fontID 4). Scene edge
+    // [C] analysis/pass12/edges_table.txt:22: feflow08 helper FUN_0043ce4c pushes NAME:feflow16
+    // (0x562020) at site 0x43cf27 - the fe16 wedge on the stadium screen opens it. Enter on
+    // the board kicks off the friendly match (kickoff 'e'+slot edge family, pass-12 §4).
+    bool openLineup16();  // fe16 wedge / --fe-lineups16 gate; false = layout absent
+    [[nodiscard]] bool onLineup16() const { return lineup16View_; }
+    presentation::FeDrawStats drawLineup16(render::SpriteBatch& ui) const; // composite + roster rows
     // ---- Controller/2-player selection family FEFLOW32/33 (pass-20cfg; MENU_NAV_WC98 rows) ------
     // feflow32 = single-player controller select: one team-pool cursor (tick FUN_00432170 mirrors
     // [0x607fd4] into [0x608064] [C]; arrow tokens ltlb/ltlr decrement, ltrb increment [C init name
@@ -358,6 +368,13 @@ public:
     void resetCursor();     // restore the menu-level cursor after a launch returns (hub fe07 / entry 0)
     void cycleTab(int dir); // options tab pages tbb1..4 ('ops2' event family; TAB key)
     [[nodiscard]] int optionRow() const { return optRow_; }
+    // FE15_INIT widget-tag grammar [C analysis/pass22fe15/dec2.txt]: 'save' (0x73617665) @0x44f2b4
+    // = settings writer cluster FUN_0046b0fc/b5c8/b3e0/b83c/b074 + options.sav write FUN_0046b320 +
+    // click sfx FUN_004678b8, stay on screen (FUN_004461b4 redraw); 'deft' (0x64656674) @0x44f288 =
+    // FUN_00459410 -> FUN_004593d4 cursor-state reset; 'fwrd' (0x66777264) = same writers + scene pop.
+    void commitOptions();          // 'save': persist settings.ini domain + apply live gains
+    void defOptions();             // 'deft': row-cursor reset
+    void forwardOptions() { commitOptions(); optsView_ = false; } // 'fwrd': commit + pop to caller
     // settings.ini [audio] master <-> audio::Mixer gain wiring (options volume row).
     void setAudioContext(config::Settings* settings, audio::Mixer* mixer) { settings_ = settings; mixer_ = mixer; }
     [[nodiscard]] bool audioDirty() const { return audioDirty_; }
@@ -481,13 +498,15 @@ public:
     // Layouts loaded eagerly in the ctor; scene-ownership whitelists exclude the netplay chat widgets
     // (chat/cha2/cha3), the footix/mascot runtime surfaces and the null.fsh hit-region polygons
     // (ltll/ltlr/rtlr/rtrr + stad/sare/0000 cover boxes) per LAY_COMPOSITOR_NOTES.md.
-    formats::ScreenLayout setup07_, stad08_;
-    bool haveSetup07_ = false, haveStad08_ = false; // layouts present on this tree
+    formats::ScreenLayout setup07_, stad08_, lineup16_;
+    bool haveSetup07_ = false, haveStad08_ = false, haveLineup16_ = false; // layouts present on this tree
     bool setup07View_ = false;  // FEFLOW07 shown (hub fe07 wedge / --fe-setup07 gate)
     int s07Row_ = 0;            // two-axis row cursor: 0 = left team side, 1 = right team side
     int s07Left_ = 0, s07Right_ = 1; // pool indices of the matchup sides (ltlb/ltrb/rtlb/rtrb cycle)
     std::vector<std::string> setup07Visible_, stad08Visible_;
+    std::vector<std::string> lineup16Visible_; // lpNN/lsNN/rpNN/rsNN + tmlt/tmrt/ftix/shdr/shdl/back art
     bool stad08View_ = false;   // FEFLOW08 shown ('fe08' friendly-confirm chain / --fe-stadium08 gate)
+    bool lineup16View_ = false; // FEFLOW16 lineups board (fe16 wedge on stad08; pass-21igscn §2)
     int s08Sel_ = 0;            // mpNN tile cursor (mp00..mp09, mod 10; nslt/nsrt arrows cycle)
     int s08Half_ = 0, s08Weather_ = 0, s08Night_ = 0; // sint/wint/hint fake-interface cycle state [H]
     formats::ScreenLayout cfg32_, cfg33_;               // controller-select family layouts

@@ -23,6 +23,7 @@
 #include <format>
 #include <span>
 #include <array>
+#include <initializer_list>
 #include <random>
 
 namespace wc98::app {
@@ -972,7 +973,7 @@ bool FeFlow::enter() {
         if (leagueCfg_ == 76 || leagueCfg_ == 78) cycleLeagueScreen(-1);
         return false;
     }
-    if (optsView_ && haveOpts_) return false; // row Enter = value select is mouse-only in the port; L/R cycles values
+    if (optsView_ && haveOpts_) { forwardOptions(); return false; } // Enter = 'fwrd': commit writers + pop to caller
     if (slView_ && haveSl_) {                 // slot confirm (Phase 3): WCT1 load via app/saveload.cpp
         const auto file = defaultSlotDir() / formats::slotFileName(slSlot_);
         try {
@@ -2998,6 +2999,17 @@ int FeFlow::pointerActivate() {
             const formats::LayoutObject* o = optsScreen_.object("tbb" + std::to_string(t + 1));
             if (o && widgetHit(*o, float(ptrX_), float(ptrY_))) { optTab_ = t; optRow_ = 0; return -1; }
         }
+        // FE15_INIT widget tags (analysis/pass22fe15/dec2.txt FourCC dispatch on *(EBX+8)):
+        // 'save' 0x73617665 writers+sfx stay-on-screen, 'deft' 0x64656674 cursor reset,
+        // 'fwrd' 0x66777264 writers + scene pop.
+        for (const char* b : {"save", "deft", "fwrd"}) {
+            const formats::LayoutObject* o = optsScreen_.object(b);
+            if (!o || !widgetHit(*o, float(ptrX_), float(ptrY_))) continue;
+            if (b[0] == 's') commitOptions();
+            else if (b[0] == 'd') defOptions();
+            else forwardOptions();
+            return -1;
+        }
         return -1;
     }
     if (slView_ && haveSl_) { // slot buttons b000..b005: click selects + confirms the row
@@ -3055,6 +3067,20 @@ void FeFlow::cycleTab(int dir) {
     if (optTab_ < 0) optTab_ += 4;
     optRow_ = 0;
 }
+
+// 'save' tag: the engine writes the live settings block (FUN_0046b0fc/b5c8/b3e0/b83c/b074 writers +
+// options.sav via FUN_0046b320) and plays the click sfx FUN_004678b8, staying on screen
+// (FUN_004461b4 redraw). Port mapping: settings.ini domain persists through main.cpp's audioDirty_
+// save lane + live mixer gain.
+void FeFlow::commitOptions() {
+    if (!settings_) return;
+    audioDirty_ = true;
+    if (mixer_) mixer_->setMasterGain(float(settings_->audio.music) / 100.f);
+}
+
+// 'deft' tag: FUN_00459410 -> FUN_004593d4 = list-cursor state reset (NOT a settings reset: the
+// defaults writer FUN_0046ae8c runs on scene OPEN at event 1001, reading options.sav FUN_0046b060).
+void FeFlow::defOptions() { optRow_ = 0; }
 
 void FeFlow::hubUiState(presentation::FeUiState& st) const {
     // Mouse hover wins over the keyboard cursor; press paints PUSHEDSHAPE* on the hovered button.
@@ -3120,7 +3146,6 @@ std::vector<FeFlow::OptRow> FeFlow::parseOptionRows(std::string_view layText, in
     // Continuation lines run until the next [object / ;--- section marker.
     const std::size_t end = layText.find("[object", pos + want.size());
     std::string_view block = layText.substr(pos, (end == std::string_view::npos ? layText.size() : end) - pos);
-    for (std::string_view line; !(block = block.substr(std::min<std::size_t>(block.find('\n') + 1, block.size()))).empty();) {}
     // Row tuples are the lines starting with ',': split on commas, strip '+' continuation markers.
     std::size_t p = 0;
     while (p < block.size()) {
@@ -3138,7 +3163,7 @@ std::vector<FeFlow::OptRow> FeFlow::parseOptionRows(std::string_view layText, in
             std::string_view tok = ln.substr(q, (comma == std::string_view::npos ? ln.size() : comma) - q);
             // trim + strip the trailing '+' continuation marker
             while (!tok.empty() && (tok.front() == ' ' || tok.front() == '\t')) tok.remove_prefix(1);
-            while (!tok.empty() && (tok.back() == ' ' || tok.back() == '\t' || tok.back() == '+')) tok.remove_suffix(1);
+            while (!tok.empty() && (tok.back() == ' ' || tok.back() == '\t' || tok.back() == '\r' || tok.back() == '+')) tok.remove_suffix(1);
             if (!tok.empty()) { int v = 0; if (std::from_chars(tok.data(), tok.data() + tok.size(), v).ptr == tok.data() + tok.size()) nums.push_back(v); }
             if (comma == std::string_view::npos) break;
             q = comma + 1;

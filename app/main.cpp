@@ -116,6 +116,7 @@ int run(int argc, char** argv) {
     int feLoad41 = -1;    // --fe-load-game N: feflow41 LOAD list over defaultSlotDir, rows +N
     int feSave42 = -1;    // --fe-save-manager N: feflow42 SAVE list + tick confirm, rows +N then Enter
     int feStad08 = -1;    // --fe-stadium08 N: friendly chain -> FEFLOW08 stadium select, tile cursor +N moves
+    int feLineups16 = -1; // --fe-lineups16: stad08 -> fe16 wedge -> FEFLOW16 lineups board (pass-21igscn)
     int feRecords = -1;     // --fe-records N: records family gate; N = page*100 + team-cursor moves (pass-20records)
     int feRecordsRow = 0;   // --fe-records-row N: 9-row results window offset (sbar) +N moves
     int feCfg = -1;       // --fe-cfg N: FEFLOW32/33 controller-select gate; N = screen*100 + cursor moves (pass-20cfg)
@@ -162,6 +163,7 @@ int run(int argc, char** argv) {
         else if (a == "--fe-nav-history") { feMode = true, smokeFrames = 1, feNavHistory = std::stoi(next()); } // nav chain: feflow90 -> Enter 'fe91' -> feflow91 capture
         else if (a == "--fe-setup07") { feMode = true, smokeFrames = 1, feSetup07 = std::stoi(next()); }   // FEFLOW07 matchup capture gate; N = side-cursor moves
         else if (a == "--fe-stadium08") { feMode = true, smokeFrames = 1, feStad08 = std::stoi(next()); }  // FEFLOW08 stadium-select chain gate; N = tile-cursor moves
+        else if (a == "--fe-lineups16") { feMode = true, smokeFrames = 1, feLineups16 = 0; }  // FEFLOW16 lineups board capture
         else if (a == "--fe-mgmt-grid") { feMode = true, smokeFrames = 1, feMgmt43 = std::stoi(next()); }     // FEFLOW43 management grid gate; N = row-cursor moves
         else if (a == "--fe-load-game") { feMode = true, smokeFrames = 1, feLoad41 = std::stoi(next()); }      // feflow41 LOAD list gate; N = lstb row-cursor moves
         else if (a == "--fe-control") { feMode = true, smokeFrames = 1, feControl = std::stoi(next()); }       // CONTROL1 controller-page gate; N = npll/nplr nav-cursor moves (§H)
@@ -325,6 +327,10 @@ int run(int argc, char** argv) {
                 fe->enter(); // confirm -> the 'fe08' widget tag opens stadium select [C] @0x44C3D3/C3C8
                 for (int i = 0; i < feStad08; ++i) fe->move(+1); // mpNN tile ring cursor cycle
             }
+        }
+        if (fe && feLineups16 >= 0) { // --fe-lineups16: friendly chain to the stadium map, then fe16 wedge [C 0x43cf27]
+            if (!fe->openStad08()) std::fprintf(stderr, "fe: stadium screen unavailable\n");
+            else if (!fe->openLineup16()) std::fprintf(stderr, "fe: lineups screen unavailable\n");
         }
         if (fe && feMgmt43 >= 0) { // --fe-mgmt-grid N: FEFLOW43 management board over FCDB squad data, row cursor +N
             if (!fe->openMgmtGrid()) std::fprintf(stderr, "fe: mgmt grid unavailable\n");
@@ -532,6 +538,7 @@ int main(int argc, char** argv) {
                       " [--fe] [--tree DIR] [--out-prefix P] [--fe-smoke N] [--tournament-saveload N] [--fe-pick N]"
                       " [--fe-mgmt-grid N] [--fe-load-game N] [--fe-save-manager N]"
                       " [--fe-nav exhibition|league|tournament|tournament-load|practise] [--fe-team] [--fe-setup N] [--fe-league] [--fe-league-cfg N] [--fe-setup07 N] [--fe-stadium08 N] [--fe-screen NAME]"
+                      " [--fe-lineups16]"
                       " [--fe-wc-cfg N]"
                       " [--fe-popup NAME] [--fe-popup-keys N] [--fe-popup-enter|--fe-popup-back] [--fe-control N]"
                       " [--fe-cheats N]"

@@ -368,13 +368,14 @@ public:
     // World-cup family screens (analysis/pass12/wcfamily_notes.txt). Whitelists = scene-owned art only:
     // the tm/gm/qtm/tf/qf/ssN dynamic cells (objecttype 0/4, shapeID null) are engine content painted as
     // overlays; chat/masc runtime surfaces and the gpnm textid=514 caption slot stay hidden.
-    formats::ScreenLayout wc18_, wc23_, wc24_, wc35_;
+    formats::ScreenLayout wc18_, wc19_, wc20_, wc21_, wc23_, wc24_, wc35_, wc81_, wc82_;
     bool haveWc_ = false;          // at least one family layout loaded
-    int wcCfg_ = 0;                // active screen (18/23/24/35, 0 = none)
+    int wcCfg_ = 0;                // active screen (18/19/20/21/23/24/35/81/82, 0 = none)
     int wcRow_ = 0;                // FEFLOW18 tm row cursor / 23-24 strk-stsc focus / 35 table row [H]
     int wcGroup_ = 0;              // FEFLOW35 group page (nglt/ngrt mod 8, decoded 1:1)
-    int wcRandCount_ = 0;          // feflow18 'rand' press counter (engine cap 99 -> auto-advance)
-    std::vector<std::string> wc18Visible_, wc23Visible_, wc24Visible_, wc35Visible_;
+    int wcRandCount_ = 0;          // feflow18 'rand' press press counter (engine cap 99 -> auto-advance)
+    std::vector<int> wcStack_;     // parent chain (pass-20uitick: scene-switch edges open children)
+    std::vector<std::string> wc18Visible_, wc19Visible_, wc20Visible_, wc21Visible_, wc23Visible_, wc24Visible_, wc35Visible_, wc81Visible_, wc82Visible_;
     // ---- Cheats screen (feflow95.lay; MENU_PARITY.md §8) ------------------------------------
     // Registry row [C] analysis/pass12/edges_table.txt:499 (feflow95 +0x10=0x469af8, +0x18=0x469a60
     // draw, +0x1c=0x469cb8; also analysis/pass11/menu5_scenemap_windowobj.txt:72). The row state lives in

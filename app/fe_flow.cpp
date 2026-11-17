@@ -141,15 +141,21 @@ FeFlow::FeFlow(render::Renderer& r, fs::path tree, std::string lang) : tree_(std
                         "al09", "ar09", "al10", "ar10", "al11", "ar11", "al12", "ar12",
                         "tmf0", "tmf1", "tmf2", "tmf3", "gobk", "gofd", "help"};
     }
-    // World-cup family interactive screens (MENU_NAV_WC98.md rank-2; analysis/pass12/wcfamily_notes.txt):
-    // FEFLOW18 = zones draw screen ('rand' staged shuffle of the 32 tmNN slots), FEFLOW23/24 = R16 bracket
-    // boards ('strk'/'stsc' confirm/stats buttons), Feflow35.lay = group standings ('nglt'/'ngrt' mod-8
-    // group repaint). Same tolerant reader; absent layouts keep the gate closed (documented no-op).
+    // World-cup family interactive screens (MENU_NAV_WC98.md rank-2; analysis/pass12/wcfamily_notes.txt +
+    // analysis/pass20uitick/NOTES.md scene-switch edges): FEFLOW18 = zones draw board, FEFLOW19 = group
+    // board, FEFLOW20 = today's games, FEFLOW21 = quarter-final bracket, FEFLOW23/24 = R16 bracket boards,
+    // Feflow35.lay = group standings, FEFLOW81 = results page (mult pane), Feflow82.lay = stats board.
+    // Same tolerant reader; absent layouts keep the gate closed (documented no-op).
     {
-        const char* kSpec[] = {"FEFLOW18.LAY", "FEFLOW23.LAY", "FEFLOW24.LAY", "Feflow35.lay"};
-        static constexpr const char* kName[] = {"FEFLOW18", "FEFLOW23", "FEFLOW24", "FEFLOW35"};
-        formats::ScreenLayout* tgt[] = {&wc18_, &wc23_, &wc24_, &wc35_};
-        for (int i = 0; i < 4; ++i) {
+        const char* kSpec[] = {"FEFLOW18.LAY", "FEFLOW23.LAY", "FEFLOW24.LAY", "Feflow35.lay",
+                               "FEFLOW19.LAY", "FEFLOW20.LAY", "FEFLOW21.LAY", "FEFLOW81.LAY",
+                               "Feflow82.lay"};
+        static constexpr const char* kName[] = {"FEFLOW18", "FEFLOW23", "FEFLOW24", "FEFLOW35",
+                                                "FEFLOW19", "FEFLOW20", "FEFLOW21", "FEFLOW81",
+                                                "FEFLOW82"};
+        formats::ScreenLayout* tgt[] = {&wc18_, &wc23_, &wc24_, &wc35_, &wc19_, &wc20_, &wc21_,
+                                        &wc81_, &wc82_};
+        for (int i = 0; i < 9; ++i) {
             try {
                 fs::path d;
                 const std::string t = presentation::readLayout((tree_ / "FE/PACK/LAYOUTS/LAYOUTS.BIG").string() + "@" + kSpec[i], d);
@@ -329,6 +335,18 @@ FeFlow::FeFlow(render::Renderer& r, fs::path tree, std::string lang) : tree_(std
                         "frwd", "strk", "stsc", "help"};
         wc35Visible_ = {"back", "flag", "titl", "quit", "fe06", "fe15", "fe89", "fe41", "fe42",
                         "frwd", "nglt", "ngrt", "strk", "stsc", "help"};
+        // pass-20uitick family extension: nav icons + board chrome visible, the g*/tgp/tns/tsd/tgt/qtm/qf/
+        // t00N/mult cells stay engine-painted overlays (shapeID-null dynamic widgets).
+        wc19Visible_ = {"back", "flag", "titl", "quit", "fe06", "fe15", "fe89", "fe41",
+                        "fe18", "fe20", "help"};
+        wc20Visible_ = {"back", "flag", "titl", "quit", "fe06", "fe15", "fe89", "fe41", "fe42", "fe19",
+                        "frwd", "simu", "strk", "stsc", "stad", "sare", "stnm", "sint", "tody",
+                        "gggg", "gmtm", "help"};
+        wc21Visible_ = {"back", "flag", "titl", "butt", "quit", "fe06", "fe15", "fe89", "fe41", "fe42",
+                        "frwd", "simu", "strk", "stsc", "help"};
+        wc81Visible_ = {"back", "flag", "titl", "quit", "fwrd", "sbar", "help"};
+        wc82Visible_ = {"back", "flag", "titl", "tmhb", "quit", "frwd", "sbar", "help",
+                        "mbt0", "mbt1", "mbt2", "b000", "b001", "b002", "b003"};
     }
     // Hub screen (Phase 1): Feflow06.lay — the Windows main-menu hub (mixed-case member; MENU_NAV_
     // WC98.md §3 global-key table + analysis/pass12/edges_table.txt). When present it replaces the
@@ -667,6 +685,8 @@ void FeFlow::move(int delta) {
         // focus (engine mouse-only, port maps up/down to the two buttons); 35 = ssnN table rows.
         if (wcCfg_ == 18) wcRow_ = std::clamp(wcRow_ + delta, 0, 31);
         else if (wcCfg_ == 23 || wcCfg_ == 24) { wcRow_ = (wcRow_ + delta + 2) % 2; if (delta < 0 && wcRow_ < 0) wcRow_ += 2; }
+        else if (wcCfg_ == 20 || wcCfg_ == 21) wcRow_ = (wcRow_ + delta + 4) % 4; // frwd/simu/stsc/strk ring
+        else if (wcCfg_ == 19 || wcCfg_ == 81 || wcCfg_ == 82) {} // rand/tabs boards: no row cursor
         else wcRow_ = std::clamp(wcRow_ + delta, 0, 3);
         return;
     }
@@ -738,6 +758,7 @@ void FeFlow::adjustValue(int dir) {
     if (leagueCfg_) { cycleLeagueScreen(dir); return; } // left/right = gofd/gobk screen chain
     if (wcCfg_) { // feflow35 'nglt'/'ngrt': group index (v +/- 1) & 7, full table repaint (decoded 1:1)
         if (wcCfg_ == 35) wcGroup_ = (wcGroup_ + dir + 8) & 7; // feflow18/23/24 keyloops carry no L/R tag
+        else if (wcCfg_ == 20 || wcCfg_ == 21) wcRow_ = (wcRow_ + dir + 4) % 4; // frwd/simu/stsc/strk ring
         return;
     }
     if (histScreen_) return; // feflow90/91 keyloops carry no L/R tag [C] FUN_00468728/FUN_00468b50
@@ -793,9 +814,22 @@ bool FeFlow::enter() {
         return true;                                     // no friendly-config art: shell launches the match
     }
     if (stad08View_) { stad08View_ = false; return true; } // stadium confirm: shell starts the match [H]
-    if (wcCfg_) { // Enter = the scenes' button press: feflow18 'rand' refreshes the draw (+ counter, cap 99)
-        if (wcCfg_ == 18 && wcRandCount_ < 99) ++wcRandCount_;
-        return false; // 23/24 strk/stsc + 35 stats-view: no launch edge from these boards
+    if (wcCfg_) { // Enter = the decoded button press; the focus ring (drawWcFamily kBtn rows) names it
+        if (wcCfg_ == 18) {
+            if (wcRandCount_ < 99) ++wcRandCount_; // 'rand' staged redraw (cap 99) [C]
+        } else if (wcCfg_ == 19) {
+            openWcCfg(20); // fe20 widget edge [C 0x4527aa]: the staged-draw counter stays on 'rand'
+        } else if (wcCfg_ == 20 || wcCfg_ == 21) { // ring = {frwd, simu, stsc, strk}
+            switch (wcRow_ & 3) {
+            case 0: if (wcCfg_ == 21) openWcCfg(20); break; // frwd [C 0x454122]; 20's frwd = lineups (no port scene)
+            case 1: openPopup("feflow86", false); break; // simu [C 0x452f0d/0x454286]
+            case 2: openWcCfg(82); break; // stsc [C 0x452cd7/0x4540a9]
+            default: openWcCfg(81); break; // strk [C 0x452d53/0x4541b0]
+            }
+        } else if (wcCfg_ == 23 || wcCfg_ == 24) {
+            openWcCfg((wcRow_ & 1) == 0 ? 81 : 82); // ring = {strk, stsc} [C]
+        }
+        return false; // 35/81/82 stats boards: no launch edge from these screens
     }
     if (histScreen_ == 90) { histScreen_ = 91; return false; } // 'fe91' Enter chain -> feflow91 [C] FUN_004857a8
     if (histScreen_) return false;                             // feflow91 confirm: presentation-only board
@@ -863,9 +897,17 @@ void FeFlow::back() {
     if (credView_) { credView_ = false; return; }
     if (histScreen_) { histScreen_ = 0; return; } // Esc from feflow90/91 -> hub ('fe06'/'quit' exit tags)
     if (igMode_) { igMode_ = 0; return; }         // Esc closes the in-game option popup to its parent
+    if (wcCfg_) { // Esc = 'quit' edge: pop the decoded parent chain (wcStack_), else close to hub flow
+        if (!wcStack_.empty()) {
+            wcCfg_ = wcStack_.back();
+            wcStack_.pop_back();
+            cfgName_ = "FEFLOW" + std::to_string(wcCfg_);
+            wcRow_ = 0;
+        } else wcCfg_ = 0;
+        return;
+    }
     if (onHub()) return; // hub Esc: no parent scene (the Windows hub exits via the 'quit' wedge)
     if (leagueCfg_) { leagueCfg_ = 0; return; } // Esc from a config grid/popup -> FEFLOW73 stays open
-    if (wcCfg_) { wcCfg_ = 0; return; } // Esc closes the family screen to its parent flow
     if (cheatsView_) { cheatsView_ = false; return; } // Esc closes the cheats screen to the menu [H] dev lane
     if (leagueView_) { leagueView_ = false; return; } // Esc from the league list: straight to menu
     if (setupScreen_) { setupScreen_ = false; return; } // Esc from the config screen: straight to menu
@@ -1889,13 +1931,24 @@ presentation::FeDrawStats FeFlow::drawBracketBoard(render::SpriteBatch& ui, int 
 // and group letters at the LAY's own slots (drawTeamsGrid pattern) with a row-cursor pane. FEFLOW23/24
 // are R16 bracket boards over TourneyModel; FEFLOW35 is the 8-group standings board, nglt/ngrt = mod-8
 // group page cursor (decoded 1:1).
+// Scene-switch edges (analysis/pass20uitick/NOTES.md uitick_walk6 table): opening a child pushes the
+// current board onto wcStack_ so Esc pops back along the decoded quit/fe18/fe20 edge chain.
 bool FeFlow::openWcCfg(int screenId) {
     if (!haveWc_) return false;
     const formats::ScreenLayout* sc = screenId == 18 ? (wc18_.object("tm00") ? &wc18_ : nullptr)
+                          : screenId == 19 ? (wc19_.object("g0t0") ? &wc19_ : nullptr)
+                          : screenId == 20 ? (wc20_.object("simu") ? &wc20_ : nullptr)
+                          : screenId == 21 ? (wc21_.object("frwd") ? &wc21_ : nullptr)
                           : screenId == 23 ? (wc23_.object("strk") ? &wc23_ : nullptr)
                           : screenId == 24 ? (wc24_.object("strk") ? &wc24_ : nullptr)
-                          : screenId == 35 ? (wc35_.object("nglt") ? &wc35_ : nullptr) : nullptr;
+                          : screenId == 35 ? (wc35_.object("nglt") ? &wc35_ : nullptr)
+                          : screenId == 81 ? (wc81_.object("fwrd") ? &wc81_ : nullptr)
+                          : screenId == 82 ? (wc82_.object("t000") ? &wc82_ : nullptr) : nullptr;
     if (!sc) return false; // layout absent from this tree: the scene stays closed
+    if (wcCfg_ && wcCfg_ != screenId) { // parent chain for the Esc pop
+        if (!wcStack_.empty() && wcStack_.back() == screenId) wcStack_.pop_back(); // return edge: pop, don't re-push
+        else wcStack_.push_back(wcCfg_); // cyclic edges (18<->19<->20) stay bounded
+    }
     wcCfg_ = screenId;
     cfgName_ = "FEFLOW" + std::to_string(screenId);
     wcRow_ = 0;
@@ -1918,9 +1971,14 @@ presentation::FeDrawStats FeFlow::drawWcFamily(render::SpriteBatch& ui) const {
     const std::vector<std::string>* vis = nullptr;
     switch (wcCfg_) {
         case 18: sc = &wc18_; vis = &wc18Visible_; break;
+        case 19: sc = &wc19_; vis = &wc19Visible_; break;
+        case 20: sc = &wc20_; vis = &wc20Visible_; break;
+        case 21: sc = &wc21_; vis = &wc21Visible_; break;
         case 23: sc = &wc23_; vis = &wc23Visible_; break;
         case 24: sc = &wc24_; vis = &wc24Visible_; break;
         case 35: sc = &wc35_; vis = &wc35Visible_; break;
+        case 81: sc = &wc81_; vis = &wc81Visible_; break;
+        case 82: sc = &wc82_; vis = &wc82Visible_; break;
         default: return {};
     }
     FeUiState uist; // nav-icon hover/press state (widgetHit geometry, composite shape-state chain)
@@ -2016,6 +2074,125 @@ presentation::FeDrawStats FeFlow::drawWcFamily(render::SpriteBatch& ui) const {
         button("strk", "hic1"); // feflow35 'strk' is an ack-only press (decoded no-op), art stays visible
         button("stsc", "hic2");
     }
+    // pass-20uitick family extension (analysis/pass20uitick/NOTES.md §2/§4): group board, today's
+    // games, QF bracket, results page, stats board. Overlays ride the same shapeID-null dynamic
+    // widget grammar as 18/23/24; button plates = decoded init-handler tokens.
+    const std::uint32_t kInk = render::packRgba(12, 18, 48, 255); // dark navy on light plates [H]
+    const auto focusRing = [&](const char* name) {
+        if (const formats::LayoutObject* f = sc->object(name)) {
+            const float x = float(f->x), y = float(f->y);
+            const float w = float(f->width > 0 ? f->width : 79), h = float(f->height > 0 ? f->height : 48);
+            ui.draw(0, {x, y, w, 2.f}, {}, kGold), ui.draw(0, {x, y + h - 2.f, w, 2.f}, {}, kGold);
+            ui.draw(0, {x, y, 2.f, h}, {}, kGold), ui.draw(0, {x + w - 2.f, y, 2.f, h}, {}, kGold);
+        }
+    };
+    if (wcCfg_ == 19) {
+        // Group board g{g}nm = letter, g{g}t{s} = zone team (feflow18 draw order); 'rand' = 99-step
+        // staged draw animation (init FUN_00452688 counter cap 99). Seed-rank column g{g}n{s} stays
+        // engine-painted [H].
+        const auto zones = wcZones();
+        for (int g = 0; g < 8; ++g) {
+            lineAt(sc->object("g" + std::to_string(g) + "nm"), std::string(1, char('A' + g)), 16.f, kGold);
+            for (int s = 0; s < 4 && std::size_t(g * 4 + s) < zones.size(); ++s)
+                lineAt(sc->object("g" + std::to_string(g) + "t" + std::to_string(s)),
+                       poolName(poolIds_[std::size_t(zones[std::size_t(g * 4 + s)])]), 13.f, kWhite);
+        }
+        button("rand", "btup");
+    }
+    if (wcCfg_ == 20) {
+        if (!haveTourney_) const_cast<FeFlow*>(this)->ensureTourney();
+        if (haveTourney_) {
+            const auto& m = *tourney_;
+            for (int n = 0; n < 3; ++n) { // "today's games" = next knockout round (QF nodes 8..10)
+                const tournament::BracketNode& node = m.bracket.node(std::size_t(8 + n));
+                const std::string a = poolName(node.teamA), b = poolName(node.teamB);
+                lineAt(sc->object("tgt" + std::to_string(n + 1)), a, 13.f, kInk);
+                lineAt(sc->object("tns" + std::to_string(n + 1)), b, 13.f, kInk);
+                lineAt(sc->object("tgp" + std::to_string(n + 1)),
+                       a.empty() || b.empty() ? std::string() : a + " v " + b, 13.f, kGold);
+                const std::uint32_t w = m.winners[std::size_t(8 + n)];
+                lineAt(sc->object("tsd" + std::to_string(n + 1)),
+                       w == tournament::kNoTeam ? std::string() : "W: " + poolName(w), 12.f, kWhite);
+                // tsd slots sit on the LAY's navy fill plates: navy-on-navy ink is invisible, white reads.
+            }
+            lineAt(sc->object("tody"), "Today's Games", 13.f, kGold); // tody plate label: the engine's
+            // runtime caption lane (FC-bank textid); date/time/stadium slots (dtnm/dtno/tgt/tsd names)
+            // stay plate-only [H] - the port's presentation model has no fixture schedule data.
+        }
+        button("simu", "hic1"); button("frwd", "hic2"); button("strk", "hic3"); button("stsc", "hic4");
+        static constexpr const char* kBtn[4] = {"frwd", "simu", "stsc", "strk"}; // decoded edge row
+        focusRing(kBtn[wcRow_ & 3]);
+    }
+    if (wcCfg_ == 21) {
+        if (!haveTourney_) const_cast<FeFlow*>(this)->ensureTourney();
+        if (haveTourney_) {
+            const auto& m = *tourney_;
+            for (int n = 0; n < 4; ++n) { // QF pair strings tm00..tm03
+                const tournament::BracketNode& node = m.bracket.node(std::size_t(8 + n));
+                const std::string a = poolName(node.teamA), b = poolName(node.teamB);
+                lineAt(sc->object("tm0" + std::to_string(n)),
+                       a.empty() || b.empty() ? std::string() : a + " v " + b, 13.f, kInk);
+            }
+            for (int n = 0; n < 2; ++n) { // SF slots: shield flags first, names last (23/24 layering)
+                const std::uint32_t id = m.winners[std::size_t(12 + n)];
+                const formats::LayoutObject* o = sc->object("qf0" + std::to_string(n));
+                if (o && id != tournament::kNoTeam) {
+                    const std::string ff = flagFileForTeam(id);
+                    if (ff.empty()) { ++st.missing; }
+                    else {
+                        const ScreenArt::Shape sh = const_cast<ScreenArt&>(art_).shape("..\\global\\", ff, "f000", -1);
+                        if (sh.tex) { ui.draw(sh.tex, {float(o->x), float(o->y), float(sh.w), float(sh.h)}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu); ++st.shapes; }
+                        else ++st.missing;
+                    }
+                }
+                lineAt(sc->object("qtm" + std::to_string(n)), poolName(m.winners[std::size_t(12 + n)]), 13.f, kInk);
+            }
+        }
+        button("simu", "hic1"); button("frwd", "hic2"); button("strk", "hic3"); button("stsc", "hic4");
+        static constexpr const char* kBtn[4] = {"frwd", "simu", "stsc", "strk"};
+        focusRing(kBtn[wcRow_ & 3]);
+    }
+    if (wcCfg_ == 81) {
+        if (!haveTourney_) const_cast<FeFlow*>(this)->ensureTourney();
+        if (const formats::LayoutObject* mult = sc->object("mult")) {
+            const auto lineXY = [&](float x, float y, std::string_view s, std::uint32_t rgba) {
+                if (s.empty() || !text_ || !text_->ready() || !text_->font()) return;
+                for (const auto& q : layoutText(*text_->font(), s, x, y, 13.f, rgba))
+                    ui.draw(text_->texture(), q.dst, q.uv, q.rgba);
+                ++st.texts;
+            };
+            if (haveTourney_) {
+                const auto& m = *tourney_;
+                for (int n = 0; n < 8; ++n) { // R16 result rows in the mult pane (18px rows)
+                    const tournament::BracketNode& node = m.bracket.node(std::size_t(n));
+                    const std::string a = poolName(node.teamA), b = poolName(node.teamB);
+                    if (a.empty() || b.empty()) continue;
+                    const std::uint32_t w = m.winners[std::size_t(n)];
+                    lineXY(float(mult->x), float(mult->y) + 18.f * n,
+                           w == tournament::kNoTeam ? a + "  vs  " + b
+                                                    : a + "  vs  " + b + "  ->  " + poolName(w), kWhite);
+                }
+            }
+        }
+        button("fwrd", "hic1"); // fwrd = pop-to-parent edge (decoded)
+    }
+    if (wcCfg_ == 82) {
+        if (!haveTourney_) const_cast<FeFlow*>(this)->ensureTourney();
+        if (haveTourney_) {
+            const auto& m = *tourney_;
+            int row = 0; // t000..t008 = first 9 standings rows, group A first (tab plates mbt0-2)
+            for (int g = 0; g < 8 && row < 9; ++g)
+                for (const auto& r : m.tables[std::size_t(g)]) {
+                    if (row >= 9) break;
+                    lineAt(sc->object("t00" + std::to_string(row)),
+                           std::format("{}  P{} W{} D{} L{} PTS{}", poolName(r.teamId), r.p, r.w, r.d, r.l, r.pts),
+                           13.f, kWhite);
+                    ++row;
+                }
+        }
+        button("mbt0", "hic1"); button("mbt1", "hic2"); button("mbt2", "hic3");
+        button("frwd", "hic4");
+    }
     drawHelpPane(*sc, ui, st, uist.hover); // context help captions (help= FC keys), same model as the hub
     drawCursor(ui, st);
     return st;
@@ -2105,6 +2282,42 @@ int FeFlow::pointerActivate() {
             if (o && widgetHit(*o, float(ptrX_), float(ptrY_))) { popSel_ = slot; activatePopup(); return -1; }
         }
         return -1; // clicks inside the popup panel never launch a match
+    }
+    if (wcCfg_) { // scene-switch edges under the pointer (analysis/pass20uitick/NOTES.md §4 tables):
+        // click the decoded widget -> the verified target scene; nav icons mirror the hub lane.
+        const formats::ScreenLayout& sc = wcCfg_ == 18 ? wc18_ : wcCfg_ == 19 ? wc19_
+                               : wcCfg_ == 20 ? wc20_ : wcCfg_ == 21 ? wc21_ : wcCfg_ == 23 ? wc23_
+                               : wcCfg_ == 24 ? wc24_ : wcCfg_ == 35 ? wc35_ : wcCfg_ == 81 ? wc81_ : wc82_;
+        const auto hit = [&](const char* n) {
+            const formats::LayoutObject* o = sc.object(n);
+            return o && widgetHit(*o, float(ptrX_), float(ptrY_));
+        };
+        if (hit("rand") && wcRandCount_ < 99) { ++wcRandCount_; return -1; } // staged draw (cap 99) [C]
+        if (hit("fe20") && (wcCfg_ == 19 || wcCfg_ == 23 || wcCfg_ == 24)) { openWcCfg(20); return -1; }
+        if (hit("fe18") && wcCfg_ == 19) { openWcCfg(18); return -1; } // fe18 edge [C 0x45281a]
+        if (hit("fe19") && wcCfg_ == 20) { openWcCfg(19); return -1; } // fe19 edge [C 0x452d2b-analog]
+        if (hit("frwd")) { // 20 -> feflow13 (lineups, no port scene: documented no-op); 21/23/24 -> 20
+            if (wcCfg_ != 20) openWcCfg(20);
+            return -1;
+        }
+        if (hit("strk") && (wcCfg_ == 20 || wcCfg_ == 21 || wcCfg_ == 23 || wcCfg_ == 24)) { openWcCfg(81); return -1; }
+        if (hit("stsc") && (wcCfg_ == 20 || wcCfg_ == 21 || wcCfg_ == 23 || wcCfg_ == 24)) { openWcCfg(82); return -1; }
+        if (hit("simu") && (wcCfg_ == 20 || wcCfg_ == 21)) { openPopup("feflow86", false); return -1; } // [C 0x452f0d]
+        if (hit("fwrd") && wcCfg_ == 81) { // pop to parent (decoded return edge)
+            if (!wcStack_.empty()) { wcCfg_ = wcStack_.back(); wcStack_.pop_back(); cfgName_ = "FEFLOW" + std::to_string(wcCfg_); }
+            return -1;
+        }
+        if (hit("fe11")) { selectNav(int(FeEntry::Tournament)); wcStack_.clear(); wcCfg_ = 0; return int(FeEntry::Tournament); } // [C 0x4524da]
+        if (hit("fe15")) { wcStack_.clear(); wcCfg_ = 0; openOptions(); return -1; } // [C]
+        if (hit("fe41")) { wcStack_.clear(); wcCfg_ = 0; openSaveLoad(); return -1; } // [C]
+        if (hit("fe42")) { if (openSaveLoad()) lsView_ = 42; wcStack_.clear(); wcCfg_ = 0; return -1; } // [C]
+        if (hit("fe89")) return -1; // feflow89 team grid: in-game lane only (documented gap)
+        if (hit("quit")) { // quit wedge = feflow37 confirm [C]; fe06 = hub return edge
+            if (havePop37_ && openPopup("feflow37", true)) return -1;
+            wcStack_.clear(); wcCfg_ = 0; return -1;
+        }
+        if (hit("fe06")) { wcStack_.clear(); wcCfg_ = 0; return -1; } // fe06 -> hub (0x45249a = feflow37 w/ confirm)
+        return -1; // clicks inside the family board never start a match
     }
     if (setup07View_) { // ball arrows cycle the side's pool; nav icons close per their help edges [C]
         const formats::ScreenLayout& sc = setup07_;
@@ -2676,7 +2889,9 @@ void FeFlow::activatePopup() {
     // Payload semantics [C] §29: `ok`/`yes` confirm, `cancel`/`no` dismiss. Both branches close to the
     // caller scene (the box is modal chrome, not a view chain); in the hub 'quit'-wedge context the
     // confirm side requests the app exit — FEFLOW37 is that quit-confirm box.
-    if (popSel_ == 1 && popQuitCtx_) quitRequested_ = true;
+    if (popSel_ == 1 && popQuitCtx_) quitRequested_ = true; // FEFLOW86 opens with quitContext=false: its
+    // "simulate remaining fixtures" confirm only closes — the presentation TourneyModel is a fully
+    // resolved bracket, so the boards repaint with results as soon as the popup dismisses.
     popKind_ = 0;
 }
 

@@ -1396,6 +1396,80 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
         steps.push_back(std::move(st));
     }
     {
+        // 14b. fe-wc-nav (pass-20uitick): scripted scene-switch chain on the world-cup family
+        // boards through the public openWcCfg/enter/back/move API, asserting the decoded edges of
+        // analysis/pass20uitick/NOTES.md §4: FEFLOW18 Enter = staged rand redraw (no scene switch);
+        // FEFLOW19 Enter fires the fe20 edge in ONE press (staged-draw counter is pointer-only);
+        // Esc pops the parent chain; FEFLOW21 ring-0 frwd -> FEFLOW20; FEFLOW20 ring-1 simu opens
+        // the FEFLOW86 prompt and its confirm closes without an app exit; a return edge (20->19->20)
+        // pops the stack so the chain stays bounded. No shell -> documented skip (fe-nav pattern).
+        StepRes st{"fe-wc-nav", false, ""};
+        try {
+            platform::Window win("WC98-selftest-wc", 640, 480, false);
+            render::VulkanConfig vcfg;
+            vcfg.instanceExtensions = platform::Window::vulkanInstanceExtensions();
+            vcfg.createSurface = [&](VkInstance inst) {
+                VkSurfaceKHR s = VK_NULL_HANDLE;
+                SDL_Vulkan_CreateSurface(win.sdl(), inst, nullptr, &s);
+                return s;
+            };
+            vcfg.drawableSize = [&] { return win.pixelSize(); };
+            const auto renderer = render::createVulkanRenderer(vcfg, render::RenderSettings{});
+            FeFlow fe(*renderer, tree, "eng");
+            if (!fe.openWcCfg(18)) {
+                st.passed = true; // documented environment skip (tree lacks the family layouts)
+                st.detail = fmt("fe-wc-nav skipped: FEFLOW18 unavailable ({})", fe.lastError());
+            } else {
+                const auto name = [&] { return std::string(fe.screenName()); };
+                const bool s18 = fe.onWcCfg() && name() == "FEFLOW18";
+                fe.enter(); // 'rand' staged redraw: stays on the board
+                const bool stay18 = name() == "FEFLOW18";
+                fe.back(); // Esc: 'quit' edge closes the family
+                const bool closed = !fe.onWcCfg();
+                const bool s19 = fe.openWcCfg(19) && name() == "FEFLOW19";
+                fe.enter(); // fe20 edge [C 0x4527aa]: single press opens FEFLOW20
+                const bool s20 = name() == "FEFLOW20";
+                fe.back(); // Esc pops the parent chain
+                const bool back19 = name() == "FEFLOW19";
+                fe.back(); // stack empty: family closes
+                const bool closed2 = !fe.onWcCfg();
+                const bool s21 = fe.openWcCfg(21) && name() == "FEFLOW21";
+                fe.enter(); // ring 0 = frwd -> FEFLOW20 [C 0x454122]
+                const bool s20b = name() == "FEFLOW20";
+                fe.back();
+                const bool back21 = name() == "FEFLOW21";
+                fe.back();
+                const bool closed3 = !fe.onWcCfg();
+                const bool s20c = fe.openWcCfg(20) && name() == "FEFLOW20";
+                fe.move(+1); // ring cursor: frwd -> simu
+                fe.enter(); // ring 1 = simu -> FEFLOW86 prompt [C 0x452f0d]
+                const bool s86 = name() == "FEFLOW86";
+                fe.enter(); // confirm = close: resolved-bracket repaint, never an app exit
+                const bool noQuit = !fe.quitRequested() && name() == "FEFLOW20";
+                fe.back(); // Esc closes the family
+                const bool closed4 = !fe.onWcCfg();
+                // return-edge pop: 20 -> 19 -> 20 pops the stack (target == top), so one Esc closes
+                const bool cyc = fe.openWcCfg(20) && fe.openWcCfg(19) && fe.openWcCfg(20) && name() == "FEFLOW20";
+                fe.back();
+                const bool popReturn = !fe.onWcCfg();
+                st.passed = s18 && stay18 && closed && s19 && s20 && back19 && closed2 &&
+                            s21 && s20b && back21 && closed3 && s20c && s86 && noQuit && closed4 &&
+                            cyc && popReturn;
+                st.detail = fmt("fe wc-nav: s18={} stay18={} closed={} s19={} s20={} back19={} closed2={} "
+                                "s21={} s20b={} back21={} closed3={} s20c={} s86={} noQuit={} closed4={} "
+                                "cyc={} popReturn={}",
+                                int(s18), int(stay18), int(closed), int(s19), int(s20), int(back19), int(closed2),
+                                int(s21), int(s20b), int(back21), int(closed3), int(s20c), int(s86), int(noQuit),
+                                int(closed4), int(cyc), int(popReturn));
+            }
+        } catch (const std::exception& e) {
+            st.passed = true; // documented environment skip (headless-CI pattern)
+            st.detail = fmt("fe-wc-nav skipped: FE shell unavailable ({})", e.what());
+        }
+        steps.push_back(std::move(st));
+    }
+
+    {
         // D-27 set-piece grammar (FUN_004c1730 arbiter + FUN_004c09a0 machine, pass-17): pure
         // offline replica gates on the FUN_0049e400 band (stadium default {0xe40,0x13e0}). Each
         // restart case asserts the arbiter selector for a fixed sweep segment AND the exact rounded

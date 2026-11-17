@@ -225,11 +225,13 @@ if(DEFINED WC98_TREE)
         add_test(NAME fe_league_cfg${_lq} COMMAND wc98-native --fe-league-cfg ${_lq} --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/lcfg${_lq})
         set_tests_properties(fe_league_cfg${_lq} PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW${_lq}: shapes=[1-9][0-9]* texts=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 ")
     endforeach()
-    # World-cup family interactive screens (MENU_NAV_WC98.md rank-2; analysis/pass12/wcfamily_notes.txt):
-    # --fe-wc-cfg N opens FEFLOW18 (zones draw, tmNN rows + 'rand'), FEFLOW23/24 (R16 bracket boards,
-    # strk/stsc) and FEFLOW35 (standings board, nglt/ngrt group pages). Dynamic cells paint through the
-    # app overlays (pool names / TourneyModel), so texts>0 proves the row content renders.
-    foreach(_wq 18 23 24 35)
+    # World-cup family interactive screens (MENU_NAV_WC98.md rank-2; analysis/pass12/wcfamily_notes.txt +
+    # analysis/pass20uitick/NOTES.md scene-switch edges): --fe-wc-cfg N opens FEFLOW18 (zones draw, tmNN
+    # rows + 'rand'), FEFLOW19 (groups board g{g}t{s} + rand), FEFLOW20 (today's games tgt/tns/tsd +
+    # simu/frwd/stsc/strk), FEFLOW21 (QF bracket tm0N/qtmN/qfN), FEFLOW23/24 (R16 bracket boards),
+    # FEFLOW35 (standings, nglt/ngrt pages), FEFLOW81 (results mult pane), FEFLOW82 (stats t00N rows).
+    # Dynamic cells paint through the app overlays (pool names / TourneyModel), texts>0 proves content.
+    foreach(_wq 18 19 20 21 23 24 35 81 82)
         add_test(NAME fe_wc_cfg${_wq} COMMAND wc98-native --fe-wc-cfg ${_wq} --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/wcfg${_wq})
         set_tests_properties(fe_wc_cfg${_wq} PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW${_wq}: shapes=[1-9][0-9]* texts=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 ")
     endforeach()

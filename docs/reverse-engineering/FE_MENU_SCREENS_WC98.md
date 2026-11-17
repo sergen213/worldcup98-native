@@ -57,7 +57,7 @@ LAY: **FEFLOW09.LAY** (`lays/FEFLOW09.LAY`) — 8 config rows per team pair. Per
 - team-name texts `tltx` x=166,y=144 / `trtx` x=424,y=144; flags `ltfg`/`rtfg` x=104/362,y=165; title `titl` 10,9.
 Row templates in the handler use printf-style widget names: `"tm%02d"` (s_tm_02d @0x56294c), `"tc%02d"`, `"tt%02d"` @0x5629e8/0x5629f0, `"stf%01d"` @0x5629f8 **[C]** `menu12_painter_helpers.txt` (FUN_0044e178 loops 7 rows; FUN_0044e368 sets stf colors).
 Arrows/hilite painter: `FUN_0044ccd4` draws anm/lrp/rrp/alp/arp per state (`DAT_00608768` state array), hides via `FUN_0046bfac/bfcc`, sets widget x/y copy from arp (**[C]** same dump).
-Transitions **[C]** feflow11-init code path: scene messages compared as dwords (e.g. `"del"`-family 0x64656c79) + `FUN_004461b4` pushes cluster scene names; feflow09 tick 0x44c6c0 body decode pending (thunk-less region).
+Transitions **[C]** feflow11-init code path: scene messages compared as dwords (e.g. `"del"`-family 0x64656c79) + `FUN_004461b4` pushes cluster scene names; feflow09 tick 0x44c6c0 decoded **[C 2026-11-17]** `analysis/pass20uitick/uitick_dec2.txt`: state arrays DAT_00608748/DAT_00608768 (16 slots stride 2, memset), arrow painter FUN_0044ccd4 fires on pair!=0, row painters FUN_0044e0cc/e178/e368, mode gates FUN_00446624()==2 (9-widget hide), DAT_00640fb4==10 (cup trio FUN_0043c9a0/FUN_004c31d0/FUN_004788bc), DAT_0060a9e7 byte-flag + window-object DAT_0057cd78 hide branches.
 feflow50 = practise setup, same widget grammar (**[H]** geometry identical to FEFLOW50.LAY `lays/FEFLOW50.LAY`); handlers §1.
 
 ## 6. Team select — feflow11
@@ -67,7 +67,7 @@ Draw = shared thunk `FUN_0044a210` (§1). Tick 0x44dda0 **[C]** in `menu7_handle
 
 ## 7. World-cup setup — feflow13
 
-Handlers §1 all thunks→shared painter; LAY **FEFLOW13.LAY** (`lays/`). Content widgets per inventory (crest slots, `<-->` arrows, option captions with FC-bank `textid`s) **[C]** in `screen_inventory.txt`. Scene-id strings for the flow: `wcqualif`, `wcshedq`, `wcztsel`, `wcstad`, `wcstand1`, `wcplayof`, `wcleader`, `wccontr` **[C]** cluster names §2. Enter/Esc dispatch: tick 0x44e578 region has no Ghidra function (thunk) — decode pending, jump targets = cluster scene ids above **[H]**.
+Handlers §1 all thunks→shared painter; LAY **FEFLOW13.LAY** (`lays/`). Content widgets per inventory (crest slots, `<-->` arrows, option captions with FC-bank `textid`s) **[C]** in `screen_inventory.txt`. Scene-id strings for the flow: `wcqualif`, `wcshedq`, `wcztsel`, `wcstad`, `wcstand1`, `wcplayof`, `wcleader`, `wccontr` **[C]** cluster names §2. **[C 2026-11-17]** init 0x44e440 decoded (`analysis/pass20uitick`): window-object handle DAT_0057cd78 = FUN_0049f5a0, mode flags DAT_0060cbd4/5 = FUN_004a0bf0/FUN_004a0c18, hide branches per mode==2 + cup trio. Enter/Esc dispatch: tick 0x44e578 decode still pending; jump targets = cluster scene ids above **[H]**.
 
 ## 8. League-mode kt/menu scenes — feflow73/74/79/80/82
 
@@ -88,11 +88,11 @@ LAYOUTS.BIG members `igaoptns.lay`, `iggoptns.lay`, `igmoptns.lay` (attacking/go
 
 ## 10. Transition graph (entry → scene)
 
-Dispatch mechanism **[C]**: handlers push a cluster p-string scene name and call `FUN_004461b4` (scene switch); messages compared as ASCII dwords in init/tick guards (`"del"`-family seen at 0x44d9c8). Confirmed edges: feflow16→{0x562bb8, 0x562bc4} scenes **[C asm]**; mainmenu items → §4 **[H]**. Full edge table pending the thunk-body disassembly pass (next slice input).
+Dispatch mechanism **[C]**: handlers push a cluster p-string scene name and call `FUN_004461b4` (scene switch); messages compared as ASCII dwords in init/tick guards (`"del"`-family seen at 0x44d9c8). Confirmed edges: feflow16→{0x562bb8, 0x562bc4} scenes **[C asm]**; mainmenu items → §4 **[H]**. **[C 2026-11-17]** feflow18/19/20/21/23/24 init+tick decoded (`analysis/pass20uitick`): key-token grammar ("fe06".."fe8a"/"rand"/"simu"/"simv"/"stnk"/"strj"/"strl"/"stsc"/"strt"/"sint"), feflow20 tick scene-edge push gated on DAT_0062fad0+0x5060, `stg1`..`stg3` stage captions DAT_0057d79c from (DAT_0062fad0+0x4312)>>4; feflow13 tick 0x44e578, feflow18 tick 0x4524f8, feflow19 tick 0x452884 still pending.
 
 ## Open items for the port consumer
 1. Main-menu per-item draw x/y/font: resource-level (runtime string-bank widgets), not statically recoverable — capture at runtime with the window-object dump once implemented.
-2. Thunk-less tick bodies (feflow13/50/73/74/79/80/82) need raw disassembly (lane proven: `menu15` DisassembleCommand pattern).
+2. Tick bodies: feflow73/80/82 tick + feflow13/18/19/20/21/23/24 init/tick decoded via Ghidra function objects **[C 2026-11-17]** `analysis/pass20uitick`; feflow13 tick 0x44e578, feflow18 tick 0x4524f8, feflow19 tick 0x452884, feflow50/74/79 tick remain (raw-disassembly lane proven: `menu15` DisassembleCommand pattern).
 3. IGLAY.BIG member extraction pending.
 
 Dumps: `analysis/pass11/menu{1..15}_*.txt`, `lays/*.LAY`, `screen_inventory.txt`, `FCENG.BIN.json`; scripts `ghidra-scripts/GhidraWc98Menu{1..15}.py`.

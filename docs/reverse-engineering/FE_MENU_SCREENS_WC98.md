@@ -84,7 +84,7 @@ the default match demo).
 
 ## 9. In-game options popups
 
-LAYOUTS.BIG members `igaoptns.lay`, `iggoptns.lay`, `igmoptns.lay` (attacking/goalkeeper/match in-game options) **[C inventory]**; raw text not yet dumped. `IGLAY.BIG@CONTROL1.LAY`, `IGOPTN2.LAY`: extraction of IGLAY.BIG pending this pass — geometry capture follows the §3 grammar once dumped. Save/load: feflow16 init 0x4519c0 **[C]** asm in `menu8_asm_slots.txt` handles Esc(0x1b)/'e'(0x65), save-slot key checks (`FUN_0049772c` keys 2/3, `FUN_0046ae74`) and pushes scene p-strings 0x562bb8 / 0x562bc4 via `FUN_004461b4`; those VAs sit in the cluster block → target names decode as `mnselect`/`loading` family **[H]**.
+LAYOUTS.BIG members `igaoptns.lay`, `iggoptns.lay`, `igmoptns.lay` (attacking/goalkeeper/match in-game options) **[C inventory]**; raw text dumped **[C 2026-11-17]** (`wc98-extract FE/PACK/LAYOUTS/IGLAY.BIG` → 30 members, sha256-identical to loose `FE/INGAME/*.LAY`, MENU_PARITY §2b/§2c diff=0). The retail in-game options scene is `IGOPTN2` (IGLAY.BIG), ported with caption rows **[C 2026-11-17]** (MENU_PARITY §14, gate `fe_igoptn2_board`); the `iga/igg/igmoptns` popups are LAYOUTS.BIG decoys. Caption ids resolve through the widget-id remap table `DAT_005774a4` → FC bank (**[C]** `analysis/pass21igmenu/NOTES.md` §1, gate `test_fcwidget`). Save/load: feflow16 init 0x4519c0 **[C]** asm in `menu8_asm_slots.txt` handles Esc(0x1b)/'e'(0x65), save-slot key checks (`FUN_0049772c` keys 2/3, `FUN_0046ae74`) and pushes scene p-strings 0x562bb8 / 0x562bc4 via `FUN_004461b4`; those VAs sit in the cluster block → target names decode as `mnselect`/`loading` family **[H]**.
 
 ## 10. Transition graph (entry → scene)
 
@@ -93,6 +93,6 @@ Dispatch mechanism **[C]**: handlers push a cluster p-string scene name and call
 ## Open items for the port consumer
 1. Main-menu per-item draw x/y/font: resource-level (runtime string-bank widgets), not statically recoverable — capture at runtime with the window-object dump once implemented.
 2. Tick bodies: feflow73/80/82 tick + feflow13/18/19/20/21/23/24 init/tick decoded via Ghidra function objects **[C 2026-11-17]** `analysis/pass20uitick`; feflow13 tick 0x44e578, feflow18 tick 0x4524f8, feflow19 tick 0x452884, feflow50/74/79 tick remain (raw-disassembly lane proven: `menu15` DisassembleCommand pattern).
-3. IGLAY.BIG member extraction pending.
+3. IGLAY.BIG member extraction **[C 2026-11-17]**: 30 members dumped + digest-verified (MENU_PARITY §2b); IGOPTN2 board ported/gated (§14); row-caption lane = widget-id remap `DAT_005774a4` (`analysis/pass21igmenu/NOTES.md`, gate `test_fcwidget`).
 
 Dumps: `analysis/pass11/menu{1..15}_*.txt`, `lays/*.LAY`, `screen_inventory.txt`, `FCENG.BIN.json`; scripts `ghidra-scripts/GhidraWc98Menu{1..15}.py`.

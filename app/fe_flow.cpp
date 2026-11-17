@@ -3416,37 +3416,8 @@ FeDrawStats FeFlow::drawPopup(render::SpriteBatch& ui) const {
     drawCursor(ui, st);
     return st;
 }
-
-
-// ---- In-game option popups igaoptns/iggoptns/igmoptns (analysis/pass13/IGOPTNS_ART.md) -----------
-// Inline `rows=N, label,mode,count,v...` tuples (prop ROWS): FC-bank caption ids per row + values.
 std::vector<FeFlow::OptRow> FeFlow::parseIgRows(std::string_view rowsProp) {
-    std::vector<int> nums;
-    std::size_t p = 0;
-    while (p < rowsProp.size()) {
-        const std::size_t c = rowsProp.find(',', p);
-        std::string_view tok = rowsProp.substr(p, (c == std::string_view::npos ? rowsProp.size() : c) - p);
-        const std::size_t n0 = tok.find_first_not_of(" \t");
-        if (n0 != std::string_view::npos) {
-            tok = tok.substr(n0);
-            int v = 0;
-            if (std::from_chars(tok.data(), tok.data() + tok.size(), v).ptr == tok.data() + tok.size()) nums.push_back(v);
-        }
-        if (c == std::string_view::npos) break;
-        p = c + 1;
-    }
-    std::vector<OptRow> rows;
-    if (nums.size() < 4) return rows;
-    std::size_t i = 1; // nums[0] = tuple count
-    for (int t = 0; t < nums[0] && i + 2 < nums.size(); ++t) {
-        OptRow r;
-        r.label = nums[i++];
-        r.mode = nums[i++];
-        int cnt = nums[i++];
-        while (cnt-- > 0 && i < nums.size()) r.values.push_back(nums[i++]);
-        rows.push_back(std::move(r));
-    }
-    return rows;
+    return presentation::parseIgRows(rowsProp); // shared trio grammar (analysis/pass21igmenu)
 }
 
 bool FeFlow::openIgOptns(int mode) {
@@ -3473,79 +3444,11 @@ FeDrawStats FeFlow::drawIgOptns(render::SpriteBatch& ui) const {
     using namespace presentation;
     const formats::ScreenLayout& sc = igMode_ == 1 ? igA_ : igMode_ == 2 ? igG_ : igM_;
     FeDrawStats st = composite(sc, ui, const_cast<ScreenArt&>(art_), text_.get(), &igVisible_);
-    if (!text_ || !text_->ready()) return st;
-    // List rows: label caption + current value caption from the FC bank (the tuples' ids), painted in
-    // the list box at the ROWHEIGHT stride with the row cursor hilite.
-    if (const formats::LayoutObject* box = sc.object("list")) {
-        std::vector<std::string> caps;
-        for (std::size_t i = 0; i < igRows_.size(); ++i) {
-            const OptRow& r = igRows_[i];
-            std::string cap;
-            if (const std::string_view s = text_->stringAt(r.label); !s.empty()) cap = std::string(s);
-            if (!r.values.empty() && i < igVals_.size()) {
-                const int v = r.values[std::size_t(igVals_[i]) % r.values.size()]; // value caption suffix [H]
-                if (const std::string_view s = text_->stringAt(v); !s.empty()) cap += "  " + std::string(s);
-            }
-            caps.push_back(std::move(cap));
-        }
-        const int fontId = box->intProp("TEXTFONT", 2); // list widget textFont=2 (measured)
-        const int rowH = box->intProp("ROWHEIGHT", 36); // slots that fit the list box (engine clips + scrolls)
-        const int vis = std::max(1, (box->height - 2) / rowH);
-        const int top = std::min(std::max(0, igRow_ - vis + 1), std::max(0, int(caps.size()) - vis));
-        std::vector<std::string> view;
-        for (int i = top; i < std::min(int(caps.size()), top + vis); ++i) view.push_back(caps[std::size_t(i)]);
-        paintListRows(ui, *box, std::span(view), igRow_ - top, *text_, fontId, st);
-        if (const formats::LayoutObject* trk = sc.object("scrl"))
-            paintSliderThumb(ui, const_cast<ScreenArt&>(art_), *trk, igRow_, 0, std::max(1, int(igRows_.size()) - 1));
-    }
-    // Tab buttons: objecttype-4 widgets with TEXTID are dynamic content -> composite skips the label;
-    // paint the bank captions over them (textid=1174/1175/1144 measured on go_g/go_a/go_c). The audio
-    // popup names its three tab buttons "2", "3", "04" (measured igaoptns.lay widget map).
-    const char* kTab[3] = {"go_g", "go_a", "go_c"};
-    if (igMode_ == 1) { kTab[0] = "2"; kTab[1] = "3"; kTab[2] = "04"; }
-    for (int i = 0; i < 3; ++i) {
-        const formats::LayoutObject* o = sc.object(kTab[i]);
-        if (!o) continue;
-        const std::string* t = o->prop("TEXTID");
-        if (!t) continue;
-        int idx = 0;
-        std::from_chars(t->data(), t->data() + std::min<std::size_t>(t->size(), 8), idx);
-        std::string s(text_->stringAt(idx)); // e.g. the game-tab caption (1174)
-        if (s.empty()) continue;
-        const formats::FfnFont* f = text_->face(4);
-        render::TextureId ftex = text_->faceTexture(4);
-        if (!f || !ftex) { f = text_->font(); ftex = text_->texture(); }
-        if (!f || !ftex) continue;
-        const float px = f->lineHeight ? float(f->lineHeight) : 16.f;
-        // The engine's font painter clips captions inside the widget box (this media's tab ids are long
-        // dev strings); trim to the button width so pills never bleed over neighbours.
-        while (s.size() > 1 && textWidthPx(*f, s, px) > float(o->width) - 8.f) s.pop_back();
-        const float w = textWidthPx(*f, s, px);
-        for (const auto& q : layoutText(*f, s, float(o->x) + (float(o->width) - w) * 0.5f,
-                                        float(o->y) + (float(o->height) - px) * 0.5f, px,
-                                        render::packRgba(235, 235, 235, 255)))
-            ui.draw(ftex, q.dst, q.uv, q.rgba);
-        ++st.texts;
-    }
-    // ok/canc/defa: art PROVEN ABSENT (igicon.fsh#chck dead reference, IGOPTNS_ART.md) -> paint the
-    // widgets' own help= FC captions as text over their boxes; no invented placeholder art.
-    const char* kCtl[3] = {"ok", "canc", "defa"}; // control widgets (chck art dead on this media)
-    const int kCap[3]   = {60, 62, 1176};         // their help= FC-bank caption ids (measured)
-    for (int i = 0; i < 3; ++i) {
-        const formats::LayoutObject* o = sc.object(kCtl[i]);
-        if (!o) continue;
-        ++st.missing; // the chck shape is a documented legit-missing art slot on this media [C]
-        std::string s(text_->stringAt(kCap[i]));
-        if (s.empty()) continue;
-        // Same widget-box clip as the engine's font painter: this media's ids are long dev strings.
-        const formats::FfnFont* f = text_->face(4);
-        if (f && f->lineHeight) {
-            const std::size_t maxChars = static_cast<std::size_t>(std::max(1.f, float(o->width) - 8.f) / (float(f->lineHeight) * 0.62f));
-            if (s.size() > maxChars) s.resize(maxChars);
-        }
-        st.texts += paintCaption(*o, std::string_view(s), ui);
-    }
-    drawHelpPane(sc, ui, st, "ok"); // confirm-control caption (help=60) [H] default focus
+    // Shared caption lane (pass-21): tab caption + ROWS row/value captions + scrl thumb.
+    paintIgOptns(ui, sc, const_cast<ScreenArt&>(art_), text_.get(), igRows_, igVals_, igRow_,
+                 igMode_ == 1, st);
+    st.missing += 3; // the chck shape is a documented legit-missing art slot (3 popups)
+    drawHelpPane(sc, ui, st, "ok"); // help=60 control caption via the ok widget (pass-21)
     drawCursor(ui, st);
     return st;
 }

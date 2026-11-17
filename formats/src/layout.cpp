@@ -92,6 +92,20 @@ LayoutDocument LayoutDocument::parse(std::string_view text) {
         std::string_view v = trim(line.substr(eq + 1));
         if (v.size() >= 2 && v.front() == '"' && v.back() == '"') v = v.substr(1, v.size() - 2);
         p.value = std::string(v);
+        // Multi-line values: a trailing '+' means "continues on the next line" (rows=11+ /
+        // points=4+ grammar, FE/INGAME/*.LAY). Continuation lines append verbatim (they carry
+        // their own leading commas); the final line of a run has no trailing '+'.
+        while (!p.value.empty() && p.value.back() == '+') {
+            p.value.pop_back();
+            if (pos > text.size()) break;
+            const std::size_t nl2 = text.find('\n', pos);
+            std::string_view cont = text.substr(pos, nl2 == std::string_view::npos ? std::string_view::npos : nl2 - pos);
+            pos = nl2 == std::string_view::npos ? text.size() + 1 : nl2 + 1;
+            ++lineNo;
+            cont = trim(stripComment(trim(cont)));
+            if (!cont.empty() && cont.front() == '+') cont = trim(cont.substr(1));
+            p.value += cont;
+        }
         (doc.sections.empty() ? doc.preamble : doc.sections.back().props).push_back(std::move(p));
     }
     return doc;

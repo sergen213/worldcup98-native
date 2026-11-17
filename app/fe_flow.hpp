@@ -9,6 +9,7 @@
 #include "wc98/formats/res.hpp"
 #include "wc98/formats/layout.hpp"
 #include "wc98/presentation/fe_screen.hpp"
+#include "wc98/presentation/ig_optns.hpp"
 #include "team_select.hpp"
 
 #include <filesystem>
@@ -585,7 +586,7 @@ public:
     // Four tab pages (tbb1..4 objecttype 32; lst1..4 objecttype 17 list rows). Row tuples are the
     // `rows=N+` continuation lines "label,mode,count, FC-indices..." (widget TEXTID = leading index);
     // captions via FeText::stringAt. The Music Volume row (FC label 1186) maps to settings audio.
-    struct OptRow { int label = 0; int mode = 0; std::vector<int> values; };
+    using OptRow = presentation::IgOptRow; // shared grammar (presentation/ig_optns.hpp)
     formats::ScreenLayout optsScreen_;
     bool haveOpts_ = false;
     std::string optsRaw_;               // member text (rows=N+ tuples live in the raw LAY)

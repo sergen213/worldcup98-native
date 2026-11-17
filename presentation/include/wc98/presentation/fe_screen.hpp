@@ -87,6 +87,11 @@ public:
     // Direct FC-bank access for engine-driven row captions (help pane `help=NNN,...` leading index,
     // list rows, value strings). "" when the index is out of range.
     [[nodiscard]] std::string_view stringAt(std::size_t idx) const { return idx < strings_.size() ? std::string_view{strings_[idx]} : std::string_view{}; }
+    // Widget-lane caption (TEXTID/help= widget ids): the exe painter resolves widget ids through the
+    // FC remap table DAT_005774a4 (FUN_0043c9a0 -> FUN_004c31d0 pair, fc_painter.txt) before the bank
+    // lookup; 0xffffffff sentinel = unmapped, retail draws no caption. [C] analysis/pass21igmenu.
+    [[nodiscard]] std::string_view widgetStringAt(std::size_t idx) const;
+
 
 private:
     std::filesystem::path tree_;

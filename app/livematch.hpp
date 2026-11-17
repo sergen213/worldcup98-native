@@ -5,6 +5,7 @@
 // feeding the keyboard/gamepad pad word into controller 0 (mapping table in livematch.cpp).
 
 // Gate fixtures read/write user files through plain streams (the highlights lane).
+#include <array>
 #include <fstream>
 #include <filesystem>
 #include <memory>
@@ -13,7 +14,7 @@
 
 #include "wc98/formats/layout.hpp"
 #include "wc98/presentation/data.hpp"
-#include "wc98/presentation/fe_screen.hpp" // IgBoards members: ScreenArt, FeText, FeDrawStats, composite
+#include "wc98/presentation/ig_optns.hpp" // IgBoards trio: IgOptRow, paintIgOptns
 #include "wc98/presentation/snapshot.hpp"
 #include "wc98/sim/data.hpp"
 #include "wc98/sim/world.hpp"
@@ -126,7 +127,7 @@ public:
     // ighilsav | ighilit1 | manmarks). False = absent.
     bool open(std::string_view name);
     [[nodiscard]] bool isOpen() const { return kind_ != 0; }
-    [[nodiscard]] int kind() const { return kind_; } // 1 igstats, 2 ighalf, 3 igflsum, 4 igscsum, 5 ighilite, 6 ighilsav, 7 ighilit1, 8..14 igteam72/73/74/75/79/80/89, 15 manmarks, 16 igcamera, 17 igcamsel, 18 igpract1, 19 igpract2, 20 igprac1
+    [[nodiscard]] int kind() const { return kind_; } // 1 igstats, 2 ighalf, 3 igflsum, 4 igscsum, 5 ighilite, 6 ighilsav, 7 ighilit1, 8..14 igteam72/73/74/75/79/80/89, 15 manmarks, 16 igcamera, 17 igcamsel, 18 igpract1, 19 igpract2, 20 igprac1, 21 igoptn2 (board), 22 igaoptns, 23 iggoptns, 24 igmoptns
     // Management-page row cursor (IGTEAM pages / MANMARKS squad rows): hub rows / sub-pair slots / pNNN grid.
     [[nodiscard]] int mgSel() const { return mgSel_; }
     void moveMgmtRow(int dir, int nRows) { mgSel_ = nRows > 0 ? (mgSel_ + dir + nRows) % nRows : 0; }
@@ -149,6 +150,21 @@ public:
     void moveCamRow(int dir, int nRows) { mgSel_ = nRows > 0 ? (mgSel_ + dir + nRows) % nRows : 0; }
     // Practise pages (§G): igpract1/igpract2/igprac1 (kinds 18/19/20), shared header pane + nav.
     presentation::FeDrawStats draw(render::SpriteBatch& ui, const IgMatchData& d, const IgPracData& prac);
+    // In-game options (IGOPTN2 scene, pass-21): the IGOPTN2 board itself is kind 21 (four tab
+    // panes lst1..lst4 = Match/Game play/controller/audio, tbb1..4 hot-rects, analysis/pass21igmenu);
+    // kinds 22/23/24 = the legacy popup trio igaoptns/iggoptns/igmoptns (LAYOUTS.BIG popups the
+    // retail scene replaced). Composite + shared presentation::paintIgOptns/paintIgOptns2 caption
+    // lane; row cursor + value cycling (UP/DOWN + L/R on the list widget).
+    presentation::FeDrawStats drawIgOptns(render::SpriteBatch& ui);
+    [[nodiscard]] int igSel() const { return igRow_; }
+    [[nodiscard]] int igRowCount() const { return int(igRows_.size()); }
+    [[nodiscard]] int igValue() const { return igRow_ < int(igVals_.size()) ? igVals_[std::size_t(igRow_)] : -1; }
+    void moveIgRow(int dir);
+    void cycleIgValue(int dir);
+    // Board tab (kind 21): 0 Match, 1 Game play, 2 controller, 3 audio (tbb1..4 hot-rects).
+    void setIgTab(int t);
+    [[nodiscard]] int igTab() const { return igTab_; }
+    // Legacy trio popups (go_g/go_a/go_c or 2/3/04) switch by layout name: caller-side openBoard.
 
 private:
     std::filesystem::path tree_;
@@ -159,6 +175,12 @@ private:
     int page_ = 0;
     int hlSel_ = 0; // highlights browser/save-list slot cursor
     int mgSel_{0};   // IGTEAM page row cursor (hub rows / sub-pair index; swap-pair A/B on 73)
+    int igRow_{0};                                 // IGOPTN2 list row cursor (kinds 21..24)
+    int igTab_{0};                                 // board tab (kind 21)
+    std::vector<presentation::IgOptRow> igRows_;   // ROWS tuples of the active list widget
+    std::vector<int> igVals_;                      // per-row value index (tab/cycle state)
+    std::array<std::vector<presentation::IgOptRow>, 4> igRowsTab_; // per-tab ROWS (kind 21)
+    std::array<std::vector<int>, 4> igValsTab_;    // per-tab value state (kind 21)
 };
 
 // The real-time match loop. window/renderer are caller-owned: the FE shell passes its own windowed

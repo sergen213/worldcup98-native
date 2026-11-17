@@ -464,7 +464,7 @@ void treeChecks() {
     {
         const auto eng = wc98::presentation::FeText(nullR, tree, "eng");
         const auto fre = wc98::presentation::FeText(nullR, tree, "fre");
-        formats::LayoutObject probe; probe.props["TEXTID"] = "220"; // Are you sure.. (FCENG.BIN:178)
+        formats::LayoutObject probe; probe.props["TEXTID"] = "2721"; // widget id -> remap FC 178 "Are you sure.." (pass-21igscn lane)
         const std::string a = eng.label(probe), b = fre.label(probe);
         CHECK(a.size() > 3 && b.size() > 3 && a != b);
     }

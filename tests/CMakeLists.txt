@@ -310,6 +310,13 @@ if(DEFINED WC98_TREE)
     # scripted Esc opens the composite, Enter on the quit row opens the confirm box (evidence lines).
     add_test(NAME fe_igmenu COMMAND wc98-native --ig-pause-smoke 200 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/igmenu)
     set_tests_properties(fe_igmenu PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "IGMENU: shapes=[1-9]" FAIL_REGULAR_EXPRESSION "IGMENU: shapes=0 ")
+    # IGOPTN2 in-game options board (pass-21igscn, analysis/pass21igmenu): the pause-menu Options row opens
+    # the retail IGOPTN2 scene board (IGLAY.BIG, 17 widgets); the four tab panes lst1..lst4 = Match/Game
+    # play/controller/audio with FC-bank caption rows from the ROWS tuples; '2'/'3'/'4' switch tabs;
+    # UP/DOWN row cursor + LEFT/RIGHT value cycling; help pane = tbb help= captions via remap.
+    # Per-tab/per-cycle evidence lines + PNGs (_igoptn2_t{N}.png, _igoptn2_cyc.png) pin panes 2/3/4.
+    add_test(NAME fe_igoptn2_board COMMAND wc98-native --ig-optns-smoke 356 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/igoptn2b)
+    set_tests_properties(fe_igoptn2_board PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "IGOPTN2: shapes=[1-9][0-9]* texts=[1-9];IGOPTN2: tab=3 rows=[1-9] val=[0-9]+;IGOPTN2: cycle tab=0 row=0 val=1" FAIL_REGULAR_EXPRESSION "IGOPTN2: shapes=0 ;IGOPTN2: tab=[0-9]+ rows=0 ;IGOPTN2: cycle tab=0 row=0 val=0 ")
     # IG presentation boards (IG_FAMILIES_SPEC.md §C): scripted livematch lanes open the composite scenes
     # from last-match data. fe_igstats tours IGMENU's Stats row; fe_ighalf forces the half whistle via the
     # exe period-end grammar; fe_igscsum/fe_igflsum run to full time and page the chain (PNGs per board).
@@ -419,6 +426,13 @@ target_link_libraries(test_presentation PRIVATE wc98_presentation)
 wc98_test(test_cam_tables unit/test_cam_tables.cpp)
 target_include_directories(test_cam_tables PRIVATE ${CMAKE_SOURCE_DIR}/presentation/src)
 target_link_libraries(test_cam_tables PRIVATE wc98_presentation)
+
+# FC widget-id remap table provenance gate (pass-21igmenu): DAT_005774a4 full 4096-dword byte-exact
+# dump + FUN_0043c9a0/FUN_004c31d0 accessor bytes; list painter (fc_painter.txt:1231-1257) resolves
+# ROWS labels through it, so the IGOPTN2 trio's sentinel rows draw empty, not raw FC-bank soup.
+wc98_test(test_fcwidget unit/test_fcwidget.cpp)
+target_include_directories(test_fcwidget PRIVATE ${CMAKE_SOURCE_DIR}/presentation/src)
+target_link_libraries(test_fcwidget PRIVATE wc98_presentation)
 
 # HUD overlay layout gate (pure logic, no GPU): scoreboard/clock/radar quad lists from synthetic font+snapshot.
 wc98_test(test_hud unit/test_hud.cpp)

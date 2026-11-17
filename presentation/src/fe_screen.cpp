@@ -8,6 +8,7 @@
 #include "wc98/formats/fsh.hpp"
 #include "wc98/formats/refpack.hpp"
 #include "wc98/file.hpp"
+#include "fcwidget_tables.inc" // FC widget-id remap table (DAT_005774a4), gate test_fcwidget
 
 #include <algorithm>
 #include <cctype>
@@ -214,8 +215,23 @@ std::string FeText::label(const formats::LayoutObject& o) const {
         if (!v) return {};
         idx = *v;
     }
-    if (idx <= 0 || size_t(idx) >= strings_.size()) return {}; // id 0 = dynamic/dummy (measured textid=0,5)
-    return strings_[size_t(idx)]; // cp1252 bytes == FFN glyph codes
+    // Retail lane [C]: LAY textid is a widget id resolved through the FC remap table
+    // DAT_005774a4 (FUN_0043c9a0 -> FUN_004c31d0), NOT a raw bank index. widget id 5 -> FC 1273
+    // "Options" (IGOPTN2 subt); raw FC#5 is "Cancel Changes?" (test_fcwidget pins the remap).
+    // id 0 = dynamic/dummy; ids past the table bound (5101) read zero-filled DGROUP = empty.
+    if (idx <= 0) return {};
+    return std::string(widgetStringAt(size_t(idx))); // cp1252 bytes == FFN glyph codes
+}
+
+// List-ROW caption lane [C] analysis/pass21igmenu fc_painter.txt:1231-1257: the list painter reads the
+// row label as s16 at (rows+0x40)+idx*2; >=0 ids resolve through the FC remap table DAT_005774a4
+// (FUN_0043c9a0) into the FC bank (FUN_004c31d0); the 0xffffffff sentinel rows (accessor index
+// 0xffffffff = table[-4] dword 0 = NULL) fault under the exe's SEH loop and draw as empty.
+std::string_view FeText::widgetStringAt(std::size_t idx) const {
+    if (idx >= std::size(kFcWidgetRemap)) return {};
+    const std::uint32_t id = kFcWidgetRemap[idx];
+    if (id == 0xffffffffu) return {};
+    return stringAt(id);
 }
 
 namespace {

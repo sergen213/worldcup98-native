@@ -307,9 +307,14 @@ if(DEFINED WC98_TREE)
     add_test(NAME fe_credits COMMAND wc98-native --fe-credits --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/cred)
     set_tests_properties(fe_credits PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW19: shapes=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 ")
     # In-game pause menu (IGMENU.LAY + IGQUESHN.LAY over the live match, MENU_PARITY.md §4 rank 8):
-    # scripted Esc opens the composite, Enter on the quit row opens the confirm box (evidence lines).
-    add_test(NAME fe_igmenu COMMAND wc98-native --ig-pause-smoke 200 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/igmenu)
-    set_tests_properties(fe_igmenu PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "IGMENU: shapes=[1-9]" FAIL_REGULAR_EXPRESSION "IGMENU: shapes=0 ")
+    # scripted Esc opens the decoded 1p row table (VA 0x57ae02: 8 {textid,code} rows, 18-px lanes
+    # centred into box2); 'L' opens the CONTROL1 controller-select board (pass-26); Down x5 walks
+    # the cursor to Quit Match (Instant Replay row masked), Enter opens the IGQUESHN confirm, Esc
+    # cancels, Up x5 resumes at Continue (evidence lines + PNGs).
+    add_test(NAME fe_igmenu COMMAND wc98-native --ig-pause-smoke 260 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/igmenu)
+    set_tests_properties(fe_igmenu PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}"
+        PASS_REGULAR_EXPRESSION "IGMENU: shapes=[1-9][0-9]* texts=[1-9]" "CONTROL1: shapes=[1-9][0-9]* texts=[1-9]" "IGQUESHN: texts=[1-9]"
+        FAIL_REGULAR_EXPRESSION "IGMENU: shapes=0 " "CONTROL1: shapes=0 " "IGQUESHN: texts=0 ")
     # IGOPTN2 in-game options board (pass-21igscn, analysis/pass21igmenu): the pause-menu Options row opens
     # the retail IGOPTN2 scene board (IGLAY.BIG, 17 widgets); the four tab panes lst1..lst4 = Match/Game
     # play/controller/audio with FC-bank caption rows from the ROWS tuples; '2'/'3'/'4' switch tabs;

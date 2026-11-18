@@ -251,7 +251,7 @@ bool IgBoards::open(std::string_view name) {
           : n == "igteam72" ? 8 : n == "igteam73" ? 9 : n == "igteam74" ? 10 : n == "igteam75" ? 11
           : n == "igteam79" ? 12 : n == "igteam80" ? 13 : n == "igteam89" ? 14 : n == "manmarks" ? 15
           : n == "igcamera" ? 16 : n == "igcamsel" ? 17 : n == "igpract1" ? 18 : n == "igpract2" ? 19
-          : n == "igprac1" ? 20 : n == "igoptn2" ? 21 : n == "igaoptns" ? 22 : n == "iggoptns" ? 23 : n == "igmoptns" ? 24 : 0; // §G camera popups (16/17) + practise pages (18/19/20) + IGOPTN2 board (21, pass-21igscn) + legacy popup trio (22/23/24). IGHILIT1 = dummy hotkey-transition page, LAY comment. §D highlights + §E IGTEAM management mirrors + MANMARKS ratings board
+          : n == "igprac1" ? 20 : n == "igoptn2" ? 21 : n == "igaoptns" ? 22 : n == "iggoptns" ? 23 : n == "igmoptns" ? 24 : n == "control1" ? 25 : 0; // §G camera popups (16/17) + practise pages (18/19/20) + IGOPTN2 board (21, pass-21igscn) + legacy popup trio (22/23/24). IGHILIT1 = dummy hotkey-transition page, LAY comment. §D highlights + §E IGTEAM management mirrors + MANMARKS ratings board + CONTROL1 controller-select board (pass-26)
     page_ = 0;
     hlSel_ = 0;
     mgSel_ = 0;
@@ -659,6 +659,12 @@ presentation::FeDrawStats IgBoards::drawIgOptns(render::SpriteBatch& ui) {
     using namespace presentation;
     FeDrawStats st;
     if (kind_ < 21) return st;
+    if (kind_ == 25) { // CONTROL1 controller-select board (pass-26): every widget is a real strip/
+                       // caption slot (rs1..rs4/ls1..ls4, grv0..3 quads, tmtl/tmtr caption 4594);
+                       // no list widget, no soup slots -> full composite, cursor art painted by the
+                       // strips' own HILITED state (no row pane to synthesise).
+        return composite(sc_, ui, art_, text_.get());
+    }
     if (kind_ == 21) {
         static constexpr std::array<const char*, 4> kHeader{"matH", "gamH", "conH", "audH"};
         std::vector<std::string> visible{"bpic", "subt", "tab2", "tab3", "tab4", "help", "back", "fwrd", "ttxt"};
@@ -823,6 +829,19 @@ presentation::FeDrawStats IgBoards::draw(render::SpriteBatch& ui, const IgMgmtDa
 }
 
 
+// IGMENU row domain [C] pass-26: the live 1p pause-menu row table (VA 0x57ae02, raw 0x17ae02):
+// u16 count at base, then count rows of {u16 FC textid, u16 dispatch code} (stride 4, tick/init
+// 0x43fc40/0x43f040 copy loop into the 'menu' window slots +0x3c/+0x40). Captions resolve through
+// the FC remap table DAT_005774a4 (FeText::widgetStringAt) and were verified against FCENG.BIN:
+// {277 Continue, 249 Instant Replay, 261 Match Statistics, 262 Score Summary, 281 Booking Summary,
+//  4344 Restart Match, 264 Quit Match, 4337 Quit to Windows}.
+// The 2p live table (VA 0x57ae32, count 11) carries the extended set {5083 Resume Match, 249, 4423
+// Camera Select, 1407 Team Management, 258 Controller Select, 5 Options, 261, 268 Restart Match,
+// 264, 267 Quit World Cup, 4337}; the port match is single-player, so only the 1p domain is armed.
+struct IgMenuRow { std::uint16_t tid; std::uint16_t code; };
+static constexpr std::array<IgMenuRow, 8> kIgMenuRows{
+    {{277, 0}, {249, 1}, {261, 6}, {262, 7}, {281, 8}, {4344, 9}, {264, 10}, {4337, 12}}};
+
 int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames,
                 platform::Window& window, render::Renderer& renderer, bool recordReplay, bool igPauseSmoke, int boardScript,
                 int quality) {
@@ -920,22 +939,22 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
     } catch (const std::exception&) {}
     presentation::ScreenArt igArt(renderer, tree, tree / "FE/INGAME");
     auto igText = std::make_unique<presentation::FeText>(renderer, tree); // FC*.BIN captions for the LAY textid slots
-    enum class IgPause { Off, Menu, QuitAsk, Board }; // + IG presentation boards (IG_FAMILIES_SPEC.md §C)
+    enum class IgPause { Off, Menu, QuitAsk, RestartAsk, Board }; // + IG presentation boards (IG_FAMILIES_SPEC.md §C)
     IgPause pause = IgPause::Off;
-    int igSel = 0;                       // menu rows: 0 Resume, 1 Stats, 2 Highlights, 3 Management (IGTEAM §E), 4 Options (IGOPTN2 pass-21), 5 Quit (original item set is code-driven, undecoded captions)
+    int igSel = 0;                       // menu cursor into kIgMenuRows (pass-26 decoded row table)
     bool igReported = false, iqReported = false, iqShot = false;
     std::int64_t prevSim = int(w.time.simFrames); // camera delta source (DAT_0065F1E0 frames/tick)
     // IG presentation boards: composite over the live/paused frame from last-match data. igstats opens
     // from the IGMENU Stats row, ighalf at half-time whistle, full time = igscsum then igflsum [C]; Esc
     // dismisses/resumes (payload grammar ESC=0x65), L/R moves pages ('igbC' btn1..btn4 FUN_0043a3f4).
     std::unique_ptr<IgBoards> boards;
-    int boardSrc = 0;                    // open source: 1 stats menu, 2 half-time, 3 full-time chain, 4 highlights browser (menu), 5 save list (browser 'save' button), 6 IGTEAM management pages (§E)
-    bool boardReported[25] = {}, halfShown = false, ftShown = false;
+    int boardSrc = 0;                    // open source: 1 stats menu, 2 half-time, 3 full-time chain, 4 highlights browser (menu), 5 save list (browser 'save' button), 6 IGTEAM management pages (§E), 11 controller-select board (pass-26)
+    bool boardReported[26] = {}, halfShown = false, ftShown = false;
     int igTabShot = -1, igLastTab = -1, igLastSig = -1; // IGOPTN2 per-tab/per-cycle evidence (pass-21igscn)
     bool igCycShot = false;
     int boardShotAt = -1;                // capture frame of the current board (gate auto-script pacing)
-    static constexpr std::array<const char*, 25> kBoardName{"", "IGSTATS", "IGHALF", "IGFLSUM", "IGSCSUM", "IGHILITE", "IGHILSAV", "IGHILIT1", "IGTEAM72", "IGTEAM73", "IGTEAM74", "IGTEAM75", "IGTEAM79", "IGTEAM80", "IGTEAM89", "MANMARKS", "IGCAMERA", "IGCAMSEL", "IGPRACT1", "IGPRACT2", "IGPRAC1", "IGOPTN2", "IGOPTNS-A", "IGOPTNS-G", "IGOPTNS-M"}; // §G camera popups + practise pages + IGOPTN2 board + legacy trio popups (pass-21igscn)
-    const int initPeriod = w.match.periodIndex; // DAT_0065F224: 0 -> >=1 transition marks the half whistle
+    static constexpr std::array<const char*, 26> kBoardName{"", "IGSTATS", "IGHALF", "IGFLSUM", "IGSCSUM", "IGHILITE", "IGHILSAV", "IGHILIT1", "IGTEAM72", "IGTEAM73", "IGTEAM74", "IGTEAM75", "IGTEAM79", "IGTEAM80", "IGTEAM89", "MANMARKS", "IGCAMERA", "IGCAMSEL", "IGPRACT1", "IGPRACT2", "IGPRAC1", "IGOPTN2", "IGOPTNS-A", "IGOPTNS-G", "IGOPTNS-M", "CONTROL1"}; // §G camera popups + practise pages + IGOPTN2 board + legacy trio popups (pass-21igscn) + CONTROL1 controller-select board (pass-26)
+    int initPeriod = w.match.periodIndex; // DAT_0065F224: 0 -> >=1 transition marks the half whistle (rebuilt on Restart Match)
     std::array<std::int64_t, 2> possAcc{};      // per-team possessionFrames deltas (DAT_0065f264 + owning team DAT_0065f250)
     std::int32_t lastPoss = w.time.possessionFrames;
     const bool wantHalfBoard = boardScript == 2 || (boardScript == 0 && !smokeFrames);   // interactive play / fe_ighalf gate
@@ -1001,6 +1020,7 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
             case 8: if (boards && boards->kind() == 17) openBoard("igcamera", 8); else pause = IgPause::Menu; break; // igcamsel -> igcamera ('menu' nav), igcamera -> IGMENU (§G)
             case 9: pause = IgPause::Menu; break; // practise pages -> the menu chain (§G)
             case 10: pause = IgPause::Menu; break; // IGOPTN2 popup -> IGMENU (Esc grammar, pass-21)
+            case 11: pause = IgPause::Menu; break; // CONTROL1 controller-select board -> IGMENU (pass-26)
             default:                              // full-time chain: IGSCSUM -> IGFLSUM page, then exit
                 if (boards && boards->kind() == 4) openBoard("igflsum", 3);
                 else quit = true;
@@ -1019,6 +1039,19 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
                 if (!e.name.empty() && fs::exists(hlUser / e.name)) rows.push_back({int(e.number), e.name, true});
         } catch (const std::exception&) {} // no index yet: browser shows the empty-slot readout
         return rows;
+    };
+    // Disable mask [C] tick 0x43fc40 fill loop: code 1 (Instant Replay) rows are disabled when the
+    // replay list is empty (FUN_00495bc0 < 1 -> mask bit at +0x44); code 9 (Restart Match) is
+    // masked only outside the normal match phase (FUN_0043b140 vs FUN_004336f4) — the port runs a
+    // normal phase, so only the replay rule applies here. Cursor moves skip masked rows.
+    const auto igDisabled = [&](int row) { return kIgMenuRows[std::size_t(row)].code == 1 && hlRows().empty(); };
+    const auto igStep = [&](int from, int dir) {
+        int r = from;
+        for (int i = 0; i < int(kIgMenuRows.size()); ++i) {
+            r = (r + dir + int(kIgMenuRows.size())) % int(kIgMenuRows.size());
+            if (!igDisabled(r)) return r;
+        }
+        return from;
     };
     auto seedHlFixtures = [&] { // gate mode only: clear + rebuild slots 1..3 deterministically
         std::error_code ec;
@@ -1119,13 +1152,27 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
         if (smokeFrames && presented == 20) key(SDL_SCANCODE_S, true);
         if (smokeFrames && presented == 34) key(SDL_SCANCODE_S, false);
         if (igPauseSmoke && presented == 100) key(SDL_SCANCODE_ESCAPE, true); // gate script: Esc opens IGMENU (after the forced kickoff kick ~frame 90)
-        if (igPauseSmoke && presented == 130) { key(SDL_SCANCODE_DOWN, true); key(SDL_SCANCODE_DOWN, false); } // cursor x4: Resume -> Stats -> Highlights -> Management -> 'quit' row (five-row domain)
-        if (igPauseSmoke && presented == 132) { key(SDL_SCANCODE_DOWN, true); key(SDL_SCANCODE_DOWN, false); }
+        if (igPauseSmoke && presented == 120) { key(SDL_SCANCODE_L, true); key(SDL_SCANCODE_L, false); } // Controller Select board: CONTROL1 evidence line + _control1.png (pass-26)
+        if (igPauseSmoke && presented == 130) key(SDL_SCANCODE_ESCAPE, true); // dismiss CONTROL1 -> IGMENU (src 11)
+        // cursor walk Continue -> Quit Match over the decoded 1p table (Instant Replay masked: no replay
+        // rows in this lane); symmetric Up-back afterwards leaves the cursor at row 0 in every mask case.
         if (igPauseSmoke && presented == 134) { key(SDL_SCANCODE_DOWN, true); key(SDL_SCANCODE_DOWN, false); }
-        if (igPauseSmoke && presented == 135) key(SDL_SCANCODE_RETURN, true);   // Enter -> IGQUESHN confirm
-        if (igPauseSmoke && presented == 136) key(SDL_SCANCODE_RETURN, false);
-        if (igPauseSmoke && presented == 145) key(SDL_SCANCODE_ESCAPE, true);   // Esc: QuitAsk back to Menu
-        if (igPauseSmoke && presented == 160) key(SDL_SCANCODE_ESCAPE, true);   // Esc closes the menu: match resumes
+        if (igPauseSmoke && presented == 136) { key(SDL_SCANCODE_DOWN, true); key(SDL_SCANCODE_DOWN, false); }
+        if (igPauseSmoke && presented == 138) { key(SDL_SCANCODE_DOWN, true); key(SDL_SCANCODE_DOWN, false); }
+        if (igPauseSmoke && presented == 140) { key(SDL_SCANCODE_DOWN, true); key(SDL_SCANCODE_DOWN, false); }
+        if (igPauseSmoke && presented == 142) { key(SDL_SCANCODE_DOWN, true); key(SDL_SCANCODE_DOWN, false); }
+        if (igPauseSmoke && presented == 145) key(SDL_SCANCODE_RETURN, true); // Enter on the Quit Match row -> IGQUESHN confirm (_igquesn.png)
+        if (igPauseSmoke && presented == 146) key(SDL_SCANCODE_RETURN, false);
+        if (igPauseSmoke && presented == 155) key(SDL_SCANCODE_ESCAPE, true); // Esc: confirm cancels back to the menu
+        if (igPauseSmoke && presented == 160) { key(SDL_SCANCODE_UP, true); key(SDL_SCANCODE_UP, false); }
+        if (igPauseSmoke && presented == 162) { key(SDL_SCANCODE_UP, true); key(SDL_SCANCODE_UP, false); }
+        if (igPauseSmoke && presented == 164) { key(SDL_SCANCODE_UP, true); key(SDL_SCANCODE_UP, false); }
+        if (igPauseSmoke && presented == 166) { key(SDL_SCANCODE_UP, true); key(SDL_SCANCODE_UP, false); }
+        if (igPauseSmoke && presented == 168) { key(SDL_SCANCODE_UP, true); key(SDL_SCANCODE_UP, false); }
+        if (igPauseSmoke && presented == 172) key(SDL_SCANCODE_RETURN, true); // Enter on Continue: resume
+        if (igPauseSmoke && presented == 173) key(SDL_SCANCODE_RETURN, false);
+        if (igPauseSmoke && presented == 180) key(SDL_SCANCODE_ESCAPE, true); // reopen the menu, then close it: match resumes for the remaining frames
+        if (igPauseSmoke && presented == 190) key(SDL_SCANCODE_ESCAPE, true); // Esc closes the menu: match resumes
         // IG board gate scripts. Mode 1 = stats tour through IGMENU (Esc opens, Down -> Stats row, Enter
         // opens the IGSTATS composite, Esc closes to menu, Esc resumes). Modes 2/3 auto-dismiss/auto-advance
         // N frames after each board capture (boardShotAt pacing below).
@@ -1152,10 +1199,8 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
         // IGHILSAV; Enter writes a new rply%04d.dat + index entry via recordToUserDir.
         if (boardScript == 4) {
             if (presented == 200) key(SDL_SCANCODE_ESCAPE, true);   // IGMENU opens after kickoff progress
-            if (presented == 215) key(SDL_SCANCODE_DOWN, true);     // cursor: Resume -> Stats
+            if (presented == 215) key(SDL_SCANCODE_DOWN, true);     // cursor: Continue -> Instant Replay row (code 1; fixtures seeded -> row enabled)
             if (presented == 216) key(SDL_SCANCODE_DOWN, false);
-            if (presented == 218) key(SDL_SCANCODE_DOWN, true);     // Stats -> Highlights row
-            if (presented == 219) key(SDL_SCANCODE_DOWN, false);
             if (presented == 224) { key(SDL_SCANCODE_RETURN, true); } // Enter: IGHILITE browser with fixture slots
             if (presented == 225) key(SDL_SCANCODE_RETURN, false);
             if (presented == 300) { key(SDL_SCANCODE_RIGHT, true); }  // btrt slot page arrow
@@ -1172,9 +1217,7 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
         if (boardScript == 5) {
             if (presented == 200) key(SDL_SCANCODE_ESCAPE, true);   // IGMENU opens after kickoff progress
             if (presented == 215) key(SDL_SCANCODE_DOWN, true);
-            if (presented == 216) key(SDL_SCANCODE_DOWN, false);
-            if (presented == 218) key(SDL_SCANCODE_DOWN, true);     // -> Highlights row
-            if (presented == 219) key(SDL_SCANCODE_DOWN, false);
+            if (presented == 216) key(SDL_SCANCODE_DOWN, false);    // Continue -> Instant Replay row (fixtures seeded -> enabled)
             if (presented == 224) { key(SDL_SCANCODE_RETURN, true); } // Enter: browser opens
             if (presented == 225) key(SDL_SCANCODE_RETURN, false);
             if (presented == 300) { key(SDL_SCANCODE_S, true); }     // 'save' button -> IGHILSAV list
@@ -1191,10 +1234,7 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
         // IGTEAM89; Esc back to IGMENU, Esc resumes. PNGs per page via boardReported captures.
         if (boardScript == 6) {
             if (presented == 200) key(SDL_SCANCODE_ESCAPE, true);   // IGMENU opens after kickoff progress
-            for (int i = 0; i < 3; ++i)                                    // cursor x3: Resume -> Stats -> Highlights -> Management row (index 3 of five-row domain)
-                if (presented == 210 + i * 4) { key(SDL_SCANCODE_DOWN, true); key(SDL_SCANCODE_DOWN, false); }
-            if (presented == 230) { key(SDL_SCANCODE_RETURN, true); } // Enter: IGTEAM72 formation mirror (FCDB/sim data)
-            if (presented == 231) key(SDL_SCANCODE_RETURN, false);
+            if (presented == 230) { key(SDL_SCANCODE_M, true); key(SDL_SCANCODE_M, false); } // 'M' from the menu: IGTEAM72 formation mirror (FCDB/sim data; retail mgmt row is on the 2p table)
             for (int i = 0; i < 5; ++i) { // gobk/gofd cycle: 72 -> 73 -> 74 -> 75 -> 79 -> 80
                 if (presented == 246 + i * 15) { key(SDL_SCANCODE_RIGHT, true); key(SDL_SCANCODE_RIGHT, false); }
             }
@@ -1212,11 +1252,8 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
         // from FCDB lineup/subs + mmNN pair rows + sbar pan thumb); UP/DOWN pans the five-row window.
         if (boardScript == 7) {
             if (presented == 200) key(SDL_SCANCODE_ESCAPE, true);   // IGMENU opens after kickoff progress
-            for (int i = 0; i < 3; ++i)                             // cursor x3: -> Management row
-                if (presented == 210 + i * 4) { key(SDL_SCANCODE_DOWN, true); key(SDL_SCANCODE_DOWN, false); }
-            if (presented == 230) { key(SDL_SCANCODE_RETURN, true); } // Enter: IGTEAM72 (frozen FCDB/sim data)
-            if (presented == 231) key(SDL_SCANCODE_RETURN, false);
-            if (presented == 246) { key(SDL_SCANCODE_M, true); }      // 'M' -> MANMARKS ratings board (§E)
+            if (presented == 230) { key(SDL_SCANCODE_M, true); key(SDL_SCANCODE_M, false); } // 'M' from the menu: IGTEAM72 (frozen FCDB/sim data; retail mgmt row is on the 2p table)
+            if (presented == 246) { key(SDL_SCANCODE_M, true); }      // 'M' on igteam72 -> MANMARKS ratings board (§E)
             if (presented == 247) key(SDL_SCANCODE_M, false);
             for (int i = 0; i < 3; ++i)                              // row cursor: pan window slides
                 if (presented == 260 + i * 6) { key(SDL_SCANCODE_DOWN, true); key(SDL_SCANCODE_DOWN, false); }
@@ -1258,9 +1295,7 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
         // 2/3/4 switch the tab panes (game play/controller/audio); Esc -> IGMENU, Esc resumes.
         if (boardScript == 10) {
             if (presented == 200) key(SDL_SCANCODE_ESCAPE, true);   // IGMENU opens after kickoff progress
-            for (int i = 0; i < 4; ++i)                             // cursor x4: Resume -> ... -> Options row
-                if (presented == 210 + i * 4) { key(SDL_SCANCODE_DOWN, true); key(SDL_SCANCODE_DOWN, false); }
-            if (presented == 230) { key(SDL_SCANCODE_RETURN, true); key(SDL_SCANCODE_RETURN, false); } // Enter -> igoptn2 board
+            if (presented == 230) { key(SDL_SCANCODE_O, true); key(SDL_SCANCODE_O, false); } // 'O' = Options hotkey -> igoptn2 board (retail Options row is on the 2p table; 'O' mirrors it on the 1p lane)
             if (presented == 246) { key(SDL_SCANCODE_RIGHT, true); key(SDL_SCANCODE_RIGHT, false); }   // value caption cycle
             if (presented == 260) { key(SDL_SCANCODE_DOWN, true); key(SDL_SCANCODE_DOWN, false); }     // list row cursor
             if (presented == 274) { key(SDL_SCANCODE_2, true); key(SDL_SCANCODE_2, false); }           // tab -> game play pane
@@ -1276,7 +1311,7 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
                 // Esc opens/leaves IGMENU (global-key hub parity); no IG art on this tree -> direct exit.
                 if (pause == IgPause::Board) dismissBoard(); // ESC=0x65 grammar: resume / dismiss to caller [C]
                 else if (!haveIgm) quit = true;
-                else pause = pause == IgPause::Off ? IgPause::Menu : pause == IgPause::QuitAsk ? IgPause::Menu : IgPause::Off;
+                else pause = pause == IgPause::Off ? IgPause::Menu : (pause == IgPause::QuitAsk || pause == IgPause::RestartAsk) ? IgPause::Menu : IgPause::Off; // confirm boxes: Esc cancels back to the menu [C]
             } else if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat && pause != IgPause::Off) {
                 // Management lane helpers (§E): gobk/gofd cycle {72,73,74,75,79,80} on the L/R axis; 'B'
                 // (tmf3 icon) opens/cycles to the hub IGTEAM89; Enter on a hub row enters the page, on the
@@ -1310,7 +1345,7 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
                             else boards->moveMgmtRow(-1, mgRows(bk));
                         }
                         else if (pause == IgPause::Board && boards && boards->kind() >= 5) boards->moveHl(-1, int(hlRows().size())); // slol: slot arrow
-                        else { igSel = (igSel + 5) % 6; } break; // six-row domain: wrap-up to 'resume'
+                        else { igSel = igStep(igSel, -1); } break; // 1p menu domain: wrap-up, skipping masked rows
                     case SDL_SCANCODE_DOWN:
                         if (pause == IgPause::Board && boards && boards->kind() >= 21) boards->moveIgRow(+1); // IGOPTN2 list row cursor (pass-21)
                         else if (pause == IgPause::Board && boards && boards->kind() >= 16) { const int bk = boards->kind(); if (bk == 17) camd.curRow = (camd.curRow + 1) % 7; else boards->moveMgmtRow(+1, bk == 16 ? 5 : 3); } // §G grid/keeper row cursor
@@ -1320,14 +1355,15 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
                             else boards->moveMgmtRow(+1, mgRows(bk)); // slor on the highlights lane; row cursor / pair select on §E pages
                         }
                         else if (pause == IgPause::Board && boards) { if (boards->kind() >= 5) boards->moveHl(+1, int(hlRows().size())); else boards->movePage(-1); } // L/R axis pages the 'igbC' btn1..btn4 pair [C] FUN_0043a3f4
-                        else { igSel = (igSel + 1) % 6; } break; // six-row domain cursor
+                        else { igSel = igStep(igSel, +1); } break; // 1p menu domain cursor (kIgMenuRows, skipping masked rows)
                     case SDL_SCANCODE_LEFT: if (pause == IgPause::Board && boards) { const int bk = boards->kind(); if (bk >= 21) boards->cycleIgValue(-1); else if (bk >= 8 && bk <= 13) mgmtCycle(-1); else if (bk == 16) dismissBoard(); else if (bk >= 18) { static constexpr std::array<const char*, 3> kPra{"igpract1", "igpract2", "igprac1"}; openBoard(kPra[std::size_t((bk - 18 + 2) % 3)], 9); } else if (bk < 8) boards->movePage(-1); } break; // value cycle (pass-21) / btlt / gobk / 'menu' nav (§G) / practise tab cycle back
                     case SDL_SCANCODE_RIGHT: if (pause == IgPause::Board && boards) { const int bk = boards->kind(); if (bk >= 21) boards->cycleIgValue(+1); else if (bk >= 8 && bk <= 13) mgmtCycle(+1); else if (bk == 16) openBoard("igcamsel", 8); // 'igbC' forw nav: opens the camera selection grid (§G)
                         else if (bk >= 18) { static constexpr std::array<const char*, 3> kPra{"igpract1", "igpract2", "igprac1"}; openBoard(kPra[std::size_t((boards->kind() - 18 + 1) % 3)], 9); } else if (bk < 8) boards->movePage(1); } break; // value cycle (pass-21) / btrt / gofd / practise tab cycle PRACT1 -> PRACT2
                     case SDL_SCANCODE_S: if (pause == IgPause::Board && boards && boards->kind() == 5) openBoard("ighilsav", 5); break; // 'save' button -> IGHILSAV slot list
                     case SDL_SCANCODE_B: if (pause == IgPause::Board && boards && boards->kind() >= 8) openBoard("igteam89", 6); else if (pause == IgPause::Menu) { mgmt = buildIgMgmt(); openBoard("igteam89", 6); } break; // tmf3 icon -> management hub (§E)
-                    case SDL_SCANCODE_M: if (pause == IgPause::Board && boards && boards->kind() >= 8 && boards->kind() <= 14) openBoard("manmarks", 6); break; // igmgoptns hotkey: man-marking ratings board (§E)
+                    case SDL_SCANCODE_M: if (pause == IgPause::Menu) { mgmt = buildIgMgmt(); openBoard("igteam72", 6); } else if (pause == IgPause::Board && boards && boards->kind() >= 8 && boards->kind() <= 14) openBoard("manmarks", 6); break; // igmgoptns hotkey: man-marking board; from the menu: Team Management page (the retail Team Management row lives on the 2p table VA 0x57ae32 - lane hotkey for the 1p gate)
                     case SDL_SCANCODE_C: if (pause == IgPause::Menu) { std::printf("live: camera options from the in-game chain\n"); openBoard("igcamera", 8); } break; // igoptns-family hotkey opens IGCAMERA (§G, gate fe_camera_pages)
+                    case SDL_SCANCODE_L: if (pause == IgPause::Menu) { std::printf("igmenu: controller select board\n"); openBoard("control1", 11); } break; // Controller Select board (pass-26; original row code 4 on the 2p/training menu, 'L' hotkey for the single-player lane + gate capture)
                     case SDL_SCANCODE_O: if (pause == IgPause::Menu) { std::printf("live: IGOPTN2 board from the in-game chain\n"); openBoard("igoptn2", 10); } break; // 'O' = Options row hotkey: IGOPTN2 scene board, four tab panes (pass-21igscn)
                     case SDL_SCANCODE_1: if (pause == IgPause::Board && boards) { if (boards->kind() == 21) boards->setIgTab(0); else if (boards->kind() >= 22) openBoard("igaoptns", 10); } break; // tbb1 / legacy tab 1 (pass-21igscn)
                     case SDL_SCANCODE_2: if (pause == IgPause::Board && boards) { if (boards->kind() == 21) boards->setIgTab(1); else if (boards->kind() >= 22) openBoard("iggoptns", 10); } break;  // tbb2 / legacy tab 2 (pass-21igscn)
@@ -1348,16 +1384,38 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
                             }
                             else if (bk == 16) openBoard("igcamsel", 8); // Enter on the option row: opens IGCAMSEL selection grid (§G)
                             else if (bk == 17) { static constexpr std::array<int, 7> kRowMode{2, 6, 1, 3, 0, 4, 5}; camera.setMode(CameraMode(kRowMode[std::size_t(camd.curRow)])); std::printf("igcam: camera %s\n", presentation::cameraName(CameraMode(kRowMode[std::size_t(camd.curRow)]))); openBoard("igcamera", 8); } // apply selection, back to the popup (§G)
-                            else if (bk >= 21) { /* list value applied in place: no dismiss (pass-21) */ }
+                            else if (bk >= 21 && bk != 25) { /* list value applied in place: no dismiss (pass-21) */ }
+                            else if (bk == 25) dismissBoard(); // CONTROL1: Enter dismisses back to the menu chain (pass-26)
                             else if (bk >= 18) { const bool user = boards->mgSel() == 1; if (user) prac.userKeeper = !prac.userKeeper; else if (boards->mgSel() == 2) prac.cpuKeeper = !prac.cpuKeeper; std::printf("igprac: %s keeper %s\n", user ? "user" : "cpu", (user ? prac.userKeeper : prac.cpuKeeper) ? "ON" : "OFF"); } // FC#1920/#374 on-off toggle (§G)
                             else dismissBoard();
                         }
-                        else if (pause == IgPause::Menu && igSel == 1) openBoard("igstats", 1); // Stats row: live last-match data board
-                        else if (pause == IgPause::Menu && igSel == 2) openBoard("ighilite", 4); // Highlights row -> IGHILITE browser (§D)
-                        else if (pause == IgPause::Menu && igSel == 3) { mgmt = buildIgMgmt(); openBoard("igteam72", 6); } // Management row: IGTEAM mirror pages (§E), FCDB/sim data frozen on entry
-                        else if (pause == IgPause::Menu && igSel == 4) { std::printf("live: IGOPTN2 board from the Options row\n"); openBoard("igoptn2", 10); } // Options row: IGOPTN2 scene board (pass-21igscn, gate fe_igoptn2_board)
-                        else if (pause == IgPause::Menu && igSel == 5) { if (haveIq) pause = IgPause::QuitAsk; else quit = true; } // 'quit' row: IGQUESHN box, no box -> exit
-                        else pause = IgPause::Off;                                          // resume / canc
+                        else if (pause == IgPause::Menu) { // Enter dispatches on the ROW CODE, not the index [C] 0x43f548 jump table
+                            switch (kIgMenuRows[std::size_t(igSel)].code) {
+                                case 1: if (!hlRows().empty()) openBoard("ighilite", 4); break; // Instant Replay -> browser (§D); masked row never reaches here
+                                case 2: openBoard("igcamera", 8); break;                        // Camera Select (§G, 2p table)
+                                case 3: mgmt = buildIgMgmt(); openBoard("igteam72", 6); break;  // Team Management -> IGTEAM mirror pages (§E)
+                                case 4: openBoard("control1", 11); break;                       // Controller Select board (pass-26)
+                                case 5: std::printf("live: IGOPTN2 board from the Options row\n"); openBoard("igoptn2", 10); break; // Options (pass-21igscn)
+                                case 6: openBoard("igstats", 1); break;                         // Match Statistics board
+                                case 7: openBoard("igscsum", 3); break;                         // Score Summary: full-time chain, Enter -> IGFLSUM [C]
+                                case 8: std::printf("igmenu: Booking Summary row (no booking scene in the tree)\n"); break;
+                                case 9: pause = haveIq ? IgPause::RestartAsk : IgPause::Off; break; // Restart Match: confirm box, Enter restarts
+                                case 10: if (haveIq) pause = IgPause::QuitAsk; else quit = true; break; // Quit Match: IGQUESHN box [C]
+                                case 11: case 12: quit = true; break;                           // Quit World Cup / Quit to Windows: direct exit (0x43f72d chain)
+                                default: pause = IgPause::Off; break;                           // code 0 Continue: resume the match loop
+                            }
+                        }
+                        else if (pause == IgPause::RestartAsk) { // confirm 'yes': rebuild the world on the same seed, reopen kickoff [C] restart chain installs 0x440706
+                            runner = sim::SimRunner(boot.md, boot.opt, 0x2E7A); // move-assign: `w` still binds runner.w_
+                            sim::Input_assignController(w, 0, 1, 0);
+                            evPos = 0; rec = ReplayRecorder{}; prevSim = int(w.time.simFrames);
+                            lastPoss = w.time.possessionFrames; possAcc = {}; initPeriod = w.match.periodIndex;
+                            halfShown = false; ftShown = false;
+                            std::printf("igmenu: match restarted\n");
+                            pause = IgPause::Off;
+                        }
+                        else if (pause == IgPause::QuitAsk) quit = true;                       // IGQUESHN 'ok': leave the match (FE return deferred)
+                        else pause = IgPause::Off;                                           // resume / canc
                         break;
                     default: break;
                 }
@@ -1491,10 +1549,33 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
             FeDrawStats ig = pause == IgPause::Menu ? composite(*igMenu, ov, igArt, igText.get())
                                                      : composite(*igQues, ov, igArt, igText.get());
             if (pause == IgPause::Menu) {
-                for (int row = 0; row <= 5; ++row) { // the port's six-row domain {Resume, Stats, Highlights, Management, Options, Quit}
-                    std::string tag = "bt"; tag += char('0' + row); tag += row == igSel ? 'd' : 'n';
-                    const ScreenArt::Shape sh = igArt.shape("..\\global\\", "INGAME.FSH", tag, -1);
-                    if (sh.tex) { ov.draw(sh.tex, {176.f, 138.f + 24.f * float(row), float(sh.w), float(sh.h)}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu); ++ig.shapes; }
+                // Row grammar [C] tick 0x43fc40 + init 0x43f040: 18-px rows, runtime-centred into
+                // box2 (x=116 w=408): win.x = (408-286)/2+116 = 177, win.y = (231-count*18)/2+131
+                // ([win+0xc/+0e] centering; LAY x=176 y=138 is the stale template). Captions are the
+                // FC remap table textids (widgetStringAt); the cursor row gets the paintRowLabel
+                // hilite-pane idiom (list_painter §1). The old INGAME.FSH bt0n..bt5n strip is the
+                // 20x20 button-icon art, not menu rows: replaced by the decoded {tid,code} table.
+                const int count = int(kIgMenuRows.size());
+                const float winX = 116.f + (408.f - 286.f) / 2.f;
+                const float winY = 131.f + (231.f - float(count) * 18.f) / 2.f;
+                // objecttype 43 boxes (box1 hdr 116,32,408x95; box2 menu container 116,131,408x231;
+                // box3 bottom 116,366,408x84) declare no FILLCOLOUR/shape: the engine draws them as
+                // frame-only outlines -> 1px stroke quads, same tint as the list pane border.
+                const auto stroke = [&](float bx, float by, float bw, float bh) {
+                    const std::uint32_t edge = render::packRgba(150u, 150u, 150u, 200u);
+                    ov.draw(0, {bx, by, bw, 1.f}, {}, edge);
+                    ov.draw(0, {bx, by + bh - 1.f, bw, 1.f}, {}, edge);
+                    ov.draw(0, {bx, by, 1.f, bh}, {}, edge);
+                    ov.draw(0, {bx + bw - 1.f, by, 1.f, bh}, {}, edge);
+                    ig.shapes += 4;
+                };
+                stroke(116.f, 32.f, 408.f, 95.f); stroke(116.f, 131.f, 408.f, 231.f); stroke(116.f, 366.f, 408.f, 84.f);
+                for (int row = 0; row < count; ++row) {
+                    const float ry = winY + 18.f * float(row);
+                    if (row == igSel) { ov.draw(0, {winX, ry, 286.f, 18.f}, {}, render::packRgba(255, 224, 96, 70)); ++ig.shapes; } // HILITED pane quad (paintRowLabel idiom)
+                    const std::string_view cap = igText ? igText->widgetStringAt(kIgMenuRows[std::size_t(row)].tid) : std::string_view{};
+                    ig.texts += paintCentered(igText.get(), ov, cap, winX + 143.f, ry + 9.f, 286.f,
+                                              row == igSel ? render::packRgba(16u, 16u, 40u, 255u) : render::packRgba(255u, 236u, 190u, 255u), 0);
                 }
                 if (!igReported) { std::cout << "IGMENU: shapes=" << ig.shapes << " texts=" << ig.texts << '\n'; igReported = true; }
             } else if (!iqReported) {

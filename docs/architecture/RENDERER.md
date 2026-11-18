@@ -49,6 +49,29 @@ presentation/     FE screens (FE-PACK LAY layouts + art; typed layer
 platform/         SDL3 window (Wayland), swapchain, vsync modes
 ```
 
+## Window coordinate space (pass-44)
+
+Everything above `renderer/submit` works in the retail **virtual 640x480 canvas**; the window is
+only ever a scaled copy of it. `render::fit4x3(w, h)` computes the centred 4:3 content rect
+(`Original` = 640x480 scene blitted into that rect; `Pillarbox`/`Widescreen` = the UI rect is that
+same rect), so pointer input has to travel through the rect, not through the whole window:
+
+- **window points → UI** (`presentation::uiPointerFromWindow`): subtract the rect offset, scale by
+  the rect size. SDL reports mouse coordinates in window *points* (`Window::pointSize()`), so the
+  mapping uses the point size — `Window::pixelSize()` belongs to the swapchain space and folds in
+  the HiDPI scale factor.
+- **UI → window points** (`presentation::uiWindowFromPointer`): the inverse, used by gate scripts
+  that synthesise `SDL_EVENT_MOUSE_MOTION`/button events so a scripted hover lands on the same
+  pixel a real mouse would.
+
+Scaling the whole window instead (the previous behaviour in `app/main.cpp` and the live-match
+pointer path) folded the letterbox bars into the canvas: on a 16:9 window every widget hit box sat
+`fit4x3` bar-width inboard of the art it covers, so hovering/clicking FE hub wedges and the
+pause-menu rows landed on the wrong item — and the error grew with the aspect mismatch. Both
+directions are pinned by `test_presentation` (`uiPointerFromWindow`/`uiWindowFromPointer` round
+trip); the hub capture with `--fe-pointer` shows the wedge HILITED art reacting at the injected
+window coordinate.
+
 ## Presets
 
 - `original`: 640x480 pixel-accurate target (nearest upscale),

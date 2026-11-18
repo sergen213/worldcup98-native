@@ -1008,22 +1008,26 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
     float ptrX = -1.f, ptrY = -1.f;
     bool lmb = false, prevLmb = false;
     bool igMouseShot = false;
-    auto motion = [&](float x, float y) { // script coords are virtual 640x480 -> window pixel space
-        const auto [px, py] = window.pixelSize();
+    auto motion = [&](float x, float y) { // script coords are virtual 640x480 -> window point space
+        float wx = 0.f, wy = 0.f;
+        const auto [pw, ptH] = window.pointSize();
+        presentation::uiWindowFromPointer(int(x), int(y), pw, ptH, wx, wy);
         SDL_Event e{};
         e.type = SDL_EVENT_MOUSE_MOTION;
-        e.motion.x = px ? x * float(px) / 640.f : x;
-        e.motion.y = py ? y * float(py) / 480.f : y;
+        e.motion.x = wx;
+        e.motion.y = wy;
         SDL_PushEvent(&e);
     };
     auto click = [&](float x, float y, bool down) {
-        const auto [px, py] = window.pixelSize();
+        float wx = 0.f, wy = 0.f;
+        const auto [pw, ptH] = window.pointSize();
+        presentation::uiWindowFromPointer(int(x), int(y), pw, ptH, wx, wy);
         SDL_Event e{};
         e.type = down ? SDL_EVENT_MOUSE_BUTTON_DOWN : SDL_EVENT_MOUSE_BUTTON_UP;
         e.button.button = SDL_BUTTON_LEFT;
         e.button.down = down;
-        e.button.x = px ? x * float(px) / 640.f : x;
-        e.button.y = py ? y * float(py) / 480.f : y;
+        e.button.x = wx;
+        e.button.y = wy;
         SDL_PushEvent(&e);
     };
 
@@ -1473,9 +1477,16 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
 
         for (SDL_Event e; SDL_PollEvent(&e);) { // keyboard + gamepad transitions into the ported layer
             if (e.type == SDL_EVENT_QUIT) quit = true;
-            else if (e.type == SDL_EVENT_MOUSE_MOTION) { // pointer -> virtual 640x480 (FE-lane idiom)
-                const auto [px, py] = window.pixelSize();
-                if (px && py) { ptrX = float(e.motion.x) * 640.f / float(px); ptrY = float(e.motion.y) * 480.f / float(py); }
+            else if (e.type == SDL_EVENT_MOUSE_MOTION) { // pointer -> virtual 640x480 through the UI
+                // content rect, same un-projection as the FE hub; the whole-window scale put the
+                // pause-menu rows and confirm-box buttons bar-width inboard of the art on 16:9.
+                const auto [pw, ptH] = window.pointSize();
+                if (pw && ptH) {
+                    int ux = 0, uy = 0;
+                    presentation::uiPointerFromWindow(int(e.motion.x), int(e.motion.y), pw, ptH, ux, uy);
+                    ptrX = float(ux);
+                    ptrY = float(uy);
+                }
             }
             else if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN || e.type == SDL_EVENT_MOUSE_BUTTON_UP) {
                 if (e.button.button == SDL_BUTTON_LEFT) lmb = e.button.down;

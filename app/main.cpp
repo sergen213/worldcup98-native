@@ -133,6 +133,10 @@ int run(int argc, char** argv) {
     std::string fePopupName; // --fe-popup NAME: shared popup lane gate (feflow10/37, igconsel/mesg/Feflow86)
     int fePopupKeys = 0;     // --fe-popup-keys N: scripted button-cursor presses before the capture frame
     bool fePopupEnter = false, fePopupBack = false; // --fe-popup-enter / --fe-popup-back: dismiss proof frames
+    // --fe-pointer MX,MY: window-space pointer injection for the hit-box gates (pass-44). The
+    // coordinates go through the same uiPointerFromWindow un-projection the real mouse uses, so
+    // the capture proves the letterbox offset is applied, not bypassed.
+    int fePointerX = -1, fePointerY = -1;
     std::string feScreenName; // --fe-screen NAME: arbitrary LAYOUTS.BIG member capture lane ("make all menus 1:1")
     bool feOptions = false, feSaveLoad = false, feCredits = false; // --fe-options/--fe-saveload/--fe-credits: open the hub scene-graph views (Phase 2/3/4 gates)
     int feOptionsTab = -1; // --fe-options-tab N: FEFLOW15 opened at tab N (TABSW wedge-visibility capture gate)
@@ -198,6 +202,12 @@ int run(int argc, char** argv) {
         else if (a == "--fe-popup-keys") { fePopupKeys = std::stoi(next()); }                 // two-axis button cursor moves before the frame
         else if (a == "--fe-popup-enter") { fePopupEnter = true; }                            // Enter on the focused button: closes to caller (payload semantics)
         else if (a == "--fe-popup-back") { fePopupBack = true; }                              // Esc: cancel branch closes to caller
+        else if (a == "--fe-pointer") { // window-space pointer injection, "X,Y"
+            const std::string v = next();
+            const auto comma = v.find(',');
+            fePointerX = std::stoi(v.substr(0, comma));
+            fePointerY = comma == std::string::npos ? fePointerX : std::stoi(v.substr(comma + 1));
+        }
         else if (a == "--fe-screen") { feMode = true, smokeFrames = 1, feScreenName = next(); } // default capture 1 frame; --fe-smoke N overrides
         else if (a == "--fe-options")  { feMode = true, smokeFrames = 1, feOptions = true; }  // FEFLOW15 options view capture gate
         else if (a == "--fe-options-tab") { feMode = true, smokeFrames = 1, feOptionsTab = std::stoi(next()); } // FEFLOW15 at tab N (TABSW active-wedge visibility [C raw 0x450778])
@@ -455,11 +465,26 @@ int run(int argc, char** argv) {
     while (smokeFrames == 0 || presented < smokeFrames) {
         auto ev = window->poll();
         if (ev.quit) break;
-        if (fe) { // pointer -> virtual 640x480: naive full-window scale, letterbox offset ignored
-            const auto [px, py] = window->pixelSize();
-            if (px && py)
-                fe->setPointer(std::clamp(ev.mouseX * 640 / int(px), 0, 639),
-                               std::clamp(ev.mouseY * 480 / int(py), 0, 479));
+        if (fe) { // pointer -> virtual 640x480 through the UI content rect: the UI pipeline always
+            // draws the 640x480 virtual area into render::fit4x3(window) (renderer.cpp
+            // computeLayout: Original = 640x480 scene blitted to that rect, Pillarbox/Widescreen
+            // = ui = that rect), so the inverse map has to subtract the bar offset; scaling the
+            // whole window was off by the bar width on any non-4:3 window, leaving wedge hit
+            // boxes inboard of the art. SDL reports mouse coordinates in window points.
+            const auto [pw, ptH] = window->pointSize();
+            if (pw && ptH) {
+                int ux = 0, uy = 0;
+                presentation::uiPointerFromWindow(ev.mouseX, ev.mouseY, pw, ptH, ux, uy);
+                fe->setPointer(ux, uy);
+            }
+        }
+        if (fe && fePointerX >= 0) { // --fe-pointer gate: injected window-space coords, same map
+            const auto [pw, ptH] = window->pointSize();
+            if (pw && ptH) {
+                int ux = 0, uy = 0;
+                presentation::uiPointerFromWindow(fePointerX, fePointerY, pw, ptH, ux, uy);
+                fe->setPointer(ux, uy);
+            }
         }
         if (fe) { // click edge: widgetHit hit-test -> hub/view scene action (LAY_COMPOSITOR_NOTES.md POINTS polygons)
             float bmX = 0, bmY = 0;

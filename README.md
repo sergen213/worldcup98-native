@@ -36,7 +36,7 @@ is cited.
 
 ## Download
 
-The current pre-release is [v0.4.0](https://github.com/sergen213/worldcup98-native/releases/tag/v0.4.0):
+The current pre-release is [v0.5.0](https://github.com/sergen213/worldcup98-native/releases/tag/v0.5.0):
 a self-contained x86_64 AppImage `wc98-native-linux-x86_64-<version>.AppImage` with a `.sha256`
 sidecar, shipping the game **and** the Qt6 launcher (the launcher is the default entry; unknown
 flags pass through to the game). It needs only a Vulkan-capable driver on the host — the loader and

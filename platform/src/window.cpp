@@ -149,6 +149,12 @@ std::pair<std::uint32_t, std::uint32_t> Window::pixelSize() const {
     return {static_cast<std::uint32_t>(w > 0 ? w : 0), static_cast<std::uint32_t>(h > 0 ? h : 0)};
 }
 
+std::pair<std::uint32_t, std::uint32_t> Window::pointSize() const {
+    int w = 0, h = 0;
+    SDL_GetWindowSize(window_, &w, &h);
+    return {static_cast<std::uint32_t>(w > 0 ? w : 0), static_cast<std::uint32_t>(h > 0 ? h : 0)};
+}
+
 std::vector<const char*> Window::vulkanInstanceExtensions() {
     Uint32 n = 0;
     const char* const* ext = SDL_Vulkan_GetInstanceExtensions(&n);

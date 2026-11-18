@@ -5,7 +5,27 @@ tournament playable natively, per the definition of success in the
 project goals.
 
 
-## [Unreleased]
+## [0.5.0] - 2026-11-18 — third-pass UI reconstruction: pointer mapping through the UI rect, IG bar/header/slider art, credits roll (pass-24..44)
+
+### Fixed
+
+- **Pointer input now un-projects through the UI content rect instead of the whole window (pass-44pointer)**:
+  the mouse was scaled by `pixelSize()` straight into the virtual 640x480 canvas (`app/main.cpp` FE hub,
+  `app/livematch.cpp` live pointer + gate-side `motion`/`click` pushers), but the UI is always drawn into
+  `render::fit4x3(window)`. On any non-4:3 window the letterbox offset folded into the canvas — on a
+  1280x720 window every widget hit box sat 160 px inboard of the art it covers, so hub wedge hover,
+  view-screen buttons, pause-menu rows and confirm-box buttons all responded at the wrong position,
+  with the drift growing as the aspect mismatch grew. `presentation::uiPointerFromWindow` /
+  `uiWindowFromPointer` (`presentation/src/fe_screen.cpp`) implement the one coordinate-space contract
+  (offset-subtract + rect-scale, documented in `docs/architecture/RENDERER.md`), and both directions use
+  `Window::pointSize()` because SDL mouse events are window *points*, not swapchain pixels — HiDPI
+  scaling is therefore handled too. New capture lane `--fe-pointer X,Y` injects window-space coordinates
+  through the same mapping: the hub capture with `--fe-pointer 900,360` differs from the plain capture in
+  exactly the cursor sprite and the hovered wedge band (HILITED art at virtual ~(493,240)).
+  Gates: `test_presentation` pointer block (16:9 offset, bar clamp, 4:3 identity, forward round trip);
+  mouse-driven lanes `fe_hub`, `fe_igmenu` (hover row 6 → click-activate IGSTATS), `fe_igoptns_m`,
+  `fe_igstats`, `fe_ighalf` PASS.
+
 ### Added
 
 - **IGMENU pause-menu row table re-armed to the friendly 1p table (pass-27c)**: the port's live

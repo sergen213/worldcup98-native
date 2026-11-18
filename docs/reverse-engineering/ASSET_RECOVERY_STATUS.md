@@ -1,8 +1,8 @@
-# Asset Recovery Status — per-format decode / implementation / consumption (pass-15, 2026-11-10)
+# Asset Recovery Status — per-format decode / implementation / consumption (pass-15, 2026-11-10; UI lanes refreshed pass-44, 2026-11-18)
 
 Condensed status index. Format details live in `docs/asset-formats/*` and the per-topic RE docs;
 counts of shipped files are verified in `docs/asset-formats/INVENTORY.md` and `docs/STATUS.md`.
-Decoder = module under `formats/src/`; gate = ctest entry in the 114-test suite (`build/release`).
+Decoder = module under `formats/src/`; gate = ctest entry in the 151-test suite (`build/release`).
 
 | Format (shipped) | Decoder | Gate(s) | Consumed by | Status |
 |---|---|---|---|---|
@@ -11,7 +11,7 @@ Decoder = module under `formats/src/`; gate = ctest entry in the 114-test suite 
 | FFN fonts (10) | `ffn.cpp` | `test_ffn` | HUD/menu text (`presentation/src/hud.cpp`) | **Decoded + gated**; 4-bit atlas alpha path verified (WC98-FFN pass) |
 | `.MDL` GEOM/SKEL (12) + TRI helpers | `mdl.cpp`, `tri.cpp` | `test_mdl`, `test_histtri` | renderer models (`renderer/…`), kit geometry | **Decoded + gated** |
 | ANIM.MO rig clips (413) + `AISEQS.TBI` (534 records) | `anim.cpp` | `test_anim` | player animation state machine (`simulation/src`) | **Decoded + gated**; clip-code ↔ ANIM.MO mapping documented (`AI_SEQS_TBI.md`) |
-| LAY layouts (29, incl. MNMSETUP header) | `layout.cpp` | `test_layout`, `test_renderer_layout`, FE gates | FE screens/HUD composition | **Decoded + gated**; menu labels are code-drawn strings, not widgets (`FE_MENU_SCREENS_WC98.md`) |
+| LAY layouts (29, incl. MNMSETUP header) | `layout.cpp` | `test_layout`, `test_renderer_layout`, FE gates | FE screens/HUD composition | **Decoded + gated**; menu labels are code-drawn strings, not widgets (`FE_MENU_SCREENS_WC98.md`); every `LAYOUTS.BIG`/`IGLAY.BIG` member + loose copy sweeps through `--fe-screen` (`fe_screen_sweep` = 156 layouts, 0 failures); mouse lane un-projects through the `fit4x3` UI rect (`RENDERER.md` coordinate space, pass-44pointer) |
 | FCDB `.DBI/.DBM` (2+22; 24 leagues / 56 teams / 1,782 players) | `fcdb.cpp` | `test_fcdb`, `test_teamselect` | team/player select, kit tables | **Decoded + gated** |
 | Speech `.PBK`/PHRS (MicroTalk utk 6,851 + EA-XA 113 = 6,964/6,964) | `phrs.cpp`, `utk.cpp` | `test_phrs`, `test_speechqueue`, `test_audio` | commentary/audio (`app/commentary.cpp`, `app/game_audio.cpp`) | **Decoded + gated**; per-event preload table decoded (pass-12) |
 | BNK / CRD / SCHl / MIDx audio (47/2/37/…) | `bnk.cpp`, `crd.cpp`, `schl.cpp`, `midx.cpp` | `test_audio`, `test_gameaudio` | music + SFX streams | **Decoded + gated** (`AUDIO_RUNTIME.md`) |

@@ -454,6 +454,28 @@ void treeChecks() {
         CHECK(widgetHit(po, 300.f, 270.f));
         CHECK(!widgetHit(po, 267.f, 315.f));
     }
+    // Pointer un-projection through the UI content rect: the UI always lands in
+    // render::fit4x3(window), so the letterbox offset has to come out of the mapping. At 1280x720
+    // that rect starts at x=160 (960x720); scaling the whole window instead put every widget hit
+    // box a fifth of a screen inboard of the art it covers.
+    {
+        int x = 0, y = 0;
+        uiPointerFromWindow(160, 0, 1280, 720, x, y);
+        CHECK(x == 0 && y == 0);
+        uiPointerFromWindow(640, 360, 1280, 720, x, y);
+        CHECK(x == 320 && y == 240);
+        uiPointerFromWindow(1120, 720, 1280, 720, x, y);
+        CHECK(x == 639 && y == 479);
+        uiPointerFromWindow(0, 360, 1280, 720, x, y); // left bar clamps onto the UI edge
+        CHECK(x == 0 && y == 240);
+        uiPointerFromWindow(320, 240, 640, 480, x, y); // 4:3 window maps identically
+        CHECK(x == 320 && y == 240);
+        float fx = 0.f, fy = 0.f; // forward map (gate scripts) lands back on the same pixel
+        uiWindowFromPointer(320, 240, 1280, 720, fx, fy);
+        CHECK(fx == 640.f && fy == 360.f);
+        uiPointerFromWindow(int(fx), int(fy), 1280, 720, x, y);
+        CHECK(x == 320 && y == 240);
+    }
     // Language knob (--lang): every shipped FC*.BIN bank loads through FeText and the same
     // label index resolves per-language (FCFRE 220 "Are you sure?" differs from FCENG).
     for (const char* code : {"eng", "fre", "ger", "ita", "spa", "dut", "swe", "dan", "jap"}) {

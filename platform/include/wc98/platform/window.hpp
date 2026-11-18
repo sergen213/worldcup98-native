@@ -72,6 +72,9 @@ public:
     [[nodiscard]] bool minimized() const;
     // Drawable size in physical pixels (differs from the logical size on high-DPI displays).
     [[nodiscard]] std::pair<std::uint32_t, std::uint32_t> pixelSize() const;
+    // Window size in SDL "points"; SDL mouse coordinates are in this space, so pointer ->
+    // virtual UI mapping has to use it (pixelSize belongs to the swapchain space).
+    [[nodiscard]] std::pair<std::uint32_t, std::uint32_t> pointSize() const;
     [[nodiscard]] SDL_Window* sdl() const { return window_; }
     // Instance extensions SDL needs to create a VkSurfaceKHR for this window.
     [[nodiscard]] static std::vector<const char*> vulkanInstanceExtensions();

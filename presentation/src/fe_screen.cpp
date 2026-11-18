@@ -382,6 +382,22 @@ bool widgetHit(const formats::LayoutObject& o, float x, float y) {
     }
     return in;
 }
+
+void uiPointerFromWindow(std::int32_t mx, std::int32_t my, std::uint32_t winW, std::uint32_t winH,
+                         int& outX, int& outY) {
+    const render::Rect r = render::fit4x3(winW, winH);
+    const int rw = std::max(1u, r.w), rh = std::max(1u, r.h);
+    outX = std::clamp((mx - int(r.x)) * 640 / rw, 0, 639);
+    outY = std::clamp((my - int(r.y)) * 480 / rh, 0, 479);
+}
+
+void uiWindowFromPointer(int ux, int uy, std::uint32_t winW, std::uint32_t winH, float& outX, float& outY) {
+    const render::Rect r = render::fit4x3(winW, winH);
+    const float rw = float(std::max(1u, r.w)), rh = float(std::max(1u, r.h));
+    outX = float(r.x) + float(ux) * rw / 640.f;
+    outY = float(r.y) + float(uy) * rh / 480.f;
+}
+
 FeDrawStats composite(const formats::ScreenLayout& screen, render::SpriteBatch& ui, ScreenArt& art,
                       FeText* text, const std::vector<std::string>* visible, const FeUiState* uiState) {
     // Dynamic-content rule (LAY_COMPOSITOR_NOTES.md "Widget-class visibility"): widget-class

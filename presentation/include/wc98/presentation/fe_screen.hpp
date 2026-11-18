@@ -150,6 +150,19 @@ struct FeUiState {
 // Hit box: POINTS= polygon when present, else the xposition/yposition/width/height rect.
 [[nodiscard]] bool widgetHit(const formats::LayoutObject& o, float x, float y);
 
+// Window pixels -> the 640x480 virtual UI space. The UI pipeline always draws that virtual
+// area inside render::fit4x3(window) (renderer.cpp computeLayout: Original = a 640x480 scene
+// blitted to that rect, Pillarbox/Widescreen = ui rect = that rect), so pointer input has to
+// be un-projected through the rect's offset. Scaling the whole window instead folded the
+// letterbox bars into the UI: on a 16:9 window every hit box sat bar-width inboard of the art.
+void uiPointerFromWindow(std::int32_t mx, std::int32_t my, std::uint32_t winW, std::uint32_t winH,
+                         int& outX, int& outY);
+
+// The other direction: virtual 640x480 UI coordinates -> window points, for lanes that have to
+// synthesise pointer events (gate scripts). Paired with uiPointerFromWindow so a scripted hover
+// lands on the same pixel a real mouse would, whatever the window aspect.
+void uiWindowFromPointer(int ux, int uy, std::uint32_t winW, std::uint32_t winH, float& outX, float& outY);
+
 // ---- League-family widget painters (MENU_PARITY.md §4 rank 7) ---------------------------------
 // Kit colour table for the FCDB kit swatches: FcdbKit1998 shirtColor1..3 / shortsColor indices
 // (5-bit fields, 0..31). RGB values from the community editor fifa98edit hslCols HSV tuples

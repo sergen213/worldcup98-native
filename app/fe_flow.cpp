@@ -3707,11 +3707,45 @@ FeDrawStats FeFlow::drawOptions(render::SpriteBatch& ui) const {
     if (!f || !ftex) { f = text_ ? text_->font() : nullptr; ftex = text_ ? text_->texture() : 0; }
     const auto& rows = optRows_[std::size_t(optTab_)];
     const auto& vals = optVals_[std::size_t(optTab_)];
+    // Slider art for lst1..4 rows, same verified grammar as IGOPTN2 (pass-21igscn measurement):
+    // track unsl 185x17 at box.x+hotspot 198, fill sllf fraction, knob btnn, sbtn at the right
+    // end. lstN fname=opbutns.fsh resolves through the global object cache to
+    // FE/PACK/GLOBAL/OPBUTNS.PAK tags (btnn/btnh/btnd/dsbl/unsl/sllf/slrt/but0/but1 - the same
+    // 9-tag slider family as IGOPTN2's opslider.fsh/OPSLIDER.PAK).
+    std::string igStem = lst->fname;
+    if (const std::size_t dot = igStem.find_last_of('.'); dot != std::string::npos) igStem = igStem.substr(0, dot);
+    const std::string igVpath = lst->prop("VPATH") ? *lst->prop("VPATH") : std::string();
+    auto& art = const_cast<ScreenArt&>(art_);
+    const ScreenArt::Shape trk = art.shape(igVpath, igStem, "unsl", -1);
+    const ScreenArt::Shape fill = art.shape(igVpath, igStem, "sllf", -1);
+    const ScreenArt::Shape knob = art.shape(igVpath, igStem, "btnn", -1);
+    const ScreenArt::Shape sbtn = art.shape(igVpath, igStem, "sbtn", -1);
+    const int trackX = lst->x + 198; // hotSpots=198,0,218,0,218,0 -> absolute 290 (same as IGOPTN2 lstN)
     for (int i = 0; i < int(rows.size()); ++i) {
         const float y = float(lst->y) + float(i) * rowH;
         if (i == optRow_) ui.draw(0, {float(lst->x) - 4.f, y - 2.f, float(lst->width), float(rowH)}, {}, render::packRgba(255, 224, 96, 48));
-        if (!f || !ftex) continue;
         const OptRow& r = rows[std::size_t(i)];
+        // Slider art paints under the captions (engine order: track row first, text on top).
+        float frac = -1.f; // -1 = not a slider row
+        const int* vol = r.values.empty() ? audioSliderRow(settings_, r.label) : nullptr;
+        if (!r.values.empty() && !vals.empty() && std::size_t(i) < vals.size()) {
+            const int n = std::max(1, int(r.values.size()));
+            frac = float(std::clamp(vals[std::size_t(i)], 0, n - 1)) / float(n - 1);
+        } else if (r.values.empty()) {
+            frac = vol ? float(*vol) / 100.f : 0.f; // mapped slider fraction; unmapped = neutral track
+        }
+        if (frac >= 0.f) {
+            const float ty = y + 1.f; // measured track lane offset (+1, pass-21igscn grammar)
+            if (trk.tex) ui.draw(trk.tex, {float(trackX), ty, float(trk.w), float(trk.h)}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu), ++st.shapes;
+            if (frac > 0.f && fill.tex) {
+                const float w = 185.f * frac; // fill fraction of the 185px track (unsl art is 188 wide)
+                ui.draw(fill.tex, {float(trackX), ty, w, float(fill.h)}, {0.f, 0.f, frac, 1.f}, 0xFFFFFFFFu), ++st.shapes;
+            }
+            if (knob.tex && (vol != nullptr || !r.values.empty())) // unmapped mode-1 rows show the track only
+                ui.draw(knob.tex, {float(trackX) + (185.f - float(knob.w)) * frac, ty + (17.f - float(knob.h)) * 0.5f, float(knob.w), float(knob.h)}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu), ++st.shapes;
+            if (sbtn.tex) ui.draw(sbtn.tex, {float(trackX) + 185.f, ty + (17.f - float(sbtn.h)) * 0.5f, float(sbtn.w), float(sbtn.h)}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu), ++st.shapes;
+        }
+        if (!f || !ftex) continue;
         const std::string_view cap = text_->widgetStringAt(std::size_t(r.label));
         if (cap.empty()) continue; // FC-bank row captions are the scene-code truth here; gaps stay blank
         for (const auto& q : presentation::layoutText(*f, cap, float(lst->x) + 8.f, y, 13.f, render::packRgba(235, 235, 235, 255)))

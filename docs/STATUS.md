@@ -141,7 +141,20 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
    3rd-party Loader all fetched + diffed (EXTERNAL.md §4/§5; details under Known limitations).
 
 
-## Progress snapshot (2026-11-06, v0.3.0 released)
+## Progress snapshot (third-pass UI reconstruction landed, v0.5.0)
+- **Third-pass UI reconstruction (pass-24..44, 2026-11-17/18)** — the user-visible Windows front end and
+  in-match presentation are reproduced from the shipped asset/exe lanes rather than approximated:
+  scene-handler registries decoded per slot (`FE_MENU_SCREENS_WC98.md`), every reachable FE wedge and
+  popup wired (`--fe-*` / `--fe-popup` capture lanes + ctest gates), LAY composite ownership rules
+  corrected against `LAYOUTS.BIG`/`IGLAY.BIG` (BOX-size fill rule, bottom-bar white-plate repaint order,
+  widget-class `sname`/`fname` slider art), IG boards/statistics/confirm boxes, pause-menu row tables
+  armed byte-exact from the file-backed data segment (delta `VA = raw + 0x3FEA00`), HUD scoreboard +
+  minute chip from `FUN_00438670`, and the FEFLOW94 credits roll parsed from `CRED.BIN`.
+  Pointer input un-projects through the UI content rect (`presentation::uiPointerFromWindow`,
+  `docs/architecture/RENDERER.md` §coordinate space) so mouse hit boxes track the art on any aspect.
+  Registry: `MENU_PARITY.md` (no Open rows), `UI_VALIDATION_WC98.md` (capture evidence + test counts),
+  `GAMEPLAY_DISCREPANCIES.md` (UI rows Fixed/Closed). Suite 151 tests / 149 passing; the 2 failures are
+  the in-flight simulation lanes only.
 - Second-pass forensic audit in progress (pass-15, 2026-11-10): discrepancy register + validation doc
   landed (`GAMEPLAY_DISCREPANCIES.md` D-01..D-54, `GAMEPLAY_VALIDATION.md`); trig + nine runtime ball
   tables proven byte-exact at **measured WC98 VAs** and gated by new `test_trig_tables` /
@@ -297,6 +310,12 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
 
 ## Known limitations
 
+- UI presentation items still Open (all RE-blocked, not UI-design gaps): the `EULZ`/Squish cinematic
+  expander (no setter anywhere in the shipped binaries — `docs/asset-formats/SQF_FOOTIX.md` §3), the
+  `.SCI` bytecode VM dispatch (`AISEQS.TBI` decoded, opcode semantics not), referee/off-ball positioning
+  and `HW3D` `pos3d`, and the retail `FEFLOW94` art pack, which is genuinely absent from the CD
+  (`FE/PACK` has no `feflow94` pack; the credits roll therefore paints text-only — `MENU_PARITY.md`).
+  Ported UI claims parity only for screens whose shipped art/handler lanes exist.
 - Interactive playable match (M10 `app/livematch.cpp`): the key/pad action mapping is a port convention
   built on the ported input layer (bindings = config/src/settings.cpp defaults, pad-word assembly in
   input/src/input.cpp); the live loop reuses the M6 scene/HUD/camera as-is - no new presentation

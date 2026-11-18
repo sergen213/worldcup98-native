@@ -56,7 +56,7 @@ All rows from the linear scan of `FUN_004479d0` **[C]**. Sites at 0x4481b5…0x4
 | 37 | 00447e94 | 0x5624e4 | feflow73 | 0x45b860 | 0x45c800 | 0x45c8dc | — | FEFLOW73.LAY | league team player list (`pn00..pn08`, status/total columns, scroll `sbar`) | **impl** (`fe_league_select`, `fe_nav_league`) |
 | 38 | 00447eb3 | 0x5624f0 | feflow74 | 0x45df84 | 0x45e8e8 | 0x45e99c | — | FEFLOW74.LAY | league team-management grid (`ktx9` name keys, attributes +/- `attb`) | cap |
 | 39 | 00447ed2 | 0x5624fc | feflow75 | 0x45ee34 | 0x45f480 | 0x45f56c | — | FEFLOW75.LAY | league lineup editor (player block `ptop/px17/pbot`, save/reset buttons) | cap |
-| 40 | 00447ef1 | 0x562508 | feflow76 | 0x45f6a4 | 0x45fa48 | 0x45fbe4 | — | FEFLOW76.LAY (authored `feflow75.lay`) | aggression-value confirm popup (`alok`/`canc`, "aggression text") | cap |
+| 40 | 00447ef1 | 0x562508 | feflow76 | 0x45f6a4 | 0x45fa48 | 0x45fbe4 | 0x45f49f | FEFLOW76.LAY (authored `feflow75.lay`) | aggression-value confirm popup (`alok`/`canc`, "aggression text") | **impl** (pass-38League: Enter on feflow75 = event 8005 `mov eax,0x76; call 0x466cb8` opens the popup; Enter/Esc/`alok`/`canc` close back to feflow75; plate `shapeID=aggr` absent from every pack → retail paints no plate quad (capture-verified), caption `textid=1211` = "Player Aggressiveness"; gate `fe_league_popup76`; dossier `analysis/pass38League/`) |
 | 41 | 00447f10 | 0x562514 | feflow79 | 0x45ff14 | 0x460af4 | 0x460cac | — | FEFLOW79.LAY | league squad/formation screen (player oval `oval`, bias slider, attributes) | cap |
 | 42 | 00447f2f | 0x562520 | feflow80 | 0x461edc | 0x463098 | 0x463168 | 0x461ed0 | FEFLOW80.LAY | full custom-mode management grid (132 objects: player model `plyr`, name edit box, stat columns, memory-card captions) | cap |
 | 43 | 00447f55 | 0x56252c | feflow81 | 0x4647a8 | 0x464878 | 0x464790 | 0x464798 | FEFLOW81.LAY | results page (multitext pane `mult`, scroll bar, quit/back) | **impl** (`--fe-wc-cfg 81`, gate `fe_wc_cfg81`; `mult` rows from bracket results) |
@@ -146,7 +146,7 @@ Source: `analysis/pass11/screen_inventory.txt` (`== MEMBER` sections; authored-p
 | FEFLOW73.LAY | 60 | league squad list: pn×9 names, status/total columns, player block, reset/back/fwd | **impl** |
 | FEFLOW74.LAY | 38 | management grid: name keys ktx9, attributes +/-, scroll (authored path empty — header corrupted) | cap |
 | FEFLOW75.LAY | 42 | lineup editor + score fields ("LATEST SCORE FROM <city>" 958, stadium "La Beaujoire" 965 leaks) | cap |
-| FEFLOW76.LAY | 10 | aggression confirm popup authored `feflow75.lay` copy (ok/cancel, "aggression text") | cap |
+| FEFLOW76.LAY | 10 | aggression confirm popup authored `feflow75.lay` copy (ok/cancel, "aggression text") | **impl** (pass-38League: opens on feflow75 Enter (event 8005, 0x45f49f); Enter/Esc close to feflow75; gate `fe_league_popup76`; plate art `aggr` absent on tree, black backdrop authentic — `analysis/pass38League/NOTES.md`) |
 | FEFLOW77.LAY | 1 | background-only stub | cap (stub) |
 | FEFLOW78.LAY | 10 | attack-bias confirm popup (ok/cancel, "attack bias text") — sibling of feflow76; **not in registry** | miss (unregistered) |
 | FEFLOW79.LAY | 57 | squad/formation: player oval, bias bar, attributes, pos/status/total columns, cards captions ("RED CARD" 1460) | cap |

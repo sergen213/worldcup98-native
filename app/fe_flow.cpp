@@ -1073,7 +1073,10 @@ void FeFlow::adjustValue(int dir) {
     }
     if (stad08View_) { move(dir); return; } // nslt/nsrt arrows = tile ring (L/R axis of two-axis grammar)
     if (stad51View_) { move(dir); return; } // FEFLOW51 nslt/nsrt wrap the pin index (DAT_0057cb54 ±1 [C])
-    if (leagueCfg_) { cycleLeagueScreen(dir); return; } // left/right = gofd/gobk screen chain
+    if (leagueCfg_) { // left/right = gofd/gobk screen chain; the popups carry no nav widgets (retail: no-op)
+        if (leagueCfg_ != 76 && leagueCfg_ != 78) cycleLeagueScreen(dir);
+        return;
+    }
     if (wcCfg_) { // feflow35 'nglt'/'ngrt': group index (v +/- 1) & 7, full table repaint (decoded 1:1)
         if (wcCfg_ == 35) wcGroup_ = (wcGroup_ + dir + 8) & 7; // feflow18/23/24 keyloops carry no L/R tag
         else if (wcCfg_ == 20 || wcCfg_ == 21) wcRow_ = (wcRow_ + dir + 4) % 4; // frwd/simu/stsc/strk ring
@@ -1184,9 +1187,13 @@ bool FeFlow::enter() {
     if (histScreen_) return false;                             // feflow91 confirm: presentation-only board
     if (igMode_) return false; // row Enter = value select is mouse-only in the port; L/R cycles values
     if (cheatsView_) { toggleCheat(cheatRow_); return false; } // Enter flips the focused checkbox row
-    if (leagueCfg_) {                                   // Enter = 'alok' confirm: popups close to the grid, grids stay put
-        if (leagueCfg_ == 76 || leagueCfg_ == 78) cycleLeagueScreen(-1);
-        return false;
+    if (leagueCfg_) {
+        if (leagueCfg_ == 76 || leagueCfg_ == 78) {     // popup 'alok' (Enter): close back to the strategy page
+            leagueCfg_ = 75; cfgName_ = "FEFLOW75"; cfgRow_ = 0;
+        } else if (leagueCfg_ == 75) {                  // Enter = retail event 8005 (0x45f49f: mov eax,0x76; call 0x466cb8) opens the aggression popup
+            openLeagueCfg(76);                          // handler cluster install 0x45f2d8 (manmarks slots); absent layout keeps f75
+        }
+        return false;                                   // grids 72/74/79/80: Enter has no grid action
     }
     if (optsView_ && haveOpts_) { forwardOptions(); return false; } // Enter = 'fwrd': commit writers + pop to caller
     if (slView_ && haveSl_) {                 // slot confirm (Phase 3): WCT1 load via app/saveload.cpp
@@ -1270,7 +1277,11 @@ void FeFlow::back() {
         return;
     }
     if (onHub()) return; // hub Esc: no parent scene (the Windows hub exits via the 'quit' wedge)
-    if (leagueCfg_) { leagueCfg_ = 0; return; } // Esc from a config grid/popup -> FEFLOW73 stays open
+    if (leagueCfg_) { // Esc: popup closes to the strategy page (retail caller), grids close to FEFLOW73
+        if (leagueCfg_ == 76 || leagueCfg_ == 78) { leagueCfg_ = 75; cfgName_ = "FEFLOW75"; cfgRow_ = 0; }
+        else leagueCfg_ = 0;
+        return;
+    }
     if (cheatsView_) { cheatsView_ = false; return; } // Esc closes the cheats screen to the menu [H] dev lane
     if (leagueView_) { leagueView_ = false; return; } // Esc from the league list: straight to menu
     if (setupScreen_) { setupScreen_ = false; return; } // Esc from the config screen: straight to menu
@@ -1389,19 +1400,19 @@ bool FeFlow::openLeagueCfg(int screenId) {
 }
 
 void FeFlow::cycleLeagueScreen(int dir) {
-    // gofd/gobk chain (keyloop_notes.txt: every grid tick carries 'gofd'/'gobk'); the slider
-    // popups 76/78 are registered beside feflow75 in SCENEREG, so they join when present.
-    static constexpr int kOrder[] = {72, 74, 75, 76, 78, 79, 80};
+    // gofd/gobk chain (keyloop_notes.txt: every grid tick carries 'gofd'/'gobk'). The slider popups
+    // 76/78 are NOT chain members: retail opens 76 only from feflow75 Enter (event 8005, 0x45f49f),
+    // and 78 has no caller at all (LAY-only twin) — the arrow cycle visits the grids only.
+    static constexpr int kOrder[] = {72, 74, 75, 79, 80};
     int idx = 0;
-    for (int i = 0; i < 7; ++i)
+    for (int i = 0; i < 5; ++i)
         if (kOrder[i] == leagueCfg_) idx = i;
     // Skip screens whose layout is absent on this tree.
-    for (int step = 0; step < 7; ++step) {
-        idx = (idx + dir + 7) % 7;
+    for (int step = 0; step < 5; ++step) {
+        idx = (idx + dir + 5) % 5;
         const int cand = kOrder[idx];
         if ((cand == 72 && lg72_.object("bnnr")) || (cand == 74 && lg74_.object("titl")) ||
-            (cand == 75 && lg75_.object("s001")) || (cand == 76 && lg76_.object("alok")) ||
-            (cand == 78 && lg78_.object("alok")) || (cand == 79 && lg79_.object("s001")) ||
+            (cand == 75 && lg75_.object("s001")) || (cand == 79 && lg79_.object("s001")) ||
             (cand == 80 && lg80_.object("pn00"))) break;
     }
     leagueCfg_ = kOrder[idx];
@@ -3622,9 +3633,13 @@ int FeFlow::pointerActivate() {
             const formats::LayoutObject* o = sc->object(n);
             if (o && widgetHit(*o, float(ptrX_), float(ptrY_))) { cycleLeagueScreen(n[2] == 'd' ? 1 : -1); return -1; }
         }
-        for (const char* n : {"alok", "canc", "back"}) { // confirm/cancel close to FEFLOW73 (keyloop 'gobk' cluster)
+        for (const char* n : {"alok", "canc", "back"}) { // confirm/cancel: popup closes to f75, grids close to FEFLOW73
             const formats::LayoutObject* o = sc->object(n);
-            if (o && widgetHit(*o, float(ptrX_), float(ptrY_))) { leagueCfg_ = 0; return -1; }
+            if (o && widgetHit(*o, float(ptrX_), float(ptrY_))) {
+                if (leagueCfg_ == 76 || leagueCfg_ == 78) { leagueCfg_ = 75; cfgName_ = "FEFLOW75"; cfgRow_ = 0; }
+                else leagueCfg_ = 0;
+                return -1;
+            }
         }
         if (const formats::LayoutObject* s = sc->object("s001"); s && widgetHit(*s, float(ptrX_), float(ptrY_))) {
             const int hi = leagueCfg_ == 75 ? 4 : leagueCfg_ == 76 ? 15 : 8; // strategy / aggression / bias domains

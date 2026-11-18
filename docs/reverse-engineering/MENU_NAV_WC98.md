@@ -281,8 +281,10 @@ Semantics: `rand` = randomize zones; `strk` = start/launch tournament path; `sts
 - feflow72 buttons `b010..b012` captions: textid=233,4 measured in LAY; FCENG.BIN string #233 = "Art Director:"
   (bank credits-section index reuse — the Windows original shows exactly this on the formation-budget screen).
   Port paints shape bt10/bt20/bt30 + caption over the widget (composite skips objecttype-4 TEXTID content).
-- feflow76 popup at rest: '0000' slot default = "New Memory card inserted." prompt text; X/✓ buttons + s001
-  slider render as authored. Context captions remain engine-driven [H].
+- feflow76 popup at rest (pass-38League): caption widget `0000` textid=1211 resolves through the FC
+  remap table to "Player Aggressiveness" (the earlier "New Memory card inserted" cite was a raw-bank
+  misread); X/✓ buttons + s001 slider render as authored. Plate quad `shapeID=aggr` exists in no pack
+  → not painted, matching retail. Opens on feflow75 Enter (event 8005, 0x45f49f); Enter/Esc → feflow75.
 - kitColor(): FCDB 5-bit shirt colour indices index analysis/fifa98edit/__init__.py hslCols VERBATIM in table
   order (idx0=(242,165,237) pink ... idx19=(0,2,244) white, idx22=(0,0,40)). A rotated/fabricated table
   painted Argentina/Brazil swatches magenta; verbatim copy fixes it (presentation/src/fe_screen.cpp kitColor).

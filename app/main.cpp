@@ -107,6 +107,7 @@ int run(int argc, char** argv) {
     int feSetup = -1; // --fe-setup N: open the friendly (0) / practise (3) match-setup screen before the smoke frames
     bool feLeague = false; // --fe-league: open the FEFLOW73 league-select list before the smoke frames
     int feLeagueCfg = 0; // --fe-league-cfg N: open the league config family screen N (72/74/75/76/78/79/80)
+    bool feLeaguePopup = false; // --fe-league-popup: FEFLOW75 + Enter -> FEFLOW76 aggression popup (retail 8005 edge)
     int feWcCfg = 0; // --fe-wc-cfg N: open the world-cup family screen N (18/23/24/35)
     int feCheatsMask = -1; // --fe-cheats N: open the feflow95 cheats screen with cheat row i ON for bit i (MENU_PARITY.md §8)
     int feHistoryYear = -1; // --fe-history N: open feflow90 (world-cup history board) at year row N (pass 13)
@@ -165,6 +166,7 @@ int run(int argc, char** argv) {
         else if (a == "--fe-setup") { feMode = true, feSetup = std::stoi(next()); }
         else if (a == "--fe-league") { feMode = true, smokeFrames = 1, feLeague = true; } // FEFLOW73 list capture (1 frame; --fe-smoke N overrides)
         else if (a == "--fe-league-cfg") { feMode = true, smokeFrames = 1, feLeagueCfg = std::stoi(next()); } // league config grid/popup capture gate
+        else if (a == "--fe-league-popup") { feMode = true, smokeFrames = 1, feLeaguePopup = true; } // Enter-edge popup gate (pass-38League)
         else if (a == "--fe-wc-cfg") { feMode = true, smokeFrames = 1, feWcCfg = std::stoi(next()); } // world-cup family screen capture gate
         else if (a == "--fe-cheats") { feMode = true, smokeFrames = 1, feCheatsMask = std::stoi(next()); } // feflow95 checkbox-screen capture gate; N = row bitmask ON at open
         else if (a == "--fe-history") { feMode = true, smokeFrames = 1, feHistoryYear = std::stoi(next()); } // feflow90 capture gate; N = year row index at open
@@ -313,6 +315,11 @@ int run(int argc, char** argv) {
         if (fe && feLeagueCfg) { // selectNav(league) opens FEFLOW73 directly; the requested config grid/popup opens over it
             fe->selectNav(int(app::FeEntry::LeaguePlay));
             if (!fe->openLeagueCfg(feLeagueCfg)) std::fprintf(stderr, "fe: league config %d unavailable\n", feLeagueCfg);
+        }
+        if (fe && feLeaguePopup) { // retail Enter grammar (pass-38League): FEFLOW75 -> event 8005 (0x45f49f) opens the FEFLOW76 aggression popup
+            fe->selectNav(int(app::FeEntry::LeaguePlay));
+            if (!fe->openLeagueCfg(75)) std::fprintf(stderr, "fe: league config 75 unavailable\n");
+            else fe->enter(); // opens FEFLOW76 when its layout is present on this tree
         }
         if (fe && feWcCfg) { // world-cup family screens (FEFLOW18/23/24/35, analysis/pass12/wcfamily_notes.txt):
             // the gates open them directly; FEFLOW18 sits behind feflow11 team-select in the live flow

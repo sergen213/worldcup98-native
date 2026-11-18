@@ -222,12 +222,18 @@ if(DEFINED WC98_TREE)
     add_test(NAME fe_league_select COMMAND wc98-native --fe-league --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/league73)
     set_tests_properties(fe_league_select PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW73: shapes=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 ")
     # League configuration family (MENU_PARITY.md §4 rank 7; edges_table.txt SCENEREG feflow73 cluster):
+    # League config family capture gates (pass-20uitick): each grid/popup must paint art + captions.
     # --fe-league-cfg N opens the grid/popup over FEFLOW73. kt/menu rows paint FC captions + kit swatches,
     # s001 KnobBar paints sbar/sbar art + value knob (analysis/pass12/{list_painter,keyloop}_notes.txt).
     foreach(_lq 72 74 75 76 78 79 80)
         add_test(NAME fe_league_cfg${_lq} COMMAND wc98-native --fe-league-cfg ${_lq} --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/lcfg${_lq})
         set_tests_properties(fe_league_cfg${_lq} PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW${_lq}: shapes=[1-9][0-9]* texts=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 ")
     endforeach()
+
+    # Retail Enter-edge grammar (pass-38League): FEFLOW75 strategy page, Enter (event 8005,
+    # dispatch 0x45f49f mov eax,0x76; call 0x466cb8) opens the FEFLOW76 aggression popup plate.
+    add_test(NAME fe_league_popup76 COMMAND wc98-native --fe-league-popup --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/lpop76)
+    set_tests_properties(fe_league_popup76 PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW76: shapes=[1-9][0-9]* texts=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 ")
     # World-cup family interactive screens (MENU_NAV_WC98.md rank-2; analysis/pass12/wcfamily_notes.txt +
     # analysis/pass20uitick/NOTES.md scene-switch edges): --fe-wc-cfg N opens FEFLOW18 (zones draw, tmNN
     # rows + 'rand'), FEFLOW19 (groups board g{g}t{s} + rand), FEFLOW20 (today's games tgt/tns/tsd +

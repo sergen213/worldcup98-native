@@ -651,3 +651,31 @@ light one in `FeFlow::paintCaption` **[H]**.
   yellow `hbal` cursor frame + arrow pair + value icons + "Parc des Princes" help caption.
 - **Suite**: all 88 `fe_*` gates green (incl. new `fe_stad51`); simulation lane untouched.
   Dossier `analysis/pass33fe51/NOTES.md`.
+
+## 26. Round 2026-11-18 — pass-34fe94: credits wedge = FEFLOW94 (not 19) + CRED.BIN roll [LANDED]
+
+- **Scene mapping [C]**: the hub `cred` wedge opens **feflow94**, registry line 54
+  (`0x44809c`, name VA `0x5625b0`, handler slots init `0x46999c` / tick `0x469904` /
+  draw `0x46986c`). The port's "FEFLOW19" mapping was a registry-index misread — feflow19
+  is the tournament group board (pass-20uitick tick 0x452884 family); the slot-54 bytes are
+  byte-exact `66 C7 44 24 5A 00 00` = index 94, so the scene name was never 19.
+- **Art-pack absence [C]**: no `FE/PACK/FEFLOW94` directory, no `feflow94.lay` member in
+  LAYOUTS.BIG, no `FEFLOW94.PAK` anywhere in the CD. FEFLOW94 renders with composite
+  shapes=0 (art absent); the `fe_credits` gate therefore asserts the **roll contents**
+  line, not shapes.
+- **Roll contents [C]**: BigArchives root `CRED.BIN` cell stream — header `{u32 3, u32 1,
+  u32 0x129f}` + packed cells: kind 1 caption = FC widget-id through the remap table
+  (`DAT_005774a4`), kind 2 literal staff name (`len` NUL-included, byte-exact no padding),
+  kind 3 blank row; 18-px grid, +2 px/tick draw math (scene draw slot `FUN_0046986c`, wrap
+  `0x12`, end beat `DAT_0057d280 = 0x1b` armed by tick slot `FUN_00469904`). All four
+  shipped variants (eng/de/it/en2) parse 305/305 rows.
+- **Port**: header-only parser `formats/include/wc98/formats/credits.hpp` + `drawCred_` roll
+  in `fe_flow.cpp` on the feflow18 composite screen (retail loops the roll; the port runs a
+  single pass with Esc/Enter exit then hub return — `kCredRowFrames=36`,
+  `kCredBlankPauseFrames=243`). Captions centred on the cr-lane (x=257 w=160 → 337), white,
+  eras12 face.
+- **Gate**: `fe_credits` asserts `FEFLOW94: roll rows=[1-9]` (was the stale `FEFLOW19:
+  shapes=[1-9]`); capture `_cred.png` shows "Assistant Producer: Jeff Smith … /
+  Executive Producer: Bruce McMillan …" lanes. FE subset `ctest -R "fe_|fcwidget"` 89/89
+  green. Dossier `analysis/pass34fe94/NOTES.md` + `fe94_dec1/2.txt`; grammar doc
+  `FE_MENU_SCREENS_WC98.md` §11.

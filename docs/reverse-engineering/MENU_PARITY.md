@@ -57,7 +57,7 @@ All rows from the linear scan of `FUN_004479d0` **[C]**. Sites at 0x4481b5…0x4
 | 38 | 00447eb3 | 0x5624f0 | feflow74 | 0x45df84 | 0x45e8e8 | 0x45e99c | — | FEFLOW74.LAY | league team-management grid (`ktx9` name keys, attributes +/- `attb`) | **impl** (gate `fe_league_cfg74` + chain; card/vit rows mirrored by IGTEAM74. Event handler 0x45df84 token tree fully decoded (pass-40league): leaves `tmf0..3/ab00/ab01/lb00/lb01/sbar/gobk/gofd`; Enter = `tmf2` leaf 0x45e845 pushes scene 0x76 popup, close pops back to the grid (port: `cfgPopBase_`, row cursor survives); tick 0x45e8e8 decoded: mouse drag clear + `[0x60aac0]=-1`, `attb` budget text widget via group slot `[0x57e84a+grp*4]>>16` + 9-word budget array copy `[0x631746]→[0x60a9fc]`, keyboard branch slider sync 0x4d31a0 ×3; `tmf0` budget gate `[0x5882b8]` engine-side, no port budget sim §4 rank 7) |
 | 39 | 00447ed2 | 0x5624fc | feflow75 | 0x45ee34 | 0x45f480 | 0x45f56c | — | FEFLOW75.LAY | league lineup editor (player block `ptop/px17/pbot`, save/reset buttons) | **impl** (gate `fe_league_cfg75` + chain; Enter = event 8005 0x45f49f opens FEFLOW76 popup (pass-38League)) |
 | 40 | 00447ef1 | 0x562508 | feflow76 | 0x45f6a4 | 0x45fa48 | 0x45fbe4 | 0x45f49f | FEFLOW76.LAY (authored `feflow75.lay`) | aggression-value confirm popup (`alok`/`canc`, "aggression text") | **impl** (pass-38League: Enter on feflow75 = event 8005 `mov eax,0x76; call 0x466cb8` opens the popup; Enter/Esc/`alok`/`canc` close back to feflow75; plate `shapeID=aggr` absent from every pack → retail paints no plate quad (capture-verified), caption `textid=1211` = "Player Aggressiveness"; gate `fe_league_popup76`; dossier `analysis/pass38League/`) |
-| 41 | 00447f10 | 0x562514 | feflow79 | 0x45ff14 | 0x460af4 | 0x460cac | — | FEFLOW79.LAY | league squad/formation screen (player oval `oval`, bias slider, attributes) | **impl** (gate `fe_league_cfg79` + chain; bias-slider s001 mirrored by IGTEAM79 UP/DOWN ±10 grammar) |
+| 41 | 00447f10 | 0x562514 | feflow79 | 0x45ff14 | 0x460af4 | 0x460cac | — | FEFLOW79.LAY | league squad/formation screen (player oval `oval`, bias slider, attributes) | **impl** (gate `fe_league_cfg79` + chain; `attb` runtime skill-column header via DAT_0057e84a table + ab-arrow wrap, pass-42lg79; bias-slider s001 mirrored by IGTEAM79 UP/DOWN ±10 grammar) |
 | 42 | 00447f2f | 0x562520 | feflow80 | 0x461edc | 0x463098 | 0x463168 | 0x461ed0 | FEFLOW80.LAY | full custom-mode management grid (132 objects: player model `plyr`, name edit box, stat columns, memory-card captions) | **impl** (gate `fe_league_cfg80` + chain; composite grid + `s002` slider shape; `plyr` model/edit-box lanes engine-driven [H]) |
 | 43 | 00447f55 | 0x56252c | feflow81 | 0x4647a8 | 0x464878 | 0x464790 | 0x464798 | FEFLOW81.LAY | results page (multitext pane `mult`, scroll bar, quit/back) | **impl** (`--fe-wc-cfg 81`, gate `fe_wc_cfg81`; `mult` rows from bracket results) |
 | 44 | 00447f7b | 0x562538 | feflow82 | 0x465854 | 0x465b0c | 0x46584c | — | Feflow82.lay | player performance stats (rows `t000-t008` type=44, stat buttons `mbt0-2`, pair headers) | **impl** (`--fe-wc-cfg 82`, gate `fe_wc_cfg82`; t00N standings rows) |
@@ -830,3 +830,23 @@ light one in `FeFlow::paintCaption` **[H]**.
   above it. Suite 151 tests: 149 pass; the 2 FAILs (`test_sim_scenarios`,
   `self_test_gameplay` passing/animation) remain the in-flight `simulation/`
   kick-seam lane (§12 note). Dossier `analysis/pass41scrl/NOTES.md`.
+
+## 32. Round 2026-11-18 — pass-42lg79: FEFLOW79 attb runtime skill-column header [LANDED]
+
+- **Grammar [C]**: `attb` (box (315,110,50,18), LAY template textID 1379 → remap bank
+  1376 `Pos`) is a runtime label: scene handler FUN_0045ff14 tag branch writes the selected
+  skill-column abbreviation into the window object (`obj+0x48`) — init store
+  `0x46003a MOV [0x57d040],0xc`, label setter `0x46005b CALL 0x47882c` with
+  `EBX = [EBX*4 + 0x57e84a] >> 16` (widget-id lane, pass-21igscn remap rule). Table
+  DAT_0057e84a (13 entries) → {Spd,Spw,Sac,Acl,Tac,Hac,Bct,Agl,Rct,Fit,Awr,Pac,Cre}
+  (bank idx 1736,1744,1575,172,1818,861,315,202,1475,738,288,1308,520). `ab00`/`ab01`
+  arrows: ±1 with wrap at 12/0. The static template label rendered clipped `Po` (width 50).
+- **Also**: `oval`/`ptop`/`pbot` (objecttype 19, zero coords, runtime-placed from the live-sim
+  player table DAT_006307f0) excluded from `lg79Visible_` — the static paint was the stray
+  top-left blob.
+- **Ported**: attb dropped from the whitelist; overlay block (vit0 twin) paints
+  `widgetStringAt(kAttrIds[lg79AttrCol_])` centred fontID4 white; `lg79AttrCol_` init 12;
+  `adjustAttrColumn` ±1 wrap wired to `ab00`/`ab01` mouse hits. Header renders
+  `Name | ← Cre → | Status | Cards` (`/tmp/wc98port-out/lcfg79_fe00.png`, texts 85→83).
+- **Gates**: `fe_league_cfg*` family 9/9 green; new selftest step `fe-lg79-attr`
+  (default 12, wrap up→0, wrap back→12, decrement→11). Dossier `analysis/pass42lg79/`.

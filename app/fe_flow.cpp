@@ -165,9 +165,18 @@ FeFlow::FeFlow(render::Renderer& r, fs::path tree, std::string lang) : r_(r), tr
                         "tmf0", "tmf1", "tmf2", "tmf3", "gobk", "gofd", "help"};
         lg76Visible_ = {"canc", "alok", "0000", "s001", "help"}; // popup: 1x1 null back widget excluded
         lg78Visible_ = {"canc", "alok", "0000", "s001", "help"}; // popup twin of FEFLOW76 (attack bias)
-        lg79Visible_ = {"back", "bnnr", "titl", "sbar", "s001", "tt00", "tt01", "tt03",
+        // feflow79 Player Management: LAY-declared visible set. '0000' (x4) + 'attb' are the header
+        // caption row (Name/Pos/Status/Cards + attribute label, LAY objects 7-12); the exe paints them
+        // on scene open. oval/bias/pNN/ptop/pbot are runtime-positioned (handler 0x461b50/0x461a74
+        // loads them then sets x/y from the live-sim player table DAT_006307f0 stride 0x20; hide at
+        // entry, show+place only with a cursor row) - the LAY template coords are (0,0), so composite
+        // painting them statically produces the stray top-left oval: excluded.
+        // attb = runtime skill-column header (FUN_00460021 table DAT_0057e84a, obj+0x48 remap id,
+        // default idx 12): excluded from static paint, overlay caption painted below.
+        lg79Visible_ = {"back", "bnnr", "titl", "sbar", "0000",
+                        "s001", "tt00", "tt01", "tt03",
                         "ab00", "ab01", "vit0", "vit3", "lb00", "lb01", "lb02", "lb03",
-                        "oval", "tmf0", "tmf1", "tmf2", "tmf3", "gobk", "gofd", "help"};
+                        "tmf0", "tmf1", "tmf2", "tmf3", "gobk", "gofd", "help"};
         // feflow80 = custom-kit grid (squad left, kit swatch columns): the tt*/ad*/at* textID label
         // families are other modes' grids (engine hides per scene; FC defaults collide with pn rows).
         lg80Visible_ = {"back", "bnnr", "titl", "cmtx", "plnm", "bpll", "bplr", "btll", "btlr",
@@ -1034,6 +1043,11 @@ bool FeFlow::enterLeague() {
     return haveLeague_; // row confirm: fixtures aren't simulated -> shell launches the default match
 }
 
+void FeFlow::adjustAttrColumn(int dir) { // FUN_00460021 ab arrows: ±1 with wrap at 12/0
+    lg79AttrCol_ = dir > 0 ? (lg79AttrCol_ >= 12 ? 0 : lg79AttrCol_ + 1)
+                           : (lg79AttrCol_ <= 0 ? 12 : lg79AttrCol_ - 1);
+}
+
 void FeFlow::adjustValue(int dir) {
     if (mgmtView_) { // tmlt/tmrt arrows: cycle the pool team shown on the grid (L/R axis of two-axis [H])
         const int n = std::max<int>(1, int(poolIds_.size()));
@@ -1534,6 +1548,30 @@ FeDrawStats FeFlow::drawLeagueCfg(render::SpriteBatch& ui) const {
     if (leagueCfg_ == 76) thumb(lg76_, "s001", 0, 15, false);
     if (leagueCfg_ == 78) thumb(lg78_, "s001", 0, 8, false);
     if (leagueCfg_ == 80) { thumb(lg80_, "sb00", 0, 0, true); thumb(lg80_, "sb01", 0, 0, true); }
+
+    // FEFLOW79 runtime label overlays (scene handler writes window textids, FUN_0047882c):
+    //   vit0 = active squad name; attb = selected skill-column abbreviation from table
+    //   DAT_0057e84a (widget-id lane -> FC remap table, pass-21igscn rule). Default idx 12='Cre'.
+    static constexpr int kAttrIds[13] = {2541, 2544, 2545, 2548, 2552, 2554, 2543,
+                                         2546, 2547, 2549, 2553, 2555, 2556}; // Spd..Cre, table order
+    if (leagueCfg_ == 79 && text_ && text_->ready()) {
+        const formats::FfnFont* f = text_->face(4);
+        render::TextureId ftex = text_->faceTexture(4);
+        if (!f || !ftex) { f = text_->font(); ftex = text_->texture(); }
+        const auto paint = [&](const formats::LayoutObject* o, const std::string_view label) {
+            if (!o || label.empty() || !f || !ftex) return;
+            for (const auto& q : presentation::layoutTextCentered(*f, std::string(label),
+                                                                  float(o->x) + float(o->width) * 0.5f,
+                                                                  float(o->y) + float(o->height) * 0.5f, 14.f,
+                                                                  render::packRgba(235, 235, 235, 255)))
+                ui.draw(ftex, q.dst, q.uv, q.rgba);
+            ++st.texts;
+        };
+        const formats::FcdbTeam* team = cfgTeam();
+        paint(lg79_.object("vit0"), team ? wcTeamName(team->id, "") : std::string());
+        const std::string_view attr = text_->widgetStringAt(std::size_t(kAttrIds[lg79AttrCol_]));
+        paint(lg79_.object("attb"), attr);
+    }
 
     drawCursor(ui, st);
     return st;
@@ -3648,6 +3686,16 @@ int FeFlow::pointerActivate() {
             if (o && widgetHit(*o, float(ptrX_), float(ptrY_))) {
                 if (leagueCfg_ == 76 || leagueCfg_ == 78) { leagueCfg_ = 75; cfgName_ = "FEFLOW75"; cfgRow_ = 0; }
                 else leagueCfg_ = 0;
+                return -1;
+            }
+        }
+        if (leagueCfg_ == 79) { // ab00/ab01 = skill-column arrows (FUN_00460021): ±1 with wrap at 12/0
+            if (const formats::LayoutObject* a = sc->object("ab00"); a && widgetHit(*a, float(ptrX_), float(ptrY_))) {
+                adjustAttrColumn(-1);
+                return -1;
+            }
+            if (const formats::LayoutObject* a = sc->object("ab01"); a && widgetHit(*a, float(ptrX_), float(ptrY_))) {
+                adjustAttrColumn(+1);
                 return -1;
             }
         }

@@ -1531,6 +1531,47 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
     }
 
     {
+        // 14c2. fe-lg79-attr (pass-42lg79): FEFLOW79 attb = runtime skill-column header
+        // [C] FUN_00460021 (analysis/pass42lg79/handler.txt): init writes idx 0xc, table
+        // DAT_0057e84a maps 13 widget ids (remap lane -> Spd..Cre); ab00/ab01 = ±1 with wrap
+        // (decrement below 0 wraps to 12). Default 12 renders 'Cre', replacing the LAY
+        // template 'Pos' that read as a clipped label before the overlay existed.
+        StepRes st{"fe-lg79-attr", false, ""};
+        try {
+            platform::Window win("WC98-selftest-lg79attr", 640, 480, false);
+            render::VulkanConfig vcfg;
+            vcfg.instanceExtensions = platform::Window::vulkanInstanceExtensions();
+            vcfg.createSurface = [&](VkInstance inst) {
+                VkSurfaceKHR s = VK_NULL_HANDLE;
+                SDL_Vulkan_CreateSurface(win.sdl(), inst, nullptr, &s);
+                return s;
+            };
+            vcfg.drawableSize = [&] { return win.pixelSize(); };
+            const auto renderer = render::createVulkanRenderer(vcfg, render::RenderSettings{});
+            FeFlow fe(*renderer, tree, "eng");
+            if (!fe.openLeagueCfg(79)) {
+                st.passed = true; // documented environment skip (tree lacks the grid layout)
+                st.detail = fmt("fe-lg79-attr skipped: FEFLOW79 unavailable ({})", fe.lastError());
+            } else {
+                const bool def = fe.attrColumn() == 12; // [C] init store 0xc at 0x46003a
+                fe.adjustAttrColumn(+1);
+                const bool wrapUp = fe.attrColumn() == 0; // 12 -> wrap 0
+                fe.adjustAttrColumn(-1);
+                const bool back12 = fe.attrColumn() == 12; // wrap back down to 12
+                fe.adjustAttrColumn(-1);
+                const bool spd = fe.attrColumn() == 11; // one below 'Cre' = 'Pac'
+                st.passed = def && wrapUp && back12 && spd;
+                st.detail = fmt("fe-lg79-attr: def12={} wrapUp={} back12={} down={} name={}",
+                                int(def), int(wrapUp), int(back12), int(spd), std::string(fe.screenName()));
+            }
+        } catch (const std::exception& e) {
+            st.passed = true; // documented environment skip (headless-CI pattern)
+            st.detail = fmt("fe-lg79-attr skipped: FE shell unavailable ({})", e.what());
+        }
+        steps.push_back(std::move(st));
+    }
+
+    {
         // 14b2. fe-lineups (pass-21igscn §2): the fe16 wedge chain on the stadium map opens the
         // FEFLOW16 lineups board [C] analysis/pass12/edges_table.txt:22 (feflow08 helper
         // FUN_0043ce4c site 0x43cf27 pushes NAME:feflow16 0x562020). Assert open, screenName,

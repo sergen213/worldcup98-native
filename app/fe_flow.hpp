@@ -162,6 +162,8 @@ public:
     bool openLeagueCfg(int screenId); // Enter on FEFLOW73 / --fe-league-cfg N gate; false = layout absent
     [[nodiscard]] bool onLeagueCfg() const { return leagueCfg_ > 0; }
     [[nodiscard]] int leagueRow() const { return cfgRow_; } // grid row cursor (74/80 kt rows)
+    [[nodiscard]] int attrColumn() const { return lg79AttrCol_; } // FEFLOW79 attb table index (0..12)
+    void adjustAttrColumn(int dir); // ab00/ab01 arrows: ±1 with wrap at 12/0
     presentation::FeDrawStats drawLeagueCfg(render::SpriteBatch& ui) const; // composite + row/slider overlays
     // ---- FEFLOW07 single-player match setup + FEFLOW08 stadium select (pass 13 §B) --------------
     // Scene edges (MENU_NAV_WC98.md §3/§5): hub wedge 'fe07' opens feflow07 (matchup screen: ltnm/rtnm
@@ -517,6 +519,7 @@ public:
     int stratVal_ = 2;             // FEFLOW75 s001 strategy: 5-step editor domain [+2att..+2def] [H]
     int aggrVal_ = 7;              // FEFLOW76 s001 aggression: FCDB skill nibble scale [0,15] [H]
     int biasVal_ = 4;              // FEFLOW79 s001 attack-bias: slider position domain [0,8] [H]
+    int lg79AttrCol_ = 12;         // FEFLOW79 attb skill column: runtime table DAT_0057e84a idx, init 0xc ('Cre') at 0x46003a
     int cfgTeamPool_ = 0;          // pool index of the team painted on the grids (lbNN arrows)
     std::vector<std::string> lg72Visible_, lg74Visible_, lg75Visible_, lg76Visible_, lg78Visible_, lg79Visible_, lg80Visible_;
     // World-cup family screens (analysis/pass12/wcfamily_notes.txt). Whitelists = scene-owned art only:

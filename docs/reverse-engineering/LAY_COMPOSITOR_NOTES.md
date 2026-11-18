@@ -234,3 +234,27 @@ Evidence: Feflow06.lay hub buttons (`fe07` released `franim.fsh#0000`, side icon
   from the two measured widgets; confirm against handler tick decode when MENU_NAV_WC98 lands)
 - Help pane: button `help=NNN,...` leading value = FC-bank string index painted into the
   `helppaneid=` widget (`objecttype=14`, fontid, centered alignment=3). **[C]** Feflow06.lay.
+
+## IG summary-board bar/header fix + BOX-size fill rule (pass-43, 2026-11-18)
+- **BOX-size fill rule**: IG-family LAY widgets anchor `width/height=12` and carry the real panel
+  size in `BOXWIDTH/BOXHEIGHT`; the engine fills the BOX size, so `composite()` prefers it whenever
+  declared (fe_screen.cpp). Audit scan (129 members, both LAYOUTS.BIG + IGLAY.BIG): 80 mismatching
+  fill widgets across 15 members, all in IGLAY.BIG (`igstats` 21, `igflsum` 15, `igpract1` 8,
+  `igscsum` 6, ... plus `mesg` box0) — LAYOUTS.BIG is clean, so FE captures are pixel-identical.
+  `strokeBoxes` already used BOXWIDTH for type-43 frames; the fill lane now matches it.
+- **Bottom bar (igflsum/igscsum/igstats/ighalf)**: LAY order paints the `typ6..typ9` caption
+  widgets (textid 5086/5085/262/77 = remap 'Match Statistics'/'Bookings Summary'/'Score Summary'/
+  'Back') BEFORE the white `bo25`/`box6..box9` RECT plates (boxwidth 140x19) that cover them —
+  static-bank interpretation painted nothing. Fix: kind>=3 exclusion list covers typ6..typ9; the
+  overlay repaints all four remap-resolved captions left-aligned at widget x (`paintLeft`,
+  alignment=1 = widget x + TEXTXOFFSET) after composite plates. Blue chips on the plate left edge =
+  `btn1/btn2` button.fsh#btnn composite shapes.
+- **List headers**: `typ3/typ4/typ5` (igscsum textid 347/348/349 -> remap 1862 'Time' / 1351
+  'Player' / 1828 'Team') painted left-aligned at widget x=200/261/380; the centered-on-column
+  guess plus wrong third header ('Score' id 1603) replaced. Third list column = team name.
+- **igstats page buttons**: `box6/box7` are exactly the bottom-bar left plates; the old centered
+  kPageCap captions (soup ids 1771/329 'Statistics'/'Booking Summary') duplicated over the real
+  bar labels — removed, pressed state stays `btnd`-over-`btnn` chip chrome on btn1/btn2.
+- **Scroll arrows**: `up`/`down` stay composite-drawn on all boards via the `btnup -> INGAME.FSH`
+  stem alias (pass-13 §D); the kind>=3 exclusion removed them from the whitelist, leaving bars
+  without arrows.

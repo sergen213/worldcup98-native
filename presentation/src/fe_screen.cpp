@@ -477,8 +477,15 @@ FeDrawStats composite(const formats::ScreenLayout& screen, render::SpriteBatch& 
             std::uint32_t argb = 0;
             for (std::string_view k : {"FILLCOLOUR", "COLOUR", "BOXCOLOUR"})
                 if (const std::string* v = o.prop(k); v && !v->empty()) { argb = argbOf(*v); break; }
-            const int w = o.width > 0 ? o.width : o.intProp("BOXWIDTH", 0);
-            const int h = o.height > 0 ? o.height : o.intProp("BOXHEIGHT", 0);
+            // IG-family LAY widgets anchor at width=height=12 and carry the real panel size in
+            // BOXWIDTH/BOXHEIGHT (igstats boNN value plates, igflsum/igscsum bo25 caption bars,
+            // crd card chips, box4/5 score plates, mesg box0). The engine fills the BOX size;
+            // prefer it whenever declared. FE LAYOUTS.BIG widgets declare box==width or no box,
+            // so the FE composite is pixel-identical (audit pass-43: 80 mismatching fill widgets
+            // across 15 members, all in IGLAY.BIG/mesg members; LAYOUTS.BIG clean).
+            const int bw = o.intProp("BOXWIDTH", 0), bh = o.intProp("BOXHEIGHT", 0);
+            const int w = bw > 0 ? bw : o.width;
+            const int h = bh > 0 ? bh : o.height;
             bool boxDrawn = false;
             if (argb && w > 0 && h > 0) {
                 const std::uint32_t rgba = render::packRgba(std::uint8_t(argb >> 16), std::uint8_t(argb >> 8), std::uint8_t(argb), std::uint8_t(argb >> 24));

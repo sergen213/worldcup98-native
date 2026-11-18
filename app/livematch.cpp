@@ -240,6 +240,30 @@ int paintCentered(presentation::FeText* txt, render::SpriteBatch& ui, std::strin
     return n;
 }
 std::string numStr(int v) { return std::to_string(v); }
+// Left-aligned caption painter mirroring drawLabel's placement (px = x + TEXTXOFFSET, py = widget
+// origin). Used where composite() excludes the slot and a plate paints over it in LAY order
+// (igflsum/igscsum bo25 bars, typ3..typ5 headers; pass-43).
+int paintLeft(presentation::FeText* txt, render::SpriteBatch& ui, std::string_view s, float px, float py,
+              int fontId, std::uint32_t rgba) {
+    if (!txt || !txt->ready() || s.empty()) return 0;
+    const formats::FfnFont* f = txt->face(fontId);
+    render::TextureId ftex = txt->faceTexture(fontId);
+    if (!f || !ftex) { f = txt->font(); ftex = txt->texture(); }
+    if (!f || !ftex) return 0;
+    const float sizePx = f->lineHeight ? float(f->lineHeight) : 16.f;
+    int n = 0;
+    for (const auto& q : presentation::layoutText(*f, std::string(s), px, py, sizePx, rgba)) { ui.draw(ftex, q.dst, q.uv, q.rgba); ++n; }
+    return n;
+}
+// Palette ink for LAY label widgets: TEXTCOLOUR/NORMALCOLOUR index into the global palette
+// (drawLabel rule); index 1 is the board-caption ink on all summary layouts.
+std::uint32_t paletteInk(const formats::LayoutObject& o) {
+    const int cidx = o.intProp("TEXTCOLOUR", o.intProp("NORMALCOLOUR", -1));
+    const auto& pal = formats::globalPalette();
+    if (cidx >= 0 && std::size_t(cidx) < pal.size())
+        return render::packRgba(pal[std::size_t(cidx)][0], pal[std::size_t(cidx)][1], pal[std::size_t(cidx)][2], 0xFF);
+    return render::packRgba(0xFFu, 0xFFu, 0xFFu, 0xFFu);
+}
 } // namespace
 
 IgBoards::IgBoards(render::Renderer& r, const fs::path& tree) : tree_(tree), art_(r, tree_, tree / "FE/INGAME") {
@@ -359,7 +383,7 @@ presentation::FeDrawStats IgBoards::draw(render::SpriteBatch& ui, const IgMatchD
     // Scene-ownership whitelist: everything shown() except the static textid soup slots.
     std::vector<std::string> excl;
     if (kind_ == 1) excl = {"titl", "ty12", "ty13", "ty14", "ty15", "ty16", "typ8", "typ9"}; // ty12.. static engine captions
-    else if (kind_ >= 3) excl = {"titl", "typ3", "typ4", "typ5", "typ8", "typ9", "up", "down"}; // header soup + list arrows
+    else if (kind_ >= 3) excl = {"titl", "typ3", "typ4", "typ5", "typ6", "typ7", "typ8", "typ9"}; // header soup + bar captions (overlay paints them after the bo25 plates; arrows stay composite: btnup->ingame alias)
     std::vector<std::string> visible;
     for (const auto& o : sc_.objects) {
         if (!o.shown()) continue;
@@ -421,12 +445,11 @@ presentation::FeDrawStats IgBoards::draw(render::SpriteBatch& ui, const IgMatchD
                 st.texts += paintCentered(text_.get(), ui, val, t == 0 ? homeCx : awayCx, cy, 44.f);
             }
         }
-        // Page button captions + active-page chrome (btn1 = page 0 top-left, btn2 = page 1 below).
-        static constexpr std::size_t kPageCap[2] = {1771, 329}; // 'Statistics' / 'Booking Summary'
+        // Page state = pressed chip chrome only (pass-43): box6/box7 are the bottom-bar button
+        // plates under the typ6/typ7 captions ('Match Statistics' / 'Bookings Summary'), which
+        // the overlay paints after the plates — the earlier centered 'Statistics' / 'Booking
+        // Summary' kPageCap soup ids 1771/329 caption text is gone (duplicated over the bar).
         for (int p = 0; p < 2; ++p) {
-            const formats::LayoutObject* box = layObj(sc_, p == 0 ? "box6" : "box7");
-            if (box) st.texts += paintCentered(text_.get(), ui, cap(kPageCap[std::size_t(p)]), float(box->x) + 84.f, float(box->y) + 8.f, 170.f,
-                                               p == page_ ? render::packRgba(255u, 236u, 90u, 255u) : render::packRgba(255u, 236u, 190u, 255u));
             if (p == page_) { // pressed chrome on the active page button ('igbC' grammar: btnd over btnn)
                 if (const formats::LayoutObject* b = layObj(sc_, p == 0 ? "btn1" : "btn2")) {
                     const ScreenArt::Shape sh = art_.shape("..\\global\\", "INGAME.FSH", "btnd", -1); // button.fsh stem alias
@@ -434,21 +457,38 @@ presentation::FeDrawStats IgBoards::draw(render::SpriteBatch& ui, const IgMatchD
                 }
             }
         }
-    } else { // summary list: Time / Player / Score columns over lst1..lst3 (objecttype 9)
+    } else { // summary list: Time / Player / Team columns over lst1..lst3 (objecttype 9).
+        // Headers = typ3/typ4/typ5 widgets (composite-excluded): LAY alignment=1, textid remap
+        // (igscsum 347/348/349 -> bank 1862 'Time' / 1351 'Player' / 1828 'Team'). Painted
+        // left-aligned at widget x (pass-43: centered-on-column was the wrong grammar).
         static constexpr std::array<const char*, 3> kCols{"lst1", "lst2", "lst3"};
-        static constexpr std::size_t kHeadIds[3] = {1862, 1351, 1603}; // 'Time' / 'Player' / 'Score'
+        static constexpr std::array<const char*, 3> kHeads{"typ3", "typ4", "typ5"};
         for (int c = 0; c < 3; ++c) {
             const formats::LayoutObject* lst = layObj(sc_, kCols[std::size_t(c)]);
             if (!lst) continue;
-            st.texts += paintCentered(text_.get(), ui, cap(kHeadIds[std::size_t(c)]), float(lst->x) + float(std::max(45, lst->width)) * 0.5f, 143.f, 120.f);
+            if (const formats::LayoutObject* h = layObj(sc_, kHeads[std::size_t(c)]))
+                if (const int tid = h->intProp("TEXTID", -1); tid > 0 && text_ && text_->ready())
+                    st.texts += paintLeft(text_.get(), ui, text_->widgetStringAt(std::size_t(tid)),
+                                          float(h->x) + float(h->intProp("TEXTXOFFSET", 0)), float(h->y), 0, paletteInk(*h));
             std::vector<std::string> rows;
             for (const auto& g : d.goals) {
                 if (c == 0) rows.push_back(std::format("{}'", g.minute));
                 else if (c == 1) rows.push_back(std::format("#{}{}", g.shirtNo, g.penalty ? " pen" : g.ownGoal ? " og" : ""));
-                else rows.push_back(std::format("{}-{}", g.scoreAfter[0], g.scoreAfter[1]));
+                else rows.push_back(d.names[std::size_t(g.team)]); // 'Team' column (header remap 1828)
             }
             if (!rows.empty()) paintListRows(ui, *lst, rows, -1, *text_, 4, st);
         }
+    }
+    // Bottom bar (pass-43): the white bo25 RECT plates paint AFTER the typ6..typ9 caption
+    // widgets in LAY order, hiding their labels; overlay all four remap-resolved captions on
+    // top of the plates at their exact LAY positions (alignment=1 left at widget x:
+    // 'Match Statistics' / 'Bookings Summary' / 'Score Summary' / 'Back'). Applies to every
+    // kind of this family; widgets absent from a layout are skipped.
+    for (const char* nm : {"typ6", "typ7", "typ8", "typ9"}) {
+        if (const formats::LayoutObject* o = layObj(sc_, nm))
+            if (const int tid = o->intProp("TEXTID", -1); tid > 0 && text_ && text_->ready())
+                st.texts += paintLeft(text_.get(), ui, text_->widgetStringAt(std::size_t(tid)),
+                                      float(o->x) + float(o->intProp("TEXTXOFFSET", 0)), float(o->y), 0, paletteInk(*o));
     }
     return st;
 }

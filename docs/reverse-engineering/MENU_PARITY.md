@@ -850,3 +850,23 @@ light one in `FeFlow::paintCaption` **[H]**.
   `Name | ← Cre → | Status | Cards` (`/tmp/wc98port-out/lcfg79_fe00.png`, texts 85→83).
 - **Gates**: `fe_league_cfg*` family 9/9 green; new selftest step `fe-lg79-attr`
   (default 12, wrap up→0, wrap back→12, decrement→11). Dossier `analysis/pass42lg79/`.
+
+## 33. Round 2026-11-18 — pass-43igfix: IG bottom bar + summary headers + BOX-size fill [LANDED]
+- Sweep result (pass-43): the IG boards' bottom bar (Match Statistics / Bookings Summary /
+  Score Summary / Back) and the Time/Player/Team list headers painted nothing on igflsum/
+  igscsum/igstats/ighalf. Cause 1: LAY order paints `typ6..typ9` caption widgets before the
+  white `bo25`/`box6..9` RECT plates covering them; cause 2: composite filled `width=12`
+  anchors instead of `BOXWIDTH` panel sizes (audit: 80 mismatching fill widgets, 15 IGLAY.BIG
+  members, LAYOUTS.BIG clean).
+- Grammar [C]: engine fills BOXWIDTH/BOXHEIGHT when declared — `composite()` now prefers it;
+  bar captions re-painted by the overlay after the plates via `paintLeft` (alignment=1, widget
+  x + TEXTXOFFSET, palette ink from TEXTCOLOUR/NORMALCOLOUR); headers typ3/typ4/typ5 left at
+  widget x (remap 1862 'Time' / 1351 'Player' / 1828 'Team' — the old centred 'Score'/1603
+  header was wrong); third list column = team name.
+- igstats kPageCap centered 'Statistics'/'Booking Summary' (soup ids 1771/329) removed — the
+  real bar labels are typ6/typ7; page state = btn1/btn2 `btnd` chip chrome only.
+- up/down list arrows restored on summary boards: removed from the kind>=3 whitelist exclusion
+  (btnup->INGAME.FSH alias, pass-13 §D).
+- Gates: IGSTATS shapes=23 texts=180, IGSCSUM texts=91, IGFLSUM texts=87; captures
+  analysis/pass43igfix/captures/ig_{igstats,igscsum,igflsum}.png; suite green (sim lane
+  excluded, in-flight work).

@@ -53,10 +53,13 @@ int* audioSliderRow(config::Settings* s, int label) {
         default: return nullptr;
     }
 }
+// Language row (lst1 tuple 92) value order = FC bank set order [H]; the tree ships no JAP slot
+// in the row, so the eight shipped banks map dut..swe (exe DAT_0060cbcb id lane, pass-22fe15d).
+constexpr std::array<std::string_view, 8> kLangCodes = {"dut", "eng", "fre", "ger", "ita", "dan", "spa", "swe"};
 } // namespace
 
 
-FeFlow::FeFlow(render::Renderer& r, fs::path tree, std::string lang) : tree_(std::move(tree)), art_(r, tree_, tree_ / "FE/PACK/LAYOUTS") {
+FeFlow::FeFlow(render::Renderer& r, fs::path tree, std::string lang) : r_(r), tree_(std::move(tree)), art_(r, tree_, tree_ / "FE/PACK/LAYOUTS") {
     // Main menu screen (LAY_COMPOSITOR_NOTES.md measured table: FEFLOW05 -> 26 objects -> 11 shapes).
     std::string text;
     try {
@@ -510,11 +513,10 @@ FeFlow::FeFlow(render::Renderer& r, fs::path tree, std::string lang) : tree_(std
     if (haveOpts_ && text_)
         for (std::size_t i = 0; i < optRows_[0].size(); ++i) {
             if (optRows_[0][i].label != 92) continue;
-            static constexpr std::array<std::string_view, 8> kCodes = {"dut", "eng", "fre", "ger", "ita", "dan", "spa", "swe"};
             const std::string_view code = text_->language();
             int idx = 1; // bank set has no JAP slot in the row; game default = English
             for (int c = 0; c < 8; ++c)
-                if (code == kCodes[std::size_t(c)]) idx = c;
+                if (code == kLangCodes[std::size_t(c)]) idx = c;
             optVals_[0][i] = idx;
             break;
         }
@@ -524,7 +526,8 @@ FeFlow::FeFlow(render::Renderer& r, fs::path tree, std::string lang) : tree_(std
     loadTeams();
 }
 
-// Team-select list data: ZWCUP.RES pool ids (40) + FCDB/FCDB_ENG.DBI STR0 fullName names.
+// Team-select list data: ZWCUP.RES pool ids (40) + FCDB/FCDB<LANG>.DBI STR0 fullName names
+// (localized name tables: exe language reload FUN_0047ac14 re-reads the FCDB_<lang>.DBI pair).
 // Non-throwing: a tree without these assets leaves the pool empty and Enter keeps launching
 // the tournament driver directly (pre-team-select behaviour).
 void FeFlow::loadTeams() {
@@ -534,7 +537,10 @@ void FeFlow::loadTeams() {
         if (!tournament::parseZwcupRes(std::as_bytes(std::span(res)), z)) return;
         poolIds_ = z.ids;
         const auto dbPath = wc98::findCaseInsensitive(tree_, "COMMON/FCDB.DBI");
-        const auto nmPath = wc98::findCaseInsensitive(tree_, "COMMON/FCDB_ENG.DBI");
+        std::string nmUp = cfgLang_;
+        for (char& c : nmUp) c = char(std::toupper(static_cast<unsigned char>(c)));
+        auto nmPath = wc98::findCaseInsensitive(tree_, "COMMON/FCDB_" + nmUp + ".DBI");
+        if (nmPath.empty()) nmPath = wc98::findCaseInsensitive(tree_, "COMMON/FCDB_ENG.DBI");
         if (!dbPath.empty() && !nmPath.empty()) {
             const auto db = formats::FcdbDatabase::parse(wc98::readFile(dbPath));
             const auto names = formats::FcdbNames::parse(wc98::readFile(nmPath));
@@ -570,6 +576,30 @@ void FeFlow::loadTeams() {
         poolFlagFile_.clear();
     }
     teams_.setCount(int(poolIds_.size()));
+}
+
+// Language-row arrow (event 1017, FE15 dispatch `0x3f9` branch [C] analysis/pass22fe15d dec2.txt):
+// writer FUN_0046b074 writes the lang byte (record dword 0x60cbc8 top byte = 0x60cbcb), then on
+// `ram0x0060cbc8>>0x18 != _DAT_00608cf4` the exe hides the window object (slot 0x24), CONCATs the
+// new bank id, FUN_0047ab1c reloads "common\%s" (FC<lang>.BIN + FEMSG), FUN_0047ac14 refreshes the
+// name tables, slot 0x20 redraws, and DAT_0057cd75=0xff invalidates the cached header id. Port:
+// rebuild the FeText bank layer + localized FCDB tables; every caption repaints through the
+// per-draw text_ reference.
+void FeFlow::setLanguage(std::string code) {
+    for (char& c : code) c = char(std::tolower(static_cast<unsigned char>(c)));
+    if (code == cfgLang_) return;
+    cfgLang_ = std::move(code);
+    text_ = std::make_unique<presentation::FeText>(r_, tree_, std::string(cfgLang_));
+    loadTeams();
+    // Re-arm every Language row's value index to the reloaded bank id (writer value == new byte),
+    // so the row caption resolves through the new bank's value list (FC<lang> ids 93..100).
+    const int found = static_cast<int>(std::ranges::find(kLangCodes, cfgLang_) - kLangCodes.begin());
+    const int v = found >= 0 && found < 8 ? found : 1;
+    for (int t = 0; t < 4; ++t)
+        for (std::size_t i = 0; i < optRows_[std::size_t(t)].size() && i < optVals_[std::size_t(t)].size(); ++i)
+            if (optRows_[std::size_t(t)][i].label == 92) optVals_[std::size_t(t)][i] = v;
+    for (std::size_t i = 0; i < igRows_.size() && i < igVals_.size(); ++i)
+        if (igRows_[i].label == 92) igVals_[i] = v;
 }
 
 // Pool ids are FCDB team ids; the art file name carries the record INDEX (F030 = Argentina, id 86).
@@ -918,6 +948,7 @@ void FeFlow::adjustValue(int dir) {
             if (!r.values.empty()) {
                 int& v = igVals_[std::size_t(igRow_)];
                 v = (v + dir + int(r.values.size())) % int(r.values.size());
+                if (r.label == 92) setLanguage(std::string(kLangCodes[std::size_t(v)])); // lang row [C] 1017
             }
         }
         return;
@@ -936,6 +967,7 @@ void FeFlow::adjustValue(int dir) {
     if (!r.values.empty() && !vals.empty()) { // FC-caption value cycle (mode 2 list row)
         int& v = vals[std::size_t(optRow_)];
         v = (v + dir + int(r.values.size())) % int(r.values.size());
+        if (r.label == 92) setLanguage(std::string(kLangCodes[std::size_t(v)])); // lang row [C] 1017
     } else if (int* vol = audioSliderRow(settings_, r.label)) { // mode-1 volume slider row (160/162/1186/1187)
         *vol = std::clamp(*vol + dir * 5, 0, 100);
         audioDirty_ = true;

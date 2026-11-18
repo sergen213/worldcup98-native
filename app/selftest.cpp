@@ -1584,6 +1584,17 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                 const bool row1 = fe.optionRow() == 1;
                 fe.defOptions();
                 const bool deft0 = fe.optionRow() == 0;
+                // Language-row arrow (pass-22fe15d): event 1017 `0x3f9` branch = writer FUN_0046b074
+                // writes lang byte, mismatch -> FUN_0047ab1c reload "common\%s". Port: adjustValue on
+                // label 92 rebuilds the FeText bank (FCFRE/FCENG captions) + localized FCDB tables.
+                const bool capEng0 = fe.optionCaption(0, 0) == "Half Length";
+                fe.move(1);                        // lst1 row 1 = Language tuple (label 92)
+                fe.adjustValue(1);                 // idx 1 -> 2 = "fre"
+                const bool langFre = fe.language() == "fre";
+                const bool capFr = !fe.optionCaption(0, 0).empty() && fe.optionCaption(0, 0) != "Half Length";
+                const bool valFr = !fe.optionValueCaption(0, 1, 2).empty();
+                fe.adjustValue(-1);                // cycle back -> eng bank restored
+                const bool langEng = fe.language() == "eng" && fe.optionCaption(0, 0) == "Half Length";
                 const bool dirty = (fe.commitOptions(), fe.audioDirty()); // 'save' writers
                 const bool stay = fe.onOptions();                         // 'save' stays on screen
                 fe.forwardOptions();                                      // 'fwrd' commit + pop
@@ -1592,13 +1603,17 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                 fe.back(); // Esc = 'back' tag pop
                 const bool popEsc = !fe.onOptions();
                 st.passed = nm15 && tabCap && hdr0 && cap0 && val0 && langIdx && tab1 && hdr1 && tabCap3 && hdr3
-                            && musCap && row5 && musGain && row1 && deft0 && dirty && stay && pop && re && popEsc;
+                            && musCap && row5 && musGain && row1 && deft0 && capEng0 && langFre && capFr && valFr
+                            && langEng && dirty && stay && pop && re && popEsc;
                 st.detail = fmt("fe-options: nm15={} tabCap={} hdr0={} cap0={} val0={} lang={} tab1={} hdr1={} "
                                 "tabCap3={} hdr3={} musCap={} row5={} musGain={}({}->{}) row1={} deft0={} "
+                                "langSwitch={}({}/{}) langBack={} "
                                 "dirty={} stay={} pop={} re={} popEsc={}",
                                 int(nm15), int(tabCap), int(hdr0), int(cap0), int(val0), int(langIdx), int(tab1), int(hdr1),
                                 int(tabCap3), int(hdr3), int(musCap), int(row5), int(musGain), musicBefore,
-                                cfg.audio.music, int(row1), int(deft0), int(dirty), int(stay), int(pop),
+                                cfg.audio.music, int(row1), int(deft0),
+                                int(langFre && capFr && valFr), std::string(fe.language()), int(capEng0), int(langEng),
+                                int(dirty), int(stay), int(pop),
                                 int(re), int(popEsc));
             }
         } catch (const std::exception& e) {

@@ -118,6 +118,11 @@ public:
     [[nodiscard]] bool onSetup() const { return setupScreen_; } // friendly/practise config screen shown
     [[nodiscard]] bool onLeague() const { return leagueView_; } // FEFLOW73 league-select list shown
     void adjustValue(int dir);         // left/right on the setup screen: cycle one option per row
+    // Language-row arrow = event 1017 [C] FE15 dispatch branch `0x3f9` (analysis/pass22fe15d):
+    // writer FUN_0046b074 writes the lang byte; on mismatch the exe reloads "common\%s" via
+    // FUN_0047ab1c + FUN_0047ac14 and repaints. Port: rebuild the FC-bank text layer and the
+    // localized FCDB name tables so every caption repaints in the new language.
+    void setLanguage(std::string code);
     // Launch entry for the shell (FeEntry index): the fallback menu cursor, or the hub button
     // mapping (fe07->Exhibition, fe11->Tournament, fe32->Practise; -1 = no-launch action).
     [[nodiscard]] int selected() const { return onHub() ? hubButtonEntry(hubButtonName(hubSel_)) : sel_; }
@@ -390,6 +395,7 @@ public:
     [[nodiscard]] bool audioDirty() const { return audioDirty_; }
     std::string poolName(std::uint32_t id) const; // FCDB fullName for a pool id (""-name fallback)
     presentation::FeDrawStats drawTeams(render::SpriteBatch& ui) const; // team-select frame (flat panel + FFN rows)
+    render::Renderer& r_;            // keeps FeText rebuildable at runtime (setLanguage)
     std::filesystem::path tree_;
     presentation::ScreenArt art_; // texture handles cached per FSH member
     std::string lastError_; // set when LAYOUTS.BIG@FEFLOW05.LAY cannot be loaded

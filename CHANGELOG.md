@@ -8,6 +8,16 @@ project goals.
 ## [Unreleased]
 ### Added
 
+- **IGMENU pause-menu row table re-armed to the friendly 1p table (pass-27c)**: the port's live
+  fixture is the single-player exhibition bootstrap, i.e. retail mode class {0,9} — init 0x43f2a2
+  installs the byte-exact friendly 1p table 0x57c7d8 (10 `{textid,code}` rows, raw 0x17add8;
+  codes {0,1,2,3,4,5,6,9,10,12}), not the cup-qualifier 0x57c832 11-row table armed by
+  pass-26c. The cup-only 267 "Quit World Cup" row does not exist in exhibition mode; geometry
+  follows the count (winY 156.5, 18-px lanes) and the mouse lane coordinates retargeted to
+  row-6 centre 273.5. Gate `fe_igmenu` PASS "IGMENU: shapes=29 texts=169", mouse lane
+  `row=6 code=6`, `_igmenu_mouse.png` verified (pane on Match Statistics, no cup row).
+  Evidence: `analysis/pass26igmenu/NOTES.md` table dumps + §19 pass-27c correction.
+
 - **In-match scoreboard strip byte-exact layout (pass-26b HUD)**: the strip draw routine
   (`FUN_00438670`, raw 0x37a74, disassembly `analysis/pass26igmenu/hud_disasm.txt`) is a single
   semi-transparent black fill rect (`$0x88000000`) at `(10,10)` height 24 with runtime-measured

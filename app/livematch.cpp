@@ -869,21 +869,23 @@ presentation::FeDrawStats IgBoards::draw(render::SpriteBatch& ui, const IgMgmtDa
 // classes (cup qualifiers, range check [2,8] at the Team-Management dispatch 0x43f669) -> 1p
 // 0x57c832 11-row / 2p 0x57c860 9-row; mode 0xa PK phases -> 0x57c886 (4-row codes 16..19),
 // 0x57c898 (9-row), 0x57c8be (8-row); mode 0xc -> 0x57c8e0 (8-row), 0x57c902 (6-row).
-// The port match is a single-player cup-bracket fixture -> armed below is the 11-row 0x57c832
-// dump (raw 0x17ae32: count 0x0b):
+// The port's live fixture is the single-player EXHIBITION bootstrap (MatchBoot), i.e. retail
+// mode class 0/9 -> armed below is the friendly 1p table 0x57c7d8 dump (raw 0x17add8, count
+// 0x0a, byte-exact): rows 0-8 as the cup table, then 264/10 + 4337/12 WITHOUT the cup-only
+// 267 "Quit World Cup":
 //   {5083 Resume Match, 249 Instant Replay, 4423 Camera Select, 1407 Team Management,
 //    258 Controller Select, 5 Options, 261 Match Statistics, 268 Restart Match, 264 Quit Match,
-//    267 Quit World Cup, 4337 Quit to Windows}, codes {0,1,2,3,4,5,6,9,10,11,12}; captions
-//   verified through the FC remap DAT_005774a4 against FCENG.BIN. Codes match the 0x43f548
-//   dispatch targets. The friendly 1p table 0x57c7d8 (raw 0x17add8, count 0x0a) is the same
-//   rows 0-8, ending ...264/10, 4337/12 without 267; the 2p friendly table
-//   0x57c802 = {277 Continue, 249/1, 261/6, 262 Score Summary/7, 281/8, 4344 Restart/9, 264/10,
-//   4337/12}; the 2p cup table 0x57c860 = that set + 267/11 (9 rows). Tied draw table 0x57c824 =
-//   {3975 Extra-Time/22, 1536 Penalty Shootout/21, 3974 End Match/20} (port: full-time whistle
-//   opens the IGSCSUM/IGFLSUM chain instead).
+//    4337 Quit to Windows}, codes {0,1,2,3,4,5,6,9,10,12}; captions verified through the FC
+//   remap DAT_005774a4 against FCENG.BIN. Codes match the 0x43f548 dispatch targets. The cup
+//   tables (mode class [2,8]) are 0x57c832 11-row (adds 267/11 between 264/10 and 4337/12) /
+//   2p 0x57c860 9-row; the friendly 2p table 0x57c802 (raw 0x17ae02, count 0x08) =
+//   {277 Continue, 249/1, 261/6, 262 Score Summary/7, 281/8, 4344 Restart/9, 264/10, 4337/12}
+//   (port is always 1p: keyboard controller, DAT_00641274 bit 0x10 never set). Tied draw table
+//   0x57c824 = {3975 Extra-Time/22, 1536 Penalty Shootout/21, 3974 End Match/20} (port: the
+//   full-time whistle opens the IGSCSUM/IGFLSUM chain instead of pausing on that table).
 struct IgMenuRow { std::uint16_t tid; std::uint16_t code; };
-static constexpr std::array<IgMenuRow, 11> kIgMenuRows{
-    {{5083, 0}, {249, 1}, {4423, 2}, {1407, 3}, {258, 4}, {5, 5}, {261, 6}, {268, 9}, {264, 10}, {267, 11}, {4337, 12}}};
+static constexpr std::array<IgMenuRow, 10> kIgMenuRows{
+    {{5083, 0}, {249, 1}, {4423, 2}, {1407, 3}, {258, 4}, {5, 5}, {261, 6}, {268, 9}, {264, 10}, {4337, 12}}};
 
 int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames,
                 platform::Window& window, render::Renderer& renderer, bool recordReplay, bool igPauseSmoke, int boardScript,
@@ -1259,10 +1261,10 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
         if (smokeFrames && !igPauseSmoke && presented > 2)
             motion(600.f, 50.f); // keyboard-only smoke lanes: the retail hover rule pins the cursor to the hovered row, so re-park every frame (pass-32: OS motion events land inside row 0)
         if (igPauseSmoke && presented == 100) key(SDL_SCANCODE_ESCAPE, true); // gate script: Esc opens IGMENU (after the forced kickoff kick ~frame 90)
-        if (igPauseSmoke && presented == 105) motion(250.f, 264.5f); // pass-27: hover the Match Statistics row (row 6 of the armed 11-row cup 1p table 0x57c832; winY = 131+(231-198)/2 = 147.5, centre 147.5+18*6+9 = 264.5) -> cursor pane follows
+        if (igPauseSmoke && presented == 105) motion(250.f, 273.5f); // pass-27: hover the Match Statistics row (row 6 of the armed 10-row friendly 1p table 0x57c7d8; winY = 131+(231-180)/2 = 156.5, centre 156.5+18*6+9 = 273.5) -> cursor pane follows
         if (igPauseSmoke && presented == 113) igMouseShot = true;    // _igmenu_mouse.png: cursor sprite + pane on row 6
-        if (igPauseSmoke && presented == 114) click(250.f, 264.5f, true);  // press activates row 6 -> IGSTATS board (code lane shared with Enter)
-        if (igPauseSmoke && presented == 116) click(250.f, 264.5f, false);
+        if (igPauseSmoke && presented == 114) click(250.f, 273.5f, true);  // press activates row 6 -> IGSTATS board (code lane shared with Enter)
+        if (igPauseSmoke && presented == 116) click(250.f, 273.5f, false);
         if (igPauseSmoke && presented == 117) motion(600.f, 50.f);  // park pointer above the menu band (hover-safe)
         if (igPauseSmoke && presented == 118) key(SDL_SCANCODE_ESCAPE, true); // IGSTATS dismiss -> IGMENU (src 1 returns to the menu [C])
         if (igPauseSmoke && presented == 120) { key(SDL_SCANCODE_L, true); key(SDL_SCANCODE_L, false); } // Controller Select board: CONTROL1 evidence line + _control1.png (pass-26)

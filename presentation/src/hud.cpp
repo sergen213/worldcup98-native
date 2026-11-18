@@ -102,6 +102,20 @@ std::vector<HudQuad> layoutScoreboard(const HudView& hud, const formats::FfnFont
     pen = g.sbX + g.gap + g.clockAdvance;
     if (hud.names)
         for (const auto& s : fields) emitAt(s);
+    // Minute countdown chip (pass-39): exe draws it after the name strip, at absolute x =
+    // accumulated-width + 20 (0x438958 LEA ESI,[EBP+0x14]), a 30x24 strip fill $0x88000000
+    // (rect args ESP+0x40..0x5c) + centred sprintf("%02d", DAT_00641260) (0x4389e9..0x4389fe,
+    // field width 0x1e). EBP counts the 1 px glyph-gap the port's measured widths exclude, so
+    // the +4 over sbX+w+gap compensates the four name/score fields.
+    if (g.minChipMinutes >= 0.f) {
+        const int m = std::max(0, static_cast<int>(std::floor(g.minChipMinutes))); // sentinel 9999 -> hidden
+        const std::string chip = std::format("{:02d}", m);
+        const float chipX = g.sbX + w + g.gap + 4.f;
+        q.push_back({"", {chipX, g.sbY, 30.f, g.sbH}, {0, 0, 1, 1}, g.panelFill});
+        const float meas = textWidthPx(font, chip, size);
+        auto v = layoutText(font, chip, chipX + (30.f - meas) * 0.5f, y, size, g.textColor);
+        q.insert(q.end(), v.begin(), v.end());
+    }
     return q;
 }
 

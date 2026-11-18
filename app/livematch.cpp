@@ -913,6 +913,7 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
     };
     knob("hud_sb_x", geo.sbX); knob("hud_sb_y", geo.sbY); knob("hud_sb_h", geo.sbH);
     knob("hud_gap", geo.gap); knob("hud_clock_adv", geo.clockAdvance); knob("hud_base_w", geo.baseWidth);
+    knob("hud_min_chip", geo.minChipMinutes); // minute countdown chip value (HUD_WC98.md pass-39)
     knob("hud_radar_x", geo.radarX); knob("hud_radar_y", geo.radarY); knob("hud_radar_w", geo.radarW); knob("hud_radar_h", geo.radarH);
     knob("hud_dot_half", geo.dotHalf); knob("hud_shirt_head_px", geo.shirtHeadPx); knob("hud_shirt_size", geo.shirtSize);
     scene.setHudGeometry(geo);
@@ -1694,7 +1695,15 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
                     if (o && presentation::widgetHit(*o, ptrX, ptrY)) { uiSt.pressed = nm; break; }
                 }
             }
-            FeDrawStats ig = pause == IgPause::Menu ? composite(*igMenu, ov, igArt, igText.get(), nullptr, &uiSt)
+            // Retail `name` byte-lane override [C] (pass-39): IGMENU init tail 0x43f1c0/0x43ffca —
+            // the controller byte DAT_0057c920 is zero for the live-pause boards, so the engine
+            // installs exe string VA 0x562144 (" ", blank) on widget `name` through FUN_004788b4,
+            // covering the static textid-231 caption ("Are you sure you wish to exit with points
+            // remaining?", tournament context) that the composite would otherwise paint at
+            // (319,390). Port = composite whitelist without `name` -> blank name caption [C].
+            static const std::vector<std::string> kIgMenuVisible{"box1", "box2", "box3", "typ1", "flg1", "box4", "nmb1",
+                                                                 "titl", "box5", "nmb2", "typ2", "flg2", "menu"};
+            FeDrawStats ig = pause == IgPause::Menu ? composite(*igMenu, ov, igArt, igText.get(), &kIgMenuVisible, &uiSt)
                                                      : composite(*igQues, ov, igArt, igText.get(), nullptr, &uiSt);
             strokeBoxes(ov, pause == IgPause::Menu ? *igMenu : *igQues, ig); // frame-only box outlines [H]
             // Shared header overlay [C] FUN_0043f3e8: IGMENU init and the confirm-box painter

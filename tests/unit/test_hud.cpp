@@ -124,6 +124,25 @@ void scoreboardLayout() {
     noNames.names = false;
     auto n = layoutScoreboard(noNames, f, g);
     CHECK(textQuads(n).size() == 5);
+
+    // Minute countdown chip (pass-39, FUN_00438670@0x438923): default knob (-1, retail 9999
+    // sentinel / option-byte gate) draws nothing; enabled value adds the 30x24 strip fill
+    // $0x88000000 at absolute width+20 plus two centred "%02d" digit glyphs.
+    const auto solidsOf = [](const std::vector<HudQuad>& v) {
+        std::vector<HudQuad> s;
+        for (const auto& x : v)
+            if (x.texture.empty()) s.push_back(x);
+        return s;
+    };
+    CHECK(solidsOf(n).size() == 1); // no chip quad with the knob off
+    HudGeometry cg = g;
+    cg.minChipMinutes = 5.f;
+    auto c = layoutScoreboard(hud, f, cg);
+    CHECK(solidsOf(c).size() == solidsOf(q).size() + 1);
+    CHECK(solidsOf(c).back().dst.x == 181.f);                    // exe EBP+0x14 = 161+20
+    CHECK(solidsOf(c).back().dst.z == 30.f && solidsOf(c).back().dst.w == 24.f); // 30 px field, panel height
+    CHECK((solidsOf(c).back().rgba >> 24) == 0x88u);
+    CHECK(textQuads(c).size() == textQuads(q).size() + 2);       // "%02d"
     CHECK(n[0].dst.z == g.baseWidth);
 
     // Knob check: moving sbX moves every quad (panel and pen fields) with it.

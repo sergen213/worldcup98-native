@@ -55,7 +55,8 @@ Extract build) confirmed the exact layout model:
   scaling) → port draws at native `lineHeight`.
 - Minute chip: `%02d` of `DAT_00641260` at `(ebp+20, 10)` in a 30 px centred field, gated on
   mode ∉ {0xa,0xc}, controller option bytes `0x60cc05/0x60cc06` bit 2, and `DAT_00641260 != 9999`.
-  Not modelled by the port (single-controller exhibition: gate off) — documented unported.
+  Ported (pass-39): `HudGeometry::minChipMinutes` + `layoutScoreboard` chip block, knob
+  `hud_min_chip`; default −1 = hidden (single-controller exhibition never arms the countdown).
 
 ## Hypotheses + calibration knobs (all `[gameplay] hud_*` passthrough keys)
 
@@ -64,7 +65,8 @@ Remaining Hypothesis: shirt-label placement only. Defaults in `HudGeometry`
 (`hud_sb_x hud_sb_y hud_sb_h hud_gap hud_clock_adv hud_base_w`) plus radar:
 
 `hud_sb_x hud_sb_y hud_sb_h hud_gap hud_clock_adv hud_base_w
-hud_radar_x hud_radar_y hud_radar_w hud_radar_h hud_dot_half hud_shirt_head_px hud_shirt_size`
+hud_radar_x hud_radar_y hud_radar_w hud_radar_h hud_dot_half hud_shirt_head_px hud_shirt_size
+hud_min_chip`
 
 wired in `app/match_demo.cpp` → `MatchScene::setHudGeometry`. Shirt-label head anchor is the
 constant 70 game units above the feet (`kShirtHeadUnits`, f99 sibling value; Hypothesis).

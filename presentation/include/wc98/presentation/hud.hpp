@@ -36,6 +36,13 @@ struct HudGeometry {
     float clockAdvance = 45.f; // clock field advance (exe `add $0x2d` after the clock draw)
     float baseWidth = 65.f;    // panel base: clock field (20 + 45) baked in; names add per-field widths
     std::uint32_t panelFill = 0x88000000u, textColor = 0xFFFFFFFFu; // exe fill colour $0x88000000
+    // Minute countdown chip right of the panel (FUN_00438670@0x438923, pass-39): strip
+    // (panelWidth+20, 10) 30x24 fill $0x88000000 + centred sprintf("%02d", DAT_00641260).
+    // Retail gate: controller option bytes 0x60cc05/0x60cc06 bit 2 set AND slot != 9999
+    // (sentinel installed at 0x49d66c; countdown only armed for match type 9 sessions,
+    // 0x4b4ca7/0x4b530f DEC loop). The port's 1p exhibition never arms it -> disabled.
+    // Knob hud_min_chip: minutes value (>= 0 enables the field, -1 = hidden default).
+    float minChipMinutes = -1.f;
     // Radar (exe-confirmed): x0 533, y0 67 from the float block at VA 0x55a9a8; panel w/h scale
     // with pitch size (sx = 180/length, sy = 120/width, init code storing 0x5c619c/0x5c61a0).
     float radarX = 533.f, radarY = 67.f;

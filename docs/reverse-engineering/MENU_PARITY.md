@@ -716,7 +716,7 @@ light one in `FeFlow::paintCaption` **[H]**.
   `DAT_005774a4`), then `FUN_00477cb4(win, EDX='titl', EBX=str)` installs the caption on
   widget `titl` (LAY fontid 1, alignment 3, pixelwidth 350). Gate `DAT_00601930 != 0`
   skips the install; byte-lane tail (`DAT_0057c920/921`, exe string `0x562144`) overrides
-  widget `name` dynamically — stays [Open].
+  widget `name` dynamically — resolved pass-39, see §29.
 - **Bank ids [C]** verified against FCENG.BIN: 868 `Half-Time`, 776 `Full-Time`, 669
   `Extra-Time`, 632 `End Match`, 1601 `Scenario Select`, 1384 `Post Game Menu`, 1333
   `Pause Menu` (FC index == DAT_00585cb0 entry index).
@@ -755,3 +755,22 @@ light one in `FeFlow::paintCaption` **[H]**.
   `ctest -R "fe_igmenu|fe_igoptn2|fe_igstats|fe_mgmt_pages"` 4/4 PASS.
 - **Suite**: 146/148 (`test_sim_scenarios`, `self_test_gameplay` = in-flight simulation kick-seam
   lane, untouched). Dossier `analysis/pass36igquesn/NOTES.md`.
+
+## 29. Round 2026-11-18 — pass-39igname: IGMENU `name` byte-lane blank + HUD minute chip [LANDED]
+- **`name` override [C]**: init tail `0x43f1c0` / installer `0x43ffca` branch on controller byte
+  `DAT_0057c920` — zero for live-pause boards → `FUN_004788b4(win, 'name', str VA 0x562144)`
+  installs a blank `" "`, covering the static textid-231 caption ("Are you sure you wish to
+  exit with points remaining?") that the composite painted at (319,390) in port captures.
+  Retail live-pause `name` slot = blank. Port = composite whitelist `kIgMenuVisible`
+  (IGMENU objects minus `name`) in `app/livematch.cpp`; IGQUESHN has no `name` object.
+- **Minute chip [C]**: `FUN_00438670@0x438923` — 30×24 strip fill `$0x88000000` at
+  absolute width+20 (`0x438958 LEA ESI,[EBP+0x14]`, y=10) + centred `sprintf("%02d",
+  DAT_00641260)` (format verified at 0x55b54c). Gate: option bytes `0x60cc05/0x60cc06`
+  bit 2, mode ∉ {0xa,0xc}, slot ≠ 9999 (sentinel 0x49d66c; countdown only armed for
+  match-type-9 sessions, DEC loops 0x4b4ca7/0x4b530f). Port: `HudGeometry::minChipMinutes`
+  + `layoutScoreboard` chip block + knob `hud_min_chip`; default −1 hidden (exhibition never
+  arms it), chip x `sbX+w+gap+4` = exe absolute 181 (the +4 = four 1 px glyph gaps the port's
+  measured widths exclude). HUD_WC98.md §"Minute chip" updated ported.
+- **Gates**: `test_hud` chip assertions (off → no quad; 5 → strip 30×24 @x=181 alpha 0x88 +
+  2 centred digits); `fe_igmenu` PASS. Capture `_igmenu.png` crop (300,385)-(480,412) = 0
+  bright pixels: junk caption erased, header/rows intact. Dossier `analysis/pass39igname/NOTES.md`.

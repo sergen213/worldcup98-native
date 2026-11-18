@@ -705,7 +705,7 @@ presentation::FeDrawStats IgBoards::drawIgOptns(render::SpriteBatch& ui) {
     strokeBoxes(ui, sc_, st); // frame-only outlines for null-art box widgets [H] IGMENU idiom
     paintIgOptns(ui, sc_, art_, text_.get(), igRows_, igVals_, igRow_, kind_ == 22, st);
     if (const formats::LayoutObject* trk = sc_.object("scrl"))
-        paintSliderThumb(ui, *trk, igRow_, 0, std::max(1, int(igRows_.size()) - 1));
+        paintScrollSlot(ui, art_, *trk, igRow_, 0, std::max(1, int(igRows_.size()) - 1), st); // IGSROLBR groove/caps/thumb (pass-28scrl)
     return st;
 }
 // ---- IGTEAM management mirror pages (IG_FAMILIES_SPEC.md §E) ----------------------------------

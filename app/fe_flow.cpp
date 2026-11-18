@@ -4374,6 +4374,9 @@ FeDrawStats FeFlow::drawIgOptns(render::SpriteBatch& ui) const {
     // Shared caption lane (pass-21): tab caption + ROWS row/value captions + scrl thumb.
     paintIgOptns(ui, sc, const_cast<ScreenArt&>(art_), text_.get(), igRows_, igVals_, igRow_,
                  igMode_ == 1, st);
+    if (const formats::LayoutObject* trk = sc.object("scrl"))
+        presentation::paintScrollSlot(ui, const_cast<ScreenArt&>(art_), *trk, igRow_,
+                                      0, std::max(1, int(igRows_.size()) - 1), st); // IGSROLBR groove/caps/thumb (pass-28scrl)
     st.missing += 3; // the chck shape is a documented legit-missing art slot (3 popups)
     drawHelpPane(sc, ui, st, "ok"); // help=60 control caption via the ok widget (pass-21)
     drawCursor(ui, st);

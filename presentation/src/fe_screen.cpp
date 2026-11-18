@@ -656,6 +656,36 @@ void paintSliderThumb(render::SpriteBatch& ui, const formats::LayoutObject& trac
     }
 }
 
+void paintScrollSlot(render::SpriteBatch& ui, ScreenArt& art, const formats::LayoutObject& track,
+                     int value, int lo, int hi, FeDrawStats& st) {
+    const std::string vpath = track.prop("VPATH") ? *track.prop("VPATH") : std::string();
+    const float x = float(track.x), y = float(track.y);
+    const float w = float(track.width > 0 ? track.width : 11), h = float(track.height > 0 ? track.height : 216);
+    // Groove: the family's full-height track art, stretched to the widget rect (SCLBAR `sldm` is
+    // authored at the track size; IGSROLBR ships a short tile that scales).
+    if (const ScreenArt::Shape g = art.shape(vpath, track.fname, "sldm", -1); g.tex) {
+        ui.draw(g.tex, {x, y, w, h}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu);
+        ++st.shapes;
+    }
+    if (const ScreenArt::Shape c = art.shape(vpath, track.fname, "sldt", -1); c.tex) { // top cap
+        ui.draw(c.tex, {x + (w - float(c.w)) * 0.5f, y, float(c.w), float(c.h)}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu);
+        ++st.shapes;
+    }
+    if (const ScreenArt::Shape c = art.shape(vpath, track.fname, "sldb", -1); c.tex) { // bottom cap
+        ui.draw(c.tex, {x + (w - float(c.w)) * 0.5f, y + h - float(c.h), float(c.w), float(c.h)}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu);
+        ++st.shapes;
+    }
+    const float t = hi > lo ? std::clamp(float(value - lo) / float(hi - lo), 0.f, 1.f) : 0.f;
+    if (const ScreenArt::Shape k = art.shape(vpath, track.fname, "thmb", -1); k.tex) {
+        ui.draw(k.tex, {x + (w - float(k.w)) * 0.5f, y + (h - float(k.h)) * t, float(k.w), float(k.h)}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu);
+        ++st.shapes;
+    } else { // IG family ships no thumb art: flat page quad in the groove (paintSliderThumb convention)
+        const float th = std::max(6.f, h / 8.f);
+        ui.draw(0, {x, y + (h - th) * t, w, th}, {}, render::packRgba(210, 230, 255, 220));
+        ++st.rects;
+    }
+}
+
 int sliderValueAt(const formats::LayoutObject& track, float x, float y, int lo, int hi) {
     const int span = hi > lo ? hi - lo : 0;
     if (!span) return lo;

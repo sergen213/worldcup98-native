@@ -168,6 +168,13 @@ void paintRowLabel(render::SpriteBatch& ui, const formats::LayoutObject& row, st
 // proportional to the track (vertical for Sbar, horizontal for KnobBar). The engine paints the
 // thumb shape over BARSHAPEID art; the port draws the quad at the same ratio.
 void paintSliderThumb(render::SpriteBatch& ui, const formats::LayoutObject& track, int value, int lo, int hi);
+// Slider-bar widget class (objecttype 11, `scrl` on the ig*optns popups): composite cannot draw
+// the widget because its LAY keys carry only `sname=sldr` (a shared-cache family id, not a bitmap
+// tag), and the family archives ship the real scrollbar parts as tags: sldm = full-height groove,
+// sldt/sldb = end caps, thmb = thumb (FE/PACK/FEFLOW11/SCLBAR.PAK; FE/IGOPTION/IGSROLBR.FSH).
+// Paints groove + caps + thumb at the widget rect; thumb art absent -> flat page quad (pass-28scrl).
+void paintScrollSlot(render::SpriteBatch& ui, ScreenArt& art, const formats::LayoutObject& track,
+                     int value, int lo, int hi, FeDrawStats& st);
 // Click/drag on a slider track: value from pointer position (analysis/pass12/widget_slice_spec.md §4).
 [[nodiscard]] int sliderValueAt(const formats::LayoutObject& track, float x, float y, int lo, int hi);
 

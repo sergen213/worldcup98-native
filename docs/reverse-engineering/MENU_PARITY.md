@@ -803,3 +803,30 @@ light one in `FeFlow::paintCaption` **[H]**.
   Enter popup again → Esc back, cursor kept → Esc grid → FEFLOW73 list) PASS;
   `fe_league_cfg*`/`fe_league_popup76` green. selftest `passing`/`animation` FAILs remain the
   in-flight `simulation/` kick-seam lane, untouched.
+
+## 31. Round 2026-11-18 — pass-41scrl: IG option-popup `scrl` slider-widget art lane [LANDED]
+
+- **Grammar**: each `ig*optns` popup (IGAOPTNS/IGGOPTNS/IGMOPTNS.LAY) declares a
+  `scrl` widget: `objecttype=11` (slider-bar class, same as the FEFLOW15 `sldN`
+  rows), `sname=sldr`, `shapeID=0x50d9` (53865, slider-family shape id; the
+  `0x50b9` go-button family is documented in pass-12 `widget_slice_spec.md` §4),
+  `fname=igsrolbr.fsh`, `vpath=..\IGOPTION\`, rect (64,111,11×216). `sldr` is the
+  shared widget-class family id, not a bitmap tag — the composite `sname`-as-tag
+  lane misses it (legit-missing slot), so the groove region painted black.
+- **Art**: `FE/IGOPTION/IGSROLBR.FSH` ships the parts — `sldt` 3×10 top cap
+  (blue-grey), `sldm` 3×50 groove column (black body, grey 181 right edge),
+  `sldb` 3×10 bottom cap; no thumb shape. The FE reference family
+  `FE/PACK/FEFLOW11/SCLBAR.PAK` has `sldm` 21×22, `sldt` 48×19, `sldb` 32×16 and
+  `thmb` 20×32 — thumb art exists only in the FE slider family.
+- **Port**: `presentation::paintScrollSlot` (`fe_screen.{hpp,cpp}`) paints groove
+  `sldm` stretched to the widget rect, centred `sldt`/`sldb` caps, and a thumb =
+  `thmb` art where the family has it, else the flat page quad
+  `(210,230,255,220)`, height `h/8`, at the value-cursor ratio (paintSliderThumb
+  convention). Wired into `IgBoards::drawIgOptns` (live popups) and
+  `FeFlow::drawIgOptns` (capture gate).
+- **Gates**: `fe_igoptns_{a,g,m}` shapes 5→7 (groove + 2 caps; thumb quad counts
+  as `rects`); pixel sweep `/tmp/wc98port-out/igopt{a,g,m}_fe00.png`: groove
+  columns x=64..74 blend black→grey gradient, thumb blend (181,198,220) visible
+  above it. Suite 151 tests: 149 pass; the 2 FAILs (`test_sim_scenarios`,
+  `self_test_gameplay` passing/animation) remain the in-flight `simulation/`
+  kick-seam lane (§12 note). Dossier `analysis/pass41scrl/NOTES.md`.

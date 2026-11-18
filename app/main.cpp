@@ -192,7 +192,7 @@ int run(int argc, char** argv) {
             feIgMode = m == "a" ? 1 : m == "g" ? 2 : m == "m" ? 3 : 0;
             if (!feIgMode) throw std::invalid_argument("--fe-igoptns needs a|g|m");
         }
-        else if (a == "--fe-popup") { feMode = true, smokeFrames = 1, fePopupName = next(); } // popup-lane gate frame; NAME = feflow10|ok, feflow37|yesno, igconsel, mesg, feflow86
+        else if (a == "--fe-popup") { feMode = true, smokeFrames = 1, fePopupName = next(); } // popup-lane gate frame; NAME = feflow10|ok, feflow37|yesno, igconsel, mesg, feflow86, igmsg, igflow86
         else if (a == "--fe-popup-keys") { fePopupKeys = std::stoi(next()); }                 // two-axis button cursor moves before the frame
         else if (a == "--fe-popup-enter") { fePopupEnter = true; }                            // Enter on the focused button: closes to caller (payload semantics)
         else if (a == "--fe-popup-back") { fePopupBack = true; }                              // Esc: cancel branch closes to caller

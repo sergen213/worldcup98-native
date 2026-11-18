@@ -4142,6 +4142,8 @@ const char* FeFlow::popupButtonName(int slot) const {
         case 37: return slot == 0 ? "no" : "yes";
         case -42: return "okay";                     // IGCONSEL dismiss-only box (FUN_00442000 stub)
         case -44: return popSel_ == 0 ? "npll" : "nplr"; // CONTROL1 page-tab nav pair (§H)
+        case -45: return "ok";                       // IGMSG dismiss-only box (tick FUN_00440790, key FUN_00440830 callback [57c930])
+        case -46: return "fe09";                     // IGFLOW86 eligibility box (eligibility jump table 0x45de98 cases 1..4 -> scene)
         default: return "";                          // mesg/Feflow86 demo lanes carry no gated cursor pair
     }
 }
@@ -4163,10 +4165,11 @@ bool FeFlow::openPopup(std::string_view name, bool quitContext) {
         popVisible_ = {"blur", "popp", "no", "yes", "help"}; // same grammar, yes/no payload pair [C] §29
         return true;
     }
-    static constexpr std::pair<const char*, int> kKnown[] = {{"igconsel", -42}, {"mesg", -43}, {"feflow86", -86}, {"control1", -44}}; // §H controller page
+    static constexpr std::pair<const char*, int> kKnown[] = {{"igconsel", -42}, {"mesg", -43}, {"feflow86", -86}, {"control1", -44},
+                                                             {"igmsg", -45}, {"igflow86", -46}}; // §H controller page; IGMSG/IGFLOW86 pass-37igpop
     for (auto [nm, kind] : kKnown) {
         if (n != nm) continue;
-        const std::string mem = n == "control1" ? "CONTROL1" : n; // IGLAY.BIG member is upper-case (sweep-ig dump names)
+        const std::string mem = n == "control1" ? "CONTROL1" : n == "igmsg" ? "IGMSG" : n == "igflow86" ? "IGFLOW86" : n; // IGLAY.BIG member is upper-case (sweep-ig dump names)
         // Lazy member load: same search order as the capture lane (loadCaptureScreen).
         static constexpr std::array<const char*, 2> archives = {"LAYOUTS.BIG", "IGLAY.BIG"};
         try {
@@ -4188,7 +4191,7 @@ bool FeFlow::openPopup(std::string_view name, bool quitContext) {
             popIg_ = formats::ScreenLayout::build(n, formats::LayoutDocument::parse(std::string_view(text)), nullptr, nullptr, "PC");
         } catch (const std::exception& e) { lastError_ = std::string(name) + ": " + e.what(); return false; }
         popKind_ = kind;
-        popName_ = n == "feflow86" ? "FEFLOW86" : n == "control1" ? "CONTROL1" : n; // gate evidence label (raw member name stays lowercase)
+        popName_ = n == "feflow86" ? "FEFLOW86" : n == "control1" ? "CONTROL1" : n == "igmsg" ? "IGMSG" : n == "igflow86" ? "IGFLOW86" : n; // gate evidence label (raw member name stays lowercase)
         popVisible_.clear(); // raw members: composite() paints every shown() object (capture-lane rule)
         return true;
     }
@@ -4225,6 +4228,23 @@ FeDrawStats FeFlow::drawPopup(render::SpriteBatch& ui) const {
     if (const char* bn = popupButtonName(popSel_); bn && *bn) uist.hover = bn; // keyboard cursor paints HILITEDSHAPE
     uist.animMs = animTicks_ * 16u;                                              // FRAMES=46,49/51,54 button anim ranges
     FeDrawStats st = composite(*sc, ui, const_cast<ScreenArt&>(art_), text_.get(), vis);
+    if (popKind_ == -45 || popKind_ == -46) { // IGMSG/IGFLOW86 frame boxes: frame-only 1px outlines, the
+        // livematch strokeBoxes idiom (objecttype-43 null-art boxes; RECT plates stay painted by composite).
+        const std::uint32_t edge = render::packRgba(150u, 150u, 150u, 200u);
+        for (const auto& o : sc->objects) {
+            if (o.type != 43 || !o.shown()) continue;
+            if (const std::string* f = o.prop("FILLCOLOUR"); f && !f->empty() && *f != "0") continue;
+            const float bx = float(o.x), by = float(o.y);
+            const float bw = float(o.intProp("BOXWIDTH", o.width));
+            const float bh = float(o.intProp("BOXHEIGHT", o.height));
+            if (bw < 2.f || bh < 2.f) continue;
+            ui.draw(0, {bx, by, bw, 1.f}, {}, edge);
+            ui.draw(0, {bx, by + bh - 1.f, bw, 1.f}, {}, edge);
+            ui.draw(0, {bx, by, 1.f, bh}, {}, edge);
+            ui.draw(0, {bx + bw - 1.f, by, 1.f, bh}, {}, edge);
+            st.shapes += 4;
+        }
+    }
     if (popKind_ == 10 || popKind_ == 37) {
         // Runtime caption family: FEFLOW37 = the quit-confirm prompts ("Are you sure you want to Quit?",
         // FC index 220 — the caller strings 213..232 are this popup's whole installed set); FEFLOW10 is
@@ -4243,6 +4263,29 @@ FeDrawStats FeFlow::drawPopup(render::SpriteBatch& ui) const {
             if (sh.tex) ui.draw(sh.tex, {float(o->x), float(o->y), float(sh.w), float(sh.h)}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu), ++st.shapes;
             else ++st.missing;
             if (text_ && text_->ready()) st.texts += paintCaption(*o, text_->stringAt(1256), ui); // FC bank "OK" (index 1256)
+        }
+    } else if (popKind_ == -45) {
+        // IGMSG in-game message box (pass-37igpop): netplay message frame — full IGMENU-family header
+        // (box1/typ1/box4 + box2/box3 + typ2/box5/nmb2 overlay widgets, textid=0 => painted by the
+        // runtime header, empty here) + centered line/lin2 message slots (runtime setters 0x440790
+        // via [57c926]/[57c928], textid=0) + 'ok' dismiss button chain (button.fsh stem ->
+        // INGAME.FSH btnn/btnd, IGMENU row pattern). btt1 caption textid=60 = FC "OK" via remap lane.
+        if (const formats::LayoutObject* o = sc->object("ok")) {
+            const std::string vpath = o->prop("vpath") ? *o->prop("vpath") : std::string("..\\global\\");
+            const ScreenArt::Shape sh = const_cast<ScreenArt&>(art_).shape(vpath, "INGAME.FSH", popSel_ == 1 ? "btnd" : "btnn", -1);
+            if (sh.tex) ui.draw(sh.tex, {float(o->x), float(o->y), float(sh.w), float(sh.h)}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu), ++st.shapes;
+            else ++st.missing;
+        }
+    } else if (popKind_ == -46) {
+        // IGFLOW86 player-eligibility box (pass-37igpop): eligibility arbiter jump table VA 0x45de98
+        // cases 1..4 -> FUN_0045df0e sfx + scene switch 'igflow86'; tick FUN_004677b4 installs runtime
+        // txt0-2 captions from [57d164..6c] (caller-set error strings, empty here) and gates the fe09
+        // button by [57d160]; tbx1 caption textid=60 = FC "OK" via remap lane (composite paints it).
+        if (const formats::LayoutObject* o = sc->object("fe09")) {
+            const std::string vpath = o->prop("vpath") ? *o->prop("vpath") : std::string("..\\global\\");
+            const ScreenArt::Shape sh = const_cast<ScreenArt&>(art_).shape(vpath, "INGAME.FSH", popSel_ == 1 ? "btnd" : "btnn", -1);
+            if (sh.tex) ui.draw(sh.tex, {float(o->x), float(o->y), float(sh.w), float(sh.h)}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu), ++st.shapes;
+            else ++st.missing;
         }
     } else if (popKind_ == -44) {
         // CONTROL1 controller page (§H, gate fe_control_page): ctx0-3 runtime strings + grv* Gravis bar

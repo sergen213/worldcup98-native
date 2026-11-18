@@ -290,6 +290,13 @@ if(DEFINED WC98_TREE)
     set_tests_properties(fe_igconsel PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "igconsel: shapes=[1-9][0-9]* texts=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 |texts=0 |cursors=0 ")
     add_test(NAME fe_mesg COMMAND wc98-native --fe-screen mesg --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/mesg)
     set_tests_properties(fe_mesg PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "mesg: .*texts=[1-9]" FAIL_REGULAR_EXPRESSION "texts=0 |cursors=0 ")
+    # IGMSG netplay message box + IGFLOW86 eligibility box (pass-37igpop): full frame composite (box/RECT
+    # quads) + INGAME.FSH ok-button chrome + textid=60 "OK" caption via the remap lane; runtime message
+    # strings (tick setters [57c926]/[57d164..6c]) are caller-provided content, textid=0 slots paint empty.
+    foreach(_igpop igmsg igflow86)
+        add_test(NAME fe_popup_${_igpop} COMMAND wc98-native --fe-popup ${_igpop} --fe-popup-keys 1 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/${_igpop})
+        set_tests_properties(fe_popup_${_igpop} PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "(${_igpop}|IGMSG|IGFLOW86): .*shapes=[1-9][0-9]* texts=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 |texts=0 |cursors=0 ")
+    endforeach()
     # In-game option popups (igaoptns/iggoptns/igmoptns, analysis/pass13/IGOPTNS_ART.md): captions lane —
     # ROWS tuples + tab/help FC-bank captions painted; ok/canc/defa chck art is PROVEN ABSENT on this media,
     # so the widgets render as text captions (documented legit-missing slots), never invented art.

@@ -44,6 +44,11 @@ public:
     // "file:tag" references that produced no bitmap, in first-seen order.
     [[nodiscard]] const std::vector<std::string>& missing() const { return missing_; }
 
+    // Localized title-slot language (lowercase 4-letter pack prefix, e.g. "engl"). LAY title
+    // widgets carry numeric fname ("87", "33") + shapeID=titl: the engine blits tag <lang> from
+    // <LANG><N>.PAK in the scene directory (ENGL87.PAK#engl, 452x113 matches the 443x117 slot).
+    void setLang(std::string packPrefix) { langPack_ = std::move(packPrefix); }
+
 private:
     [[nodiscard]] const formats::FshFile* file(const std::string& vpath, const std::string& fname);
     void indexTree();
@@ -54,6 +59,7 @@ private:
     std::map<std::string, Shape> shapes_;                                  // file key + '#' + tag
     std::map<std::string, std::vector<std::filesystem::path>> byStem_;     // lower base name, built lazily
     bool indexed_ = false;
+    std::string langPack_; // lowercase pack prefix ("engl"); empty = title-slot retry disabled
     std::vector<std::string> missing_;
 };
 

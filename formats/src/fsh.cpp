@@ -98,6 +98,13 @@ std::vector<std::uint8_t> toRgba(std::uint8_t type, std::uint16_t w, std::uint16
     };
     auto idx = [&](std::size_t i, unsigned v) {
         if (!pal) throw FormatError("FSH paletted bitmap without palette");
+        // Pen index 255 is the engine's transparency key: paletted sprites store the pen outside
+        // the declared palette (CONTR.PAK ships count=170 and uses pen 255 around the stick
+        // pictures - `wc98-extract CONTR.PAK` failed with "palette index 255 >= 170" before this
+        // fix; the original draws these images every feflow87 tick, FUN_00467ab0 zeroing the
+        // device slots so frame 0 paints, analysis/pass23fe87/fe87_dec1.txt). Same convention as
+        // the readPalette transparentPad rows above.
+        if (v == 255) { put(i, 0, 0, 0, 0); return; }
         if (v >= pal->rgba.size()) throw FormatError(std::format("FSH palette index {} >= {}", v, pal->rgba.size()));
         const auto& c = pal->rgba[v];
         put(i, c[0], c[1], c[2], c[3]);

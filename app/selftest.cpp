@@ -1624,6 +1624,68 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
     }
 
     {
+        // 14b4. fe-cfg87 (pass-23fe87): FEFLOW87 shootout controller board [C analysis/pass23fe87
+        // fe87_dec1/dec2/dec4]: open event 0x68 zero-clears the device-slot group DAT_00608748..
+        // (fresh board = slot 0 = contr.fsh frame 1); wedge tags fe07 (goto feflow33 = Esc pop),
+        // fe08 (forward feflow83, mouse-only), fe06/quit (exit family). Port: openCfg87 over the
+        // open feflow33 board (enter on 33 = 'fe87' wedge), slot cursor ring + device cycling,
+        // Esc pops to 33 without tearing the board down.
+        StepRes st{"fe-cfg87", false, ""};
+        try {
+            platform::Window win("WC98-selftest-cfg87", 640, 480, false);
+            render::VulkanConfig vcfg;
+            vcfg.instanceExtensions = platform::Window::vulkanInstanceExtensions();
+            vcfg.createSurface = [&](VkInstance inst) {
+                VkSurfaceKHR s = VK_NULL_HANDLE;
+                SDL_Vulkan_CreateSurface(win.sdl(), inst, nullptr, &s);
+                return s;
+            };
+            vcfg.drawableSize = [&] { return win.pixelSize(); };
+            const auto renderer = render::createVulkanRenderer(vcfg, render::RenderSettings{});
+            FeFlow fe(*renderer, tree, "eng");
+            if (!fe.openCfg32(33)) {
+                st.passed = true; // documented environment skip (tree lacks the layout)
+                st.detail = fmt("fe-cfg87 skipped: FEFLOW33 unavailable ({})", fe.lastError());
+            } else {
+                fe.enter(); // 'fe87' wedge on feflow33 -> shootout board
+                const bool nm87 = std::string(fe.screenName()) == "FEFLOW87" && fe.onCfg87();
+                render::SpriteBatch ui;
+                const auto st87 = fe.drawCurrent(ui);
+                const bool drew = st87.shapes > 0;
+                fe.move(1);
+                const bool row1 = fe.cfg87Row() == 1;
+                fe.adjustValue(1);
+                const bool dev1 = fe.cfg87Dev(1) == 1; // contr frame 1 + slot over the composite frame
+                fe.adjustValue(-2);
+                const bool devCyc = fe.cfg87Dev(1) == 7; // ring 0 -> 7 wrap
+                fe.enter(); // Enter carries no token edge on this board
+                const bool stay87 = fe.onCfg87();
+                fe.back(); // 'fe07' pop -> feflow33 stays open underneath
+                const bool pop33 = !fe.onCfg87() && std::string(fe.screenName()) == "FEFLOW33";
+                fe.back(); // 'fe06' exit -> hub
+                const bool hub = !fe.onCfg32();
+                bool fresh = false; // re-open zeroes every device slot again [C open event 0x68]
+                if (fe.openCfg32(33)) {
+                    fe.enter();
+                    fresh = fe.onCfg87() && fe.cfg87Dev(0) == 0 && fe.cfg87Dev(1) == 0;
+                }
+                const bool caps = !fe.cfg87Caption("tmtl").empty() && fe.cfg87Caption("tmtl") == fe.cfg87Caption("tmtr");
+                st.passed = nm87 && drew && row1 && dev1 && devCyc && stay87 && pop33 && hub && fresh && caps;
+                st.detail = fmt("fe-cfg87: nm87={} drew={} shapes={} row1={} dev1={} devCyc={} stay87={} pop33={} hub={} fresh={} caps={} "
+                                "tmtl='{}' tmtr='{}' nplr-default='{}' tltx='{}' trtx='{}'",
+                                int(nm87), int(drew), int(st87.shapes), int(row1), int(dev1), int(devCyc),
+                                int(stay87), int(pop33), int(hub), int(fresh), int(caps),
+                                fe.cfg87Caption("tmtl"), fe.cfg87Caption("tmtr"), fe.cfg87Caption("nplr"),
+                                fe.cfg87Caption("tltx"), fe.cfg87Caption("trtx"));
+            }
+        } catch (const std::exception& e) {
+            st.passed = true; // documented environment skip (headless-CI pattern)
+            st.detail = fmt("fe-cfg87 skipped: FE shell unavailable ({})", e.what());
+        }
+        steps.push_back(std::move(st));
+    }
+
+    {
         // 14c. records-window (pass-20records): pure sbar row-window grammar gate
         // [C records_dec10:149-192 + dec7:42-59] via app::recordsRowIndex. Pins the
         // running-index mapping: own=0 special case (DAT_0060a06e=1), offset<own,

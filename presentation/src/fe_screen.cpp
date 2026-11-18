@@ -135,12 +135,20 @@ ScreenArt::Shape ScreenArt::shape(const std::string& vpath, const std::string& f
     Shape out;
     do {
         const formats::FshFile* f = file(vpath, fname);
-        if (!f) { missing_.push_back(key + " (no such art file)"); break; }
         const formats::FshBitmap* b = nullptr;
-        if (useTag)
+        if (f && useTag)
             for (const auto& e : f->entries)
                 if (e.bitmap && iequals(e.tag, tag)) { b = &*e.bitmap; break; }
-        if (!b && index >= 0 && std::size_t(index) < f->entries.size()) b = f->entries[std::size_t(index)].bitmap ? &*f->entries[std::size_t(index)].bitmap : nullptr;
+        if (!b && f && index >= 0 && std::size_t(index) < f->entries.size()) b = f->entries[std::size_t(index)].bitmap ? &*f->entries[std::size_t(index)].bitmap : nullptr;
+        // Localized title slot: numeric fname ("87"/"33"/"32") + shapeID=titl resolves through the
+        // per-language scene pack - the engine blits tag <lang> from <LANG><N>.PAK (ENGL87.PAK#engl).
+        if (!b && useTag && !langPack_.empty()) {
+            const std::string stem = lowered(fs::path(slashes(fname)).stem().string());
+            if (!stem.empty() && std::all_of(stem.begin(), stem.end(), [](unsigned char c) { return std::isdigit(c) != 0; }))
+                if (const formats::FshFile* lp = file(vpath, langPack_ + stem))
+                    for (const auto& e : lp->entries)
+                        if (e.bitmap && iequals(e.tag, langPack_)) { b = &*e.bitmap; break; }
+        }
         if (b && !b->rgba.empty() && b->width && b->height) {
             out.tex = r_.createTexture(render::Image{b->width, b->height, b->rgba}, render::Wrap::Clamp, key);
             out.w = b->width, out.h = b->height;
@@ -385,6 +393,41 @@ FeDrawStats composite(const formats::ScreenLayout& screen, render::SpriteBatch& 
         // Initial highlight state of the screen ([screen] HILITEPANE, parsed at layout.cpp:224):
         const bool hl = !screen.hilitePane.empty() && iequals(o.name, screen.hilitePane);
         if (visible && std::ranges::none_of(*visible, [&](const std::string& n) { return iequals(o.name, n); })) { ++st.hidden; continue; }
+        // objecttype=3 AnimSeq: `<seqId>,<file.fsh>,<first>,<last>` indexed frame list into the
+        // referenced FSH family, painted at the widget origin by the device-slot blit (FUN_00467ab0
+        // controller board; the aflag flag on FE screens). ticksperframe paces it; 0 means the
+        // engine tick handler owns the frame, so the port holds frame 0 (device slots zeroed).
+        if (o.type == int(formats::LayoutObjectType::AnimSeq)) {
+            if (const std::string* seq = o.prop("sequences"); seq && !seq->empty()) {
+                std::vector<std::string> parts;
+                std::string::size_type pos = 0;
+                while (pos <= seq->size()) {
+                    const std::size_t comma = seq->find(',', pos);
+                    parts.push_back(seq->substr(pos, comma == std::string::npos ? std::string::npos : comma - pos));
+                    if (comma == std::string::npos) break;
+                    pos = comma + 1;
+                }
+                if (parts.size() == 4) {
+                    const int first = std::atoi(parts[2].c_str());
+                    const int last = std::atoi(parts[3].c_str());
+                    const int count = last - first + 1;
+                    const int tpf = o.intProp("ticksperframe", 15);
+                    int frame = 0;
+                    if (tpf > 0 && count > 1 && uiState)
+                        frame = int((uiState->animMs / unsigned(tpf * 16)) % unsigned(count));
+                    const std::string file = slashes(parts[1]);
+                    const std::string* vpath = o.prop("vpath");
+                    const ScreenArt::Shape sh = art.shape(vpath ? *vpath : std::string(), file, std::string(), first + frame);
+                    if (sh.tex) {
+                        ui.draw(sh.tex, {float(o.x), float(o.y), float(sh.w), float(sh.h)});
+                        ++st.shapes;
+                    } else {
+                        ++st.missing;
+                    }
+                    continue;
+                }
+            }
+        }
         // Widget interaction state (button classes): Press -> PUSHEDSHAPE*, Hover/HILITEPANE ->
         // HILITEDSHAPE*; the released-key chain is the static default (runtime state switch
         // FUN_0044e178, key table 0x564458).

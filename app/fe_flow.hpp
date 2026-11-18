@@ -63,6 +63,7 @@ public:
                : setup07View_       ? "FEFLOW07"
                : lineup16View_      ? "FEFLOW16"
                : stad08View_        ? "FEFLOW08"
+               : cfg87View_            ? "FEFLOW87"
                : cfg32View_ == 32      ? "FEFLOW32"
                : cfg32View_ == 33      ? "FEFLOW33"
                : leagueCfg_         ? cfgName_.c_str()
@@ -198,6 +199,21 @@ public:
     static int cfgCursor(int prev, int delta, int count) {
         return ((prev + delta) % count + count) % count;
     }
+    // ---- Shootout controller board FEFLOW87 (pass-23fe87; MENU_PARITY.md §4 rank 2) -----------
+    // "penalty shootout controller select screen" (LAY header): four slot rows of ovr/hpl+hpr
+    // panes + arw arrows + anm controller icons (CONTR.FSH sequence 1..8, ticksperframe=0 ->
+    // the tick handler owns the frame; FUN_00467ab0 zeroes the DAT_00608748.. device slots
+    // every tick so frame 0 = keyboard paints [C fe87_dec1]). Edges [C LAY comments]:
+    // fe07 "goto feflow33", fe06 "quit friendly (goto match select)", fe08 "goto feflow83",
+    // quit wedge = feflow37 confirm.
+    bool openCfg87(); // false = layout absent from this tree
+    [[nodiscard]] bool onCfg87() const { return cfg87View_; }
+    presentation::FeDrawStats drawCfg87(render::SpriteBatch& ui) const;
+    [[nodiscard]] int cfg87Row() const { return cfg87Row_; }
+    void setCfg87Row(int r) { cfg87Row_ = r & 3; }
+    [[nodiscard]] int cfg87Dev(int i) const { return cfg87Dev_[std::size_t(i & 3)]; } // device slot (contr frame 1 + slot)
+    void setCfg87Dev(int i, int v) { cfg87Dev_[std::size_t(i & 3)] = v & 7; }
+    [[nodiscard]] std::string cfg87Caption(std::string_view name) const; // FC-remap caption of a cfg87 widget (gate evidence)
     // ---- FEFLOW43 management grid + feflow41 LOAD / feflow42 SAVE lists (MENU_PARITY.md rows 29/30) --
     // FEFLOW43.LAY (analysis/pass13 sweep dump): the full team-management grid — back collage, bt00..bt07
     // formation/kick-takers/strategy/positioning/aggression/custom/line-up/bias edit buttons + canc/save/
@@ -528,10 +544,15 @@ public:
     formats::ScreenLayout cfg32_, cfg33_;               // controller-select family layouts
     bool haveCfg32_ = false, haveCfg33_ = false;        // present on this tree
     int cfg32View_ = 0;                                 // 0/32/33 = shown screen
+    bool cfg87View_ = false;                            // FEFLOW87 shootout board (pass-23fe87)
+    bool haveCfg87_ = false;                            // layout present on this tree
+    int cfg87Row_ = 0;                                  // slot-row cursor (0..3)
+    std::array<int, 4> cfg87Dev_{};                     // device slot per controller row (0 = keyboard, contr frame 1 + slot)
+    formats::ScreenLayout cfg87_;                       // shootout board layout
     int cfg32Idx_ = 0;                                  // feflow32 pool cursor ([0x607fd4]/[0x608064])
     int cfg33Left_ = 0, cfg33Right_ = 1;                // feflow33 per-side pool cursors
     int cfg33Side_ = 0;                                 // 0 = left side focused (UP/DOWN)
-    std::vector<std::string> cfg32Visible_, cfg33Visible_;
+    std::vector<std::string> cfg32Visible_, cfg33Visible_, cfg87Visible_;
     // FEFLOW43 management grid (public API block): layout + scene-ownership whitelist. The vNNN/aNNN/
     // oNNN/pyNN animseq runtime surfaces, mmod mode slot and chat widgets stay hidden (composite paints
     // the iNNn button chain + back collage; dynamic content is painted as overlays from FCDB data).

@@ -121,6 +121,8 @@ int run(int argc, char** argv) {
     int feRecordsRow = 0;   // --fe-records-row N: 9-row results window offset (sbar) +N moves
     int feCfg = -1;       // --fe-cfg N: FEFLOW32/33 controller-select gate; N = screen*100 + cursor moves (pass-20cfg)
     int feCfgSide = 0;    // --fe-cfg-side N: feflow33 focused side (0=left 1=right)
+    int feCfg87 = -1;     // --fe-cfg87 N: FEFLOW87 shootout board gate (feflow33 -> 'fe87' chain); N = slot-cursor moves (pass-23fe87)
+    int feCfg87Dev = 0;   // --fe-cfg87-dev N: device slot shown on the focused row (contr frame 1 + N)
     int feControl = -1; // --fe-control N: CONTROL1 controller page from the options chain, nav cursor +N (§H)
     int feIgMode = 0;       // --fe-igoptns a|g|m: open the in-game option popup (igaoptns/iggoptns/igmoptns)
     std::string fePopupName; // --fe-popup NAME: shared popup lane gate (feflow10/37, igconsel/mesg/Feflow86)
@@ -173,6 +175,8 @@ int run(int argc, char** argv) {
         else if (a == "--fe-records-row") { feRecordsRow = std::stoi(next()); }        // sbar window offset moves
         else if (a == "--fe-cfg") { feMode = true, smokeFrames = 1, feCfg = std::stoi(next()); }              // feflow32/33 gate; N = screen*100 + cursor moves
         else if (a == "--fe-cfg-side") { feCfgSide = std::stoi(next()); }              // feflow33 side focus
+        else if (a == "--fe-cfg87") { feMode = true, smokeFrames = 1, feCfg87 = std::stoi(next()); } // FEFLOW87 shootout board gate; N = slot-cursor moves
+        else if (a == "--fe-cfg87-dev") { feCfg87Dev = std::stoi(next()); }             // device slot shown on the focused row
         else if (a == "--fe-save-manager") { feMode = true, smokeFrames = 1, feSave42 = std::stoi(next()); }   // feflow42 SAVE confirm gate; N = row moves + Enter write
         else if (a == "--fe-igoptns") { // igoptns captions lane gate: a=audio g=game m=mouse popup
             feMode = true, smokeFrames = 1;
@@ -357,6 +361,18 @@ int run(int argc, char** argv) {
                              feCfg / 100, fe->cfg32Idx(), fe->cfg33Left(), fe->cfg33Right(), fe->cfg33Side());
             }
         }
+        if (fe && feCfg87 >= 0) { // --fe-cfg87 N: feflow33 -> 'fe87' wedge -> FEFLOW87 shootout board (pass-23fe87)
+            if (!fe->openCfg32(33)) std::fprintf(stderr, "fe: feflow33 unavailable\n");
+            else {
+                fe->enter(); // Enter on 33 = the 'fe87' wedge edge
+                if (!fe->onCfg87()) std::fprintf(stderr, "fe: FEFLOW87 unavailable\n");
+                else {
+                    for (int i = 0; i < feCfg87; ++i) fe->move(+1); // slot cursor ring
+                    fe->setCfg87Dev(fe->cfg87Row(), feCfg87Dev);    // contr frame 1 + slot override
+                    std::fprintf(stderr, "cfg87: row=%d dev=%d\n", fe->cfg87Row(), fe->cfg87Dev(fe->cfg87Row()));
+                }
+            }
+        }
         if (fe && feLoad41 >= 0) { // --fe-load-game N: feflow41 LOAD list over the port slot dir, rows +N
             fe->ensureFixtureSlots(); // deterministic SLOT00/SLOT01 fixture when the dir is empty [H]
             if (!fe->openLoadGame()) std::fprintf(stderr, "fe: load game unavailable\n");
@@ -447,7 +463,7 @@ int run(int argc, char** argv) {
             // Setup (FEFLOW09/50) + options (feflow15 lst rows): up/down move the row cursor,
             // left/right cycle its value (the original's two-axis scheme); TAB switches feflow15
             // tab pages ('ops2' event family). On the other screens arrows cycle entries/pick rows.
-            const bool setup = fe->onSetup() || fe->onOptions() || fe->onSetup07() || fe->onStad08() || fe->onCfg32();
+            const bool setup = fe->onSetup() || fe->onOptions() || fe->onSetup07() || fe->onStad08() || fe->onCfg32() || fe->onCfg87();
             if (sc == SDL_SCANCODE_UP) fe->move(-1);
             else if (sc == SDL_SCANCODE_DOWN) fe->move(+1);
             else if (sc == SDL_SCANCODE_LEFT) { if (setup) fe->adjustValue(-1); else fe->move(-1); }
@@ -461,7 +477,7 @@ int run(int argc, char** argv) {
         }
         for (const int d : ev.padNav) { // gamepad nav: same actions as the arrow keys
             if (!fe) break;
-            const bool setup = fe->onSetup() || fe->onOptions() || fe->onSetup07() || fe->onStad08() || fe->onCfg32();
+            const bool setup = fe->onSetup() || fe->onOptions() || fe->onSetup07() || fe->onStad08() || fe->onCfg32() || fe->onCfg87();
             if (d == platform::Window::kPadNavUp) fe->move(-1);
             else if (d == platform::Window::kPadNavDown) fe->move(+1);
             else if (d == platform::Window::kPadNavLeft) { if (setup) fe->adjustValue(-1); else fe->move(-1); }

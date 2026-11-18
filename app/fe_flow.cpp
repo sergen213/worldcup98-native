@@ -56,6 +56,15 @@ int* audioSliderRow(config::Settings* s, int label) {
 // Language row (lst1 tuple 92) value order = FC bank set order [H]; the tree ships no JAP slot
 // in the row, so the eight shipped banks map dut..swe (exe DAT_0060cbcb id lane, pass-22fe15d).
 constexpr std::array<std::string_view, 8> kLangCodes = {"dut", "eng", "fre", "ger", "ita", "dan", "spa", "swe"};
+// FC*.BIN UI code -> localized scene-pack prefix (ENGL33/ENGL87 title packs; ScreenArt::setLang).
+std::string langPackPrefix(std::string_view code) {
+    static constexpr std::array<std::pair<std::string_view, std::string_view>, 8> kMap = {
+        {{"dut", "duch"}, {"eng", "engl"}, {"fre", "fren"}, {"ger", "germ"},
+         {"ita", "ital"}, {"dan", "dani"}, {"spa", "span"}, {"swe", "swed"}}};
+    for (const auto& [c, p] : kMap)
+        if (c == code) return std::string(p);
+    return "engl";
+}
 } // namespace
 
 
@@ -74,6 +83,7 @@ FeFlow::FeFlow(render::Renderer& r, fs::path tree, std::string lang) : r_(r), tr
     }
     cfgLang_ = lang; // FCDBP<lang>.DBI filename below (loadTeams)
     for (char& c : cfgLang_) c = char(std::tolower(static_cast<unsigned char>(c)));
+    art_.setLang(langPackPrefix(cfgLang_)); // localized title slots (ENGL<N>.PAK#<lang>)
     // Text resources for the whole session (fe_screen.hpp FeText): FFN face, FC*.BIN strings, FEMSG.
     text_ = std::make_unique<presentation::FeText>(r, tree_, std::move(lang));
     // Team-select screen (FEFLOW11.LAY = the original ZWCUP pick grid: map, flags, group cells;
@@ -352,6 +362,34 @@ FeFlow::FeFlow(render::Renderer& r, fs::path tree, std::string lang) : r_(r), tr
                              "shdl", "shdr", "fotl", "fotr", "shad", "shd2", "help",
                              "lb01", "lb02", "lb03", "lb04", "lb05", "rb01", "rb02", "rb03", "rb04",
                              "rb05", "ltlb", "ltrb", "rtlb", "rtrb"};
+    // Shootout controller board FEFLOW87 (pass-23fe87; "penalty shootout controller select screen").
+    // Four controller slots (ovrN overlay + alpN/arpN panes + anmN icon + arwN arrow + ctxN/grvN
+    // runtime text slots); controller icons = CONTR.FSH frames 1..8 (vpath ..\global\,
+    // ticksperframe=0 - frame stays at the slot index; the open event 0x68 zeroes the device-slot
+    // group DAT_00608748..0x608784 [C fe87_dec1/dec2], so a fresh board paints frame 1). ltfg/rtfg
+    // shield slots (f00N.fsh shapeID=f000, runtime-filled), tltx/trtx team captions (textid=0 =
+    // runtime), titl title slot (fname="87" shapeID=titl -> ENGL87.PAK#engl via ScreenArt lang retry).
+    // help/masc/chat/cha2/cha3 excluded (edit box, footix, chat boxes as on feflow33).
+    // npll/nplr excluded as runtime text slots (pass-23fe87): npll declares textid=0 (FeText label
+    // paints nothing), nplr's static default "Number of Players" (FC-remap id 699) is the slot
+    // default the handler replaces through the FUN_004c31d0 text-draw lane at scene open
+    // [H fe87_dec1 init]; drawing it double-paints over the tmtr label box (x=340 vs 485 spill).
+    // tmtl/tmtr keep their static FC labels "Teammates:" (remap id 4594) centered on their boxes.
+    try {
+        fs::path d87;
+        const std::string t87 = presentation::readLayout((tree_ / "FE/PACK/LAYOUTS/LAYOUTS.BIG").string() + "@FEFLOW87.LAY", d87);
+        if (!t87.empty()) {
+            cfg87_ = formats::ScreenLayout::build("FEFLOW87", formats::LayoutDocument::parse(std::string_view(t87)), nullptr, nullptr, "PC");
+            haveCfg87_ = true;
+        }
+    } catch (const std::exception& e) { lastError_ = std::string("FEFLOW87: ") + e.what(); }
+    if (haveCfg87_) {
+        cfg87Visible_ = {"back", "flag", "titl", "ltfg", "rtfg", "tltx", "trtx",
+                         "quit", "fe06", "fe15", "fe07", "fe08", "tmtl", "tmtr"};
+        for (int i = 0; i < 4; ++i)
+            for (const char* c : {"ovr", "alp", "arp", "anm", "arw", "ctx", "grv"})
+                cfg87Visible_.push_back(std::string(c) + std::to_string(i));
+    }
     // FEFLOW43 management grid + feflow41 LOAD / feflow42 SAVE lists (MENU_PARITY.md rows 29/30, §7):
     // same tolerant reader; absent -> the lanes stay closed. FEFLOW43 is not in the exe scene registry
     // (superseded by the feflow73-80 family [H]); the port opens it as a standalone FCDB management
@@ -589,6 +627,7 @@ void FeFlow::setLanguage(std::string code) {
     for (char& c : code) c = char(std::tolower(static_cast<unsigned char>(c)));
     if (code == cfgLang_) return;
     cfgLang_ = std::move(code);
+    art_.setLang(langPackPrefix(cfgLang_));
     text_ = std::make_unique<presentation::FeText>(r_, tree_, std::string(cfgLang_));
     loadTeams();
     // Re-arm every Language row's value index to the reloaded bank id (writer value == new byte),
@@ -658,6 +697,7 @@ FeDrawStats FeFlow::drawCurrent(render::SpriteBatch& ui) const {
     if (setup07View_) return drawSetup07(ui); // FEFLOW07 matchup screen (hub fe07 wedge)
     if (lineup16View_) return drawLineup16(ui); // FEFLOW16 lineups board (fe16 wedge on the map)
     if (stad08View_) return drawStad08(ui);   // FEFLOW08 stadium select (fe08 confirm chain)
+    if (cfg87View_) return drawCfg87(ui);  // FEFLOW87 shootout controller board (pass-23fe87; above 33)
     if (cfg32View_) return drawCfg32(ui);  // FEFLOW32/33 controller-select family (pass-20cfg)
     if (mgmtView_) return drawMgmtGrid(ui);  // FEFLOW43 management grid (--fe-mgmt-grid gate)
     if (lsView_)   return drawLoadSave(ui);  // feflow41 LOAD / feflow42 SAVE lists over the slot dir
@@ -827,6 +867,7 @@ void FeFlow::drawCursor(render::SpriteBatch& ui, presentation::FeDrawStats& st) 
 void FeFlow::move(int delta) {
     if (popKind_) { movePopup(delta); return; } // two-button cursor (ok/cancel, yes/no payload pair)
     if (setup07View_) { s07Row_ = std::clamp(s07Row_ + delta, 0, 1); return; } // UP/DOWN = team side [C]
+    if (cfg87View_) { cfg87Row_ = (cfg87Row_ + delta + 4) % 4; return; } // UP/DOWN = controller slot cursor over the grvN hit slots (ring [H])
     if (cfg32View_ == 33) { cfg33Side_ = std::clamp(cfg33Side_ + delta, 0, 1); return; } // UP/DOWN = side
     if (mgmtView_) { // FEFLOW43 UP/DOWN = roster row cursor; four-row window pages via sbar [H]
         const int n = gridRosterSize();
@@ -907,6 +948,11 @@ void FeFlow::adjustValue(int dir) {
         const int n = std::max<int>(1, int(poolIds_.size()));
         mgmtTeam_ = (mgmtTeam_ + dir + n) % n;
         mgmtRow_ = 0; // team switch resets the row window
+        return;
+    }
+    if (cfg87View_) { // L/R cycles the focused slot's device index (contr.fsh frame = 1 + slot [C])
+        int& v = cfg87Dev_[std::size_t(cfg87Row_ & 3)];
+        v = (v + dir + 8) % 8;
         return;
     }
     if (lsView_) { lstbPage(dir); return; } // left/right pan the list page via sbar [H]
@@ -1002,8 +1048,12 @@ bool FeFlow::enter() {
         return true;
     }
     if (stad08View_) { stad08View_ = false; return true; } // stadium confirm: shell starts the match [H]
+    if (cfg87View_) return false; // Enter on the shootout board: no token edge (fe08 forward is mouse-only [C])
     if (cfg32View_ == 32) { cfg32View_ = 0; return true; } // 'fe50' forward: CPU match with pool team [C]
-    if (cfg32View_ == 33) { cfg32View_ = 0; hubView_ = true; return false; } // 'fe87' -> fcdb editor (open)
+    if (cfg32View_ == 33) { // 'fe87' wedge: open the shootout controller board; hub fallback if absent
+        if (openCfg87()) return false;
+        cfg32View_ = 0; hubView_ = true; return false;
+    }
     if (wcCfg_) { // Enter = the decoded button press; the focus ring (drawWcFamily kBtn rows) names it
         if (wcCfg_ == 18) {
             if (wcRandVisible() && wcRand18_ < 99) ++wcRand18_; // staged redraw while plate visible [C]
@@ -1091,6 +1141,7 @@ void FeFlow::back() {
     if (setup07View_) { setup07View_ = false; hubView_ = true; return; } // Esc -> hub ('fe06' exit wedge [C] help=77)
     if (lineup16View_) { lineup16View_ = false; return; } // Esc pops the board back to the map
     if (stad08View_) { stad08View_ = false; if (!setupScreen_) hubView_ = true; return; } // Esc -> parent scene
+    if (cfg87View_) { cfg87View_ = false; return; } // Esc on the shootout board = 'fe07' goto feflow33 [C] (33 stays open underneath)
     if (cfg32View_) { cfg32View_ = 0; hubView_ = true; return; } // Esc -> hub ('fe06' exit tag [C])
     // Esc = the scenes' 'back'/'quit' widget tags (feflow15 tag 'back' @0x44f29a, feflow41 family
     // 'quit' @0x4595cc): every view closes to its parent; the hub has no parent scene.
@@ -1684,6 +1735,89 @@ FeDrawStats FeFlow::drawCfg32(render::SpriteBatch& ui) const {
     };
     paintBars(sc, true, two ? cfg33Left_ : cfg32Idx_);
     if (two) paintBars(sc, false, cfg33Right_);
+    drawCursor(ui, st);
+    return st;
+}
+
+// ---- Shootout controller board FEFLOW87 (pass-23fe87) ----------------------------------------
+// feflow87 helper block [C] analysis/pass23fe87/fe87_dec4.txt disasm 0x467a75: scene-close helper
+// (CALL 0x4461b4) + fe08 chain (CALL 0x44c1d0 + 0x448418 + close); the event dispatch FUN_00467970
+// [C fe87_dec1] compares the payload tag dwords 'fe06' (0x66653036, quit friendly), 'quit',
+// 'fe08' (0x66653038, forward -> feflow83) and 'fe15'/event 102 (help 0x563dc0 via FUN_00451964).
+// Scene-open event 0x68 (dispatch FUN_00467970 -> FUN_0044c330) zero-clears the sixteen device-slot
+// dwords DAT_00608748..0x608784 [C fe87_dec1/dec2]; the init handler FUN_00467ab0 installs the event
+// slot +0x14 = LAB_0044c958 when empty. Fresh board therefore shows slot 0 = contr.fsh frame 1.
+bool FeFlow::openCfg87() {
+    if (!haveCfg87_) { lastError_ = "FEFLOW87.LAY is absent from this tree"; return false; }
+    cfg87View_ = true;
+    hubView_ = false; // [C] FUN_004455dc close chain: one screen at a time
+    cfg87Row_ = 0;
+    cfg87Dev_.fill(0); // [C] open event zeroes every device slot
+    return true;
+}
+
+std::string FeFlow::cfg87Caption(std::string_view name) const {
+    const formats::LayoutObject* o = cfg87_.object(name);
+    return o && text_ ? text_->label(*o) : std::string{};
+}
+
+FeDrawStats FeFlow::drawCfg87(render::SpriteBatch& ui) const {
+    presentation::FeUiState uist;
+    uist.animMs = animTicks_ * 16u; // aflag.fsh flag animation (ticksperframe default 15)
+    ++animTicks_;
+    FeDrawStats st = presentation::composite(cfg87_, ui, const_cast<ScreenArt&>(art_), text_.get(), &cfg87Visible_, &uist);
+    // Device slot per controller row: frame = contr.fsh frame (1 + slot) over the composite's
+    // static frame-1 blit (init zeroes every slot [C]; the arrow-key lane cycles cfg87Dev_).
+    for (int i = 0; i < 4; ++i) {
+        const int dev = cfg87Dev_[std::size_t(i)] & 7;
+        if (dev == 0) continue;
+        const formats::LayoutObject* o = cfg87_.object("anm" + std::to_string(i));
+        if (!o) continue;
+        const ScreenArt::Shape sh = const_cast<ScreenArt&>(art_).shape("..\\global\\", "contr", std::string(), 1 + dev);
+        if (sh.tex) ui.draw(sh.tex, {float(o->x), float(o->y), float(sh.w), float(sh.h)}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu);
+        ++st.shapes;
+    }
+    // Slot-row cursor ring (grvN hit boxes at x=190..400 row+27, the engine's button slots).
+    const std::uint32_t c = render::packRgba(255, 224, 96, 255);
+    if (const formats::LayoutObject* o = cfg87_.object("ovr" + std::to_string(cfg87Row_ & 3))) {
+        const float x = float(o->x), y = float(o->y), w = float(o->width), h = float(o->height);
+        ui.draw(0, {x, y, w, 2.f}, {}, c), ui.draw(0, {x, y + h - 2.f, w, 2.f}, {}, c);
+        ui.draw(0, {x, y, 2.f, h}, {}, c), ui.draw(0, {x + w - 2.f, y, 2.f, h}, {}, c);
+    }
+    // Shield slots (ltfg/rtfg shapeID=f000 runtime-filled): the friendly matchup sides' flags,
+    // same drawFlag grammar as feflow07/16/32.
+    const auto flagOver = [&](const char* slot, int poolIdx) {
+        const formats::LayoutObject* o = cfg87_.object(slot);
+        if (!o || poolIdx < 0 || std::size_t(poolIdx) >= poolFlagFile_.size() || poolFlagFile_[std::size_t(poolIdx)].empty()) return;
+        const ScreenArt::Shape sh = const_cast<ScreenArt&>(art_).shape("..\\global\\", poolFlagFile_[std::size_t(poolIdx)], "f000", -1);
+        if (sh.tex) ui.draw(sh.tex, {float(o->x), float(o->y), float(sh.w), float(sh.h)}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu);
+        ++st.shapes;
+    };
+    const int lft = s07Left_ >= 0 ? s07Left_ : 0;
+    const int rgt = s07Right_ >= 0 && s07Right_ != lft ? s07Right_ : (lft + 1);
+    flagOver("ltfg", lft);
+    flagOver("rtfg", rgt);
+    // tltx/trtx team captions (textid=0 runtime slots, alignment=3 centred on the x position).
+    if (text_ && text_->ready()) {
+        const formats::FfnFont* f = text_->face(4);
+        render::TextureId ftex = text_->faceTexture(4);
+        if (!f || !ftex) { f = text_->font(); ftex = text_->texture(); }
+        if (f && ftex) {
+            const auto caption = [&](const char* slot, int poolIdx) {
+                const formats::LayoutObject* o = cfg87_.object(slot);
+                if (!o) return;
+                std::string label;
+                if (poolIdx >= 0 && std::size_t(poolIdx) < poolNames_.size()) label = poolNames_[std::size_t(poolIdx)];
+                if (label.empty()) label = "team " + std::to_string(poolIdx);
+                for (const auto& q : presentation::layoutTextCentered(*f, label, float(o->x), float(o->y) + 7.f, 13.f,
+                                                                      render::packRgba(235, 235, 235, 255)))
+                    ui.draw(ftex, q.dst, q.uv, q.rgba);
+                ++st.texts;
+            };
+            caption("tltx", lft);
+            caption("trtx", rgt);
+        }
+    }
     drawCursor(ui, st);
     return st;
 }

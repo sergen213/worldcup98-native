@@ -6,8 +6,20 @@ Proton or Windows runtime.
 
 ## Status
 
-Playable pre-release. The front-end menu flow (hub, match setup, league list, team-select grid, world-cup screens), the live match (arrow keys move, S pass, D shoot, W sprint, Esc quits), music/commentary/crowd audio and startup `.DCT` video all run from your original game files.
-Today:
+Playable pre-release. The front-end menu flow (hub, match setup, league list, team-select grid, world-cup screens),
+the live match, music/commentary/crowd audio and startup `.DCT` video all run from your original game files. The
+in-match presentation is the retail one: scoreboard strip and radar, minute chip, pause menu (`Esc`, arrows,
+Enter), options popups, statistics/half-time/full-time boards, confirm boxes, and keyboard/mouse/gamepad input.
+
+**Controls** — match: arrow keys move, `S` pass, `D` shoot, `W` sprint, `C` camera, `P` practise page, `Esc`
+pause menu (arrows select, Enter dispatches, `Esc` resumes); menus: arrows/WASD + mouse + gamepad stick and
+`Enter`/`Esc`, mouse clicks map through the 4:3 UI content rect at any window aspect.
+
+**Known limitations** (documented, not placeholders): no netplay/modem or classics-only screens (the port has no
+such simulation — those hub entries are documented no-ops); `.SQF` EULZ art is still blocked on the expander
+mechanism (`docs/asset-formats/SQF_FOOTIX.md`); the penalty-shootout and replay lanes are works in progress; full
+World Cup tournament completion is the v1.0 milestone. There is no Windows pixel oracle (`WINE_ORACLE_WC98.md`),
+so no gate claims byte-for-byte pixel parity with the original output.
 
 - Parsers and tools for the original asset formats (`BIGF` archives, RefPack,
   `FSH` textures, `FFN` fonts, `FCDB` team/player database, `BNK`/`SCHl`/`CRD`
@@ -20,7 +32,9 @@ Today:
 Features are only marked done when a test has exercised them. See
 [docs/STATUS.md](docs/STATUS.md) for confirmed findings and open questions, and
 [CHANGELOG.md](CHANGELOG.md) for what changed. Menu-parity evidence:
-[docs/reverse-engineering/MENU_NAV_WC98.md](docs/reverse-engineering/MENU_NAV_WC98.md).
+[docs/reverse-engineering/MENU_PARITY.md](docs/reverse-engineering/MENU_PARITY.md) (registry + per-round log),
+[docs/reverse-engineering/UI_VALIDATION_WC98.md](docs/reverse-engineering/UI_VALIDATION_WC98.md) (verification
+matrix), [docs/reverse-engineering/MENU_NAV_WC98.md](docs/reverse-engineering/MENU_NAV_WC98.md).
 
 ## You need the original game
 
@@ -42,6 +56,9 @@ sidecar, shipping the game **and** the Qt6 launcher (the launcher is the default
 flags pass through to the game). It needs only a Vulkan-capable driver on the host — the loader and
 GPU drivers are deliberately never bundled.
 
+Pointer input is mapped through the 4:3 UI content rect, so mouse clicks land on the art they cover
+at any window aspect or scaling factor (`docs/architecture/RENDERER.md`).
+
 ```sh
 chmod +x wc98-native-linux-x86_64-*.AppImage
 ./wc98-native-linux-x86_64-*.AppImage              # launcher GUI (set up game files first)
@@ -53,8 +70,8 @@ smoke-tests the new build, swaps it in atomically and keeps the previous file as
 rollback; it never touches game files, saves or `~/.config/wc98-native`:
 
 ```sh
-packaging/update.sh --check ~/apps/wc98-native-linux-x86_64-0.4.0.AppImage
-packaging/update.sh         ~/apps/wc98-native-linux-x86_64-0.4.0.AppImage
+packaging/update.sh --check ~/apps/wc98-native-linux-x86_64-0.5.0.AppImage
+packaging/update.sh         ~/apps/wc98-native-linux-x86_64-0.5.0.AppImage
 ```
 
 Repackage locally after a build with `packaging/linux/build-appimage.sh` (downloads pinned

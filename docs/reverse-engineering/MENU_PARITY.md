@@ -679,3 +679,24 @@ light one in `FeFlow::paintCaption` **[H]**.
   Executive Producer: Bruce McMillan …" lanes. FE subset `ctest -R "fe_|fcwidget"` 89/89
   green. Dossier `analysis/pass34fe94/NOTES.md` + `fe94_dec1/2.txt`; grammar doc
   `FE_MENU_SCREENS_WC98.md` §11.
+## 27. Round 2026-11-18 - pass-35igtitl: IGMENU pause-menu title caption [LANDED]
+- **Grammar [C]** init `FUN_0043f040` tail `0x43f170/0x43f314/0x43f341`: scene event state
+  `DAT_00601934` -> `{1 Half-Time, 2 Full-Time, 3/4 Extra-Time, else End Match}`; state 0 /
+  mode-class 0xa/0xc -> table-pointer check (`DAT_006024d0` vs PK-alt `0x57c886` ->
+  Scenario Select, practice `0x57c902` -> Post Game Menu, else **Pause Menu** for the live
+  tables). The id goes through `FUN_0x4c25d0` = language **string pointer table**
+  `DAT_00585cb0` (dword array `[base+id*4]`, runtime-built — not the FC remap
+  `DAT_005774a4`), then `FUN_00477cb4(win, EDX='titl', EBX=str)` installs the caption on
+  widget `titl` (LAY fontid 1, alignment 3, pixelwidth 350). Gate `DAT_00601930 != 0`
+  skips the install; byte-lane tail (`DAT_0057c920/921`, exe string `0x562144`) overrides
+  widget `name` dynamically — stays [Open].
+- **Bank ids [C]** verified against FCENG.BIN: 868 `Half-Time`, 776 `Full-Time`, 669
+  `Extra-Time`, 632 `End Match`, 1601 `Scenario Select`, 1384 `Post Game Menu`, 1333
+  `Pause Menu` (FC index == DAT_00585cb0 entry index).
+- **Port**: `igTitleId(sim::MatchState)` in the pause-menu block (status `0x10` /
+  `endWhistle==2` -> Full-Time; `endWhistle==1` -> Half-Time, `periodIndex>=2` ->
+  Extra-Time; live play -> Pause Menu), painted white fontId 1 centred x=320 y=titl+8.
+- **Gate**: `fe_igmenu` `IGMENU: shapes=29 texts=141` (+10 texts vs pre-titl); capture
+  `t26_igmenu.png` white glyph run x 272..369 centred, y 32..40. IG-family subset
+  `ctest -R "fe_ig*|fe_highlite|fe_hilsav|fe_mgmt|fe_camera|fe_practise|fe_manmarks|fe_control|fcwidget"`
+  14/14 PASS. Dossier `analysis/pass35igtitl/NOTES.md`.

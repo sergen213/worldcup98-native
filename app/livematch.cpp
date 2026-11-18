@@ -1695,6 +1695,26 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
                     ig.shapes += 4;
                 };
                 stroke(116.f, 32.f, 408.f, 95.f); stroke(116.f, 131.f, 408.f, 231.f); stroke(116.f, 366.f, 408.f, 84.f);
+                // 'titl' runtime caption [C] init 0x43f170/0x43f314/0x43f341: FUN_0x4c25d0(id) reads the
+                // language string table DAT_00585cb0 and installs on widget 'titl' via FUN_00477cb4
+                // (EDX='titl'). Scene event state DAT_00601934 -> {1 Half-Time(868), 2 Full-Time(776),
+                // 3/4 Extra-Time(669), else End Match(632)}; state 0 (live play) + live table ->
+                // "Pause Menu"(1333), PK-alt table 0x57c886 -> "Scenario Select"(1601), practice table
+                // 0x57c902 -> "Post Game Menu"(1384) (not reachable in the port's 1p live sim). Bank ids
+                // verified against FCENG.BIN (analysis/pass11/FCENG.BIN.json). Port derivation from sim
+                // status/endWhistle/periodIndex mirrors the whistle sequence [C]-approx.
+                const auto igTitleId = [](const sim::MatchState& m) {
+                    if ((m.status & 0x10u) != 0u || m.endWhistle == 2) return 776;      // Full-Time
+                    if (m.endWhistle == 1) return m.periodIndex >= 2 ? 669 : 868;       // Extra-Time / Half-Time break
+                    return 1333;                                                        // Pause Menu (live play)
+                };
+                if (const formats::LayoutObject* o = layObj(*igMenu, "titl")) {
+                    const std::string cap = igText && igText->ready()
+                                                ? std::string(igText->stringAt(std::size_t(igTitleId(w.match))))
+                                                : std::string();
+                    ig.texts += paintCentered(igText.get(), ov, cap, 320.f, float(o->y) + 8.f, 350.f,
+                                              render::packRgba(255u, 255u, 255u, 255u), 1); // fontid 1 (LAY titl)
+                }
                 // Header block (box1): init FUN_0043f3e8 strings the typ1/typ2 names + nmb1/nmb2
                 // score digits ("%d" snprintf lane DAT_0064024c/250 %100) and installs the FNNN
                 // shields on flg1/flg2 — same idiom as the IG board headers (numbers paint after

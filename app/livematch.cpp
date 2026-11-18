@@ -913,6 +913,34 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
         e.key.down = down;
         SDL_PushEvent(&e);
     };
+    // Live UI pointer lane (pass-27igmouse): MAUS.PAK cursor art + pointer state for the pause
+    // menu and the IGQUESHN confirm box. Retail window-object semantics [H]: hover on a menu row
+    // moves the cursor, a press activates the row / the confirm box 'okay'/'canc' buttons.
+    presentation::FeCursor mouseArt;
+    render::TextureId mouseTex = 0;
+    if (presentation::loadFeCursor(tree, mouseArt))
+        mouseTex = renderer.createTexture(mouseArt.bmp, render::Wrap::Clamp, "live/maus-curs");
+    float ptrX = -1.f, ptrY = -1.f;
+    bool lmb = false, prevLmb = false;
+    bool igMouseShot = false;
+    auto motion = [&](float x, float y) { // script coords are virtual 640x480 -> window pixel space
+        const auto [px, py] = window.pixelSize();
+        SDL_Event e{};
+        e.type = SDL_EVENT_MOUSE_MOTION;
+        e.motion.x = px ? x * float(px) / 640.f : x;
+        e.motion.y = py ? y * float(py) / 480.f : y;
+        SDL_PushEvent(&e);
+    };
+    auto click = [&](float x, float y, bool down) {
+        const auto [px, py] = window.pixelSize();
+        SDL_Event e{};
+        e.type = down ? SDL_EVENT_MOUSE_BUTTON_DOWN : SDL_EVENT_MOUSE_BUTTON_UP;
+        e.button.button = SDL_BUTTON_LEFT;
+        e.button.down = down;
+        e.button.x = px ? x * float(px) / 640.f : x;
+        e.button.y = py ? y * float(py) / 480.f : y;
+        SDL_PushEvent(&e);
+    };
 
     constexpr double kStepMs = 20.0; // 1/50 s wall-clock sim step (engine frame cadence)
     std::uint64_t last = SDL_GetTicks();
@@ -1140,6 +1168,34 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
         return d;
     };
 
+    // Enter dispatch on the ROW CODE, not the index [C] 0x43f548 jump table — shared by the key
+    // lane and the mouse press lane (pass-27igmouse).
+    const auto menuActivate = [&] {
+        switch (kIgMenuRows[std::size_t(igSel)].code) {
+            case 1: if (!hlRows().empty()) openBoard("ighilite", 4); break; // Instant Replay -> browser (§D); masked row never reaches here
+            case 2: openBoard("igcamera", 8); break;                        // Camera Select (§G, 2p table)
+            case 3: mgmt = buildIgMgmt(); openBoard("igteam72", 6); break;  // Team Management -> IGTEAM mirror pages (§E)
+            case 4: openBoard("control1", 11); break;                       // Controller Select board (pass-26)
+            case 5: std::printf("live: IGOPTN2 board from the Options row\n"); openBoard("igoptn2", 10); break; // Options (pass-21igscn)
+            case 6: openBoard("igstats", 1); break;                         // Match Statistics board
+            case 7: openBoard("igscsum", 3); break;                         // Score Summary: full-time chain, Enter -> IGFLSUM [C]
+            case 8: std::printf("igmenu: Booking Summary row (no booking scene in the tree)\n"); break;
+            case 9: pause = haveIq ? IgPause::RestartAsk : IgPause::Off; break; // Restart Match: confirm box, Enter restarts
+            case 10: if (haveIq) pause = IgPause::QuitAsk; else quit = true; break; // Quit Match: IGQUESHN box [C]
+            case 11: case 12: quit = true; break;                           // Quit World Cup / Quit to Windows: direct exit (0x43f72d chain)
+            default: pause = IgPause::Off; break;                           // code 0 Continue: resume the match loop
+        }
+    };
+    const auto confirmYes = [&] { // confirm 'yes': rebuild the world on the same seed, reopen kickoff [C] restart chain installs 0x440706
+        runner = sim::SimRunner(boot.md, boot.opt, 0x2E7A); // move-assign: `w` still binds runner.w_
+        sim::Input_assignController(w, 0, 1, 0);
+        evPos = 0; rec = ReplayRecorder{}; prevSim = int(w.time.simFrames);
+        lastPoss = w.time.possessionFrames; possAcc = {}; initPeriod = w.match.periodIndex;
+        halfShown = false; ftShown = false;
+        std::printf("igmenu: match restarted\n");
+        pause = IgPause::Off;
+    };
+
     { // Snap the camera to its tele target once (demo passes a huge frame count per capture; live
       // smoothing climbs eye.y only +/-frames units per tick, so starting at 0 crawls for seconds).
         MatchSnapshot init = snapshotFromWorld(w, boot.md);
@@ -1151,9 +1207,17 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
         // pad word -> controller 0 (proves the whole input->sim command path in --live-match-smoke).
         if (smokeFrames && presented == 20) key(SDL_SCANCODE_S, true);
         if (smokeFrames && presented == 34) key(SDL_SCANCODE_S, false);
+        if (smokeFrames && presented == 2) motion(320.f, 455.f); // park the pointer outside the pause-menu window: the window-created synthetic motion must not hover a row (gate determinism, pass-27)
         if (igPauseSmoke && presented == 100) key(SDL_SCANCODE_ESCAPE, true); // gate script: Esc opens IGMENU (after the forced kickoff kick ~frame 90)
+        if (igPauseSmoke && presented == 105) motion(250.f, 219.5f); // pass-27: hover the Match Stats row -> cursor pane follows
+        if (igPauseSmoke && presented == 113) igMouseShot = true;    // _igmenu_mouse.png: cursor sprite + pane on row 2
+        if (igPauseSmoke && presented == 114) click(250.f, 219.5f, true);  // press activates row 2 -> IGSTATS board (code lane shared with Enter)
+        if (igPauseSmoke && presented == 116) click(250.f, 219.5f, false);
+        if (igPauseSmoke && presented == 117) motion(320.f, 455.f);  // park pointer outside the menu window: keyboard lane below unchanged
+        if (igPauseSmoke && presented == 118) key(SDL_SCANCODE_ESCAPE, true); // IGSTATS dismiss -> IGMENU (src 1 returns to the menu [C])
         if (igPauseSmoke && presented == 120) { key(SDL_SCANCODE_L, true); key(SDL_SCANCODE_L, false); } // Controller Select board: CONTROL1 evidence line + _control1.png (pass-26)
         if (igPauseSmoke && presented == 130) key(SDL_SCANCODE_ESCAPE, true); // dismiss CONTROL1 -> IGMENU (src 11)
+        if (igPauseSmoke && presented == 131) { key(SDL_SCANCODE_UP, true); key(SDL_SCANCODE_UP, false); } // cursor back to row 0 (Instant Replay masked -> skip)
         // cursor walk Continue -> Quit Match over the decoded 1p table (Instant Replay masked: no replay
         // rows in this lane); symmetric Up-back afterwards leaves the cursor at row 0 in every mask case.
         if (igPauseSmoke && presented == 134) { key(SDL_SCANCODE_DOWN, true); key(SDL_SCANCODE_DOWN, false); }
@@ -1307,6 +1371,13 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
 
         for (SDL_Event e; SDL_PollEvent(&e);) { // keyboard + gamepad transitions into the ported layer
             if (e.type == SDL_EVENT_QUIT) quit = true;
+            else if (e.type == SDL_EVENT_MOUSE_MOTION) { // pointer -> virtual 640x480 (FE-lane idiom)
+                const auto [px, py] = window.pixelSize();
+                if (px && py) { ptrX = float(e.motion.x) * 640.f / float(px); ptrY = float(e.motion.y) * 480.f / float(py); }
+            }
+            else if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN || e.type == SDL_EVENT_MOUSE_BUTTON_UP) {
+                if (e.button.button == SDL_BUTTON_LEFT) lmb = e.button.down;
+            }
             else if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat && e.key.scancode == SDL_SCANCODE_ESCAPE) {
                 // Esc opens/leaves IGMENU (global-key hub parity); no IG art on this tree -> direct exit.
                 if (pause == IgPause::Board) dismissBoard(); // ESC=0x65 grammar: resume / dismiss to caller [C]
@@ -1389,31 +1460,8 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
                             else if (bk >= 18) { const bool user = boards->mgSel() == 1; if (user) prac.userKeeper = !prac.userKeeper; else if (boards->mgSel() == 2) prac.cpuKeeper = !prac.cpuKeeper; std::printf("igprac: %s keeper %s\n", user ? "user" : "cpu", (user ? prac.userKeeper : prac.cpuKeeper) ? "ON" : "OFF"); } // FC#1920/#374 on-off toggle (§G)
                             else dismissBoard();
                         }
-                        else if (pause == IgPause::Menu) { // Enter dispatches on the ROW CODE, not the index [C] 0x43f548 jump table
-                            switch (kIgMenuRows[std::size_t(igSel)].code) {
-                                case 1: if (!hlRows().empty()) openBoard("ighilite", 4); break; // Instant Replay -> browser (§D); masked row never reaches here
-                                case 2: openBoard("igcamera", 8); break;                        // Camera Select (§G, 2p table)
-                                case 3: mgmt = buildIgMgmt(); openBoard("igteam72", 6); break;  // Team Management -> IGTEAM mirror pages (§E)
-                                case 4: openBoard("control1", 11); break;                       // Controller Select board (pass-26)
-                                case 5: std::printf("live: IGOPTN2 board from the Options row\n"); openBoard("igoptn2", 10); break; // Options (pass-21igscn)
-                                case 6: openBoard("igstats", 1); break;                         // Match Statistics board
-                                case 7: openBoard("igscsum", 3); break;                         // Score Summary: full-time chain, Enter -> IGFLSUM [C]
-                                case 8: std::printf("igmenu: Booking Summary row (no booking scene in the tree)\n"); break;
-                                case 9: pause = haveIq ? IgPause::RestartAsk : IgPause::Off; break; // Restart Match: confirm box, Enter restarts
-                                case 10: if (haveIq) pause = IgPause::QuitAsk; else quit = true; break; // Quit Match: IGQUESHN box [C]
-                                case 11: case 12: quit = true; break;                           // Quit World Cup / Quit to Windows: direct exit (0x43f72d chain)
-                                default: pause = IgPause::Off; break;                           // code 0 Continue: resume the match loop
-                            }
-                        }
-                        else if (pause == IgPause::RestartAsk) { // confirm 'yes': rebuild the world on the same seed, reopen kickoff [C] restart chain installs 0x440706
-                            runner = sim::SimRunner(boot.md, boot.opt, 0x2E7A); // move-assign: `w` still binds runner.w_
-                            sim::Input_assignController(w, 0, 1, 0);
-                            evPos = 0; rec = ReplayRecorder{}; prevSim = int(w.time.simFrames);
-                            lastPoss = w.time.possessionFrames; possAcc = {}; initPeriod = w.match.periodIndex;
-                            halfShown = false; ftShown = false;
-                            std::printf("igmenu: match restarted\n");
-                            pause = IgPause::Off;
-                        }
+                        else if (pause == IgPause::Menu) menuActivate();          // Enter on a menu row (pass-27: shared with the mouse lane)
+                        else if (pause == IgPause::RestartAsk) confirmYes();      // confirm 'yes' (shared with the confirm-box mouse lane)
                         else if (pause == IgPause::QuitAsk) quit = true;                       // IGQUESHN 'ok': leave the match (FE return deferred)
                         else pause = IgPause::Off;                                           // resume / canc
                         break;
@@ -1422,6 +1470,35 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
             }
             if (pause == IgPause::Off) in.handle(e); // gameplay inputs never feed the sim while paused
         }
+        // Pointer routing (pass-27): hover on a menu row moves the cursor (masked rows refuse,
+        // same rule as igStep); a press activates the row; on the IGQUESHN/confirm box a press
+        // over 'okay' activates (quit/restart), over 'canc' returns to the menu [H].
+        {
+            const int count = int(kIgMenuRows.size());
+            const float winX = 116.f + (408.f - 286.f) / 2.f;
+            const float winY = 131.f + (231.f - float(count) * 18.f) / 2.f;
+            const auto rowAtPtr = [&] {
+                if (ptrX < winX || ptrX >= winX + 286.f || ptrY < winY || ptrY >= winY + float(count) * 18.f) return -1;
+                return int((ptrY - winY) / 18.f);
+            };
+            if (pause == IgPause::Menu) {
+                const int r = rowAtPtr();
+                if (r >= 0 && !igDisabled(r)) {
+                    igSel = r;
+                    if (lmb && !prevLmb) {
+                        std::cout << "igmenu: mouse activate row=" << r << " code=" << int(kIgMenuRows[std::size_t(r)].code) << '\n';
+                        menuActivate();
+                    }
+                }
+            } else if (pause == IgPause::QuitAsk || pause == IgPause::RestartAsk) {
+                const auto hit = [&](const char* nm) { const formats::LayoutObject* o = layObj(*igQues, nm); return o && presentation::widgetHit(*o, ptrX, ptrY); };
+                if (lmb && !prevLmb) {
+                    if (hit("okay")) { if (pause == IgPause::QuitAsk) quit = true; else confirmYes(); }
+                    else if (hit("canc")) pause = IgPause::Menu;
+                }
+            }
+        }
+        prevLmb = lmb;
         if (quit) break;
 
         // The pause menu freezes the simulation while open (the original halts the match loop).
@@ -1546,8 +1623,18 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
             }
             scene.pushOverlay(ov); // consumed by the build() below
         } else if (pause != IgPause::Off) {
-            FeDrawStats ig = pause == IgPause::Menu ? composite(*igMenu, ov, igArt, igText.get())
-                                                     : composite(*igQues, ov, igArt, igText.get());
+            // Retail pointer semantics [H]: LMB over a confirm-box button paints its PUSHEDSHAPE
+            // variant (widgetHit + FeUiState::pressed, same lane as the FE hub buttons).
+            presentation::FeUiState uiSt;
+            uiSt.mx = ptrX; uiSt.my = ptrY;
+            if (lmb && (pause == IgPause::QuitAsk || pause == IgPause::RestartAsk)) {
+                for (const char* nm : {"okay", "canc"}) {
+                    const formats::LayoutObject* o = layObj(*igQues, nm);
+                    if (o && presentation::widgetHit(*o, ptrX, ptrY)) { uiSt.pressed = nm; break; }
+                }
+            }
+            FeDrawStats ig = pause == IgPause::Menu ? composite(*igMenu, ov, igArt, igText.get(), nullptr, &uiSt)
+                                                     : composite(*igQues, ov, igArt, igText.get(), nullptr, &uiSt);
             if (pause == IgPause::Menu) {
                 // Row grammar [C] tick 0x43fc40 + init 0x43f040: 18-px rows, runtime-centred into
                 // box2 (x=116 w=408): win.x = (408-286)/2+116 = 177, win.y = (231-count*18)/2+131
@@ -1607,12 +1694,20 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
             } else if (!iqReported) {
                 std::cout << "IGQUESHN: shapes=" << ig.shapes << " texts=" << ig.texts << '\n'; iqReported = true;
             }
+            if (mouseTex && ptrX >= 0.f) { // live pointer sprite (pass-27), clamped to the virtual 640x480
+                const float cw = float(mouseArt.bmp.width), ch = float(mouseArt.bmp.height);
+                const float cx = std::clamp(ptrX + float(mouseArt.hotX), 0.f, render::SpriteBatch::kWidth - cw);
+                const float cy = std::clamp(ptrY + float(mouseArt.hotY), 0.f, render::SpriteBatch::kHeight - ch);
+                ov.draw(mouseTex, {cx, cy, cw, ch}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu);
+                ++ig.cursors;
+            }
             scene.pushOverlay(ov); // consumed by the build() below (SpriteBatch::append after the HUD strip)
             if (igPauseSmoke && presented == 110) igShotPending = true; // visual evidence of the composite
         }
 
         const render::Frame& frame = scene.build(snap, camera.camera(), /*enhanced=*/true);
         if (igShotPending) savePng(renderer, frame, prefix + "_igmenu.png");
+        if (igMouseShot) { savePng(renderer, frame, prefix + "_igmenu_mouse.png"); igMouseShot = false; }
         if (boardShot && boards) { std::string nm(lowerName(kBoardName[std::size_t(boards->kind())])); for (char& c : nm) c = char(std::tolower(static_cast<unsigned char>(c))); savePng(renderer, frame, prefix + "_" + nm + ".png"); }
         if (igTabShot >= 0) { savePng(renderer, frame, prefix + "_igoptn2_t" + std::to_string(igTabShot) + ".png"); igTabShot = -1; }
         if (igCycShot) { savePng(renderer, frame, prefix + "_igoptn2_cyc.png"); igCycShot = false; }

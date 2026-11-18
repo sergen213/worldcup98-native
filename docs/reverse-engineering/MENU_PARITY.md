@@ -238,7 +238,7 @@ Columns: **ref** = reference captured (asset-level evidence, see rule above — 
 | Tournament save/load slots | [C] SAVESLOT_WC98.md | ✓ WCT1 codec | ✓ tournament-load nav | ✓ fixture gates | n/a | ✗ | `fe_nav_tournament_save`, `fe_nav_tournament_load` (WC98_SAVE_SLOT=7) |
 | Intro movies (.DCT INT_EASP/INT_FIFA) | [C] VIDEO_DCT_NOTES.md | ✓ | ✓ Esc skip | ✓ video_play lane | ✓ audio track | ✗ | app/video.cpp gates; `--no-intro` |
 | Options (feflow15) | [C] LAY + init 0x44f22c FourCC tag dispatch (FE15_INIT `save`/`deft`/`fwrd`/`back`/`ops2`, `analysis/pass22fe15/dec2.txt`) | ✓ FEFLOW15 composite, tab pages tbb1..4, row cursor over lst{tab} `rows=N+` FC tuples (11 captions + value column paint — dead-scan parse bug fixed) | ✓ hub fe15 wedge -> options; up/down rows, L/R cycles values (music/menu-sfx volume wired to settings.ini + live mixer gain); Enter='fwrd' commit+pop, Esc='back', mouse save/deft/fwrd buttons; ttxt header pane = tab title caption per TABSW rewrite (pass-22fe15b) | ✓ `fe_flow_options` PASS "FEFLOW15: shapes=[1-9]" + selftest 14b3 tag grammar | ✗ | §4 rank 1 (in-game IGOPTN2 board landed §14) |
-| In-game pause menu (IGMENU.LAY + IGQUESHN.LAY) | [C] tick=0x43FC40, tags 'gmnc'/'okay'; art FE/INGAME/INGAME.FSH bt*n/bt*d family | ✓ composite + FSH button shapes (LAY fname=null.fsh: scene installs art at init; RELEASED->*n, HILITED/PRESSED->*d) | ✓ Esc opens / closes-resume, arrows over {Resume,Quit}, Enter on quit -> IGQUESHN confirm ('quit'-tag path); sim frozen while open | ✓ `fe_igmenu` PASS "IGMENU: shapes=[1-9]" + _igmenu/_igquesn.png shots | ✗ | §4 rank 8 closed by §19 (decoded 1p `{textid,code}` row table, FC-remap captions, pane quad, code-keyed dispatch; mouse still unwired) |
+| In-game pause menu (IGMENU.LAY + IGQUESHN.LAY + CONTROL1.LAY) | [C] tick=0x43FC40, init 0x43f040 row tables, tags 'gmnc'/'okay', dispatch 0x43f548 jump table `*0x440148(,%ecx,4)`; art FE/INGAME/INGAME.FSH bt*n/bt*d family | ✓ composite + frame stroke quads + header overlay (typ1/typ2 names, flg shields, box4/5 white plate, nmb1/nmb2 `%d`) + decoded 1p `{textid,code}` row table with FC-remap captions, 18-px rows, HILITED pane quad; CONTROL1 in-game board kind 25 | ✓ Esc opens / dismiss-resume per board src, arrows skip mask-disabled rows (replay `FUN_00494fc0` empty, restart phase mismatch), Enter dispatch by CODE, pointer lane: hover = cursor on press edge, row press activates, IGQUESHN `okay`/`canc` press confirms/resumes; sim frozen while open | ✓ `fe_igmenu` PASS "IGMENU: shapes=[1-9]" + "CONTROL1: shapes=[1-9]" + "igmenu: mouse activate row=2 code=6" + _igmenu/_control1/_igquesn/_igmenu_mouse.png shots | ✗ | §4 rank 8 closed by §19 + §20 (row table, captions, pane, code-keyed dispatch, pointer lane; 2p/PK/draw tables reachable via lane hotkeys L/M/O/B) |
 | Save/load scene UI (Feflow89 entry) | [C] LAYs + slot buttons b000..b005 (USER/SLOTnn.SAV) | ✓ FEFLOW89 composite slot list | ✓ hub fe41 wedge -> rows; Enter = WCT1 load when a file exists; Esc back | ✓ `fe_flow_saveload` PASS "FEFLOW89: shapes=[1-9]" | ✗ | §4 rank 6 (write path stays tournament-save fixture) |
 | Hub screen (Feflow06.lay, 13 wedges) + credits (feflow19 via cred wedge) | [C] §3 global-key table; buttons objecttype 6/32, help pane type=14 `help=NNN` FC captions | ✓ composite: hover/push/disabled shape states + FRAMES anim + help pane text; cursor cycles all 13 wedges (keyboard + mouse widgetHit) | ✓ fe07->friendly, fe11->team grid, fe32->practise, **fe33->feflow90 history board (+`fe91` chain to feflow91)**, quit->exit, fe15/fe41/cred -> views; fe90/fe04/fe02 disabled no-ops (documented) | ✓ `fe_hub` PASS "FEFLOW06: shapes=[1-9]" + `fe_credits` PASS "FEFLOW19: shapes=[1-9]" + `fe_history_select`/`fe_nav_history` PASS "FEFLOW90/91" | ✗ | §4 rank 10 partially landed (shootout/modem/network = no simulation in port; classic history presentation now open; repl highlights open) |
 Honest summary: **impl** = 13 registry scenes (incl. feflow90/91 history boards + shared popup lane feflow10/37) + hub composite (Feflow06, 13 wedges live) + options/saveload/credits views + in-game pause (IGMENU/IGQUESHN) + IGCONSEL box; igoptns trio = captions lane (art proven absent §7); **cap** = all 156 layouts via the capture lane, every one asserted to render a real frame by `fe_screen_sweep` (visual only, no gate asserts pixel parity with Windows — cmp column is empty by design); in-game pack interactive = pause menu + option popups captions + IG confirm boxes.
@@ -509,3 +509,26 @@ light one in `FeFlow::paintCaption` **[H]**.
 - **Suite**: 143/145 this lane (`test_sim_scenarios`, `self_test_gameplay` = in-flight simulation
   kick-seam lane, untouched). Registry rows IGMENU.LAY/CONTROL1.LAY updated; §4 rank-8 residual
   (runtime captions) closed for the 1p table; dossier `analysis/pass26igmenu/NOTES.md`.
+
+## 20. Round 2026-11-18 — pass-27igmouse: IGMENU/IGQUESHN pointer lane wired [LANDED]
+
+- **Retail semantics [H]**: the pause menu and confirm box take mouse input through the same
+  window-object hit machinery as the FE screens — hover moves the cursor, a press activates.
+  Original scene handlers do not branch on a mouse flag; the pointer arrives as widget events
+  (`'gmnc'` row code / `'okay'`+`'canc'` tags = objecttype 40/39 button widgets in IGMENU.LAY).
+- **Port** (`app/livematch.cpp`): SDL LMB + motion wired into the live-match loop. Pointer maps
+  to the virtual 640x480 through `window.pixelSize()` (FE-lane idiom); hover on a menu row sets
+  `igSel` on a press *edge* only (retail press semantics, not continuous hover); a press inside a
+  row activates it through the shared `menuActivate` (code-keyed dispatch), inside `okay`/`canc`
+  confirms/resumes the quit path. `prevLmb` edge tracking is frame-local (processed-event view).
+  `maus.bmp` cursor sprite drawn at the pointer via `presentation::loadFeCursor` when the art is
+  present. Menu rows outside the window rect and confirm presses in blank area are no-ops.
+- **Gate determinism**: the window-created synthetic motion at startup parks the pointer at
+  (320,455) for every smoke lane (frame 2), so no gate cursor drifts from a phantom hover;
+  igPauseSmoke hovers Match Stats (250,219.5) -> press -> IGSTATS -> Esc -> L opens CONTROL1 ->
+  Esc -> cursor Up to row 0 -> Down x5 -> Enter IGQUESHN -> press `okay` exits (exit code 0).
+- **Gate**: `fe_igmenu` PASS regex adds `igmenu: mouse activate row=2 code=6`; capture
+  `_igmenu_mouse.png` pixel-checked (pane quad row 2 = (134,138,66) vs row 0 unpaneled, cursor
+  sprite pixel (225,234,230) near pointer). `ctest -R fe_` 85/85 green with the lane.
+- **Suite**: 143/145 baseline unchanged (`test_sim_scenarios`, `self_test_gameplay` = in-flight
+  simulation kick-seam lane, untouched). Dossier `analysis/pass27igmouse/NOTES.md`.

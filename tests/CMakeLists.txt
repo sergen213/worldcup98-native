@@ -313,7 +313,7 @@ if(DEFINED WC98_TREE)
     # cancels, Up x5 resumes at Continue (evidence lines + PNGs).
     add_test(NAME fe_igmenu COMMAND wc98-native --ig-pause-smoke 260 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/igmenu)
     set_tests_properties(fe_igmenu PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}"
-        PASS_REGULAR_EXPRESSION "IGMENU: shapes=[1-9][0-9]* texts=[1-9]" "CONTROL1: shapes=[1-9][0-9]* texts=[1-9]" "IGQUESHN: texts=[1-9]"
+        PASS_REGULAR_EXPRESSION "IGMENU: shapes=[1-9][0-9]* texts=[1-9]" "CONTROL1: shapes=[1-9][0-9]* texts=[1-9]" "IGQUESHN: texts=[1-9]" "igmenu: mouse activate row=2 code=6"
         FAIL_REGULAR_EXPRESSION "IGMENU: shapes=0 " "CONTROL1: shapes=0 " "IGQUESHN: texts=0 ")
     # IGOPTN2 in-game options board (pass-21igscn, analysis/pass21igmenu): the pause-menu Options row opens
     # the retail IGOPTN2 scene board (IGLAY.BIG, 17 widgets); the four tab panes lst1..lst4 = Match/Game

@@ -372,6 +372,7 @@ public:
     // FUN_004c31d0) — the list painter + help pane grammar [C fc_painter.txt:1231-1257, pass21igmenu].
     [[nodiscard]] std::string optionCaption(int tab, int row) const;      // row label caption
     [[nodiscard]] std::string optionValueCaption(int tab, int row, int idx) const; // value caption
+    [[nodiscard]] int optionValueIdx(int tab, int row) const; // active value index of a row
     [[nodiscard]] std::string optionTabCaption(int tab) const;            // tbb{tab+1} help= caption
     // ttxt header pane caption: TABSW FUN_004516c0 rewrites the ttxt widget TEXTID per tab from the
     // DGROUP constant table (s16 0x57cd24+(tab-1)*4 = 78/81/1299/82 = tbb1..4 help ids) through

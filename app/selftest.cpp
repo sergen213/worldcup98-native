@@ -1555,12 +1555,18 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                 // -> "Match Options", lst1 row0 84 -> "Half Length" val 4654 -> "2 mins", lst4
                 // row5 160 -> "Music Volume" (mode-1 slider drives settings_.audio.music).
                 const bool tabCap = fe.optionTabCaption(0) == "Match Options";
-                // ttxt header pane [C TABSW FUN_004516c0]: ttxt TEXTID rewritten per tab from the
-                // DGROUP constant table (s16 0x57cd24 = 78/81/1299/82) via FUN_00478834; LAY design
-                // id 429 ("Shooting") never renders - the header shows the tab title caption.
+                // ttxt header pane [C TABSW real VA 0x4506c0; all_functions.txt labels are
+                // +0x1000 shifted, so cited FUN_004516c0/FUN_00478834 = actual 0x4506c0/0x477834]:
+                // ttxt TEXTID rewritten per tab from the DGROUP constant table (s16 0x57cd24 =
+                // 78/81/1299/82); LAY design id 429 ("Shooting") never renders - the header shows
+                // the tab title caption. Active tab wedge only; inactive wedges hidden (0x450778).
                 const bool hdr0 = fe.optionsHeaderText() == "Match Options";
                 const bool cap0 = fe.optionCaption(0, 0) == "Half Length";
                 const bool val0 = fe.optionValueCaption(0, 0, 0) == "2 mins";
+                // Language row (label 92, values 93..100) opens at the bank in use [C FUN_0046afb4
+                // DAT_0060cbcb = FUN_00439330 current-bank index], not index 0.
+                const bool langIdx = fe.optionValueIdx(0, 1) == 1 &&
+                                     fe.optionValueCaption(0, 1, fe.optionValueIdx(0, 1)) == "English";
                 fe.cycleTab(1);
                 const bool tab1 = fe.optionTab() == 1;
                 const bool hdr1 = fe.optionsHeaderText() == "Gameplay Options";
@@ -1585,12 +1591,12 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                 const bool re = fe.openOptions();
                 fe.back(); // Esc = 'back' tag pop
                 const bool popEsc = !fe.onOptions();
-                st.passed = nm15 && tabCap && hdr0 && cap0 && val0 && tab1 && hdr1 && tabCap3 && hdr3
+                st.passed = nm15 && tabCap && hdr0 && cap0 && val0 && langIdx && tab1 && hdr1 && tabCap3 && hdr3
                             && musCap && row5 && musGain && row1 && deft0 && dirty && stay && pop && re && popEsc;
-                st.detail = fmt("fe-options: nm15={} tabCap={} hdr0={} cap0={} val0={} tab1={} hdr1={} "
+                st.detail = fmt("fe-options: nm15={} tabCap={} hdr0={} cap0={} val0={} lang={} tab1={} hdr1={} "
                                 "tabCap3={} hdr3={} musCap={} row5={} musGain={}({}->{}) row1={} deft0={} "
                                 "dirty={} stay={} pop={} re={} popEsc={}",
-                                int(nm15), int(tabCap), int(hdr0), int(cap0), int(val0), int(tab1), int(hdr1),
+                                int(nm15), int(tabCap), int(hdr0), int(cap0), int(val0), int(langIdx), int(tab1), int(hdr1),
                                 int(tabCap3), int(hdr3), int(musCap), int(row5), int(musGain), musicBefore,
                                 cfg.audio.music, int(row1), int(deft0), int(dirty), int(stay), int(pop),
                                 int(re), int(popEsc));

@@ -128,6 +128,7 @@ int run(int argc, char** argv) {
     bool fePopupEnter = false, fePopupBack = false; // --fe-popup-enter / --fe-popup-back: dismiss proof frames
     std::string feScreenName; // --fe-screen NAME: arbitrary LAYOUTS.BIG member capture lane ("make all menus 1:1")
     bool feOptions = false, feSaveLoad = false, feCredits = false; // --fe-options/--fe-saveload/--fe-credits: open the hub scene-graph views (Phase 2/3/4 gates)
+    int feOptionsTab = -1; // --fe-options-tab N: FEFLOW15 opened at tab N (TABSW wedge-visibility capture gate)
     std::string lang = "eng"; // --lang CODE: FC*.BIN UI-string bank (registry Language key)
     std::string videoPlay; // --video-play FILE.DCT: movie playback through the Vulkan renderer (VIDEO.md)
     bool noIntro = false; // --no-intro: skip the startup .DCT movies (headless gates never play them)
@@ -184,6 +185,7 @@ int run(int argc, char** argv) {
         else if (a == "--fe-popup-back") { fePopupBack = true; }                              // Esc: cancel branch closes to caller
         else if (a == "--fe-screen") { feMode = true, smokeFrames = 1, feScreenName = next(); } // default capture 1 frame; --fe-smoke N overrides
         else if (a == "--fe-options")  { feMode = true, smokeFrames = 1, feOptions = true; }  // FEFLOW15 options view capture gate
+        else if (a == "--fe-options-tab") { feMode = true, smokeFrames = 1, feOptionsTab = std::stoi(next()); } // FEFLOW15 at tab N (TABSW active-wedge visibility [C raw 0x450778])
         else if (a == "--fe-saveload") { feMode = true, smokeFrames = 1, feSaveLoad = true; } // Feflow89 slot-list capture gate
         else if (a == "--fe-credits")  { feMode = true, smokeFrames = 1, feCredits = true; }  // FEFLOW19 credits view capture gate
         else if (a == "--pad-smoke") { padSmoke = true; }
@@ -382,6 +384,10 @@ int run(int argc, char** argv) {
             }
         }
         if (fe && feOptions) fe->openOptions();   // --fe-options gate frame: FEFLOW15 composite
+        if (fe && feOptionsTab >= 0) {            // --fe-options-tab N: TABSW tab switch (active wedge only)
+            if (fe->openOptions()) fe->cycleTab(feOptionsTab);
+            else std::fprintf(stderr, "fe: options unavailable\n");
+        }
         if (fe && feSaveLoad) fe->openSaveLoad(); // --fe-saveload gate frame: Feflow89 slot list
         if (fe && feCredits) fe->openCredits();   // --fe-credits gate frame: FEFLOW19 roll
 
@@ -537,7 +543,7 @@ int main(int argc, char** argv) {
             std::puts("usage: wc98-native [--width N] [--height N] [--fullscreen|--windowed] [--smoke N]"
                       " [--fe] [--tree DIR] [--out-prefix P] [--fe-smoke N] [--tournament-saveload N] [--fe-pick N]"
                       " [--fe-mgmt-grid N] [--fe-load-game N] [--fe-save-manager N]"
-                      " [--fe-nav exhibition|league|tournament|tournament-load|practise] [--fe-team] [--fe-setup N] [--fe-league] [--fe-league-cfg N] [--fe-setup07 N] [--fe-stadium08 N] [--fe-screen NAME]"
+                      " [--fe-nav exhibition|league|tournament|tournament-load|practise] [--fe-team] [--fe-setup N] [--fe-league] [--fe-league-cfg N] [--fe-setup07 N] [--fe-stadium08 N] [--fe-options-tab N] [--fe-screen NAME]"
                       " [--fe-lineups16]"
                       " [--fe-wc-cfg N]"
                       " [--fe-popup NAME] [--fe-popup-keys N] [--fe-popup-enter|--fe-popup-back] [--fe-control N]"

@@ -504,6 +504,20 @@ FeFlow::FeFlow(render::Renderer& r, fs::path tree, std::string lang) : tree_(std
             optRows_[std::size_t(t)] = parseOptionRows(optsRaw_, t);
             optVals_[std::size_t(t)].assign(optRows_[std::size_t(t)].size(), 0);
         }
+    // The Language row (lst1 tuple ,92,2,8, values 93..100 = Dutch..Swedish) opens at the FC bank
+    // in use: exe DAT_0060cbcb = FUN_00439330 (current bank index), default path FUN_0046afb4.
+    // Bank order [0,8) matches the value-list order (FC*.BIN set) [H]; non-matching code keeps eng.
+    if (haveOpts_ && text_)
+        for (std::size_t i = 0; i < optRows_[0].size(); ++i) {
+            if (optRows_[0][i].label != 92) continue;
+            static constexpr std::array<std::string_view, 8> kCodes = {"dut", "eng", "fre", "ger", "ita", "dan", "spa", "swe"};
+            const std::string_view code = text_->language();
+            int idx = 1; // bank set has no JAP slot in the row; game default = English
+            for (int c = 0; c < 8; ++c)
+                if (code == kCodes[std::size_t(c)]) idx = c;
+            optVals_[0][i] = idx;
+            break;
+        }
     // Mouse cursor sprite (MAUS.PAK, exe string offset 1451894): absent art => no sprite drawn.
     if (presentation::loadFeCursor(tree_, cursor_) && !cursorTex_)
         cursorTex_ = r.createTexture(cursor_.bmp, render::Wrap::Clamp, "fe/maus-curs");
@@ -2843,12 +2857,15 @@ int FeFlow::hubActivate(int index) {
     return -1;
 }
 
-// TABSW FUN_004516c0 (analysis/pass22fe15/dec3.txt) per-tab case body: show/hide widgets via
-// FUN_0046bfac/FUN_0046bfcc and rewrite the ttxt header widget's TEXTID through FUN_00478834 with
-// id = s16 at DGROUP 0x57cd24 + (tab-1)*4 (`.data` dump: dword reads [0x57cd22+tab*4] `sar edx,0x10`
-// -> constants 78/81/1299/82, zero writer sites - baked into .data) = tbb1..4 help ids. The
-// design-time LAY textid 429 ("Shooting") is never displayed; header pane = tab title caption
-// (remap[78]=1037 "Match Options", [81]=798, [1299]=486, [82]=267 "Audio/Visual Options").
+// TABSW (real VA 0x4506c0, jump table 0x4516b0, cases at 0x450778; raw dump
+// analysis/pass22fe15/tabsw_disasm.txt - the all_functions.txt labels are +0x1000 shifted,
+// so the old cite FUN_004516c0/FUN_00478834 = actual 0x4506c0/0x477834) per-tab case body:
+// show/hide widgets via FUN_0046bfac/FUN_0046bfcc and rewrite the ttxt header widget's
+// TEXTID through FUN_00477834 with id = s16 at DGROUP 0x57cd24 + (tab-1)*4 (`.data` dump:
+// dword reads [0x57cd22+tab*4] `sar edx,0x10` -> constants 78/81/1299/82, zero writer sites -
+// baked into .data) = tbb1..4 help ids. The design-time LAY textid 429 ("Shooting") is never
+// displayed; header pane = tab title caption (remap[78]=1037 "Match Options", [81]=798,
+// [1299]=486, [82]=267 "Audio/Visual Options").
 static void applyOptionsHeader(formats::ScreenLayout& sc, int tab) {
     static constexpr int kHeaderId[4]{78, 81, 1299, 82};
     for (auto& o : sc.objects)
@@ -3217,6 +3234,12 @@ std::string FeFlow::optionCaption(int tab, int row) const {
     if (row < 0 || std::size_t(row) >= rows.size()) return {};
     return std::string(text_->widgetStringAt(std::size_t(rows[std::size_t(row)].label)));
 }
+int FeFlow::optionValueIdx(int tab, int row) const {
+    if (tab < 0 || tab > 3) return 0;
+    const auto& vals = optVals_[std::size_t(tab)];
+    if (row < 0 || std::size_t(row) >= vals.size()) return 0;
+    return vals[std::size_t(row)];
+}
 std::string FeFlow::optionValueCaption(int tab, int row, int idx) const {
     if (!text_ || tab < 0 || tab > 3) return {};
     const auto& rows = optRows_[std::size_t(tab)];
@@ -3248,8 +3271,15 @@ FeDrawStats FeFlow::drawOptions(render::SpriteBatch& ui) const {
     presentation::FeUiState uist;
     uist.animMs = animTicks_ * 16u;
     ++animTicks_;
-    static const std::vector<std::string> kOptsVisible{"back", "bnnr", "flag", "titl", "tab1", "tab2", "tab3", "tab4",
-                                                       "tbb1", "tbb2", "tbb3", "tbb4", "help", "quit", "save", "deft", "fwrd", "ttxt"};
+    // TABSW [C raw 0x450778, body 0x4506c0, jump table 0x4516b0]: on every tab switch it
+    // SHOWS the active tab wedge (FUN_0046bfac) and HIDES the other three (FUN_0046bfcc)
+    // plus SHOWS lst{N}/HIDEs lst{1..4}; tab1's wedge is conditional on FUN_00445624()!=2
+    // (2-player config mode) - the port domain is single-mode, so the active wedge always
+    // paints. LAY ships all four wedges visible; last-painted would win without this gate.
+    std::vector<std::string> kOptsVisible{"back", "bnnr", "flag", "titl",
+                                          "tab" + std::to_string(optTab_ + 1),
+                                          "tbb1", "tbb2", "tbb3", "tbb4",
+                                          "help", "quit", "save", "deft", "fwrd", "ttxt"};
     FeDrawStats st = presentation::composite(optsScreen_, ui, const_cast<ScreenArt&>(art_), text_.get(), &kOptsVisible, &uist);
     drawHelpPane(optsScreen_, ui, st, kTabs[std::size_t(optTab_)]); // tab captions via help= keys
     const formats::LayoutObject* lst = optsScreen_.object("lst" + std::to_string(optTab_ + 1));

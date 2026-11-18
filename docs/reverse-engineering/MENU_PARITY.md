@@ -203,7 +203,7 @@ Dump: `wc98-extract FE/PACK/LAYOUTS/IGLAY.BIG` → "1 files, 30 BIG members" (`/
 | IGPRAC1.LAY | 36 | practise-mode setup/stats popup | **impl** (Esc from the live PRACT1 board opens it: on/off toggle rows + btn nav, keeper toggles; gate `fe_practise_pages`) |
 | IGPRACT1.LAY | 37 | practise stats page (back/forw) | **impl** (pause 'P' opens it over the live frame: FC#1249 'Number of Players' stepper (< > INGAME.FSH bt4n/bt5n), numPlayers readout, User/CPU Keeper rows FC 1920/374 with On/Off 1267/1263; RIGHT tabs to IGPRACT2, LEFT wraps; gate `fe_practise_pages`) |
 | IGPRACT2.LAY | 22 | practise stats page variant | **impl** (page-2 option grid composite + FC captions, back/forw nav pair; gate `fe_practise_pages`) |
-| IGQUESHN.LAY | 20 | yes/no question popup (`okay`+`canc`, lines) | **impl** (livematch pause 'quit' row -> IGQUESHN confirm; gate `fe_igmenu`; shared key FUN_00440830 + Esc response-callback contract §33) |
+| IGQUESHN.LAY | 20 | yes/no question popup (`okay`+`canc`, `btt1/btt2` textid 12/13 "Yes"/"No", `titl/line/lin2`) | **impl** (livematch pause 'quit'/'restart' rows -> IGQUESHN confirm: shared box1 header overlay (`FUN_0043f3e8` names/shields/plate/digits), `titl` row caption + `line` question from the dispatch chain literals (remap 274/270, §28), `btt1/btt2` repaint uncovers the plate-clipped caption; gate `fe_igmenu`; shared key FUN_00440830 + Esc response-callback contract §33) |
 | IGSCSUM.LAY | 36 | score-summary list (lst1-3, up/down) | **impl** (full-time board opened at match end: header + goal rows from `goalLog`, score/shields from match state; Enter pages to IGFLSUM; gate `fe_igscsum`) |
 | IGSTATS.LAY | 67 | in-game stats screen (stat grid ×33 texts, team columns) | **impl** (IGMENU 'Stats' row opens the composite over the live frame: two-page L/R axis — Possession/Corners Won/Caught Offside/Fouls Committed/CARDS + GOALS/Shots off Target from `TeamStats` + `possessionFrames`; FC captions 1382/516/392/758/354/781/1708; Esc = dismiss to menu; gate `fe_igstats`) |
 | IGTEAM72.LAY | 49 | in-game league match setup mirror of FEFLOW72 (`t100-112` igm titles, form rows) | **impl** (IGMENU 'Management' row opens the §E page cycle: pNNN pitch grid + tNNN formation tiles from FCDB lineup shirt numbers/positions over the live frame; header pair names + bias %; gate `fe_mgmt_pages`) |
@@ -700,3 +700,31 @@ light one in `FeFlow::paintCaption` **[H]**.
   `t26_igmenu.png` white glyph run x 272..369 centred, y 32..40. IG-family subset
   `ctest -R "fe_ig*|fe_highlite|fe_hilsav|fe_mgmt|fe_camera|fe_practise|fe_manmarks|fe_control|fcwidget"`
   14/14 PASS. Dossier `analysis/pass35igtitl/NOTES.md`.
+
+## 28. Round 2026-11-18 — pass-36igquesn: IGQUESHN confirm-box captions + Yes/No repaint [LANDED]
+
+- **Retail grammar [C]** (`analysis/pass25igmenu` objdump slices, re-read this pass): the confirm
+  painter `FUN_0043fb90` runs `FUN_0043f3e8` at entry (0x43fb96) — the box1 header overlay (typ1/typ2
+  names, flg1/flg2 shields, box4/5 white RECT, nmb1/nmb2 `%d` digits) is painted on IGQUESHN exactly
+  like on IGMENU; the port hoisted it into one shared `paintPauseHeader` lambda used by both lanes.
+  `titl`/`line`/`lin2` captions come from the dispatch-chain confirm slots: chains 0x43f754
+  (restart, code 9) / 0x43f7dd (quit-match, code 10) call `FUN_0043fb50` (slots 0x57c924/0x57c926 =
+  `titl`/`line` widget ids) and install a painter whose 0x43fba1 fallback branch (when
+  `DAT_0057c934 == 0`) draws from the slot words + literals. `titl` id = the activated row's
+  `{tid,code}` high word (row caption), `line` id = chain literal 0x112 (=274 restart question) /
+  0x10e (=270 quit question); `lin2` id 0 = blank. Ids resolve through the FC remap
+  (`widgetStringAt`, pass-21igscn rule), NOT raw bank indices.
+- **Port** (`app/livematch.cpp`): IGQUESHN draw branch paints header overlay + `titl` row caption
+  (white, fontid 1) centred at y+8 + `line` question (cream, fontid 0). `btt1/btt2` (objecttype 14,
+  textid 12/13 = remap "Yes"/"No") repaint after composite with `drawLabel`'s exact placement math
+  (TEXTX/YOFFSET, ALIGNMENT=0 left anchor at x=179/353, palette `normalcolour=1` ink): the composite
+  draws the white `bo25` RECT plate (w=12 lane) over the first glyph, so the overlay uncovers it —
+  pixel-exact re-draw verified, no ghost double-paint.
+- **Gate**: `fe_igmenu` IGQUESHN evidence regex tightened to
+  `IGQUESHN: shapes=[1-9][0-9]* texts=[1-9][0-9]*` (was a partial-mismatching `texts=[1-9]`
+  alternative — ctest PASS regex list only needs one match); evidence `IGQUESHN: shapes=18
+  texts=71`, capture `_igquesn.png` shows "Quit Match" title, "Are you sure you want to Quit
+  Match?" line, full dark-ink "Yes"/"No" over the white plates. IG-family subset
+  `ctest -R "fe_igmenu|fe_igoptn2|fe_igstats|fe_mgmt_pages"` 4/4 PASS.
+- **Suite**: 146/148 (`test_sim_scenarios`, `self_test_gameplay` = in-flight simulation kick-seam
+  lane, untouched). Dossier `analysis/pass36igquesn/NOTES.md`.

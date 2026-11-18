@@ -1673,6 +1673,34 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
             FeDrawStats ig = pause == IgPause::Menu ? composite(*igMenu, ov, igArt, igText.get(), nullptr, &uiSt)
                                                      : composite(*igQues, ov, igArt, igText.get(), nullptr, &uiSt);
             strokeBoxes(ov, pause == IgPause::Menu ? *igMenu : *igQues, ig); // frame-only box outlines [H]
+            // Shared header overlay [C] FUN_0043f3e8: IGMENU init and the confirm-box painter
+            // FUN_0043fb90 both install it (0x43fb96 calls FUN_0043f3e8) — typ1/typ2 names,
+            // flg1/flg2 shields, box4/box5 white plate, nmb1/nmb2 score digits on every
+            // pause-scene box (menu and IGQUESHN alike).
+            const IgMatchData hd = buildIgData();
+            const auto paintPauseHeader = [&](const formats::ScreenLayout& lay) {
+                for (int t = 0; t < 2; ++t) {
+                    if (const formats::LayoutObject* o = layObj(lay, t == 0 ? "typ1" : "typ2"))
+                        ig.texts += paintCentered(igText.get(), ov, hd.names[std::size_t(t)], float(o->x) + 50.f, float(o->y) + 8.f, 130.f);
+                    if (const formats::LayoutObject* o = layObj(lay, t == 0 ? "flg1" : "flg2"); o && !hd.flags[std::size_t(t)].empty()) {
+                        const ScreenArt::Shape sh = igArt.shape("..\\global\\", hd.flags[std::size_t(t)], "f000", -1);
+                        if (sh.tex) { ov.draw(sh.tex, {float(o->x), float(o->y), float(sh.w), float(sh.h)}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu); ++ig.shapes; }
+                    }
+                }
+                // Original LAY order puts box4/box5 AFTER flg1/flg2: the white RECT plate must
+                // repaint over the shield art it was drawn under in the composite pass.
+                for (int t = 0; t < 2; ++t) {
+                    const formats::LayoutObject* box = layObj(lay, t == 0 ? "box4" : "box5");
+                    if (box) { ov.draw(0, {float(box->x), float(box->y), float(box->width), float(box->height)}, {}, 0xFFFFFFFFu); ++ig.shapes; }
+                }
+                for (int t = 0; t < 2; ++t) {
+                    const formats::LayoutObject* box = layObj(lay, t == 0 ? "box4" : "box5");
+                    if (const formats::LayoutObject* o = layObj(lay, t == 0 ? "nmb1" : "nmb2")) {
+                        const float cx = box ? float(box->x) + 13.f : float(o->x) + 6.f; // score plate width 26 (box4/5 RECT at 212/399)
+                        ig.texts += paintCentered(igText.get(), ov, numStr(hd.score[std::size_t(t)]), cx, float(o->y) + 7.f, 24.f);
+                    }
+                }
+            };
             if (pause == IgPause::Menu) {
                 // Row grammar [C] tick 0x43fc40 + init 0x43f040: 18-px rows, runtime-centred into
                 // box2 (x=116 w=408): win.x = (408-286)/2+116 = 177, win.y = (231-count*18)/2+131
@@ -1715,32 +1743,7 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
                     ig.texts += paintCentered(igText.get(), ov, cap, 320.f, float(o->y) + 8.f, 350.f,
                                               render::packRgba(255u, 255u, 255u, 255u), 1); // fontid 1 (LAY titl)
                 }
-                // Header block (box1): init FUN_0043f3e8 strings the typ1/typ2 names + nmb1/nmb2
-                // score digits ("%d" snprintf lane DAT_0064024c/250 %100) and installs the FNNN
-                // shields on flg1/flg2 — same idiom as the IG board headers (numbers paint after
-                // the flag quads: the digit slots sit inside the shield art x-range).
-                const IgMatchData hd = buildIgData();
-                for (int t = 0; t < 2; ++t) {
-                    if (const formats::LayoutObject* o = layObj(*igMenu, t == 0 ? "typ1" : "typ2"))
-                        ig.texts += paintCentered(igText.get(), ov, hd.names[std::size_t(t)], float(o->x) + 50.f, float(o->y) + 8.f, 130.f);
-                    if (const formats::LayoutObject* o = layObj(*igMenu, t == 0 ? "flg1" : "flg2"); o && !hd.flags[std::size_t(t)].empty()) {
-                        const ScreenArt::Shape sh = igArt.shape("..\\global\\", hd.flags[std::size_t(t)], "f000", -1);
-                        if (sh.tex) { ov.draw(sh.tex, {float(o->x), float(o->y), float(sh.w), float(sh.h)}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu); ++ig.shapes; }
-                    }
-                }
-                // Original LAY order puts box4/box5 AFTER flg1/flg2: the white RECT plate must
-                // repaint over the shield art it was drawn under in the composite pass.
-                for (int t = 0; t < 2; ++t) {
-                    const formats::LayoutObject* box = layObj(*igMenu, t == 0 ? "box4" : "box5");
-                    if (box) { ov.draw(0, {float(box->x), float(box->y), float(box->width), float(box->height)}, {}, 0xFFFFFFFFu); ++ig.shapes; }
-                }
-                for (int t = 0; t < 2; ++t) {
-                    const formats::LayoutObject* box = layObj(*igMenu, t == 0 ? "box4" : "box5");
-                    if (const formats::LayoutObject* o = layObj(*igMenu, t == 0 ? "nmb1" : "nmb2")) {
-                        const float cx = box ? float(box->x) + 13.f : float(o->x) + 6.f; // score plate width 26 (box4/5 RECT at 212/399)
-                        ig.texts += paintCentered(igText.get(), ov, numStr(hd.score[std::size_t(t)]), cx, float(o->y) + 7.f, 24.f);
-                    }
-                }
+                paintPauseHeader(*igMenu);
                 for (int row = 0; row < count; ++row) {
                     const float ry = winY + 18.f * float(row);
                     if (row == igSel) { ov.draw(0, {winX, ry, 286.f, 18.f}, {}, render::packRgba(255, 224, 96, 70)); ++ig.shapes; } // HILITED pane quad (paintRowLabel idiom)
@@ -1749,8 +1752,64 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
                                               row == igSel ? render::packRgba(16u, 16u, 40u, 255u) : render::packRgba(255u, 236u, 190u, 255u), 0);
                 }
                 if (!igReported) { std::cout << "IGMENU: shapes=" << ig.shapes << " texts=" << ig.texts << '\n'; igReported = true; }
-            } else if (!iqReported) {
-                std::cout << "IGQUESHN: shapes=" << ig.shapes << " texts=" << ig.texts << '\n'; iqReported = true;
+            } else {
+                // Confirm box [C] dispatch chains 0x43f754 (restart, code 9) / 0x43f7dd (quit-match,
+                // code 10) -> FUN_0043fb50 slots + painter FUN_0043fb90 fallback (0x43fba1 branch when
+                // DAT_0057c934 == 0): 'titl' id = word[0x57c924] = the activated row's {tid,code} high
+                // word (row caption), 'line' id = word[0x57c926] = the chain's literal question id,
+                // 'lin2' = 0 (blank: retail draws nothing for id 0). Ids resolve through the FC remap
+                // table (widgetStringAt, pass-21igscn rule): literal 0x112 -> 274 "Are you sure you
+                // want to Restart Match?", literal 0x10e -> 270 "Quit Match"; PK/practice variants
+                // (0x28f/0x2b7/0x28e) are not reachable in the port's 1p live sim.
+                paintPauseHeader(*igQues);
+                // 'okay'/'canc' + 'btt1'/'btt2': retail paints the white bo25 RECT plate (140x19
+                // at 175/349) and the Yes/No captions as separate layers; composite draws the plate
+                // over the caption first glyph, so repaint both captions after the composite with
+                // drawLabel's exact placement (align 3 boxw center, y+6, palette ink) for a
+                // pixel-exact overlay that uncovers the clipped first glyph.
+                for (const char* nm : {"btt1", "btt2"}) {
+                    if (const formats::LayoutObject* o = layObj(*igQues, nm)) {
+                        const std::size_t id = nm[3] == '1' ? 12u : 13u;
+                        const std::string_view s = igText ? igText->widgetStringAt(id) : std::string_view{};
+                        if (s.empty() || !igText) continue;
+                        const formats::FfnFont* f = igText->face(0);
+                        if (!f) f = igText->font();
+                        const render::TextureId tex = igText->faceTexture(0) ? igText->faceTexture(0) : igText->texture();
+                        if (!f || !tex) continue;
+                        const float sizePx = f->lineHeight ? float(f->lineHeight) : 16.f;
+                        const float w = presentation::textWidthPx(*f, std::string(s), sizePx);
+                        const int xoff = o->intProp("TEXTXOFFSET", 0);
+                        const int yoff = o->intProp("TEXTYOFFSET", 0);
+                        const int boxw = o->width > 0 ? o->width : o->intProp("PIXELWIDTH", 0);
+                        const int align = o->intProp("ALIGNMENT", 1);
+                        float px = float(o->x) + float(xoff);
+                        if (align == 2) px -= w;
+                        else if (align >= 3) px += (float(boxw) - w) * 0.5f;
+                        const int cidx = o->intProp("TEXTCOLOUR", o->intProp("NORMALCOLOUR", -1));
+                        const auto& pal = formats::globalPalette();
+                        const std::uint32_t ink =
+                            cidx >= 0 && std::size_t(cidx) < pal.size()
+                                ? render::packRgba(pal[size_t(cidx)][0], pal[size_t(cidx)][1], pal[size_t(cidx)][2], 0xFF)
+                                : render::packRgba(0xFFu, 0xFFu, 0xFFu, 0xFFu); // drawLabel white fallback
+                        for (const auto& q : presentation::layoutText(*f, s, px, float(o->y) + float(yoff), sizePx, ink)) {
+                            ov.draw(tex, q.dst, q.uv, q.rgba);
+                            ++ig.texts;
+                        }
+                    }
+                }
+                const std::size_t row = std::min(std::size_t(std::max(igSel, 0)), kIgMenuRows.size() - 1u);
+                const std::size_t lineId = kIgMenuRows[row].code == 9u ? 274u : 270u;
+                if (const formats::LayoutObject* o = layObj(*igQues, "titl"))
+                    ig.texts += paintCentered(igText.get(), ov,
+                                              igText ? igText->widgetStringAt(kIgMenuRows[row].tid) : std::string_view{},
+                                              320.f, float(o->y) + 8.f, 350.f,
+                                              render::packRgba(255u, 255u, 255u, 255u), 1); // fontid 1 (LAY titl)
+                if (const formats::LayoutObject* o = layObj(*igQues, "line"))
+                    ig.texts += paintCentered(igText.get(), ov,
+                                              igText ? igText->widgetStringAt(lineId) : std::string_view{},
+                                              320.f, float(o->y) + 8.f, 286.f,
+                                              render::packRgba(255u, 236u, 190u, 255u), 0); // fontid 0 (LAY line)
+                if (!iqReported) { std::cout << "IGQUESHN: shapes=" << ig.shapes << " texts=" << ig.texts << '\n'; iqReported = true; }
             }
             if (mouseTex && ptrX >= 0.f) { // live pointer sprite (pass-27), clamped to the virtual 640x480
                 const float cw = float(mouseArt.bmp.width), ch = float(mouseArt.bmp.height);

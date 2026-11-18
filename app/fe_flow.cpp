@@ -12,6 +12,7 @@
 #include "wc98/formats/slot.hpp"           // slotFileName()
 #include "wc98/formats/multitext.hpp" // .HIS cell multitext panes (pass-20records)
 #include "wc98/formats/rply.hpp"      // FEFLOW57 replay-browser index rows (pass-29)
+#include "wc98/formats/credits.hpp"   // CRED.BIN roll cell stream (pass-26credits)
 #include "replay.hpp"                 // ReplayRecorder/recordToUserDir fixture + replayFile verify
 #include "livematch.hpp"              // MatchBoot: deterministic fixture re-drive parity
 #include "wc98/sim/sim.hpp"           // SimRunner for the seeded fixture ticks
@@ -582,15 +583,43 @@ FeFlow::FeFlow(render::Renderer& r, fs::path tree, std::string lang) : r_(r), tr
         haveSl_ = true;
     } catch (const std::exception&) { // no save-load layout on this tree: fe41 is a documented no-op
     }
-    // Credits scene (FEFLOW19.LAY): the core-team roll behind the hub's cred button. The tournament
-    // presentation code already composites FEFLOW35/25/26/27; 19 is its credits sibling (MENU_NAV
-    // §5: feflow19 handlers at 0x4526.., events 1001/1002 = button activate/hover family).
+    // Credits scene (feflow94.lay = registry line 54, handler FUN_0046986c/0x46999c): the core-team
+    // roll behind the hub's cred wedge. The retail art pack FE/PACK/FEFLOW94 is absent from the CD
+    // ([C] checked: no FEFLOW94 entry in FE/PACK) so the composite draws zero shapes; the roll text
+    // comes from the CRED.BIN cell stream below (analysis/pass34fe94). An earlier interim used
+    // FEFLOW19 here, which is the tournament group board (registry line 12), not credits.
     try {
         fs::path d;
-        const std::string t19 = presentation::readLayout((tree_ / "FE/PACK/LAYOUTS/LAYOUTS.BIG").string() + "@FEFLOW19.LAY", d);
-        credScreen_ = formats::ScreenLayout::build("FEFLOW19", formats::LayoutDocument::parse(std::string_view(t19)), nullptr, nullptr, "PC");
+        const std::string t94 = presentation::readLayout((tree_ / "FE/PACK/LAYOUTS/LAYOUTS.BIG").string() + "@FEFLOW94.LAY", d);
+        credScreen_ = formats::ScreenLayout::build("FEFLOW94", formats::LayoutDocument::parse(std::string_view(t94)), nullptr, nullptr, "PC");
         haveCred_ = true;
     } catch (const std::exception&) { // no credits layout on this tree: cred is a documented no-op
+    }
+    // Roll contents: per-language CRED.BIN family (retail picks by active text language; the
+    // shipped set has no dut/swe/jap cells -> English UK variant, then US, as fallback).
+    {
+        std::string up = cfgLang_;
+        for (char& c : up) c = char(std::toupper(static_cast<unsigned char>(c)));
+        const std::string lang = up == "FR"   ? "FR"
+                                 : up == "GER" ? "GE"
+                                 : up == "ITA" ? "IT"
+                                 : up == "SPA" ? "SP"
+                                               : "UK";
+        for (const std::string& base : {lang, std::string{"UK"}, std::string{"US"}}) {
+            for (const char* dir : {"COMMON", "FE"}) {
+                const auto p = wc98::findCaseInsensitive(tree_, std::string{dir} + "/" + base + "CRED.BIN");
+                if (p.empty()) continue;
+                try {
+                    const auto bytes = wc98::readFile(p);
+                    credRows_ = formats::parseCreditsBlob(std::string_view{
+                        reinterpret_cast<const char*>(bytes.data()), bytes.size()});
+                } catch (const std::exception&) {
+                    continue;
+                }
+                if (!credRows_.empty()) break;
+            }
+            if (!credRows_.empty()) break;
+        }
     }
     // Options row tables (feflow15.lay lst1..4 `rows=N+` tuples; parsed from the raw member text,
     // the LayoutDocument drops continuation lines). Value indices start at 0 (first FC caption).
@@ -768,8 +797,12 @@ FeDrawStats FeFlow::drawCurrent(render::SpriteBatch& ui) const {
     if (leagueView_) return drawLeague(ui);
     if (optsView_ && haveOpts_) return drawOptions(ui);   // FEFLOW15 config screen (Phase 2)
     if (slView_ && haveSl_) return drawSaveLoad(ui);      // Feflow89 slot list (Phase 3)
-    if (credView_ && haveCred_) {                         // FEFLOW19 credits roll behind the hub cred wedge (Phase 4)
-        if (++credFrames_ > kCredDurationFrames) credView_ = false; // auto-return after the presentation duration
+    if (credView_ && haveCred_) {                         // FEFLOW94 credits roll behind the hub cred wedge (Phase 4)
+        // One full pass of the row grid (18 px/row at 2 px per 4 frames), then the retail
+        // blank/pause beat (27 * 9 ticks), then return to the hub (retail loops; single pass
+        // with Esc/Enter exit is the port's equivalent, analysis/pass34fe94).
+        const int rollFrames = static_cast<int>(credRows_.size()) * kCredRowFrames;
+        if (++credFrames_ > rollFrames + kCredBlankPauseFrames) credView_ = false;
         else return drawCredits(ui);
     }
     if (onHub()) return drawHub(ui); // Feflow06 hub replaces the MNMSETUP fallback composite
@@ -3899,20 +3932,31 @@ FeDrawStats FeFlow::drawSaveLoad(render::SpriteBatch& ui) const {
 }
 
 FeDrawStats FeFlow::drawCredits(render::SpriteBatch& ui) const {
-    static const std::vector<std::string> kCredVisible{"back", "flag", "titl", "help"};
+    // The retail FEFLOW94 pack is absent, so the whitelist composites nothing on this tree; it
+    // keeps a future variant (e.g. an ISO with the pack) painting its back collage only.
+    static const std::vector<std::string> kCredVisible{"back", "titl"};
     FeDrawStats st = presentation::composite(credScreen_, ui, const_cast<ScreenArt&>(art_), text_.get(), &kCredVisible);
-    // FC-bank credit role captions (measured indices in COMMON/FCENG.BIN: 508 "Core Team Artists:",
-    // 509 "Core Team Development Director:", 510/511 programmers). The runtime roll names the people
-    // from engine data the port has no static source for; the role captions are shipped strings.
-    const formats::FfnFont* f = text_ ? text_->face(4) : nullptr;
-    render::TextureId ftex = text_ ? text_->faceTexture(4) : 0;
+    // Roll rows from the CRED.BIN cell stream: 18-px grid, 2 px advance per 4 frames (tick counter
+    // math [C] pass-34fe94). kind 1 = caption (FC widget id through the remap table), kind 2 =
+    // literal staff name, kind 3 = blank spacer. Captions paint centred on the cr widget lane
+    // (x=257 w=160 -> 337), white (LAY colour=7) in face eras12 (LAY fontID=1).
+    const formats::FfnFont* f = text_ ? text_->face(1) : nullptr;
+    render::TextureId ftex = text_ ? text_->faceTexture(1) : 0;
     if (!f || !ftex) { f = text_ ? text_->font() : nullptr; ftex = text_ ? text_->texture() : 0; }
-    static constexpr std::array<int, 4> kRoles{508, 509, 510, 511};
-    if (f && ftex) {
-        for (std::size_t i = 0; i < kRoles.size(); ++i) {
-            const std::string_view s = text_->stringAt(std::size_t(kRoles[i]));
-            if (s.empty()) continue;
-            for (const auto& q : presentation::layoutText(*f, s, 180.f, 240.f + 22.f * float(i), 13.f, render::packRgba(235, 235, 235, 255)))
+    if (f && ftex && !credRows_.empty()) {
+        const int total = static_cast<int>(credRows_.size()) * 18;
+        const int off = (credFrames_ / 4) * 2 % total; // loop-wrap at the end of the grid
+        const std::uint32_t ink = render::packRgba(235u, 235u, 235u, 255u);
+        const float px = float(f->lineHeight ? f->lineHeight : 12);
+        for (std::size_t i = 0; i < credRows_.size(); ++i) {
+            const float y = float(i) * 18.f - float(off);
+            if (y > 480.f) break;    // below the viewport: the rest waits for the next frames
+            if (y < -18.f) continue; // scrolled past the top
+            std::string_view s;
+            if (credRows_[i].kind == 1) s = text_->widgetStringAt(std::size_t(credRows_[i].id));
+            else if (credRows_[i].kind == 2) s = credRows_[i].text;
+            if (s.empty()) continue; // blank rows paint nothing
+            for (const auto& q : presentation::layoutTextCentered(*f, s, 337.f, y + 3.f, px, ink))
                 ui.draw(ftex, q.dst, q.uv, q.rgba);
             ++st.texts;
         }

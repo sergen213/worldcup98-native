@@ -308,9 +308,11 @@ if(DEFINED WC98_TREE)
     # Save/load entry (Feflow89.lay slot list b000..b005, MENU_PARITY.md §4 rank 6): --fe-saveload opens it.
     add_test(NAME fe_flow_saveload COMMAND wc98-native --fe-saveload --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/sl)
     set_tests_properties(fe_flow_saveload PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW89: shapes=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 ")
-    # Credits roll (feflow19 behind the hub cred wedge, MENU_PARITY.md §4 rank 10): --fe-credits opens it.
+    # Credits roll (feflow94 behind the hub cred wedge, MENU_PARITY.md §4 rank 10): --fe-credits opens
+    # it. The retail FEFLOW94 art pack is absent from the CD, so shapes are legitimately 0; the roll
+    # contents gate asserts the CRED.BIN row stream parsed (formats/credits.hpp grammar).
     add_test(NAME fe_credits COMMAND wc98-native --fe-credits --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/cred)
-    set_tests_properties(fe_credits PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW19: shapes=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 ")
+    set_tests_properties(fe_credits PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW94: roll rows=[1-9]" FAIL_REGULAR_EXPRESSION "roll rows=0 ")
     # In-game pause menu (IGMENU.LAY + IGQUESHN.LAY over the live match, MENU_PARITY.md §4 rank 8):
     # scripted Esc opens the decoded 1p row table (VA 0x57ae02: 8 {textid,code} rows, 18-px lanes
     # centred into box2); 'L' opens the CONTROL1 controller-select board (pass-26); Down x5 walks

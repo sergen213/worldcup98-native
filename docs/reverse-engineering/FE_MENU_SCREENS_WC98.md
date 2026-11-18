@@ -91,6 +91,23 @@ LAYOUTS.BIG members `igaoptns.lay`, `iggoptns.lay`, `igmoptns.lay` (attacking/go
 
 Dispatch mechanism **[C]**: handlers push a cluster p-string scene name and call `FUN_004461b4` (scene switch); messages compared as ASCII dwords in init/tick guards (`"del"`-family seen at 0x44d9c8). Confirmed edges: feflow16→{feflow06, feflow35**[C 2026-11-18 names]}** scenes **[C asm]**; mainmenu items → §4 **[H]**. **[C 2026-11-17]** feflow18/19/20/21/23/24 init+tick decoded (`analysis/pass20uitick`): key-token grammar ("fe06".."fe8a"/"rand"/"simu"/"simv"/"stnk"/"strj"/"strl"/"stsc"/"strt"/"sint"), feflow20 tick scene-edge push gated on DAT_0062fad0+0x5060, `stg1`..`stg3` stage captions DAT_0057d79c from (DAT_0062fad0+0x4312)>>4; feflow13 tick 0x44e578, feflow18 tick 0x4524f8, feflow19 tick 0x452884 still pending.
 
+## 11. Credits roll — feflow94 (hub `cred` wedge)
+
+Registry slot 54 (`0x44809c`, name VA `0x5625b0`) = **feflow94**, scene pack `FE/PACK/FEFLOW94`
+**[C]**; handler slots init `0x46999c` (message: Esc/0x66 pop to hub, `0x3ea` caption refresh,
+`0x7d1`), tick `0x469904` (arm: row cursor `DAT_0057d27c`, blank beat `DAT_0057d280 = 0x1b`,
+3-row window `DAT_0057d284/88/8c` built by `FUN_004cc000` loads), draw `0x46986c`
+(`_DAT_0057d270 += 2` scroll, `0x12` 18-px row wrap, `FUN_004694c0` advance) **[C]**
+`analysis/pass34fe94/fe94_dec2.txt`. The retail **art pack is absent from this CD** — no
+`FEFLOW94` directory, `FEFLOW94.LAY` member missing from `LAYOUTS.BIG`, `FEFLOW94.PAK` missing
+from `FE/PACK` (verified inventory; registry line for slot 54 itself is byte-exact
+`66 C7 44 24 5A 00 00`, not an index misread). Roll **contents** live in the BigArchives root
+`CRED.BIN` cell stream: header `{u32 3, u32 1, u32 0x129f}` + packed cells kind 1 caption =
+FC widget-id through the remap table, kind 2 literal staff name (`len` NUL-included, no
+padding), kind 3 blank row; 18-px grid. eng/de/it/en2 variants parse 305/305 rows,
+`[C]` `formats/include/wc98/formats/credits.hpp`, gate `fe_credits`
+("FEFLOW94: roll rows=[1-9]"); `analysis/pass34fe94/NOTES.md`.
+
 ## Open items for the port consumer
 1. Main-menu per-item draw x/y/font: resource-level (runtime string-bank widgets), not statically recoverable — capture at runtime with the window-object dump once implemented.
 2. Tick bodies: feflow73/80/82 tick + feflow13/18/19/20/21/23/24 init/tick decoded via Ghidra function objects **[C 2026-11-17]** `analysis/pass20uitick`; feflow13 tick 0x44e578, feflow18 tick 0x4524f8, feflow19 tick 0x452884, feflow50/74/79 tick remain (raw-disassembly lane proven: `menu15` DisassembleCommand pattern).

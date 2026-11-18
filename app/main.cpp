@@ -442,7 +442,8 @@ int run(int argc, char** argv) {
             else std::fprintf(stderr, "fe: options unavailable\n");
         }
         if (fe && feSaveLoad) fe->openSaveLoad(); // --fe-saveload gate frame: Feflow89 slot list
-        if (fe && feCredits) fe->openCredits();   // --fe-credits gate frame: FEFLOW19 roll
+        if (fe && feCredits) fe->openCredits();   // --fe-credits gate frame: FEFLOW94 roll
+        if (fe && feCredits) std::cout << "FEFLOW94: roll rows=" << fe->rollRowCount() << '\n';
 
     while (smokeFrames == 0 || presented < smokeFrames) {
         auto ev = window->poll();

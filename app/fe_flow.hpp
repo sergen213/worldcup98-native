@@ -5,6 +5,7 @@
 // ponytail: minimal by design — a data-driven FE graph (LAY button objects -> command ids,
 // FC*.BIN text) is an open item in LAY_COMPOSITOR_NOTES.md; promote this table when it lands.
 #include "wc98/formats/his.hpp"
+#include "wc98/formats/credits.hpp"
 #include "wc98/formats/tri.hpp"
 #include "wc98/formats/res.hpp"
 #include "wc98/formats/layout.hpp"
@@ -56,7 +57,7 @@ public:
     [[nodiscard]] const std::string& lastError() const { return lastError_; } // menu load failure reason ("" = ok)
     // Active screen layout name for the gate evidence line ("FEFLOW06" hub / "FEFLOW11" team-select /
     // "FEFLOW09"/"FEFLOW50" friendly & practise setup screens / "FEFLOW15" options / "FEFLOW89"
-    // save-load entry / "FEFLOW19" credits).
+    // save-load entry / "FEFLOW94" credits roll).
     [[nodiscard]] const char* screenName() const {
         return useCapture_          ? captureName_.c_str()
                : popKind_           ? popName_.c_str()
@@ -83,7 +84,7 @@ public:
                : recScreen_         ? (recScreen_ == 28 ? "FEFLOW28" : recScreen_ == 29 ? "FEFLOW29"
                                         : recScreen_ == 30 ? "FEFLOW30" : recScreen_ == 31 ? "FEFLOW31"
                                         : recScreen_ == 34 ? "FEFLOW34" : "FEFLOW88")
-               : credView_          ? "FEFLOW19"
+               : credView_          ? "FEFLOW94"
                : (haveHub_ && hubView_) ? "FEFLOW06"
                                         : "FEFLOW05";
     }
@@ -421,10 +422,10 @@ public:
     void moveIgOption(int dir);  // up/down list-row cursor (bounded by the parsed row count)
     void adjustIgValue(int dir); // left/right cycle the focused row's FC-caption value
     presentation::FeDrawStats drawIgOptns(render::SpriteBatch& ui) const;
-    // ---- Phase 2 options (FEFLOW15.LAY) / 3 save-load (Feflow89.LAY) / 4 credits (FEFLOW19) ----
+    // ---- Phase 2 options (FEFLOW15.LAY) / 3 save-load (Feflow89.LAY) / 4 credits (FEFLOW94) ----
     bool openOptions();  // Enter on fe15 / --fe-options; false when the layout is absent from the tree
     bool openSaveLoad(); // Enter on fe41 / --fe-saveload
-    bool openCredits();  // Enter on cred / --fe-credits (FEFLOW19 auto-returns after its frames)
+    bool openCredits();  // Enter on cred / --fe-credits (FEFLOW94 roll returns to the hub after one pass)
     [[nodiscard]] bool onOptions() const { return optsView_; }
     [[nodiscard]] bool onSaveLoad() const { return slView_; }
     [[nodiscard]] int saveSlot() const { return slSlot_; }
@@ -726,12 +727,15 @@ public:
     bool slView_ = false;
     int slSlot_ = 0;
     static constexpr int kSaveSlots = 6; // Feflow89.LAY buttons b000..b005
-    // ---- Credits (FEFLOW19) ----------------------------------------------------------------
+    // ---- Credits (FEFLOW94) ----------------------------------------------------------------
     formats::ScreenLayout credScreen_;
     bool haveCred_ = false;
     mutable bool credView_ = false;         // toggled by drawCurrent's auto-return (const method)
-    mutable int credFrames_ = 0;             // auto-return after the presentation duration (drawCurrent is const)
-    static constexpr int kCredDurationFrames = 540; // ~9 s at 60 fps before the roll returns to the hub
+    mutable int credFrames_ = 0;             // roll scroll clock (drawCurrent is const)
+    std::vector<formats::CredRow> credRows_; // CRED.BIN cell stream (formats/credits.hpp)
+    [[nodiscard]] int rollRowCount() const { return static_cast<int>(credRows_.size()); }
+    static constexpr int kCredRowFrames = 36;       // 18 px/row at 2 px per 4 frames
+    static constexpr int kCredBlankPauseFrames = 243; // retail end-of-roll blank beat (27 * 9 ticks)
     // Composite helpers for each view (help pane caption included where the layout has one).
     presentation::FeDrawStats drawHub(render::SpriteBatch& ui) const;
     presentation::FeDrawStats drawOptions(render::SpriteBatch& ui) const;

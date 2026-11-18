@@ -200,7 +200,9 @@ labels (exe strings above), mirroring that handler-code semantics.
    TEXTID key are engine-driven list/edit captions painted from live item state; the port has no
    runtime item state, so static composites skip their label draws (the FC-bank "texts=100" soup).
 3. SHOW flags and null-art boxes keep the pre-existing rules (`shown()`, FILLCOLOUR-gated boxes:
-   a null.fsh placeholder with no fill colour paints nothing).
+   a null.fsh placeholder with no fill colour paints nothing). IG boards additionally call
+   `app/livematch.cpp::strokeBoxes()` after composite: engine box widgets with null art and no
+   fill draw a frame-only 1-px outline [pass-28audit].
 
 Gate evidence: ctest `fe_flow_render` FAIL regex asserts `FEFLOW05: shapes=`/`texts=` non-zero;
 capture /tmp/wc98port-out/menufix2_fe00.png (background collage + logos, two readable item

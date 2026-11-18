@@ -206,6 +206,24 @@ const formats::LayoutObject* layObj(const formats::ScreenLayout& sc, std::string
         if (lowerName(o.name) == want) return &o;
     return nullptr;
 }
+// objecttype-43 box widgets declare no FILLCOLOUR/shape: the engine draws them as frame-only
+// outlines (IGMENU idiom, pass-26). Boxes with a fill (RECT plates) are painted by composite().
+void strokeBoxes(render::SpriteBatch& sb, const formats::ScreenLayout& sc, presentation::FeDrawStats& st) {
+    const std::uint32_t edge = render::packRgba(150u, 150u, 150u, 200u);
+    for (const auto& o : sc.objects) {
+        if (o.type != 43 || !o.shown()) continue;
+        if (const std::string* f = o.prop("FILLCOLOUR"); f && !f->empty() && *f != "0") continue;
+        const float bx = float(o.x), by = float(o.y);
+        const float bw = float(o.intProp("BOXWIDTH", o.width));
+        const float bh = float(o.intProp("BOXHEIGHT", o.height));
+        if (bw < 2.f || bh < 2.f) continue;
+        sb.draw(0, {bx, by, bw, 1.f}, {}, edge);
+        sb.draw(0, {bx, by + bh - 1.f, bw, 1.f}, {}, edge);
+        sb.draw(0, {bx, by, 1.f, bh}, {}, edge);
+        sb.draw(0, {bx + bw - 1.f, by, 1.f, bh}, {}, edge);
+        st.shapes += 4;
+    }
+}
 // Centered caption painter (FeFlow::paintCaption pattern with explicit box width).
 int paintCentered(presentation::FeText* txt, render::SpriteBatch& ui, std::string_view s, float cx, float cy,
                   float maxW, std::uint32_t rgba = render::packRgba(255u, 236u, 190u, 255u), int fontId = 4) {
@@ -350,6 +368,7 @@ presentation::FeDrawStats IgBoards::draw(render::SpriteBatch& ui, const IgMatchD
         visible.push_back(n); // composite() applies the whitelist by name (duplicates included)
     }
     st = composite(sc_, ui, art_, text_.get(), &visible);
+    strokeBoxes(ui, sc_, st); // frame-only outlines for null-art box widgets [H] IGMENU idiom
     const auto cap = [&](std::size_t id) { return text_ && text_->ready() ? std::string(text_->stringAt(id)) : std::string(); };
 
     // Title (box1 x=116 w=408): FC-bank caption centered across the header pane.
@@ -447,8 +466,10 @@ presentation::FeDrawStats IgBoards::draw(render::SpriteBatch& ui, const IgHlData
     using namespace presentation;
     FeDrawStats st;
     if (kind_ < 5) return st;
-    std::vector<std::string> excl = kind_ == 6 ? std::vector<std::string>{"titl", "typ6", "typ8"}
-                                               : std::vector<std::string>{"titl", "typ4", "typ5", "typ6", "typ7"};
+    // IGHILSAV 'titl' textid 303 = FC remap 'Save Replay' [H] — a valid static caption (raw-bank
+    // interpretation as 'Bald' soup was the pass-21igscn misread); composite paints the label.
+    std::vector<std::string> excl = kind_ == 6 ? std::vector<std::string>{"typ6", "typ8"}
+                                               : std::vector<std::string>{"typ4", "typ5", "typ6", "typ7"};
     std::vector<std::string> visible;
     for (const auto& o : sc_.objects) {
         if (!o.shown()) continue;
@@ -457,6 +478,7 @@ presentation::FeDrawStats IgBoards::draw(render::SpriteBatch& ui, const IgHlData
         visible.push_back(n); // composite() applies the whitelist by name (duplicates included)
     }
     st = composite(sc_, ui, art_, text_.get(), &visible);
+    strokeBoxes(ui, sc_, st); // frame-only outlines for null-art box widgets [H] IGMENU idiom
     const auto cap = [&](std::size_t id) { return text_ && text_->ready() ? std::string(text_->stringAt(id)) : std::string(); };
 
     // Rows with an index entry + on-disk file (hlRows() already filters populated).
@@ -539,6 +561,7 @@ presentation::FeDrawStats IgBoards::draw(render::SpriteBatch& ui, const IgMatchD
         visible.push_back(n);
     }
     st = composite(sc_, ui, art_, text_.get(), &visible);
+    strokeBoxes(ui, sc_, st); // frame-only outlines for null-art box widgets [H] IGMENU idiom
     const auto cap = [&](std::size_t id) { return text_ && text_->ready() ? std::string(text_->stringAt(id)) : std::string(); };
     // Shared header pane: names + shields first, score digits LAST (z-order lesson 5344a02).
     for (int t = 0; t < 2; ++t) {
@@ -595,10 +618,10 @@ presentation::FeDrawStats IgBoards::draw(render::SpriteBatch& ui, const IgMatchD
     FeDrawStats st;
     if (kind_ < 18) return st;
     // Soup slots excluded per f0f8109: typ3/typ4/typ5 + typ8/typ9 carry FC ids from other contexts
-    // (699 'Final Match Qualifiers', 702/703 finals captions, -281.. dev ids); ty12/ty13 = 761/432.
+    // (699 'Final Match Qualifiers', 702/703 finals captions, -281.. dev ids). ty12/ty13 = FC remap
+    // 761/432 = 'Attack'/'Defence' [H] — the practise-board tactic labels, painted by composite.
     std::vector<std::string> excl{"titl", "typ3", "typ4", "typ5"};
     if (kind_ != 19) { excl.push_back("typ8"); excl.push_back("typ9"); }
-    if (kind_ == 18) { excl.push_back("ty12"); excl.push_back("ty13"); }
     std::vector<std::string> visible;
     for (const auto& o : sc_.objects) {
         if (!o.shown()) continue;
@@ -607,6 +630,7 @@ presentation::FeDrawStats IgBoards::draw(render::SpriteBatch& ui, const IgMatchD
         visible.push_back(n);
     }
     st = composite(sc_, ui, art_, text_.get(), &visible);
+    strokeBoxes(ui, sc_, st); // frame-only outlines for null-art box widgets [H] IGMENU idiom
     const auto cap = [&](std::size_t id) { return text_ && text_->ready() ? std::string(text_->stringAt(id)) : std::string(); };
     for (int t = 0; t < 2; ++t) { // shared header pane, digits after flags (z-order lesson 5344a02)
         if (const formats::LayoutObject* o = layObj(sc_, t == 0 ? "typ1" : "typ2")) st.texts += paintCentered(text_.get(), ui, d.names[std::size_t(t)], float(o->x) + 50.f, float(o->y) + 8.f, 130.f);
@@ -663,18 +687,22 @@ presentation::FeDrawStats IgBoards::drawIgOptns(render::SpriteBatch& ui) {
                        // caption slot (rs1..rs4/ls1..ls4, grv0..3 quads, tmtl/tmtr caption 4594);
                        // no list widget, no soup slots -> full composite, cursor art painted by the
                        // strips' own HILITED state (no row pane to synthesise).
-        return composite(sc_, ui, art_, text_.get());
+        st = composite(sc_, ui, art_, text_.get());
+        strokeBoxes(ui, sc_, st);
+        return st;
     }
     if (kind_ == 21) {
         static constexpr std::array<const char*, 4> kHeader{"matH", "gamH", "conH", "audH"};
         std::vector<std::string> visible{"bpic", "subt", "tab2", "tab3", "tab4", "help", "back", "fwrd", "ttxt"};
         visible.push_back(kHeader[std::size_t(std::clamp(igTab_, 0, 3))]); // active tab header pane
         st = composite(sc_, ui, art_, text_.get(), &visible);
+    strokeBoxes(ui, sc_, st); // frame-only outlines for null-art box widgets [H] IGMENU idiom
         paintIgOptns2(ui, sc_, art_, text_.get(), igRows_, igVals_, igRow_, igTab_, st);
         return st;
     }
     static const std::vector<std::string> kVisible{"back", "titl", "go_g", "go_a", "go_c", "scrl", "1", "2", "3", "04"};
     st = composite(sc_, ui, art_, text_.get(), &kVisible);
+    strokeBoxes(ui, sc_, st); // frame-only outlines for null-art box widgets [H] IGMENU idiom
     paintIgOptns(ui, sc_, art_, text_.get(), igRows_, igVals_, igRow_, kind_ == 22, st);
     if (const formats::LayoutObject* trk = sc_.object("scrl"))
         paintSliderThumb(ui, *trk, igRow_, 0, std::max(1, int(igRows_.size()) - 1));
@@ -702,6 +730,7 @@ presentation::FeDrawStats IgBoards::draw(render::SpriteBatch& ui, const IgMgmtDa
         visible.push_back(n);                                    // composite() applies the whitelist by name
     }
     st = composite(sc_, ui, art_, text_.get(), &visible);
+    strokeBoxes(ui, sc_, st); // frame-only outlines for null-art box widgets [H] IGMENU idiom
     const auto cap = [&](std::size_t id) { return text_ && text_->ready() ? std::string(text_->stringAt(id)) : std::string(); };
     const IgTeamMgmt& mg = d.teams[0]; // pages mirror the controlled side (home), hub lists both bars
     const auto txt = [&](std::size_t id, std::string_view fb) { const std::string s = cap(id); return s.empty() ? std::string(fb) : s; };
@@ -981,6 +1010,12 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
     int igTabShot = -1, igLastTab = -1, igLastSig = -1; // IGOPTN2 per-tab/per-cycle evidence (pass-21igscn)
     bool igCycShot = false;
     int boardShotAt = -1;                // capture frame of the current board (gate auto-script pacing)
+    // pass-28 audit lane: background-only shot one frame before the first pause key is drained.
+    // The sim freezes at that key frame, so _pre.png holds the exact live background every later
+    // board capture composes over -> region diffs are board-only. Fixed-open lanes only (2/3 boards
+    // trigger on half/full time, background unpinned).
+    const int preShotAt = igPauseSmoke ? 99
+                            : (boardScript >= 1 && boardScript <= 10 && boardScript != 2 && boardScript != 3) ? 199 : -1;
     static constexpr std::array<const char*, 26> kBoardName{"", "IGSTATS", "IGHALF", "IGFLSUM", "IGSCSUM", "IGHILITE", "IGHILSAV", "IGHILIT1", "IGTEAM72", "IGTEAM73", "IGTEAM74", "IGTEAM75", "IGTEAM79", "IGTEAM80", "IGTEAM89", "MANMARKS", "IGCAMERA", "IGCAMSEL", "IGPRACT1", "IGPRACT2", "IGPRAC1", "IGOPTN2", "IGOPTNS-A", "IGOPTNS-G", "IGOPTNS-M", "CONTROL1"}; // §G camera popups + practise pages + IGOPTN2 board + legacy trio popups (pass-21igscn) + CONTROL1 controller-select board (pass-26)
     int initPeriod = w.match.periodIndex; // DAT_0065F224: 0 -> >=1 transition marks the half whistle (rebuilt on Restart Match)
     std::array<std::int64_t, 2> possAcc{};      // per-team possessionFrames deltas (DAT_0065f264 + owning team DAT_0065f250)
@@ -1635,6 +1670,7 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
             }
             FeDrawStats ig = pause == IgPause::Menu ? composite(*igMenu, ov, igArt, igText.get(), nullptr, &uiSt)
                                                      : composite(*igQues, ov, igArt, igText.get(), nullptr, &uiSt);
+            strokeBoxes(ov, pause == IgPause::Menu ? *igMenu : *igQues, ig); // frame-only box outlines [H]
             if (pause == IgPause::Menu) {
                 // Row grammar [C] tick 0x43fc40 + init 0x43f040: 18-px rows, runtime-centred into
                 // box2 (x=116 w=408): win.x = (408-286)/2+116 = 177, win.y = (231-count*18)/2+131
@@ -1721,6 +1757,7 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
             if (!frame.ui || frame.ui->vertices().empty()) { std::cerr << "live: HUD strip not drawn\n"; return 1; }
         }
         if (smokeFrames && presented == 40) savePng(renderer, frame, prefix + "_mid.png"); // visual evidence
+        if (smokeFrames && preShotAt >= 0 && presented == preShotAt) savePng(renderer, frame, prefix + "_pre.png"); // pass-28 audit baseline (board-only region diffs)
 
         if (window.minimized() || !renderer.present(frame)) { // swapchain hiccup / minimized: pace and retry
             SDL_Delay(16);

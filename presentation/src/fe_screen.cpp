@@ -149,6 +149,13 @@ ScreenArt::Shape ScreenArt::shape(const std::string& vpath, const std::string& f
                     for (const auto& e : lp->entries)
                         if (e.bitmap && iequals(e.tag, langPack_)) { b = &*e.bitmap; break; }
         }
+        // null.fsh widgets that carry a SHPI tag (IGSTATS fld1..4 field plates): NULL.FSH is a
+        // placeholder archive with no bitmaps; the retail engine resolves these shapes from the
+        // scene's shared object family, i.e. FE/INGAME/INGAME.FSH.
+        if (!b && useTag && isNullArt(fs::path(slashes(fname))))
+            if (const formats::FshFile* gf = file(vpath, "INGAME.FSH"))
+                for (const auto& e : gf->entries)
+                    if (e.bitmap && iequals(e.tag, tag)) { b = &*e.bitmap; break; }
         if (b && !b->rgba.empty() && b->width && b->height) {
             out.tex = r_.createTexture(render::Image{b->width, b->height, b->rgba}, render::Wrap::Clamp, key);
             out.w = b->width, out.h = b->height;
@@ -445,11 +452,27 @@ FeDrawStats composite(const formats::ScreenLayout& screen, render::SpriteBatch& 
             std::ranges::any_of(uiState->disabled, [&](const std::string& n) { return iequals(o.name, n); }))
             for (std::string_view k : {"DISABLEDSHAPEID", "DISABLEDSHAPE"})
                 if (const std::string* v = o.prop(k); v && !v->empty() && !iequals(*v, "null")) { tag = v; break; }
+        // Released-shape keys win over SNAME: IG button widgets declare sname as the shared-cache
+        // family id ('butn'), which is NOT a bitmap tag anywhere (INGAME.FSH ships btnn/btnd only;
+        // IGHILITE nav arrows declare sname=btnn while releasedshapeid selects the real art bt5n/
+        // bt6n/ltbn/rtbn). FE layouts never pair SNAME+RELEASED, so the reorder is FE-safe.
         if (!tag)
-            for (std::string_view k : {"SHAPEID", "SNAME", "RELEASEDSHAPEID", "RELEASEDSHAPE", "NORMALSHAPEID", "NSHAPEID", "BARSHAPEID"})
+            for (std::string_view k : {"SHAPEID", "RELEASEDSHAPEID", "RELEASEDSHAPE", "NORMALSHAPEID", "NSHAPEID", "BARSHAPEID", "SNAME"})
                 if (const std::string* v = o.prop(k); v && !v->empty() && !iequals(*v, "null")) { tag = v; break; }
         const fs::path fname{slashes(o.fname)};
         if (isNullArt(fname) || lowered(fname.stem().string()) == "rect") { // flat colour panel / text label
+            // Null-fname widgets that still carry a SHPI tag (IGSTATS fld1..4): the engine blits
+            // the shared-family shape at the widget origin instead of painting the flat panel.
+            if (tag) {
+                const std::string* vpath = o.prop("VPATH");
+                const ScreenArt::Shape sh = art.shape(vpath ? *vpath : std::string(), o.fname, *tag, -1);
+                if (sh.tex) {
+                    ui.draw(sh.tex, {float(o.x), float(o.y), float(sh.w), float(sh.h)});
+                    ++st.shapes;
+                    if (text && !dynamicWidget(o)) st.texts += drawLabel(o, ui, *text, hl);
+                    continue;
+                }
+            }
             std::uint32_t argb = 0;
             for (std::string_view k : {"FILLCOLOUR", "COLOUR", "BOXCOLOUR"})
                 if (const std::string* v = o.prop(k); v && !v->empty()) { argb = argbOf(*v); break; }

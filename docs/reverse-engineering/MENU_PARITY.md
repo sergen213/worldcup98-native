@@ -196,7 +196,7 @@ Dump: `wc98-extract FE/PACK/LAYOUTS/IGLAY.BIG` → "1 files, 30 BIG members" (`/
 | IGHALF.LAY | 57 | half-time summary screen (stat grid, list widgets) | **impl** (livematch opens it at the half whistle — period-end arm via `Match_requestPeriodEnd` + event 9 grammar [C]; stat-grid pages + FC#858 "HALF-TIME" title; Esc = resume to match; gate `fe_ighalf`) |
 | IGHILIT1.LAY | 1 | single box overlay authored `igmenu.lay` — header artifact; highlight hilite pane | **impl** (shipped dummy hotkey-transition page — the LAY member's own comment says so; composite renders, shapes/texts 0 legit: null box1) |
 | IGHILITE.LAY | 19 | highlights browser: rewd/paus/play/fast/slol/slor transport buttons, boxes | **impl** (IGMENU 'Highlights' row opens the browser over `rplyindx.dat` rows — FC#899 "INSTANT REPLAY" title on box3, slot filename + `SLOT NNNN` readouts, btlt/btrt 10-row slot pages, slol/slor cycle; Enter = app/replay.cpp re-drive of the selected file (state-hash parity `match=1`); gate `fe_highlite_browser`) |
-| IGHILSAV.LAY | 22 | highlights save list (`lst1`, up/down) | **impl** (browser 'save' button opens it: lst1 rows from the rply index, Norway/Denmark header pair = typ names + FNNN shields + nmb score digits painted after the flags (z-order 5344a02), up/down arrows via btnup->ingame alias; Enter writes `rplyNNNN.dat` + index entry through the existing recordToUserDir path; gate `fe_hilsav_list`) |
+| IGHILSAV.LAY | 22 | highlights save list (`lst1`, up/down) | **impl** (browser 'save' button opens it: lst1 rows from the rply index, Norway/Denmark header pair = typ names + FNNN shields + nmb score digits painted after the flags (z-order 5344a02), up/down arrows via btnup->ingame alias; box3 header caption `titl` textid 303 = FC-remap 'Save Replay' painted by composite (soup misread corrected pass-28audit); Enter writes `rplyNNNN.dat` + index entry through the existing recordToUserDir path; gate `fe_hilsav_list`) |
 | IGMENU.LAY | 14 | in-game pause menu: box1-5/typ/flg/nmb chrome + `menu` type=42 widget, name text — the popup the port lacks (Esc quits match directly) | **impl** (livematch Esc opens the decoded row table (§19): 18-px `{textid,code}` rows centred into box2, FC-remap captions via `widgetStringAt`, HILITED pane quad, frame strokes; Enter dispatch by code — Resume/Instant Replay/Stats/Score Summary/Booking/Restart/Quit chain, code 4 opens the CONTROL1 board; mask-disabled rows skipped; lane hotkeys 'L'/'M'/'O'/'B' mirror 2p-table rows; gates `fe_igmenu`, `fe_igstats`, `fe_mgmt_pages`) |
 | IGMSG.LAY | 17 | message popup authored `igqueshn.lay`; ok button, lines (`bo25`) | miss (shares the igqueshn key FUN_00440830; renderable via capture lane) |
 | IGOPTN2.LAY | 21 | in-game options: tabs 1-4 + tab-button areas, option lists `lst1-4` type=17, back/fwrd; `textID=5`, help keys (78/81) — the ig\*optns trio lives here **[C]** captions "Match"/"Game play"/tab comments | **impl** (livematch Options row / 'O' opens the retail board: composite `bpic`/`subt`/`tab2-4` strips + active header pane `matH/gamH/conH/audH` + `help` pane + `back`/`fwrd`; four tab panes `lst1-4` = Match/Game play/controller/audio with FC-bank caption rows from the `ROWS` tuples (`analysis/pass21igmenu`); UP/DOWN row cursor + LEFT/RIGHT value cycle; 2/3/4 tab hotkeys; help caption FC#1948; gate `fe_igoptn2_board` §14) |
@@ -532,3 +532,26 @@ light one in `FeFlow::paintCaption` **[H]**.
   sprite pixel (225,234,230) near pointer). `ctest -R fe_` 85/85 green with the lane.
 - **Suite**: 143/145 baseline unchanged (`test_sim_scenarios`, `self_test_gameplay` = in-flight
   simulation kick-seam lane, untouched). Dossier `analysis/pass27igmouse/NOTES.md`.
+
+## 21. Round 2026-11-18 — pass-28audit: IG board parity audit + stroke/caption fixes [LANDED]
+
+- **Audit lane** (`analysis/pass28audit/`): `ig_scan.py` diffs every IG board capture region
+  (LAY-declared widget rects, ink-rect note: `pixelwidth` feeds the width for alignment-3
+  labels) against the lane's no-board baseline (`preShotAt` → `<prefix>_pre.png`);
+  region-identical + declared content = gap. 27 pairs.
+- **First run flagged** `IGHILSAV:titl`, `IGPRACT1:ty12/ty13`, null-art box widgets
+  (`IGQUESHN:box2`, `IGCAMSEL:box3`, `IGMGMT:box2/3`, `IGHILSAV:box2/3`, `IGHILITE:box6`,
+  `IGOPTN2/4:box5`, `IGOPTNS:box6`, `IGPRACT2:box3`, `IGPRAC1:box4`) — all fixed.
+- **Caption misreads corrected** (pass-21igscn lesson re-applied): the FC **remap** ids, not raw
+  bank indices — `IGHILSAV titl` textid 303 = 'Save Replay', `IGPRACT1 ty12/ty13` = 761/432
+  'Attack'/'Defence' (verified with the remap probe); both exclusions dropped, composite paints
+  the labels. `IGPRACT2 typ8/typ9` (702/703 = 'User Keeper'/'CPU Keeper') was a scanner false
+  positive: captions already paint centred at x=320 across `pixelwidth=390`; scanner rect now
+  honours `pixelwidth` — 476/559 changed px confirmed in `prac_igpract2.png`.
+- **Box outline idiom**: engine box widgets with `fname=null.fsh`/`shapeid=null` and no
+  `fillcolour` draw a frame-only 1-px outline; port added `strokeBoxes()` (tint 150/150/150,
+  alpha 200) after every `composite()` in the IG lanes + pause overlay — IGMENU's manual stroke
+  trio replaced by the helper.
+- **Result**: `ig_scan TOTAL flagged widgets: 0` (`/tmp/wc98port-a2`, 46 captures). Suite
+  143/145 (2 FAIL = in-flight simulation kick-seam lane, untouched). Dossier
+  `analysis/pass28audit/NOTES.md`.

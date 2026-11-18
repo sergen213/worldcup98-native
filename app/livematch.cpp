@@ -858,18 +858,32 @@ presentation::FeDrawStats IgBoards::draw(render::SpriteBatch& ui, const IgMgmtDa
 }
 
 
-// IGMENU row domain [C] pass-26: the live 1p pause-menu row table (VA 0x57ae02, raw 0x17ae02):
-// u16 count at base, then count rows of {u16 FC textid, u16 dispatch code} (stride 4, tick/init
-// 0x43fc40/0x43f040 copy loop into the 'menu' window slots +0x3c/+0x40). Captions resolve through
-// the FC remap table DAT_005774a4 (FeText::widgetStringAt) and were verified against FCENG.BIN:
-// {277 Continue, 249 Instant Replay, 261 Match Statistics, 262 Score Summary, 281 Booking Summary,
-//  4344 Restart Match, 264 Quit Match, 4337 Quit to Windows}.
-// The 2p live table (VA 0x57ae32, count 11) carries the extended set {5083 Resume Match, 249, 4423
-// Camera Select, 1407 Team Management, 258 Controller Select, 5 Options, 261, 268 Restart Match,
-// 264, 267 Quit World Cup, 4337}; the port match is single-player, so only the 1p domain is armed.
+// IGMENU row domain [C] pass-26c: table bytes read BYTE-EXACT from the data segment (delta
+// VA=raw+0x3FEA00; raw 0x17add8..0x17af20) — the earlier "BSS-only/runtime-writer" negative was
+// a wrong-delta (0x400000) read: the slots ARE initialized file data. Layout: u16 count at the
+// base VA stored by init 0x43f040, then count rows of {u16 FC textid, u16 dispatch code} (stride
+// 4; tick 0x43fc40 copy loop into the 'menu' window slots +0x3c/+0x40/+0x44). Init selects by
+// game-mode class DAT_00640fb4 (byte-exact disasm 0x43f1f0-0x43f2b1): mode 0 or 9 (the
+// exhibition/friendly class — its 1p branch 0x43f27c is the ONLY path into the tied-at-full-time
+// draw table) -> 1p 0x57c7d8 10-row / 2p (DAT_00641274 bit 0x10) 0x57c802 8-row; all other mode
+// classes (cup qualifiers, range check [2,8] at the Team-Management dispatch 0x43f669) -> 1p
+// 0x57c832 11-row / 2p 0x57c860 9-row; mode 0xa PK phases -> 0x57c886 (4-row codes 16..19),
+// 0x57c898 (9-row), 0x57c8be (8-row); mode 0xc -> 0x57c8e0 (8-row), 0x57c902 (6-row).
+// The port match is a single-player cup-bracket fixture -> armed below is the 11-row 0x57c832
+// dump (raw 0x17ae32: count 0x0b):
+//   {5083 Resume Match, 249 Instant Replay, 4423 Camera Select, 1407 Team Management,
+//    258 Controller Select, 5 Options, 261 Match Statistics, 268 Restart Match, 264 Quit Match,
+//    267 Quit World Cup, 4337 Quit to Windows}, codes {0,1,2,3,4,5,6,9,10,11,12}; captions
+//   verified through the FC remap DAT_005774a4 against FCENG.BIN. Codes match the 0x43f548
+//   dispatch targets. The friendly 1p table 0x57c7d8 (raw 0x17add8, count 0x0a) is the same
+//   rows 0-8, ending ...264/10, 4337/12 without 267; the 2p friendly table
+//   0x57c802 = {277 Continue, 249/1, 261/6, 262 Score Summary/7, 281/8, 4344 Restart/9, 264/10,
+//   4337/12}; the 2p cup table 0x57c860 = that set + 267/11 (9 rows). Tied draw table 0x57c824 =
+//   {3975 Extra-Time/22, 1536 Penalty Shootout/21, 3974 End Match/20} (port: full-time whistle
+//   opens the IGSCSUM/IGFLSUM chain instead).
 struct IgMenuRow { std::uint16_t tid; std::uint16_t code; };
-static constexpr std::array<IgMenuRow, 8> kIgMenuRows{
-    {{277, 0}, {249, 1}, {261, 6}, {262, 7}, {281, 8}, {4344, 9}, {264, 10}, {4337, 12}}};
+static constexpr std::array<IgMenuRow, 11> kIgMenuRows{
+    {{5083, 0}, {249, 1}, {4423, 2}, {1407, 3}, {258, 4}, {5, 5}, {261, 6}, {268, 9}, {264, 10}, {267, 11}, {4337, 12}}};
 
 int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames,
                 platform::Window& window, render::Renderer& renderer, bool recordReplay, bool igPauseSmoke, int boardScript,
@@ -1104,7 +1118,7 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
         return rows;
     };
     // Disable mask [C] tick 0x43fc40 fill loop: code 1 (Instant Replay) rows are disabled when the
-    // replay list is empty (FUN_00495bc0 < 1 -> mask bit at +0x44); code 9 (Restart Match) is
+    // replay list is empty (FUN_00494fc0 <= 0 -> mask bit at +0x44); code 9 (Restart Match) is
     // masked only outside the normal match phase (FUN_0043b140 vs FUN_004336f4) — the port runs a
     // normal phase, so only the replay rule applies here. Cursor moves skip masked rows.
     const auto igDisabled = [&](int row) { return kIgMenuRows[std::size_t(row)].code == 1 && hlRows().empty(); };
@@ -1207,18 +1221,18 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
     // lane and the mouse press lane (pass-27igmouse).
     const auto menuActivate = [&] {
         switch (kIgMenuRows[std::size_t(igSel)].code) {
+            case 0: pause = IgPause::Off; break;                            // Resume Match: resume the match loop
             case 1: if (!hlRows().empty()) openBoard("ighilite", 4); break; // Instant Replay -> browser (§D); masked row never reaches here
-            case 2: openBoard("igcamera", 8); break;                        // Camera Select (§G, 2p table)
+            case 2: openBoard("igcamera", 8); break;                        // Camera Select (§G, row code 2 on the armed 1p table)
             case 3: mgmt = buildIgMgmt(); openBoard("igteam72", 6); break;  // Team Management -> IGTEAM mirror pages (§E)
             case 4: openBoard("control1", 11); break;                       // Controller Select board (pass-26)
             case 5: std::printf("live: IGOPTN2 board from the Options row\n"); openBoard("igoptn2", 10); break; // Options (pass-21igscn)
             case 6: openBoard("igstats", 1); break;                         // Match Statistics board
-            case 7: openBoard("igscsum", 3); break;                         // Score Summary: full-time chain, Enter -> IGFLSUM [C]
-            case 8: std::printf("igmenu: Booking Summary row (no booking scene in the tree)\n"); break;
-            case 9: pause = haveIq ? IgPause::RestartAsk : IgPause::Off; break; // Restart Match: confirm box, Enter restarts
+            case 9: pause = haveIq ? IgPause::RestartAsk : IgPause::Off; break; // Restart Match (tid 268): confirm box, Enter restarts
             case 10: if (haveIq) pause = IgPause::QuitAsk; else quit = true; break; // Quit Match: IGQUESHN box [C]
-            case 11: case 12: quit = true; break;                           // Quit World Cup / Quit to Windows: direct exit (0x43f72d chain)
-            default: pause = IgPause::Off; break;                           // code 0 Continue: resume the match loop
+            case 11: quit = true; break; // Quit World Cup (cup tables only): abandon the cup run -> exits to FE hub
+            case 12: quit = true; break;                                   // Quit to Windows: direct exit (0x43f72d chain)
+            default: pause = IgPause::Off; break;                          // codes outside the armed table cannot dispatch
         }
     };
     const auto confirmYes = [&] { // confirm 'yes': rebuild the world on the same seed, reopen kickoff [C] restart chain installs 0x440706
@@ -1246,22 +1260,21 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
         if (smokeFrames && !igPauseSmoke && presented > 2)
             motion(600.f, 50.f); // keyboard-only smoke lanes: the retail hover rule pins the cursor to the hovered row, so re-park every frame (pass-32: OS motion events land inside row 0)
         if (igPauseSmoke && presented == 100) key(SDL_SCANCODE_ESCAPE, true); // gate script: Esc opens IGMENU (after the forced kickoff kick ~frame 90)
-        if (igPauseSmoke && presented == 105) motion(250.f, 219.5f); // pass-27: hover the Match Stats row -> cursor pane follows
-        if (igPauseSmoke && presented == 113) igMouseShot = true;    // _igmenu_mouse.png: cursor sprite + pane on row 2
-        if (igPauseSmoke && presented == 114) click(250.f, 219.5f, true);  // press activates row 2 -> IGSTATS board (code lane shared with Enter)
-        if (igPauseSmoke && presented == 116) click(250.f, 219.5f, false);
+        if (igPauseSmoke && presented == 105) motion(250.f, 264.5f); // pass-27: hover the Match Statistics row (row 6 of the armed 11-row cup 1p table 0x57c832; winY = 131+(231-198)/2 = 147.5, centre 147.5+18*6+9 = 264.5) -> cursor pane follows
+        if (igPauseSmoke && presented == 113) igMouseShot = true;    // _igmenu_mouse.png: cursor sprite + pane on row 6
+        if (igPauseSmoke && presented == 114) click(250.f, 264.5f, true);  // press activates row 6 -> IGSTATS board (code lane shared with Enter)
+        if (igPauseSmoke && presented == 116) click(250.f, 264.5f, false);
         if (igPauseSmoke && presented == 117) motion(600.f, 50.f);  // park pointer above the menu band (hover-safe)
         if (igPauseSmoke && presented == 118) key(SDL_SCANCODE_ESCAPE, true); // IGSTATS dismiss -> IGMENU (src 1 returns to the menu [C])
         if (igPauseSmoke && presented == 120) { key(SDL_SCANCODE_L, true); key(SDL_SCANCODE_L, false); } // Controller Select board: CONTROL1 evidence line + _control1.png (pass-26)
         if (igPauseSmoke && presented == 130) key(SDL_SCANCODE_ESCAPE, true); // dismiss CONTROL1 -> IGMENU (src 11)
-        if (igPauseSmoke && presented == 131) { key(SDL_SCANCODE_UP, true); key(SDL_SCANCODE_UP, false); } // cursor back to row 0 (Instant Replay masked -> skip)
-        // cursor walk Continue -> Quit Match over the decoded 1p table (Instant Replay masked: no replay
-        // rows in this lane); symmetric Up-back afterwards leaves the cursor at row 0 in every mask case.
-        if (igPauseSmoke && presented == 134) { key(SDL_SCANCODE_DOWN, true); key(SDL_SCANCODE_DOWN, false); }
-        if (igPauseSmoke && presented == 136) { key(SDL_SCANCODE_DOWN, true); key(SDL_SCANCODE_DOWN, false); }
-        if (igPauseSmoke && presented == 138) { key(SDL_SCANCODE_DOWN, true); key(SDL_SCANCODE_DOWN, false); }
-        if (igPauseSmoke && presented == 140) { key(SDL_SCANCODE_DOWN, true); key(SDL_SCANCODE_DOWN, false); }
-        if (igPauseSmoke && presented == 142) { key(SDL_SCANCODE_DOWN, true); key(SDL_SCANCODE_DOWN, false); }
+        if (igPauseSmoke && presented == 131) { key(SDL_SCANCODE_UP, true); key(SDL_SCANCODE_UP, false); } // row 6 (Stats) -> row 5 Options
+        // cursor walk Options -> Quit Match over the decoded 10-row 1p table (Instant Replay masked:
+        // no replay rows in this lane); the Up-back walk afterwards lands on row 0 (Resume Match),
+        // skipping the masked row 1 in every mask case.
+        if (igPauseSmoke && presented == 134) { key(SDL_SCANCODE_DOWN, true); key(SDL_SCANCODE_DOWN, false); } // 5 -> 6 Stats
+        if (igPauseSmoke && presented == 136) { key(SDL_SCANCODE_DOWN, true); key(SDL_SCANCODE_DOWN, false); } // 6 -> 7 Restart Match
+        if (igPauseSmoke && presented == 138) { key(SDL_SCANCODE_DOWN, true); key(SDL_SCANCODE_DOWN, false); } // 7 -> 8 Quit Match
         if (igPauseSmoke && presented == 145) key(SDL_SCANCODE_RETURN, true); // Enter on the Quit Match row -> IGQUESHN confirm (_igquesn.png)
         if (igPauseSmoke && presented == 146) key(SDL_SCANCODE_RETURN, false);
         if (igPauseSmoke && presented == 155) key(SDL_SCANCODE_ESCAPE, true); // Esc: confirm cancels back to the menu
@@ -1270,8 +1283,10 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
         if (igPauseSmoke && presented == 164) { key(SDL_SCANCODE_UP, true); key(SDL_SCANCODE_UP, false); }
         if (igPauseSmoke && presented == 166) { key(SDL_SCANCODE_UP, true); key(SDL_SCANCODE_UP, false); }
         if (igPauseSmoke && presented == 168) { key(SDL_SCANCODE_UP, true); key(SDL_SCANCODE_UP, false); }
-        if (igPauseSmoke && presented == 172) key(SDL_SCANCODE_RETURN, true); // Enter on Continue: resume
-        if (igPauseSmoke && presented == 173) key(SDL_SCANCODE_RETURN, false);
+        if (igPauseSmoke && presented == 170) { key(SDL_SCANCODE_UP, true); key(SDL_SCANCODE_UP, false); }
+        if (igPauseSmoke && presented == 172) { key(SDL_SCANCODE_UP, true); key(SDL_SCANCODE_UP, false); } // 2 -> masked Replay -> 0 Resume Match
+        if (igPauseSmoke && presented == 178) key(SDL_SCANCODE_RETURN, true); // Enter on Resume Match: resume
+        if (igPauseSmoke && presented == 179) key(SDL_SCANCODE_RETURN, false);
         if (igPauseSmoke && presented == 180) key(SDL_SCANCODE_ESCAPE, true); // reopen the menu, then close it: match resumes for the remaining frames
         if (igPauseSmoke && presented == 190) key(SDL_SCANCODE_ESCAPE, true); // Esc closes the menu: match resumes
         // IG board gate scripts. Mode 1 = stats tour through IGMENU (Esc opens, Down -> Stats row, Enter
@@ -1279,10 +1294,18 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
         // N frames after each board capture (boardShotAt pacing below).
         if (boardScript == 1) {
             if (presented == 200) key(SDL_SCANCODE_ESCAPE, true);   // IGMENU opens after kickoff progress
-            if (presented == 215) key(SDL_SCANCODE_DOWN, true);     // cursor -> Stats row
+            if (presented == 215) key(SDL_SCANCODE_DOWN, true);     // cursor walk to the Match Statistics row (row 6: Replay row masked, 5 steps from row 0)
             if (presented == 216) key(SDL_SCANCODE_DOWN, false);
-            if (presented == 222) key(SDL_SCANCODE_RETURN, true); // Enter: IGSTATS board
-            if (presented == 223) key(SDL_SCANCODE_RETURN, false);
+            if (presented == 217) key(SDL_SCANCODE_DOWN, true);
+            if (presented == 218) key(SDL_SCANCODE_DOWN, false);
+            if (presented == 219) key(SDL_SCANCODE_DOWN, true);
+            if (presented == 220) key(SDL_SCANCODE_DOWN, false);
+            if (presented == 221) key(SDL_SCANCODE_DOWN, true);
+            if (presented == 222) key(SDL_SCANCODE_DOWN, false);
+            if (presented == 223) key(SDL_SCANCODE_DOWN, true);
+            if (presented == 224) key(SDL_SCANCODE_DOWN, false);
+            if (presented == 230) key(SDL_SCANCODE_RETURN, true); // Enter: IGSTATS board
+            if (presented == 231) key(SDL_SCANCODE_RETURN, false);
             if (presented == 340) key(SDL_SCANCODE_ESCAPE, true);   // Esc: board -> menu
             if (presented == 350) key(SDL_SCANCODE_ESCAPE, true);   // Esc: resume
         }
@@ -1300,7 +1323,7 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
         // IGHILSAV; Enter writes a new rply%04d.dat + index entry via recordToUserDir.
         if (boardScript == 4) {
             if (presented == 200) key(SDL_SCANCODE_ESCAPE, true);   // IGMENU opens after kickoff progress
-            if (presented == 215) key(SDL_SCANCODE_DOWN, true);     // cursor: Continue -> Instant Replay row (code 1; fixtures seeded -> row enabled)
+            if (presented == 215) key(SDL_SCANCODE_DOWN, true);     // cursor: Resume Match -> Instant Replay row (code 1; fixtures seeded -> row enabled)
             if (presented == 216) key(SDL_SCANCODE_DOWN, false);
             if (presented == 224) { key(SDL_SCANCODE_RETURN, true); } // Enter: IGHILITE browser with fixture slots
             if (presented == 225) key(SDL_SCANCODE_RETURN, false);
@@ -1318,7 +1341,7 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
         if (boardScript == 5) {
             if (presented == 200) key(SDL_SCANCODE_ESCAPE, true);   // IGMENU opens after kickoff progress
             if (presented == 215) key(SDL_SCANCODE_DOWN, true);
-            if (presented == 216) key(SDL_SCANCODE_DOWN, false);    // Continue -> Instant Replay row (fixtures seeded -> enabled)
+            if (presented == 216) key(SDL_SCANCODE_DOWN, false);    // Resume Match -> Instant Replay row (fixtures seeded -> enabled)
             if (presented == 224) { key(SDL_SCANCODE_RETURN, true); } // Enter: browser opens
             if (presented == 225) key(SDL_SCANCODE_RETURN, false);
             if (presented == 300) { key(SDL_SCANCODE_S, true); }     // 'save' button -> IGHILSAV list
@@ -1396,7 +1419,7 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
         // 2/3/4 switch the tab panes (game play/controller/audio); Esc -> IGMENU, Esc resumes.
         if (boardScript == 10) {
             if (presented == 200) key(SDL_SCANCODE_ESCAPE, true);   // IGMENU opens after kickoff progress
-            if (presented == 230) { key(SDL_SCANCODE_O, true); key(SDL_SCANCODE_O, false); } // 'O' = Options hotkey -> igoptn2 board (retail Options row is on the 2p table; 'O' mirrors it on the 1p lane)
+            if (presented == 230) { key(SDL_SCANCODE_O, true); key(SDL_SCANCODE_O, false); } // 'O' mirrors the Options row (code 5 on the armed 1p table) -> igoptn2 board
             if (presented == 246) { key(SDL_SCANCODE_RIGHT, true); key(SDL_SCANCODE_RIGHT, false); }   // value caption cycle
             if (presented == 260) { key(SDL_SCANCODE_DOWN, true); key(SDL_SCANCODE_DOWN, false); }     // list row cursor
             if (presented == 274) { key(SDL_SCANCODE_2, true); key(SDL_SCANCODE_2, false); }           // tab -> game play pane
@@ -1443,7 +1466,7 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
                     }
                 };
                 const auto mgRows = [&](int kind) { return kind == 14 ? 6 : kind == 9 ? 2 : kind == 13 ? 12 : kind == 15 ? int(mgmt.teams[0].lineup.size() + mgmt.teams[0].subs.size()) : (kind == 10 || kind == 12) ? 5 : 0; };
-                switch (e.key.scancode) { // list cursor INC EDX @0x43FCD0: port domain {Resume, Stats, Highlights, Management, Options, Quit}
+                switch (e.key.scancode) { // list cursor INC EDX @0x43FCD0: menu domain = armed 11-row cup table kIgMenuRows
                     case SDL_SCANCODE_UP:
                         if (pause == IgPause::Board && boards && boards->kind() >= 21) boards->moveIgRow(-1); // IGOPTN2 list row cursor (pass-21)
                         else if (pause == IgPause::Board && boards && boards->kind() >= 16) { const int bk = boards->kind(); if (bk == 17) camd.curRow = (camd.curRow + 6) % 7; else boards->moveMgmtRow(-1, bk == 16 ? 5 : 3); } // §G grid/keeper row cursor
@@ -1469,10 +1492,10 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
                         else if (bk >= 18) { static constexpr std::array<const char*, 3> kPra{"igpract1", "igpract2", "igprac1"}; openBoard(kPra[std::size_t((boards->kind() - 18 + 1) % 3)], 9); } else if (bk < 8) boards->movePage(1); } break; // value cycle (pass-21) / btrt / gofd / practise tab cycle PRACT1 -> PRACT2
                     case SDL_SCANCODE_S: if (pause == IgPause::Board && boards && boards->kind() == 5) openBoard("ighilsav", 5); break; // 'save' button -> IGHILSAV slot list
                     case SDL_SCANCODE_B: if (pause == IgPause::Board && boards && boards->kind() >= 8) openBoard("igteam89", 6); else if (pause == IgPause::Menu) { mgmt = buildIgMgmt(); openBoard("igteam89", 6); } break; // tmf3 icon -> management hub (§E)
-                    case SDL_SCANCODE_M: if (pause == IgPause::Menu) { mgmt = buildIgMgmt(); openBoard("igteam72", 6); } else if (pause == IgPause::Board && boards && boards->kind() >= 8 && boards->kind() <= 14) openBoard("manmarks", 6); break; // igmgoptns hotkey: man-marking board; from the menu: Team Management page (the retail Team Management row lives on the 2p table VA 0x57ae32 - lane hotkey for the 1p gate)
-                    case SDL_SCANCODE_C: if (pause == IgPause::Menu) { std::printf("live: camera options from the in-game chain\n"); openBoard("igcamera", 8); } break; // igoptns-family hotkey opens IGCAMERA (§G, gate fe_camera_pages)
-                    case SDL_SCANCODE_L: if (pause == IgPause::Menu) { std::printf("igmenu: controller select board\n"); openBoard("control1", 11); } break; // Controller Select board (pass-26; original row code 4 on the 2p/training menu, 'L' hotkey for the single-player lane + gate capture)
-                    case SDL_SCANCODE_O: if (pause == IgPause::Menu) { std::printf("live: IGOPTN2 board from the in-game chain\n"); openBoard("igoptn2", 10); } break; // 'O' = Options row hotkey: IGOPTN2 scene board, four tab panes (pass-21igscn)
+                    case SDL_SCANCODE_M: if (pause == IgPause::Menu) { mgmt = buildIgMgmt(); openBoard("igteam72", 6); } else if (pause == IgPause::Board && boards && boards->kind() >= 8 && boards->kind() <= 14) openBoard("manmarks", 6); break; // igmgoptns hotkey: man-marking board; from the menu: mirrors the Team Management row (code 3 on the armed 1p table; hotkey keeps the gate lane key-independent)
+                    case SDL_SCANCODE_C: if (pause == IgPause::Menu) { std::printf("live: camera options from the in-game chain\n"); openBoard("igcamera", 8); } break; // mirrors the Camera Select row (code 2) as hotkey (§G, gate fe_camera_pages)
+                    case SDL_SCANCODE_L: if (pause == IgPause::Menu) { std::printf("igmenu: controller select board\n"); openBoard("control1", 11); } break; // mirrors the Controller Select row (code 4 on the armed 1p table) as hotkey (pass-26, gate capture)
+                    case SDL_SCANCODE_O: if (pause == IgPause::Menu) { std::printf("live: IGOPTN2 board from the in-game chain\n"); openBoard("igoptn2", 10); } break; // mirrors the Options row (code 5) as hotkey: IGOPTN2 scene board, four tab panes (pass-21igscn)
                     case SDL_SCANCODE_1: if (pause == IgPause::Board && boards) { if (boards->kind() == 21) boards->setIgTab(0); else if (boards->kind() >= 22) openBoard("igaoptns", 10); } break; // tbb1 / legacy tab 1 (pass-21igscn)
                     case SDL_SCANCODE_2: if (pause == IgPause::Board && boards) { if (boards->kind() == 21) boards->setIgTab(1); else if (boards->kind() >= 22) openBoard("iggoptns", 10); } break;  // tbb2 / legacy tab 2 (pass-21igscn)
                     case SDL_SCANCODE_3: if (pause == IgPause::Board && boards) { if (boards->kind() == 21) boards->setIgTab(2); else if (boards->kind() >= 22) openBoard("igmoptns", 10); } break;  // tbb3 / legacy tab 3 (pass-21igscn)

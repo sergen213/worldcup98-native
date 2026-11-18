@@ -1551,9 +1551,29 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                 st.detail = fmt("fe-options skipped: FEFLOW15 unavailable ({})", fe.lastError());
             } else {
                 const bool nm15 = std::string(fe.screenName()) == "FEFLOW15";
+                // Caption assertions through the DAT_005774a4 remap lane [C decode]: tbb1 help=78
+                // -> "Match Options", lst1 row0 84 -> "Half Length" val 4654 -> "2 mins", lst4
+                // row5 160 -> "Music Volume" (mode-1 slider drives settings_.audio.music).
+                const bool tabCap = fe.optionTabCaption(0) == "Match Options";
+                // ttxt header pane [C TABSW FUN_004516c0]: ttxt TEXTID rewritten per tab from the
+                // DGROUP constant table (s16 0x57cd24 = 78/81/1299/82) via FUN_00478834; LAY design
+                // id 429 ("Shooting") never renders - the header shows the tab title caption.
+                const bool hdr0 = fe.optionsHeaderText() == "Match Options";
+                const bool cap0 = fe.optionCaption(0, 0) == "Half Length";
+                const bool val0 = fe.optionValueCaption(0, 0, 0) == "2 mins";
                 fe.cycleTab(1);
                 const bool tab1 = fe.optionTab() == 1;
-                fe.cycleTab(-1); // back to tab 0 (tbb1 rows exist: volume/padding lists)
+                const bool hdr1 = fe.optionsHeaderText() == "Gameplay Options";
+                fe.cycleTab(2); // -> tab 3 (audio/visual)
+                const bool tabCap3 = fe.optionTabCaption(3) == "Audio/Visual Options";
+                const bool hdr3 = fe.optionsHeaderText() == "Audio/Visual Options";
+                const bool musCap = fe.optionCaption(3, 5) == "Music Volume";
+                const int musicBefore = cfg.audio.music;
+                fe.move(5);
+                const bool row5 = fe.optionRow() == 5;
+                fe.adjustValue(1);
+                const bool musGain = cfg.audio.music == musicBefore + 5;
+                fe.cycleTab(-3); // back to tab 0 (tbb1 rows exist: volume/padding lists)
                 fe.move(1);
                 const bool row1 = fe.optionRow() == 1;
                 fe.defOptions();
@@ -1565,11 +1585,15 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                 const bool re = fe.openOptions();
                 fe.back(); // Esc = 'back' tag pop
                 const bool popEsc = !fe.onOptions();
-                st.passed = nm15 && tab1 && row1 && deft0 && dirty && stay && pop && re && popEsc;
-                st.detail = fmt("fe-options: nm15={} tab1={} row1={} deft0={} dirty={} stay={} "
-                                "pop={} re={} popEsc={}",
-                                int(nm15), int(tab1), int(row1), int(deft0), int(dirty), int(stay),
-                                int(pop), int(re), int(popEsc));
+                st.passed = nm15 && tabCap && hdr0 && cap0 && val0 && tab1 && hdr1 && tabCap3 && hdr3
+                            && musCap && row5 && musGain && row1 && deft0 && dirty && stay && pop && re && popEsc;
+                st.detail = fmt("fe-options: nm15={} tabCap={} hdr0={} cap0={} val0={} tab1={} hdr1={} "
+                                "tabCap3={} hdr3={} musCap={} row5={} musGain={}({}->{}) row1={} deft0={} "
+                                "dirty={} stay={} pop={} re={} popEsc={}",
+                                int(nm15), int(tabCap), int(hdr0), int(cap0), int(val0), int(tab1), int(hdr1),
+                                int(tabCap3), int(hdr3), int(musCap), int(row5), int(musGain), musicBefore,
+                                cfg.audio.music, int(row1), int(deft0), int(dirty), int(stay), int(pop),
+                                int(re), int(popEsc));
             }
         } catch (const std::exception& e) {
             st.passed = true; // documented environment skip (headless-CI pattern)

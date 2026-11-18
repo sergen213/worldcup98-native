@@ -368,6 +368,15 @@ public:
     void resetCursor();     // restore the menu-level cursor after a launch returns (hub fe07 / entry 0)
     void cycleTab(int dir); // options tab pages tbb1..4 ('ops2' event family; TAB key)
     [[nodiscard]] int optionRow() const { return optRow_; }
+    // Row captions resolved through the FC widget-id remap lane (DAT_005774a4, FUN_0043c9a0 ->
+    // FUN_004c31d0) — the list painter + help pane grammar [C fc_painter.txt:1231-1257, pass21igmenu].
+    [[nodiscard]] std::string optionCaption(int tab, int row) const;      // row label caption
+    [[nodiscard]] std::string optionValueCaption(int tab, int row, int idx) const; // value caption
+    [[nodiscard]] std::string optionTabCaption(int tab) const;            // tbb{tab+1} help= caption
+    // ttxt header pane caption: TABSW FUN_004516c0 rewrites the ttxt widget TEXTID per tab from the
+    // DGROUP constant table (s16 0x57cd24+(tab-1)*4 = 78/81/1299/82 = tbb1..4 help ids) through
+    // FUN_00478834, so the header pane is the tab title caption - never LAY design id 429.
+    [[nodiscard]] std::string optionsHeaderText() const;
     // FE15_INIT widget-tag grammar [C analysis/pass22fe15/dec2.txt]: 'save' (0x73617665) @0x44f2b4
     // = settings writer cluster FUN_0046b0fc/b5c8/b3e0/b83c/b074 + options.sav write FUN_0046b320 +
     // click sfx FUN_004678b8, stay on screen (FUN_004461b4 redraw); 'deft' (0x64656674) @0x44f288 =

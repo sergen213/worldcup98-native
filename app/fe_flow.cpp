@@ -40,6 +40,21 @@ constexpr std::array<const char*, 13> kHubButtons{"fe33", "fe90", "fe32", "fe11"
 // fe33 (classic/world-cup history boards feflow90/91) left the disabled list with the pass-13 slice:
 // hub wedge 'fe33' opens FEFLOW90 [C] SITE 0x449dc5, analysis/pass13/CLASSICS_FE33.md.
 constexpr std::array<const char*, 5> kHubDisabled{"fe90", "fe04", "fe02", "fe89", "repl"};
+namespace {
+// feflow15.lay mode-1 volume slider rows [C remap decode]: widget ids 160 "Music Volume",
+// 162 "Commentary Volume", 1186 "Game SFX Volume", 1187 "Menu SFX Volume" (shares the port's
+// sfx lane). Maps row label -> settings_ member; null for non-volume rows.
+int* audioSliderRow(config::Settings* s, int label) {
+    if (!s) return nullptr;
+    switch (label) {
+        case 160: return &s->audio.music;
+        case 162: return &s->audio.commentary;
+        case 1186: case 1187: return &s->audio.sfx;
+        default: return nullptr;
+    }
+}
+} // namespace
+
 
 FeFlow::FeFlow(render::Renderer& r, fs::path tree, std::string lang) : tree_(std::move(tree)), art_(r, tree_, tree_ / "FE/PACK/LAYOUTS") {
     // Main menu screen (LAY_COMPOSITOR_NOTES.md measured table: FEFLOW05 -> 26 objects -> 11 shapes).
@@ -907,10 +922,10 @@ void FeFlow::adjustValue(int dir) {
     if (!r.values.empty() && !vals.empty()) { // FC-caption value cycle (mode 2 list row)
         int& v = vals[std::size_t(optRow_)];
         v = (v + dir + int(r.values.size())) % int(r.values.size());
-    } else if (r.label == 1186 && settings_) { // "Music Volume" slider -> port [audio] music volume, live gain
-        settings_->audio.music = std::clamp(settings_->audio.music + dir * 5, 0, 100);
+    } else if (int* vol = audioSliderRow(settings_, r.label)) { // mode-1 volume slider row (160/162/1186/1187)
+        *vol = std::clamp(*vol + dir * 5, 0, 100);
         audioDirty_ = true;
-        if (mixer_) mixer_->setMasterGain(float(settings_->audio.music) / 100.f); // [H] port mapping: music row drives the FE stream gain
+        if (mixer_ && r.label == 160) mixer_->setMasterGain(float(*vol) / 100.f); // [H] music row drives the FE stream gain
     }
 }
 
@@ -2828,6 +2843,18 @@ int FeFlow::hubActivate(int index) {
     return -1;
 }
 
+// TABSW FUN_004516c0 (analysis/pass22fe15/dec3.txt) per-tab case body: show/hide widgets via
+// FUN_0046bfac/FUN_0046bfcc and rewrite the ttxt header widget's TEXTID through FUN_00478834 with
+// id = s16 at DGROUP 0x57cd24 + (tab-1)*4 (`.data` dump: dword reads [0x57cd22+tab*4] `sar edx,0x10`
+// -> constants 78/81/1299/82, zero writer sites - baked into .data) = tbb1..4 help ids. The
+// design-time LAY textid 429 ("Shooting") is never displayed; header pane = tab title caption
+// (remap[78]=1037 "Match Options", [81]=798, [1299]=486, [82]=267 "Audio/Visual Options").
+static void applyOptionsHeader(formats::ScreenLayout& sc, int tab) {
+    static constexpr int kHeaderId[4]{78, 81, 1299, 82};
+    for (auto& o : sc.objects)
+        if (o.name == "ttxt") o.props["TEXTID"] = std::to_string(kHeaderId[std::clamp(tab, 0, 3)]);
+}
+
 int FeFlow::pointerActivate() {
     using presentation::widgetHit;
     if (popKind_) { // popup buttons under the pointer: focus + activate (payload name parity)
@@ -2997,7 +3024,7 @@ int FeFlow::pointerActivate() {
     if (optsView_ && haveOpts_) { // tab buttons tbb1..4 (POINTS polygons in the LAY)
         for (int t = 0; t < 4; ++t) {
             const formats::LayoutObject* o = optsScreen_.object("tbb" + std::to_string(t + 1));
-            if (o && widgetHit(*o, float(ptrX_), float(ptrY_))) { optTab_ = t; optRow_ = 0; return -1; }
+            if (o && widgetHit(*o, float(ptrX_), float(ptrY_))) { optTab_ = t; optRow_ = 0; applyOptionsHeader(optsScreen_, t); return -1; }
         }
         // FE15_INIT widget tags (analysis/pass22fe15/dec2.txt FourCC dispatch on *(EBX+8)):
         // 'save' 0x73617665 writers+sfx stay-on-screen, 'deft' 0x64656674 cursor reset,
@@ -3058,7 +3085,13 @@ int FeFlow::pointerActivate() {
     return -1;
 }
 
-bool FeFlow::openOptions()  { if (!haveOpts_) return false; optsView_ = true; optRow_ = 0; return true; }
+bool FeFlow::openOptions()  {
+    if (!haveOpts_) return false;
+    optsView_ = true;
+    optRow_ = 0;
+    applyOptionsHeader(optsScreen_, optTab_);
+    return true;
+}
 bool FeFlow::openSaveLoad() { if (!haveSl_) return false; slView_ = true; slSlot_ = 0; return true; }
 bool FeFlow::openCredits()  { if (!haveCred_) return false; credView_ = true; credFrames_ = 0; return true; }
 void FeFlow::cycleTab(int dir) {
@@ -3066,6 +3099,7 @@ void FeFlow::cycleTab(int dir) {
     optTab_ = (optTab_ + dir) % 4; // tabs tbb1..4 ('ops2' event family in the engine key handler)
     if (optTab_ < 0) optTab_ += 4;
     optRow_ = 0;
+    applyOptionsHeader(optsScreen_, optTab_); // TABSW ttxt header rewrite
 }
 
 // 'save' tag: the engine writes the live settings block (FUN_0046b0fc/b5c8/b3e0/b83c/b074 writers +
@@ -3108,9 +3142,11 @@ FeDrawStats FeFlow::drawHub(render::SpriteBatch& ui) const {
     return st;
 }
 
-// Help pane: the hovered button's `help=NNN,...` leading number indexes FeText::stringAt (FC*.BIN;
-// measured captions fe07 help=1533 ... quit 4240). The "help" pane (objecttype 14) supplies geometry
-// + fontid (4); text is centered within it (alignment=3 semantics of the engine list widgets).
+// Help pane: the hovered button's `help=NNN,...` leading number is a FC widget id resolved through
+// the remap table DAT_005774a4 lane (widgetStringAt) — tbb1 78 -> "Match Options", tbb4 82 ->
+// "Audio/Visual Options", quit 4240 -> "Exit to Windows" [C feflow15.lay + fcwidget remap table].
+// The "help" pane (objecttype 14) supplies geometry + fontid (4); text is centered within it
+// (alignment=3 semantics of the engine list widgets).
 void FeFlow::drawHelpPane(const formats::ScreenLayout& sc, render::SpriteBatch& ui,
                           FeDrawStats& st, std::string_view widgetName) const {
     if (!text_ || !text_->ready() || widgetName.empty()) return;
@@ -3118,7 +3154,7 @@ void FeFlow::drawHelpPane(const formats::ScreenLayout& sc, render::SpriteBatch& 
     if (!o) return;
     int idx = 0;    const std::string* h = o->prop("HELP");
     if (!h || std::sscanf(h->c_str(), "%d", &idx) != 1 || idx <= 0) return;
-    const std::string_view s = text_->stringAt(std::size_t(idx));
+    const std::string_view s = text_->widgetStringAt(std::size_t(idx));
     if (s.empty()) return;
     const formats::LayoutObject* pane = sc.object(o->prop("HELPPANEID") ? *o->prop("HELPPANEID") : "help");
     if (!pane) pane = o; // fall back to the button's own box
@@ -3137,7 +3173,9 @@ void FeFlow::drawHelpPane(const formats::ScreenLayout& sc, render::SpriteBatch& 
 }
 
 // feflow15.lay list rows: the `rows=N+` key of lst{tab+1} is followed by N continuation lines
-// "label,mode,count,v0..vN-1" (FC-bank indices; mode 2 = value list, mode 1 = slider/numeric row).
+// "label,mode,count,v0..vN-1". All numbers are FC widget ids resolved through the DAT_005774a4
+// remap lane (list painter FUN_0043c9a0 -> FUN_004c31d0, [C fc_painter.txt:1231-1257]); mode 2 =
+// value list, mode 1 = slider/numeric row. 0xffffffff (-1) sentinel rows draw empty.
 std::vector<FeFlow::OptRow> FeFlow::parseOptionRows(std::string_view layText, int tab) {
     std::vector<OptRow> rows;
     const std::string want = "objectname=lst" + std::to_string(tab + 1);
@@ -3173,6 +3211,37 @@ std::vector<FeFlow::OptRow> FeFlow::parseOptionRows(std::string_view layText, in
     }
     return rows;
 }
+std::string FeFlow::optionCaption(int tab, int row) const {
+    if (!text_ || tab < 0 || tab > 3) return {};
+    const auto& rows = optRows_[std::size_t(tab)];
+    if (row < 0 || std::size_t(row) >= rows.size()) return {};
+    return std::string(text_->widgetStringAt(std::size_t(rows[std::size_t(row)].label)));
+}
+std::string FeFlow::optionValueCaption(int tab, int row, int idx) const {
+    if (!text_ || tab < 0 || tab > 3) return {};
+    const auto& rows = optRows_[std::size_t(tab)];
+    if (row < 0 || std::size_t(row) >= rows.size()) return {};
+    const auto& vs = rows[std::size_t(row)].values;
+    if (idx < 0 || std::size_t(idx) >= vs.size()) return {};
+    return std::string(text_->widgetStringAt(std::size_t(vs[std::size_t(idx)])));
+}
+std::string FeFlow::optionTabCaption(int tab) const {
+    if (!text_ || tab < 0 || tab > 3) return {};
+    const formats::LayoutObject* o = optsScreen_.object("tbb" + std::to_string(tab + 1));
+    if (!o) return {};
+    const std::string* h = o->prop("HELP");
+    int idx = 0;
+    if (!h || std::sscanf(h->c_str(), "%d", &idx) != 1 || idx <= 0) return {};
+    return std::string(text_->widgetStringAt(std::size_t(idx)));
+}
+std::string FeFlow::optionsHeaderText() const {
+    const formats::LayoutObject* o = optsScreen_.object("ttxt");
+    if (!o || !text_ || !text_->ready()) return {};
+    const std::string* t = o->prop("TEXTID");
+    int id = 0;
+    if (!t || std::sscanf(t->c_str(), "%d", &id) != 1 || id <= 0) return {};
+    return std::string(text_->widgetStringAt(std::size_t(id)));
+}
 
 FeDrawStats FeFlow::drawOptions(render::SpriteBatch& ui) const {
     static constexpr std::array<const char*, 4> kTabs{"tbb1", "tbb2", "tbb3", "tbb4"};
@@ -3197,21 +3266,21 @@ FeDrawStats FeFlow::drawOptions(render::SpriteBatch& ui) const {
         if (i == optRow_) ui.draw(0, {float(lst->x) - 4.f, y - 2.f, float(lst->width), float(rowH)}, {}, render::packRgba(255, 224, 96, 48));
         if (!f || !ftex) continue;
         const OptRow& r = rows[std::size_t(i)];
-        const std::string_view cap = text_->stringAt(std::size_t(r.label));
+        const std::string_view cap = text_->widgetStringAt(std::size_t(r.label));
         if (cap.empty()) continue; // FC-bank row captions are the scene-code truth here; gaps stay blank
         for (const auto& q : presentation::layoutText(*f, cap, float(lst->x) + 8.f, y, 13.f, render::packRgba(235, 235, 235, 255)))
             ui.draw(ftex, q.dst, q.uv, q.rgba);
         ++st.texts;
         if (!r.values.empty()) { // current value caption at the right edge (engine list-value column)
             const int vi = std::clamp(vals[std::size_t(i)], 0, int(r.values.size()) - 1);
-            const std::string_view val = text_->stringAt(std::size_t(r.values[std::size_t(vi)]));
+            const std::string_view val = text_->widgetStringAt(std::size_t(r.values[std::size_t(vi)]));
             if (!val.empty()) {
                 for (const auto& q : presentation::layoutText(*f, val, float(lst->x + lst->width) - 150.f, y, 13.f, render::packRgba(255, 232, 96, 255)))
                     ui.draw(ftex, q.dst, q.uv, q.rgba);
                 ++st.texts;
             }
-        } else if (r.label == 1186 && settings_) { // "Music Volume" slider row -> the port's [audio] music volume
-            const std::string v = std::format("{}%", settings_->audio.music);
+        } else if (const int* vol = audioSliderRow(settings_, r.label)) { // mode-1 volume slider -> current %
+            const std::string v = std::format("{}%", *vol);
             for (const auto& q : presentation::layoutText(*f, v, float(lst->x + lst->width) - 150.f, y, 13.f, render::packRgba(255, 232, 96, 255)))
                 ui.draw(ftex, q.dst, q.uv, q.rgba);
             ++st.texts;

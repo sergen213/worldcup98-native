@@ -479,7 +479,8 @@ light one in `FeFlow::paintCaption` **[H]**.
 - **Geometry [C]**: centering into box2 (116,131,408x231): win.x=(408-286)/2+116=177,
   win.y=(231-count*18)/2+131 (`[win+0x12]=count*0x12`); LAY `menu` x=176 y=138 is stale template.
   Boxes box1/2/3 objecttype 43, no fillcolour -> frame-only stroke quads ported; score plate
-  box4/box5 RECT + nmb1/nmb2 `%d` pair (`DAT_0064024c/250`, `%d`@0x562148) stays on the HUD strip.
+  box4/box5 RECT + nmb1/nmb2 `%d` pair (`DAT_0064024c/250`, `%d`@0x562148) paint in the menu
+  header (follow-up below), not the HUD strip.
 - **Dispatch [C]** handler 0x43f548 jump table `*0x440148(,%ecx,4)`: code->action map verified per
   table (resume 0x439138, stats 0x4409d0, tourney-end chain 0x441140, options 0x440dc0, mgmt hub
   0x441800, replay-entry chains 0x43f888/8c4/901, confirm msgs 0x56214c/0x562154/0x562160,
@@ -498,6 +499,13 @@ light one in `FeFlow::paintCaption` **[H]**.
   CONTROL1 device strips + "Teammates:"). Smoke 260 keeps >=1 s of unpaused sim after resume for
   the clock guard (200-frame lane paused too long). boardScript 4/5 cursor rows retargeted
   (Down x1 -> Instant Replay), 6/7 'M' mgmt hotkey, 10 'O' options hotkey.
+- **Header overlay follow-up** (same day): init `FUN_0043f3e8` strings the box1 header — typ1/typ2
+  team names, FNNN shields on flg1/flg2, nmb1/nmb2 score digits — now painted in the pause-menu
+  draw (board-header idiom: names centred x+50 pw130, digits box4/box5 centre x+13 pw24). LAY order
+  flg→box4/5 means the white RECT plate repaints over the shield art after composite, digits last.
+  `kTitle[kind_]` lookup guarded `kind_ < 5`: CONTROL1 (kind 25) carries a titl textid=0 slot with
+  no caption table entry (was an out-of-bounds read). Evidence: `IGMENU: shapes=17 texts=131`,
+  `_igmenu.png` shows names + shields + white plates + digits over the row table.
 - **Suite**: 143/145 this lane (`test_sim_scenarios`, `self_test_gameplay` = in-flight simulation
   kick-seam lane, untouched). Registry rows IGMENU.LAY/CONTROL1.LAY updated; §4 rank-8 residual
   (runtime captions) closed for the 1p table; dossier `analysis/pass26igmenu/NOTES.md`.

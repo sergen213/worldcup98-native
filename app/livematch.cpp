@@ -354,7 +354,7 @@ presentation::FeDrawStats IgBoards::draw(render::SpriteBatch& ui, const IgMatchD
 
     // Title (box1 x=116 w=408): FC-bank caption centered across the header pane.
     static constexpr int kTitle[5] = {0, 28, 858, 776, 1553}; // Match Statistics / HALF-TIME / Full-Time / SCORE SUMMARY
-    if (const formats::LayoutObject* t = layObj(sc_, "titl")) st.texts += paintCentered(text_.get(), ui, cap(std::size_t(kTitle[kind_])), 320.f, float(t->y) + 8.f, 400.f);
+    if (const formats::LayoutObject* t = layObj(sc_, "titl")) st.texts += paintCentered(text_.get(), ui, cap(kind_ < 5 ? std::size_t(kTitle[kind_]) : 0u), 320.f, float(t->y) + 8.f, 400.f); // CONTROL1 (25) has a titl textid=0 slot: no caption, no table lookup
 
     // Header block: team names (typ1/typ2), shields, then score numbers LAST (nmb1/nmb2 over the
     // box4/box5 RECTs): the number slots sit inside the shield art's x-range on these layouts, so
@@ -1570,6 +1570,32 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
                     ig.shapes += 4;
                 };
                 stroke(116.f, 32.f, 408.f, 95.f); stroke(116.f, 131.f, 408.f, 231.f); stroke(116.f, 366.f, 408.f, 84.f);
+                // Header block (box1): init FUN_0043f3e8 strings the typ1/typ2 names + nmb1/nmb2
+                // score digits ("%d" snprintf lane DAT_0064024c/250 %100) and installs the FNNN
+                // shields on flg1/flg2 — same idiom as the IG board headers (numbers paint after
+                // the flag quads: the digit slots sit inside the shield art x-range).
+                const IgMatchData hd = buildIgData();
+                for (int t = 0; t < 2; ++t) {
+                    if (const formats::LayoutObject* o = layObj(*igMenu, t == 0 ? "typ1" : "typ2"))
+                        ig.texts += paintCentered(igText.get(), ov, hd.names[std::size_t(t)], float(o->x) + 50.f, float(o->y) + 8.f, 130.f);
+                    if (const formats::LayoutObject* o = layObj(*igMenu, t == 0 ? "flg1" : "flg2"); o && !hd.flags[std::size_t(t)].empty()) {
+                        const ScreenArt::Shape sh = igArt.shape("..\\global\\", hd.flags[std::size_t(t)], "f000", -1);
+                        if (sh.tex) { ov.draw(sh.tex, {float(o->x), float(o->y), float(sh.w), float(sh.h)}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu); ++ig.shapes; }
+                    }
+                }
+                // Original LAY order puts box4/box5 AFTER flg1/flg2: the white RECT plate must
+                // repaint over the shield art it was drawn under in the composite pass.
+                for (int t = 0; t < 2; ++t) {
+                    const formats::LayoutObject* box = layObj(*igMenu, t == 0 ? "box4" : "box5");
+                    if (box) { ov.draw(0, {float(box->x), float(box->y), float(box->width), float(box->height)}, {}, 0xFFFFFFFFu); ++ig.shapes; }
+                }
+                for (int t = 0; t < 2; ++t) {
+                    const formats::LayoutObject* box = layObj(*igMenu, t == 0 ? "box4" : "box5");
+                    if (const formats::LayoutObject* o = layObj(*igMenu, t == 0 ? "nmb1" : "nmb2")) {
+                        const float cx = box ? float(box->x) + 13.f : float(o->x) + 6.f; // score plate width 26 (box4/5 RECT at 212/399)
+                        ig.texts += paintCentered(igText.get(), ov, numStr(hd.score[std::size_t(t)]), cx, float(o->y) + 7.f, 24.f);
+                    }
+                }
                 for (int row = 0; row < count; ++row) {
                     const float ry = winY + 18.f * float(row);
                     if (row == igSel) { ov.draw(0, {winX, ry, 286.f, 18.f}, {}, render::packRgba(255, 224, 96, 70)); ++ig.shapes; } // HILITED pane quad (paintRowLabel idiom)

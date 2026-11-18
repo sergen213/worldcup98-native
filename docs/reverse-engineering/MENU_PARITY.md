@@ -603,3 +603,26 @@ light one in `FeFlow::paintCaption` **[H]**.
   untouched (`fe_igoptn2_board` PASS).
 - **Suite**: ctest 145/147 (2 FAIL = simulation kick-seam lane, untouched).
   Dossier `analysis/pass31f15slider/NOTES.md` (+ dumps `sl1-3.txt`, `list17b.txt`).
+
+## 24. Round 2026-11-18 — pass-32igmouse: keyboard-lane hover-pin fix [LANDED]
+
+- **Regression** `fe_igstats`: keyboard lane Esc->Down->Enter opened nothing; cursor
+  snapped back to row 0. The pointer lane re-pins `igSel` to the hovered row **every
+  frame** while the menu is open (§20 wording corrected: the assignment is continuous
+  hover, not press-edge — press-edge only gates activation; retail `FUN_0046c014`
+  hover-move semantics are faithful). The pass-27 park coordinate (320,455) was
+  remapped by the motion/poll scale lane into (223,175) — inside row 0 of the menu
+  band (winX 177..463, winY 131+(231-18·count)/2) — so phantom hover erased keyboard
+  moves before Enter. Window pixel size also differs between injection and poll frames
+  (swapchain 1792x1344 → 3840x2160), so a single park push is not scale-stable.
+- **Fix** (`app/livematch.cpp`): park coordinate moved to (600,50) — lands outside the
+  band at every observed scale (x ≥ 463 or y < 174.5); and keyboard-only smoke lanes
+  (`smokeFrames && !igPauseSmoke`) re-push the park motion every frame, so an OS
+  synthetic motion arriving after frame 2 can't re-enter row 0 (push at loop-top lands
+  last in the SDL queue, i.e. the frame's final pointer state is the park).
+  `igPauseSmoke` mouse lane keeps its scripted hover/click sequence.
+- **Rule**: smoke lanes mixing keyboard cursor moves with the hover lane must keep the
+  pointer outside the interactive band **per frame**, at a scale-stable coordinate.
+- **Suite**: ctest 145/147 (2 FAIL = simulation kick-seam lane, untouched);
+  `fe_igstats` green, captures `igmenu2_igstats.png` (board 1:1) + `igmenu_control1.png`
+  verified. Dossier `analysis/pass32igmouse/NOTES.md`.

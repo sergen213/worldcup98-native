@@ -1242,13 +1242,15 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
         // pad word -> controller 0 (proves the whole input->sim command path in --live-match-smoke).
         if (smokeFrames && presented == 20) key(SDL_SCANCODE_S, true);
         if (smokeFrames && presented == 34) key(SDL_SCANCODE_S, false);
-        if (smokeFrames && presented == 2) motion(320.f, 455.f); // park the pointer outside the pause-menu window: the window-created synthetic motion must not hover a row (gate determinism, pass-27)
+        if (smokeFrames && presented == 2) motion(600.f, 50.f); // park pointer top-right, above the menu row band (scale-independent hover safety, pass-32)
+        if (smokeFrames && !igPauseSmoke && presented > 2)
+            motion(600.f, 50.f); // keyboard-only smoke lanes: the retail hover rule pins the cursor to the hovered row, so re-park every frame (pass-32: OS motion events land inside row 0)
         if (igPauseSmoke && presented == 100) key(SDL_SCANCODE_ESCAPE, true); // gate script: Esc opens IGMENU (after the forced kickoff kick ~frame 90)
         if (igPauseSmoke && presented == 105) motion(250.f, 219.5f); // pass-27: hover the Match Stats row -> cursor pane follows
         if (igPauseSmoke && presented == 113) igMouseShot = true;    // _igmenu_mouse.png: cursor sprite + pane on row 2
         if (igPauseSmoke && presented == 114) click(250.f, 219.5f, true);  // press activates row 2 -> IGSTATS board (code lane shared with Enter)
         if (igPauseSmoke && presented == 116) click(250.f, 219.5f, false);
-        if (igPauseSmoke && presented == 117) motion(320.f, 455.f);  // park pointer outside the menu window: keyboard lane below unchanged
+        if (igPauseSmoke && presented == 117) motion(600.f, 50.f);  // park pointer above the menu band (hover-safe)
         if (igPauseSmoke && presented == 118) key(SDL_SCANCODE_ESCAPE, true); // IGSTATS dismiss -> IGMENU (src 1 returns to the menu [C])
         if (igPauseSmoke && presented == 120) { key(SDL_SCANCODE_L, true); key(SDL_SCANCODE_L, false); } // Controller Select board: CONTROL1 evidence line + _control1.png (pass-26)
         if (igPauseSmoke && presented == 130) key(SDL_SCANCODE_ESCAPE, true); // dismiss CONTROL1 -> IGMENU (src 11)
@@ -1279,7 +1281,7 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
             if (presented == 200) key(SDL_SCANCODE_ESCAPE, true);   // IGMENU opens after kickoff progress
             if (presented == 215) key(SDL_SCANCODE_DOWN, true);     // cursor -> Stats row
             if (presented == 216) key(SDL_SCANCODE_DOWN, false);
-            if (presented == 222) { key(SDL_SCANCODE_RETURN, true); } // Enter: IGSTATS board
+            if (presented == 222) key(SDL_SCANCODE_RETURN, true); // Enter: IGSTATS board
             if (presented == 223) key(SDL_SCANCODE_RETURN, false);
             if (presented == 340) key(SDL_SCANCODE_ESCAPE, true);   // Esc: board -> menu
             if (presented == 350) key(SDL_SCANCODE_ESCAPE, true);   // Esc: resume

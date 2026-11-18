@@ -161,6 +161,7 @@ public:
     // s001 KnobBar) + keyloop_notes.txt tags (gofd/gobk screen chain, ncml/ncmr pairs).
     bool openLeagueCfg(int screenId); // Enter on FEFLOW73 / --fe-league-cfg N gate; false = layout absent
     [[nodiscard]] bool onLeagueCfg() const { return leagueCfg_ > 0; }
+    [[nodiscard]] int leagueRow() const { return cfgRow_; } // grid row cursor (74/80 kt rows)
     presentation::FeDrawStats drawLeagueCfg(render::SpriteBatch& ui) const; // composite + row/slider overlays
     // ---- FEFLOW07 single-player match setup + FEFLOW08 stadium select (pass 13 §B) --------------
     // Scene edges (MENU_NAV_WC98.md §3/§5): hub wedge 'fe07' opens feflow07 (matchup screen: ltnm/rtnm
@@ -512,6 +513,7 @@ public:
     std::string cfgName_;          // gate evidence label "FEFLOWxx"
     std::string cfgLang_;          // FCDBP<lang>.DBI code (lowercase)
     int cfgRow_ = 0;               // row cursor on the grid screens (roster index, pages via sbar)
+    int cfgPopBase_ = 75;          // page the 76/78 popup returns to: FEFLOW74's 'tmf2' opens it over the grid
     int stratVal_ = 2;             // FEFLOW75 s001 strategy: 5-step editor domain [+2att..+2def] [H]
     int aggrVal_ = 7;              // FEFLOW76 s001 aggression: FCDB skill nibble scale [0,15] [H]
     int biasVal_ = 4;              // FEFLOW79 s001 attack-bias: slider position domain [0,8] [H]

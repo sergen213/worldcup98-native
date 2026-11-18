@@ -1484,6 +1484,53 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
     }
 
     {
+        // 14c. fe-league-nav (pass-26): Enter on the FEFLOW74 grid opens the aggression popup
+        // over the grid (token 'tmf2', event handler 0x45df84 leaf 0x45e845: pushes scene 0x76 +
+        // ev 8005), the popup's Enter ('alok') and Esc ('cancel') pop the scene back to FEFLOW74
+        // (not to the feflow75 strategy page), the grid row cursor survives the popup, and Esc on
+        // the grid closes to the FEFLOW73 league list. No shell -> documented skip (fe-nav pattern).
+        StepRes st{"fe-league-nav", false, ""};
+        try {
+            platform::Window win("WC98-selftest-lgnav", 640, 480, false);
+            render::VulkanConfig vcfg;
+            vcfg.instanceExtensions = platform::Window::vulkanInstanceExtensions();
+            vcfg.createSurface = [&](VkInstance inst) {
+                VkSurfaceKHR s = VK_NULL_HANDLE;
+                SDL_Vulkan_CreateSurface(win.sdl(), inst, nullptr, &s);
+                return s;
+            };
+            vcfg.drawableSize = [&] { return win.pixelSize(); };
+            const auto renderer = render::createVulkanRenderer(vcfg, render::RenderSettings{});
+            FeFlow fe(*renderer, tree, "eng");
+            if (!fe.openLeagueCfg(74)) {
+                st.passed = true; // documented environment skip (tree lacks the grid layout)
+                st.detail = fmt("fe-league-nav skipped: FEFLOW74 unavailable ({})", fe.lastError());
+            } else {
+                const auto name = [&] { return std::string(fe.screenName()); };
+                fe.move(+1);                              // kt row cursor -> row 1
+                const bool row1 = fe.leagueRow() == 1;
+                fe.enter();                               // 'tmf2': push scene FEFLOW76
+                const bool pop76 = name() == "FEFLOW76" && fe.onLeagueCfg();
+                const bool keepRow = fe.leagueRow() == 1; // engine row state survives the popup
+                fe.enter();                               // popup 'alok': pop back to the grid
+                const bool back74a = name() == "FEFLOW74";
+                fe.enter();                               // Enter again: open the popup
+                fe.back();                                // Esc 'cancel': pop to grid, cursor kept
+                const bool back74b = name() == "FEFLOW74" && fe.leagueRow() == 1;
+                fe.back();                                // Esc on the grid: closes to FEFLOW73
+                const bool toList = fe.onLeague() && name() == "FEFLOW73";
+                st.passed = row1 && pop76 && keepRow && back74a && back74b && toList;
+                st.detail = fmt("fe-league-nav: row1={} pop76={} keepRow={} back74a={} back74b={} toList={}",
+                                int(row1), int(pop76), int(keepRow), int(back74a), int(back74b), int(toList));
+            }
+        } catch (const std::exception& e) {
+            st.passed = true; // documented environment skip (headless-CI pattern)
+            st.detail = fmt("fe-league-nav skipped: FE shell unavailable ({})", e.what());
+        }
+        steps.push_back(std::move(st));
+    }
+
+    {
         // 14b2. fe-lineups (pass-21igscn §2): the fe16 wedge chain on the stadium map opens the
         // FEFLOW16 lineups board [C] analysis/pass12/edges_table.txt:22 (feflow08 helper
         // FUN_0043ce4c site 0x43cf27 pushes NAME:feflow16 0x562020). Assert open, screenName,

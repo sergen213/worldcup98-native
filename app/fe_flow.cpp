@@ -1188,12 +1188,18 @@ bool FeFlow::enter() {
     if (igMode_) return false; // row Enter = value select is mouse-only in the port; L/R cycles values
     if (cheatsView_) { toggleCheat(cheatRow_); return false; } // Enter flips the focused checkbox row
     if (leagueCfg_) {
-        if (leagueCfg_ == 76 || leagueCfg_ == 78) {     // popup 'alok' (Enter): close back to the strategy page
-            leagueCfg_ = 75; cfgName_ = "FEFLOW75"; cfgRow_ = 0;
+        if (leagueCfg_ == 76 || leagueCfg_ == 78) {     // popup 'alok' (Enter): pop the scene back to its opener
+            if (cfgPopBase_ == 74) {                    // opened from the grid: scene pop restores FEFLOW74,
+                leagueCfg_ = 74; cfgName_ = "FEFLOW74"; // engine row state survives the popup
+            } else { leagueCfg_ = 75; cfgName_ = "FEFLOW75"; cfgRow_ = 0; }
         } else if (leagueCfg_ == 75) {                  // Enter = retail event 8005 (0x45f49f: mov eax,0x76; call 0x466cb8) opens the aggression popup
-            openLeagueCfg(76);                          // handler cluster install 0x45f2d8 (manmarks slots); absent layout keeps f75
+            cfgPopBase_ = 75;                           // handler cluster install 0x45f2d8 (manmarks slots); absent layout keeps f75
+            openLeagueCfg(76);
+        } else if (leagueCfg_ == 74 && openLeagueCfg(76)) { // Enter = token 'tmf2' (event handler 0x45df84
+            cfgPopBase_ = 74;                            // tree, leaf 0x45e845: push scene 0x76 + ev 8005);
+            return false;                                // the popup closes back via 'alok' to the grid
         }
-        return false;                                   // grids 72/74/79/80: Enter has no grid action
+        return false;                                   // grids 72/79/80: Enter has no grid action
     }
     if (optsView_ && haveOpts_) { forwardOptions(); return false; } // Enter = 'fwrd': commit writers + pop to caller
     if (slView_ && haveSl_) {                 // slot confirm (Phase 3): WCT1 load via app/saveload.cpp
@@ -1277,13 +1283,16 @@ void FeFlow::back() {
         return;
     }
     if (onHub()) return; // hub Esc: no parent scene (the Windows hub exits via the 'quit' wedge)
-    if (leagueCfg_) { // Esc: popup closes to the strategy page (retail caller), grids close to FEFLOW73
-        if (leagueCfg_ == 76 || leagueCfg_ == 78) { leagueCfg_ = 75; cfgName_ = "FEFLOW75"; cfgRow_ = 0; }
+    if (leagueCfg_) { // Esc: popup closes to its opener (retail scene pop), grids close to FEFLOW73
+        if (leagueCfg_ == 76 || leagueCfg_ == 78) {
+            if (cfgPopBase_ == 74) { leagueCfg_ = 74; cfgName_ = "FEFLOW74"; } // grid keeps its row cursor
+            else { leagueCfg_ = 75; cfgName_ = "FEFLOW75"; cfgRow_ = 0; }
+        }
         else leagueCfg_ = 0;
         return;
     }
     if (cheatsView_) { cheatsView_ = false; return; } // Esc closes the cheats screen to the menu [H] dev lane
-    if (leagueView_) { leagueView_ = false; return; } // Esc from the league list: straight to menu
+    if (leagueView_) { leagueView_ = false; hubView_ = true; return; } // Esc from the league list: straight to menu
     if (setupScreen_) { setupScreen_ = false; return; } // Esc from the config screen: straight to menu
     teamScreen_ = false;
     pick_ = -1; // no selection: default behaviour restored
@@ -1393,9 +1402,10 @@ bool FeFlow::openLeagueCfg(int screenId) {
                           : screenId == 80 ? (lg80_.object("pn00") ? &lg80_ : nullptr) : nullptr;
     if (!sc) return false; // layout absent from this tree: the scene stays closed
     leagueView_ = true;    // FEFLOW73 context (gobk/Esc back target, edges_table.txt feflow73 'gobk')
+    hubView_ = false;      // the config scene supersedes the hub: Esc must reach the league branches
     leagueCfg_ = screenId;
     cfgName_ = "FEFLOW" + std::to_string(screenId);
-    cfgRow_ = 0;
+    if (screenId != 76 && screenId != 78) cfgRow_ = 0; // popups overlay the grid: the row cursor survives
     return true;
 }
 

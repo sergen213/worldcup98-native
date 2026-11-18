@@ -455,7 +455,8 @@ FeDrawStats composite(const formats::ScreenLayout& screen, render::SpriteBatch& 
         // Released-shape keys win over SNAME: IG button widgets declare sname as the shared-cache
         // family id ('butn'), which is NOT a bitmap tag anywhere (INGAME.FSH ships btnn/btnd only;
         // IGHILITE nav arrows declare sname=btnn while releasedshapeid selects the real art bt5n/
-        // bt6n/ltbn/rtbn). FE layouts never pair SNAME+RELEASED, so the reorder is FE-safe.
+        // bt6n/ltbn/rtbn). FE layouts do pair SNAME+RELEASED (rset/sa00 etc.) but always with equal
+        // tag values (audit pass-28audit), so the reorder is pixel-identical on FE.
         if (!tag)
             for (std::string_view k : {"SHAPEID", "RELEASEDSHAPEID", "RELEASEDSHAPE", "NORMALSHAPEID", "NSHAPEID", "BARSHAPEID", "SNAME"})
                 if (const std::string* v = o.prop(k); v && !v->empty() && !iequals(*v, "null")) { tag = v; break; }

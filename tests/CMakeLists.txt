@@ -313,8 +313,8 @@ if(DEFINED WC98_TREE)
     # cancels, Up x5 resumes at Continue (evidence lines + PNGs).
     add_test(NAME fe_igmenu COMMAND wc98-native --ig-pause-smoke 260 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/igmenu)
     set_tests_properties(fe_igmenu PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}"
-        PASS_REGULAR_EXPRESSION "IGMENU: shapes=[1-9][0-9]* texts=[1-9]" "CONTROL1: shapes=[1-9][0-9]* texts=[1-9]" "IGQUESHN: texts=[1-9]" "igmenu: mouse activate row=2 code=6"
-        FAIL_REGULAR_EXPRESSION "IGMENU: shapes=0 " "CONTROL1: shapes=0 " "IGQUESHN: texts=0 ")
+        PASS_REGULAR_EXPRESSION "IGMENU: shapes=[1-9][0-9]* texts=[1-9];CONTROL1: shapes=[1-9][0-9]* texts=[1-9];IGQUESHN: texts=[1-9];igmenu: mouse activate row=2 code=6"
+        FAIL_REGULAR_EXPRESSION "IGMENU: shapes=0 ;CONTROL1: shapes=0 ;IGQUESHN: texts=0 ")
     # IGOPTN2 in-game options board (pass-21igscn, analysis/pass21igmenu): the pause-menu Options row opens
     # the retail IGOPTN2 scene board (IGLAY.BIG, 17 widgets); the four tab panes lst1..lst4 = Match/Game
     # play/controller/audio with FC-bank caption rows from the ROWS tuples; '2'/'3'/'4' switch tabs;
@@ -369,6 +369,15 @@ if(DEFINED WC98_TREE)
     # existing saveTournament path and flips cros(idle) -> tick(tic1); evidence line pins the write.
     add_test(NAME fe_savemgr42 COMMAND wc98-native --fe-save-manager 0 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/save42)
     set_tests_properties(fe_savemgr42 PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE};XDG_DATA_HOME=/tmp/wc98port-slots-save" PASS_REGULAR_EXPRESSION "fe: saved slot 00" FAIL_REGULAR_EXPRESSION "save FAILED |FEFLOW42: shapes=0 ")
+    # FEFLOW57 replay browser (pass-29): hub wedge 'repl' [C] leaf 0x4491d5; scratch dir seeded with the
+    # deterministic rplyindx + rply0001/0002 fixture (RPLY.md container), lstb rows = index filenames,
+    # sbar thumb 10-row windows, fe06 crs1 close icon; Enter re-drives the focused replay via replayFile.
+    add_test(NAME fe_replay57 COMMAND wc98-native --fe-replay-load 1 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/repl57)
+    set_tests_properties(fe_replay57 PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE};XDG_DATA_HOME=/tmp/wc98port-slots-repl" PASS_REGULAR_EXPRESSION "FEFLOW57: shapes=[1-9][0-9]* texts=[1-9]" FAIL_REGULAR_EXPRESSION "FEFLOW57: shapes=0 ")
+    # Enter lane: move to row 2 (bit-8 sentinel), Enter re-drives the focused rply file through
+    # replayFile — sealed hash == re-driven state hash proves deterministic re-drive (match=1).
+    add_test(NAME fe_replay57_enter COMMAND wc98-native --fe-replay-load 257 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/repl57e)
+    set_tests_properties(fe_replay57_enter PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE};XDG_DATA_HOME=/tmp/wc98port-slots-repl-enter" PASS_REGULAR_EXPRESSION "replay rply0002.dat ticks=180 recorded=0x[0-9A-F]+ replayed=0x[0-9A-F]+ match=1" FAIL_REGULAR_EXPRESSION "FAILED replay|FAILED to record")
     # feflow16 lineups board (pass-21igscn grid grammar): 6 shapes (4 LAY + 2 team-flag overdraws),
     # 46 texts = 2 FC-bank captions + 22 left rows (x=6 y=0..169) + 22 right rows (x=630/640 y=293..463).
     add_test(NAME fe_lineups16 COMMAND wc98-native --fe-lineups16 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/fe16)

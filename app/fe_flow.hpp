@@ -69,7 +69,7 @@ public:
                : cfg32View_ == 33      ? "FEFLOW33"
                : leagueCfg_         ? cfgName_.c_str()
                : mgmtView_         ? "FEFLOW43"
-               : lsView_           ? (lsView_ == 41 ? "FEFLOW41" : "FEFLOW42")
+               : lsView_           ? (lsView_ == 41 ? "FEFLOW41" : lsView_ == 57 ? "FEFLOW57" : "FEFLOW42")
                : wcCfg_             ? cfgName_.c_str()
                : cheatsView_        ? "FEFLOW95"
                : histScreen_        ? (histScreen_ == 90 ? "FEFLOW90" : "FEFLOW91")
@@ -260,11 +260,21 @@ public:
     // state. soup textid 38 caption excluded; rows list existing slots + append new ones.
     bool openSaveGame();
     [[nodiscard]] bool onSaveGame() const { return lsView_ == 42; }
+    // FEFLOW57 LOAD REPLAY list (hub wedge 'repl' [C] FUN_00449xxx leaf 0x4491d5: cmp 'repl' ->
+    // DAT_0057ca48=1 + scene push "feflow57"; edges_table SITE 0x449df0): same feflow42.fsh chrome
+    // as FEFLOW41 with the fe06 crs button, lstb rows over the rply index (user\rply%04d.dat +
+    // rplyindx.dat, RPLY.md browser FUN_0043c4f0: entry+4 slot, entry+5 display name = filename).
+    // The "0000" title slot carries widget-id textid 322 resolved through the FC remap lane.
+    bool openReplayLoad();
+    [[nodiscard]] bool onReplayLoad() const { return lsView_ == 57; }
+    [[nodiscard]] std::vector<std::string> replRows() const; // index entries with backing files
+    [[nodiscard]] std::filesystem::path replDir() const;     // tree user dir, else port slot dir
     presentation::FeDrawStats drawLoadSave(render::SpriteBatch& ui) const; // composite + lstb rows + sbar thumb
     [[nodiscard]] int loadSaveCursor() const { return lsRow_; }
     // Deterministic gate fixture: when the slot directory is empty, write two scenario states to
     // SLOT00/SLOT01 (same fixed seeds as the tournament presentation lane) so the LOAD list paints.
     void ensureFixtureSlots(); // deterministic --fe-load-game gate fixture (writes SLOT00/SLOT01 if empty)
+    void ensureFixtureReplays(); // deterministic --fe-replay-load gate fixture (rplyindx + 2 slots if none)
     std::vector<int> slotFiles() const; // sorted SLOT%.2d.SAV indices in defaultSlotDir
 
     static constexpr int kTourneyRounds = 4; // group stage, R16, QF, final boundaries -> 35/25/26/27
@@ -591,15 +601,16 @@ public:
     std::vector<std::string> mgmt43Visible_;
     // feflow41/42 save-list lane: lsView_ 41 = LOAD list, 42 = SAVE confirm; lsConfirm_ (42) drives the
     // tick/cros state icons. The "0000" soup caption slots are excluded from both whitelists.
-    formats::ScreenLayout load41_, save42_;
-    bool haveLoad41_ = false, haveSave42_ = false;
+    formats::ScreenLayout load41_, save42_, load57_;
+    bool haveLoad41_ = false, haveSave42_ = false, haveLoad57_ = false;
     int lsView_ = 0;             // active list scene (41/42, 0 = none)
     int lsRow_ = 0;              // lstb row cursor over the SLOT-file scan
     int lsConfirm_ = 0;          // feflow42: 0 = idle ('cros' icon), 1 = confirmed write ('tick')
-    std::vector<std::string> load41Visible_, save42Visible_;
+    std::vector<std::string> load41Visible_, save42Visible_, load57Visible_;
     [[nodiscard]] const formats::FcdbPlayer* gridPlayer(int rosterIdx) const; // FCDB record for a grid row
     void lstbPage(int dir); // feflow41/42: pan lsRow_ by one list page (sbar/b000 b001 semantics)
     void loadSelectedSlot(); // feflow41 Enter: loadTournament + summary print on the focused lstb row
+    void loadSelectedReplay(); // FEFLOW57 Enter: replayFile re-drive on the focused lstb row (rply-play evidence)
     void saveSelectedSlot(); // feflow42 Enter: write the scenario state to the focused slot, tick confirm
     [[nodiscard]] int gridRosterSize() const; // populated squad slots of the active grid team
     [[nodiscard]] std::array<int, 5> teamBars(const formats::FcdbTeam* t) const; // FCDB skill rows 0..10

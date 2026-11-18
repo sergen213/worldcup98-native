@@ -10,7 +10,13 @@
 #include "wc98/config/settings.hpp"        // settings.ini [audio] volume rows (Phase 2)
 #include "wc98/audio/mixer.hpp"            // live master-gain updates from the options screen
 #include "wc98/formats/slot.hpp"           // slotFileName()
-#include "wc98/formats/multitext.hpp"      // .HIS cell multitext panes (pass-20records)
+#include "wc98/formats/multitext.hpp" // .HIS cell multitext panes (pass-20records)
+#include "wc98/formats/rply.hpp"      // FEFLOW57 replay-browser index rows (pass-29)
+#include "replay.hpp"                 // ReplayRecorder/recordToUserDir fixture + replayFile verify
+#include "livematch.hpp"              // MatchBoot: deterministic fixture re-drive parity
+#include "wc98/sim/sim.hpp"           // SimRunner for the seeded fixture ticks
+#include "wc98/sim/world.hpp"         // sim::stateHash seal
+#include "wc98/input/input.hpp"       // input::actionBit fixture pad stream
 #include <fstream>                         // TEAMHIST data file bytes (loadRecordsData)
 // §H CONTROL1 controller page: live gamepad axis polling (SDL_GetGamepads = opened pads).
 #include <SDL3/SDL.h>
@@ -38,8 +44,9 @@ constexpr std::array<const char*, 13> kHubButtons{"fe33", "fe90", "fe32", "fe11"
                                                   "quit", "fe15", "fe89", "fe41", "repl", "cred"};
 // Modes the port has no simulation for paint their DISABLEDSHAPE* and Enter is a documented no-op.
 // fe33 (classic/world-cup history boards feflow90/91) left the disabled list with the pass-13 slice:
-// hub wedge 'fe33' opens FEFLOW90 [C] SITE 0x449dc5, analysis/pass13/CLASSICS_FE33.md.
-constexpr std::array<const char*, 5> kHubDisabled{"fe90", "fe04", "fe02", "fe89", "repl"};
+// hub wedge 'fe33' opens FEFLOW90 [C] SITE 0x449dc5, analysis/pass13/CLASSICS_FE33.md. 'repl' left
+// with the pass-29 slice: wedge 'repl' opens the FEFLOW57 replay browser [C] leaf 0x4491d5.
+constexpr std::array<const char*, 4> kHubDisabled{"fe90", "fe04", "fe02", "fe89"};
 namespace {
 // feflow15.lay mode-1 volume slider rows [C remap decode]: widget ids 160 "Music Volume",
 // 162 "Commentary Volume", 1186 "Game SFX Volume", 1187 "Menu SFX Volume" (shares the port's
@@ -421,9 +428,9 @@ FeFlow::FeFlow(render::Renderer& r, fs::path tree, std::string lang) : r_(r), tr
     // board. The LOAD/SAVE pair lives at registry rows 0x562484/0x562490 (edges_table.txt hub helper
     // sites 0x449e19 + feflow11/19 init chains).
     {
-        const char* kSpec[] = {"FEFLOW43.LAY", "FEFLOW41.LAY", "FEFLOW42.LAY"};
-        formats::ScreenLayout* tgt[] = {&mgmt43_, &load41_, &save42_};
-        for (int i = 0; i < 3; ++i) {
+        const char* kSpec[] = {"FEFLOW43.LAY", "FEFLOW41.LAY", "FEFLOW42.LAY", "FEFLOW57.LAY"};
+        formats::ScreenLayout* tgt[] = {&mgmt43_, &load41_, &save42_, &load57_};
+        for (int i = 0; i < 4; ++i) {
             try {
                 fs::path d;
                 const std::string t = presentation::readLayout((tree_ / "FE/PACK/LAYOUTS/LAYOUTS.BIG").string() + "@" + kSpec[i], d);
@@ -435,6 +442,7 @@ FeFlow::FeFlow(render::Renderer& r, fs::path tree, std::string lang) : r_(r), tr
     haveMgmt43_ = mgmt43_.objects.size() > 0;
     haveLoad41_ = load41_.objects.size() > 0;
     haveSave42_ = save42_.objects.size() > 0;
+    haveLoad57_ = load57_.objects.size() > 0;
     if (haveMgmt43_) {
         // Scene-ownership whitelist: back collage + aflag anim + nav icons (quit/retn/fwrd) + team
         // name/arrows + the eight edit-button tiles bt00..bt07 + function buttons canc/save/rest/resa
@@ -450,6 +458,8 @@ FeFlow::FeFlow(render::Renderer& r, fs::path tree, std::string lang) : r_(r), tr
         load41Visible_ = {"blur", "bgnd", "exit", "lstb", "sbar"}; // "0000" soup caption excluded (textid 6)
     if (haveSave42_)
         save42Visible_ = {"blur", "bgnd", "tick", "lstb", "sbar"}; // 'cros' paints as overlay in the idle state
+    if (haveLoad57_)
+        load57Visible_ = {"blur", "bgnd", "0000", "lstb", "sbar"}; // "0000" = widget-id 322 -> remap FC 999 "Load Reel" [C]; fe06 icon paints as overlay
     // Shared popup lane (analysis/pass13/POPUP_LANE_SPEC.md): FEFLOW10.LAY = the generic ok/cancel modal,
     // FEFLOW37.LAY = the yes/no confirm family (quit prompts). Both share popp=feflow86.fsh#back + blur.
     {
@@ -901,8 +911,8 @@ void FeFlow::move(int delta) {
         mgmtRow_ = std::clamp(mgmtRow_ + delta, 0, std::max(1, n) - 1);
         return;
     }
-    if (lsView_) { // lstb rows over the SLOT-file scan (page window 10, sbar pan thumb)
-        const int n = std::max<int>(1, int(slotFiles().size()));
+    if (lsView_) { // lstb rows over the SLOT-file scan (page window 10, sbar pan thumb); 57 = replay rows
+        const int n = std::max<int>(1, lsView_ == 57 ? int(replRows().size()) : int(slotFiles().size()));
         lsRow_ = std::clamp(lsRow_ + delta, 0, n - 1);
         return;
     }
@@ -1068,6 +1078,7 @@ bool FeFlow::enter() {
     }
     if (lsView_ == 41) { loadSelectedSlot(); return false; }   // LOAD row -> existing verify/load path
     if (lsView_ == 42) { saveSelectedSlot(); return false; }   // SAVE row -> tick confirm + write
+    if (lsView_ == 57) { loadSelectedReplay(); return false; } // REPLAY row -> replayFile re-drive (browser Enter [C])
     if (setup07View_) { // 'fe09' forward edge: the scene switch leaves feflow07 and opens FEFLOW09
         setup07View_ = false; stad08View_ = false;       // [C] FUN_004456B9 chain: one screen at a time
         if (haveSetup_) { setupScreen_ = true; setupPractise_ = false; return false; }
@@ -2104,6 +2115,77 @@ bool FeFlow::openSaveGame() {
     return true;
 }
 
+// FEFLOW57 replay browser (hub wedge 'repl' [C] leaf 0x4491d5: `cmp $0x7265706c` 'repl' ->
+// DAT_0057ca48=1 at 0x4491ea + 'eras12.ffn' (0x5626a0) via 0x4455b4; scene name 'feflow57'
+// registered in the pointer-table entry VA 0x574dec {0x560ca0, 0x8095, 0x2303}; no code site
+// pushes the name — strings here are runtime fixups; browser content FUN_0043c4f0 [C] RPLY.md).
+// The exe reads user\rply%04d.dat slots
+// + user\rplyindx.dat. Live recording writes tree/user (matches the exe path); the list falls back
+// to the port's own slot directory (XDG gate lane) when the tree has no replay data.
+fs::path FeFlow::replDir() const {
+    if (fs::exists(tree_ / "user" / "rplyindx.dat")) return tree_ / "user";
+    return defaultSlotDir();
+}
+
+std::vector<std::string> FeFlow::replRows() const {
+    std::vector<std::string> rows;
+    const std::vector<std::uint8_t> bytes = wc98::readFile(replDir() / "rplyindx.dat"); // vector owns the bytes
+    if (bytes.empty()) return rows;
+    for (const formats::RplyIndexEntry& e : formats::parseRplyIndex(bytes)) {
+        if (e.name.empty()) continue;
+        if (!fs::exists(replDir() / e.name)) continue; // browser lists only existing slot files [H]
+        rows.push_back(e.name);
+    }
+    return rows;
+}
+
+void FeFlow::ensureFixtureReplays() {
+    if (fs::exists(replDir() / "rplyindx.dat")) return;
+    try {
+        fs::create_directories(defaultSlotDir());
+        MatchBoot boot; // same boot + seed + pad stream as the live loop: replayFile re-drive = match=1
+        if (!boot.init(tree_)) return;
+        for (int slot = 0; slot < 2; ++slot) {
+            sim::SimRunner fr(boot.md, boot.opt, 0x2E7A);
+            sim::Input_assignController(fr.world(), 0, 1, 0); // live-loop controller binding
+            ReplayRecorder rec;
+            const int ticks = 90 * (slot + 1); // slot0001 = 90 ticks, slot0002 = 180: two browser rows
+            for (int t = 0; t < ticks; ++t) {
+                sim::ControllerState c{}; // scripted deterministic pad stream (livematch seedHlFixtures [C])
+                if ((t % 45) < 6) c.padBits |= input::actionBit(config::Action::Pass);
+                fr.setController(0, c);
+                rec.append(unsigned(t), c);
+                fr.tick();
+            }
+            recordToUserDir(defaultSlotDir(), rec.build(0x2E7A, sim::stateHash(fr.world())));
+        }
+    } catch (const std::exception&) { // read-only dir / missing boot data: the gate prints its own failure
+    }
+}
+
+bool FeFlow::openReplayLoad() {
+    if (!haveLoad57_) { lastError_ = "FEFLOW57.LAY is absent from this tree"; return false; }
+    ensureFixtureReplays();
+    lsView_ = 57; hubView_ = false; lsRow_ = 0; lsConfirm_ = 0;
+    return true;
+}
+
+void FeFlow::loadSelectedReplay() {
+    const std::vector<std::string> rows = replRows();
+    if (lsRow_ >= int(rows.size())) return; // empty row: no-op
+    const std::string name = rows[std::size_t(lsRow_)];
+    try {
+        const ReplayResult r = replayFile(tree_, replDir() / name);
+        std::printf("fe: replay %s ticks=%zu recorded=0x%016llX replayed=0x%016llX match=%d\n",
+                    name.c_str(), r.ticksPlayed,
+                    static_cast<unsigned long long>(r.recordedHash), static_cast<unsigned long long>(r.replayedHash),
+                    int(r.matches)); // gate evidence line (no <print> on gcc-13)
+    } catch (const std::exception& e) {
+        lastError_ = std::format("replay {}: {}", name, e.what());
+        std::fprintf(stderr, "fe: replay %s re-drive FAILED: %s\n", name.c_str(), e.what());
+    }
+}
+
 // ---- Records/trivia/history bookmarks family (FEFLOW28..31/34/88; pass-20records) -------------
 // Engine grammar [C] (analysis/pass20records dossier): the feflow29 sbar row handler (0x457230..
 // 0x4573f6) fills each row widget record via FUN_0048cc58 (RES pair lookup; directional swap of
@@ -2363,7 +2445,8 @@ int FeFlow::gridRosterSize() const {
 }
 
 void FeFlow::lstbPage(int dir) {
-    const int rows = 10, n = std::max<int>(1, int(slotFiles().size()));
+    const int rows = 10;
+    const int n = std::max<int>(1, lsView_ == 57 ? int(replRows().size()) : int(slotFiles().size()));
     const int page = std::clamp(lsRow_ / rows + dir, 0, (n - 1) / rows); // sbar pan semantics [H]
     lsRow_ = page * rows;
 }
@@ -2484,8 +2567,29 @@ FeDrawStats FeFlow::drawMgmtGrid(render::SpriteBatch& ui) const {
 // overlay over the composite's `tick` slot when nothing is confirmed, tick (tic1) when written.
 FeDrawStats FeFlow::drawLoadSave(render::SpriteBatch& ui) const {
     const bool load = lsView_ == 41;
-    const formats::ScreenLayout& sc = load ? load41_ : save42_;
-    FeDrawStats st = presentation::composite(sc, ui, const_cast<ScreenArt&>(art_), text_.get(), load ? &load41Visible_ : &save42Visible_);
+    const bool repl = lsView_ == 57;
+    const formats::ScreenLayout& sc = repl ? load57_ : (load ? load41_ : save42_);
+    FeDrawStats st = presentation::composite(sc, ui, const_cast<ScreenArt&>(art_), text_.get(),
+                                             repl ? &load57Visible_ : (load ? &load41Visible_ : &save42Visible_));
+    if (repl) { // browser rows = rply index entries with backing files (RPLY.md browser [C])
+        const std::vector<std::string> rows = replRows();
+        if (const formats::LayoutObject* box = sc.object("lstb")) {
+            const int page = lsRow_ / 10;
+            std::vector<std::string> caps;
+            for (int i = page * 10; i < (page + 1) * 10 && i < int(rows.size()); ++i)
+                caps.push_back(rows[std::size_t(i)]); // display name = index filename string [C] entry+5
+            presentation::paintListRows(ui, *box, std::span(caps), caps.empty() ? -1 : lsRow_ - page * 10, *text_, 5, st);
+        }
+        if (const formats::LayoutObject* t = sc.object("sbar")) {
+            const int pages = std::max(1, (int(rows.size()) + 9) / 10);
+            presentation::paintSliderThumb(ui, *t, lsRow_ / 10, 0, pages - 1);
+        }
+        if (const formats::LayoutObject* w = sc.object("fe06")) { // browser close icon (DISABLEDSHAPE crs1)
+            const ScreenArt::Shape sh = const_cast<ScreenArt&>(art_).shape("..\\global\\", "nvicons", "crs1", -1);
+            if (sh.tex) { ui.draw(sh.tex, {float(w->x), float(w->y), 55.f, 35.f}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu); ++st.shapes; }
+        }
+        return st;
+    }
     const std::vector<int> files = slotFiles();
     if (const formats::LayoutObject* box = sc.object("lstb")) {
         const int rows = 10;
@@ -3133,8 +3237,9 @@ int FeFlow::hubActivate(int index) {
     if (n == "fe41") { openSaveLoad(); return -1; }
     if (n == "cred") { openCredits(); return -1; }
     if (n == "fe33") { openHistory(); return -1; } // feflow90 world-cup history board [C] SITE 0x449dc5
+    if (n == "repl") { openReplayLoad(); return -1; } // FEFLOW57 replay browser [C] leaf 0x4491d5 (pass-29)
     // fe90 classic, fe04 modem, fe02 network: no port simulation of those modes. fe89 team
-    // management, repl highlights: same (no shipped scene driver in the port).
+    // management: same (no shipped scene driver in the port).
     return -1;
 }
 

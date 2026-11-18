@@ -115,6 +115,7 @@ int run(int argc, char** argv) {
     int feMgmt43 = -1;    // --fe-mgmt-grid N: FEFLOW43 management grid, roster row cursor +N (pass 13 §E)
     int feLoad41 = -1;    // --fe-load-game N: feflow41 LOAD list over defaultSlotDir, rows +N
     int feSave42 = -1;    // --fe-save-manager N: feflow42 SAVE list + tick confirm, rows +N then Enter
+    int feRepl57 = -1;    // --fe-replay-load N: FEFLOW57 replay browser over the rply index, rows +N
     int feStad08 = -1;    // --fe-stadium08 N: friendly chain -> FEFLOW08 stadium select, tile cursor +N moves
     int feLineups16 = -1; // --fe-lineups16: stad08 -> fe16 wedge -> FEFLOW16 lineups board (pass-21igscn)
     int feRecords = -1;     // --fe-records N: records family gate; N = page*100 + team-cursor moves (pass-20records)
@@ -182,6 +183,7 @@ int run(int argc, char** argv) {
         else if (a == "--fe-wc13") { feMode = true, smokeFrames = 1, feWc13 = std::stoi(next()); } // FEFLOW13 World Cup controller board gate; N = slot-cursor moves
         else if (a == "--fe-wc13-dev") { feWc13Dev = std::stoi(next()); }   // device slot shown on the focused row
         else if (a == "--fe-save-manager") { feMode = true, smokeFrames = 1, feSave42 = std::stoi(next()); }   // feflow42 SAVE confirm gate; N = row moves + Enter write
+        else if (a == "--fe-replay-load") { feMode = true, smokeFrames = 1, feRepl57 = std::stoi(next()); }    // FEFLOW57 replay browser gate; N = row moves (fixture index if none [H])
         else if (a == "--fe-igoptns") { // igoptns captions lane gate: a=audio g=game m=mouse popup
             feMode = true, smokeFrames = 1;
             const std::string m = next();
@@ -398,6 +400,13 @@ int run(int argc, char** argv) {
                 fe->enter(); // focused row -> saveTournament + 'tick' confirm icon [C] tic chain
             }
         }
+        if (fe && feRepl57 >= 0) { // --fe-replay-load N: FEFLOW57 browser over the rply index (fixture if none [H]); bit 8 = Enter focused row after N&0xff moves
+            if (!fe->openReplayLoad()) std::fprintf(stderr, "fe: replay browser unavailable\n");
+            else {
+                for (int i = 0; i < (feRepl57 & 0xff); ++i) fe->move(+1); // lstb row cursor on the replay rows
+                if (feRepl57 >= 256) fe->enter(); // focused lstb row -> replayFile re-drive (loadSelectedReplay evidence)
+            }
+        }
         if (fe && feIgMode) { // --fe-igoptns gate frame: in-game option popup captions lane
             if (!fe->openIgOptns(feIgMode)) std::fprintf(stderr, "fe: igoptns popup unavailable\n");
         }
@@ -577,7 +586,7 @@ int main(int argc, char** argv) {
         if (std::strcmp(argv[i], "--help") == 0) {
             std::puts("usage: wc98-native [--width N] [--height N] [--fullscreen|--windowed] [--smoke N]"
                       " [--fe] [--tree DIR] [--out-prefix P] [--fe-smoke N] [--tournament-saveload N] [--fe-pick N]"
-                      " [--fe-mgmt-grid N] [--fe-load-game N] [--fe-save-manager N]"
+                      " [--fe-mgmt-grid N] [--fe-load-game N] [--fe-save-manager N] [--fe-replay-load N]"
                       " [--fe-nav exhibition|league|tournament|tournament-load|practise] [--fe-team] [--fe-setup N] [--fe-league] [--fe-league-cfg N] [--fe-setup07 N] [--fe-stadium08 N] [--fe-options-tab N] [--fe-screen NAME]"
                       " [--fe-lineups16]"
                       " [--fe-wc-cfg N]"

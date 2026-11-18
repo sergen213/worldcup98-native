@@ -87,22 +87,29 @@ void scoreboardLayout() {
     hud.names = true;
 
     auto q = layoutScoreboard(hud, f, g);
-    CHECK(q.size() > 5); // panel + edges + text
-    const auto t = textQuads(q);
-    CHECK(!t.empty());
-    for (const auto& x : q) { // everything inside the top strip band on the virtual screen
-        CHECK(x.dst.x >= g.sbX - 30.f && x.dst.x <= g.sbX + g.sbW + 30.f);
-        CHECK(x.dst.y >= 0.f && x.dst.y + x.dst.w <= 480.f);
-    }
+    // Exe panel (strip routine FUN_00438670, pass-26 disasm): fill rect only, no edge frame,
+    // semi-transparent black at (sbX,sbY) height 24. Width = 65 base + 4 fields (name 21 +
+    // score 7 px, margin 10 each) = 161.
+    CHECK(q[0].texture == "");
+    CHECK(q[0].dst.x == 10.f && q[0].dst.y == 10.f && q[0].dst.w == 24.f);
+    CHECK(q[0].dst.z == 157.f); // 65 + (name 20 + score 6 + margins) — widths drop the trailing 1 px gap
+    CHECK((q[0].rgba >> 24) == 0x88u); // exe fill colour $0x88000000
 
-    // The score string "2-1" contributes exactly three glyphs, centred on the strip centre line.
-    auto sq = layoutTextCentered(f, "2-1", g.scoreCx, g.sbY + 8.f, 14.f, 0xFFFFFFFFu);
-    CHECK(sq.size() == 3);
-    const float w = sq[2].dst.x + sq[2].dst.z - sq[0].dst.x;
-    CHECK(std::abs((sq[0].dst.x + w / 2) - g.scoreCx) < 1.5f);
+    const auto t = textQuads(q);
+    CHECK(t.size() == 5 + 3 + 1 + 3 + 1); // clock "01:35" + FRA 2 BRA 1
+    // Pen fields in exe order: clock at sbX+gap, fixed 45 px field, then home name, home
+    // score, away name, away score with measured (3*7-1 / 7-1) width + 10 px margin.
+    CHECK(t[0].dst.x == 20.f);                             // clock '0'
+    CHECK(t[5].dst.x == 65.f);                             // home name 'F'
+    CHECK(t[8].dst.x == 65.f + 30.f);                      // home score '2'
+    CHECK(t[9].dst.x == 65.f + 46.f);                      // away name 'B'
+    CHECK(t[12].dst.x == 65.f + 76.f);                     // away score '1'
+    // Native font size (scale 1): glyph box top = panel top + 2, height 8 from the fake atlas.
+    CHECK(t[0].dst.y == 12.f && t[0].dst.w == 8.f);
+    for (const auto& x : q) CHECK(x.dst.y >= 0.f && x.dst.y + x.dst.w <= 480.f);
 
     // Clock text "01:35": five glyphs, minutes zero-padded per FUN_00438670 "%02d:%02d".
-    auto cq = layoutText(f, formatClock(95), 0.f, 0.f, 14.f, 0xFFFFFFFFu);
+    auto cq = layoutText(f, formatClock(95), 0.f, 0.f, 20.f, 0xFFFFFFFFu);
     CHECK(cq.size() == 5);
 
     // Lowercase names render as the uppercase glyph cells (strip uppercases them).
@@ -112,17 +119,16 @@ void scoreboardLayout() {
     auto b = layoutScoreboard(lower, f, g);
     CHECK(a.size() == b.size());
 
-    // Names off: the strip keeps panel + score + clock only.
+    // Names off: clock-only text, panel keeps the base width (no field accumulation).
     HudView noNames = hud;
     noNames.names = false;
-    CHECK(textQuads(layoutScoreboard(noNames, f, g)).size() < textQuads(a).size());
+    auto n = layoutScoreboard(noNames, f, g);
+    CHECK(textQuads(n).size() == 5);
+    CHECK(n[0].dst.z == g.baseWidth);
 
-    // Knob check: moving every knob by 100 moves every quad with it.
+    // Knob check: moving sbX moves every quad (panel and pen fields) with it.
     HudGeometry shifted = g;
     shifted.sbX += 100.f;
-    shifted.nameCx[0] += 100.f;
-    shifted.nameCx[1] += 100.f;
-    shifted.scoreCx += 100.f;
     auto qs = layoutScoreboard(hud, f, shifted);
     CHECK(qs.size() == q.size());
     for (std::size_t i = 0; i < qs.size(); ++i)

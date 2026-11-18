@@ -8,6 +8,18 @@ project goals.
 ## [Unreleased]
 ### Added
 
+- **In-match scoreboard strip byte-exact layout (pass-26b HUD)**: the strip draw routine
+  (`FUN_00438670`, raw 0x37a74, disassembly `analysis/pass26igmenu/hud_disasm.txt`) is a single
+  semi-transparent black fill rect (`$0x88000000`) at `(10,10)` height 24 with runtime-measured
+  width (base 65 = panel + 45 px clock field; each name/score field adds `width + 10`), and pen
+  fields drawn un-scaled (eras10, text top = panel + 2) in order clock → home name → home score →
+  away name → away score — the f99 three-slot centered model with edge frame and `"a-b"` join is
+  REFUTED. `presentation/src/hud.cpp::layoutScoreboard` + `HudGeometry` cut over to these
+  constants; `[gameplay]` knobs are now `hud_sb_x hud_sb_y hud_sb_h hud_gap hud_clock_adv
+hud_base_w` (`hud_sb_w`/`hud_name_cx*`/`hud_score_cx`/`hud_clock_cy` removed). Minute chip
+(`DAT_00641260` `%02d`, gated on 2-controller option bytes) documented unported.
+Gate: `tests/unit/test_hud.cpp` pen-field contract; visual proof via match-demo capture.
+
 - **EACSND music-setup + volume-envelope grammar (pass-18envelope, D-54 residual)**: PyGhidra pass
   over the true lane — the exe-side EA `SND*` manager (`cmn_svol/sautovol/span/bend/release/stagpat`
   cluster; dossier `analysis/pass18envelope/{NOTES.md,DECOMPILE/}`, scripts `GhidraWc98Env{1,2,3}.py`)

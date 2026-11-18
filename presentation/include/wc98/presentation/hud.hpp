@@ -28,13 +28,14 @@ struct HudQuad {
 // calibration knob settable through settings.ini [gameplay] hud_* passthrough keys. The radar
 // rect/offsets ARE exe-confirmed (rpit draw site 0x41536c, float block VA 0x55a9a8).
 struct HudGeometry {
-    // Scoreboard strip (centered): panel + name/score/clock slots.
-    float sbX = 268.f, sbW = 104.f;   // panel left/width
-    float sbY = 4.f, sbH = 24.f;      // panel top/height
-    float nameCx[2] = {284.f, 356.f}; // team abbreviation centres (left/right of the score)
-    float scoreCx = 320.f;            // "a-b" centre
-    float clockCy = 17.f;             // clock baseline centre y
-    std::uint32_t panelFill = 0xE0000000u, panelEdge = 0xE0FFFFFFu, textColor = 0xFFFFFFFFu;
+    // Scoreboard strip (exe-confirmed, strip draw routine raw 0x37a74 / VA 0x438670):
+    // panel rect (sbX,sbY) w x sbH with semi-transparent black fill and NO edge frame; the
+    // width is computed at runtime from the pen fields (see layoutScoreboard). Top-left origin.
+    float sbX = 10.f, sbY = 10.f, sbH = 24.f;
+    float gap = 10.f;          // inter-field margin (exe `mov $0xa` accumulation)
+    float clockAdvance = 45.f; // clock field advance (exe `add $0x2d` after the clock draw)
+    float baseWidth = 65.f;    // panel base: clock field (20 + 45) baked in; names add per-field widths
+    std::uint32_t panelFill = 0x88000000u, textColor = 0xFFFFFFFFu; // exe fill colour $0x88000000
     // Radar (exe-confirmed): x0 533, y0 67 from the float block at VA 0x55a9a8; panel w/h scale
     // with pitch size (sx = 180/length, sy = 120/width, init code storing 0x5c619c/0x5c61a0).
     float radarX = 533.f, radarY = 67.f;
@@ -54,7 +55,8 @@ std::vector<HudQuad> layoutTextCentered(const formats::FfnFont& font, std::strin
 // Laid-out width of `text` at cap height sizePx, px (pen model; used for FE label alignment).
 [[nodiscard]] float textWidthPx(const formats::FfnFont& font, std::string_view text, float sizePx);
 
-// Scoreboard strip: panel rects + team abbreviations (HudView::teamNames) + "a-b" score + clock.
+// Scoreboard strip: fill rect + pen fields clock, home name, home score, away name, away score
+// (exe strip routine FUN_00438670: no "a-b" join, no edge frame, width measured at runtime).
 // Clock semantics (DAT_0065F1C8): whole seconds elapsed in the current period -> floor/60 ':' ss.
 std::vector<HudQuad> layoutScoreboard(const HudView& hud, const formats::FfnFont& font, const HudGeometry& g);
 

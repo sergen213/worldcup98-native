@@ -38,14 +38,32 @@ Probe evidence: `analysis/pass7/hud_probe.txt` (parses via the shipped `wc98::fo
   created at gap, caller `FUN_0043fbe0`) menu-button dispatch, not a clock draw. Clock *value* semantics remain ported facts:
   DAT_0065F1C8 = seconds in current period, DAT_0065F224 = period index (GHIDRA_PASS4/5 citations).
 
+## Scoreboard strip geometry (RESOLVED pass-26, `analysis/pass26igmenu/hud_disasm.txt`)
+
+Full binary disasm of the strip routine (raw 0x37a74 → VA 0x438670, Δ_code 0x400C30 for the
+Extract build) confirmed the exact layout model:
+
+- Panel = **one** semi-transparent black fill rect (colour imm `$0x88000000`, A=0x88), origin
+  `(10,10)`, height 24, width computed at runtime — no edge frame (f99 model REFUTED).
+- Width `ebp` = base `0x41` (65 = 20 panel base + 45 clock field; `0x14`=20 clock-only mode,
+  `0x37`=55 PK mode) + per-field `(measured width + 10)` accumulation, only while the
+  name-strip flag `DAT_00572c5c` is on. Gate: skip whole strip in mode class `0x640fb4 == 0xb`.
+- Pen fields, top-left origin, text top `y = 12` (panel top + 2): clock string first at
+  `x = 20`, pen advances by the fixed field `0x2d` (45); then home name, home score (`%d` of
+  `DAT_0064024c % 100`; PK mode uses `DAT_00640f50/54`), away name, away score, each
+  `+ measured width + 10` (`mov $0xa` margin). Font drawn un-scaled (record copy, no size
+  scaling) → port draws at native `lineHeight`.
+- Minute chip: `%02d` of `DAT_00641260` at `(ebp+20, 10)` in a 30 px centred field, gated on
+  mode ∉ {0xa,0xc}, controller option bytes `0x60cc05/0x60cc06` bit 2, and `DAT_00641260 != 9999`.
+  Not modelled by the port (single-controller exhibition: gate off) — documented unported.
+
 ## Hypotheses + calibration knobs (all `[gameplay] hud_*` passthrough keys)
 
-The scoreboard strip rectangle, name/score/clock slot centres and shirt-label placement were **not**
-recovered from FIFAWC.EXE this session; defaults are the FIFA 99 family layout (f99
-HUD_drawScoreClock fillrect model, `exe::kPopupTextColour` retained table) scaled to the 640x480
-virtual screen. Every number is a knob in `HudGeometry` (`presentation/include/wc98/presentation/hud.hpp`):
+Remaining Hypothesis: shirt-label placement only. Defaults in `HudGeometry`
+(`presentation/include/wc98/presentation/hud.hpp`) are the exe-confirmed strip constants above
+(`hud_sb_x hud_sb_y hud_sb_h hud_gap hud_clock_adv hud_base_w`) plus radar:
 
-`hud_sb_x hud_sb_w hud_sb_y hud_sb_h hud_name_cx0 hud_name_cx1 hud_score_cx hud_clock_cy
+`hud_sb_x hud_sb_y hud_sb_h hud_gap hud_clock_adv hud_base_w
 hud_radar_x hud_radar_y hud_radar_w hud_radar_h hud_dot_half hud_shirt_head_px hud_shirt_size`
 
 wired in `app/match_demo.cpp` → `MatchScene::setHudGeometry`. Shirt-label head anchor is the

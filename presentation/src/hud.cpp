@@ -73,25 +73,35 @@ std::string formatClock(int clockSeconds) {
 
 std::vector<HudQuad> layoutScoreboard(const HudView& hud, const formats::FfnFont& font, const HudGeometry& g) {
     std::vector<HudQuad> q;
-    // Panel: dark fill with a light edge frame (f99 HUD_drawScoreClock fillrect family).
-    q.push_back({"", {g.sbX, g.sbY, g.sbW, g.sbH}, {0, 0, 1, 1}, g.panelFill});
-    q.push_back({"", {g.sbX, g.sbY, g.sbW, 2.f}, {0, 0, 1, 1}, g.panelEdge});       // top edge
-    q.push_back({"", {g.sbX, g.sbY + g.sbH - 2.f, g.sbW, 2.f}, {0, 0, 1, 1}, g.panelEdge});
-    q.push_back({"", {g.sbX, g.sbY, 2.f, g.sbH}, {0, 0, 1, 1}, g.panelEdge});       // left edge
-    q.push_back({"", {g.sbX + g.sbW - 2.f, g.sbY, 2.f, g.sbH}, {0, 0, 1, 1}, g.panelEdge});
-    const float size = 14.f; // scoreboard cap height (knob: font slot/size not exe-recovered)
-    if (hud.names) {
-        for (int t = 0; t < 2; ++t) {
-            std::string name = hud.teamNames[t];
-            std::transform(name.begin(), name.end(), name.begin(), [](unsigned char c) { return char(std::toupper(c)); });
-            auto nq = layoutTextCentered(font, name, g.nameCx[t], g.sbY + 8.f, size, g.textColor);
-            q.insert(q.end(), nq.begin(), nq.end());
-        }
-    }
-    auto sq = layoutTextCentered(font, std::format("{}-{}", hud.score[0], hud.score[1]), g.scoreCx, g.sbY + 8.f, size, g.textColor);
-    q.insert(q.end(), sq.begin(), sq.end());
-    auto cq = layoutTextCentered(font, formatClock(static_cast<int>(std::floor(hud.clockSeconds))), g.scoreCx, g.clockCy, size - 2.f, g.textColor);
-    q.insert(q.end(), cq.begin(), cq.end());
+    // The exe copies font-table record[0] (eras10) into the text context un-scaled, so draw at
+    // native size: sizePx = lineHeight makes layoutText's scale 1.
+    const float size = static_cast<float>(font.lineHeight > 0 ? font.lineHeight : 20);
+    const auto upper = [](std::string s) {
+        for (auto& c : s) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+        return s;
+    };
+    // Pen fields in exe draw order: clock, home name, home score, away name, away score.
+    std::array<std::string, 4> fields;
+    if (hud.names)
+        fields = {upper(hud.teamNames[0]), std::to_string(hud.score[0]),
+                  upper(hud.teamNames[1]), std::to_string(hud.score[1])};
+    // Panel width = base + per-name-field (measured width + margin), accumulated by the exe
+    // only while the name-strip flag is on (FUN_00438670 ebp accumulation, pass-26 disasm).
+    float w = g.baseWidth;
+    if (hud.names)
+        for (const auto& s : fields) w += textWidthPx(font, s, size) + g.gap;
+    q.push_back({"", {g.sbX, g.sbY, w, g.sbH}, {0, 0, 1, 1}, g.panelFill}); // exe paints one fill rect, no edge frame
+    float pen = g.sbX + g.gap;
+    const float y = g.sbY + 2.f; // text top = panel top + 2 (exe `add $0x2` after fill)
+    const auto emitAt = [&](const std::string& s) {
+        auto v = layoutText(font, s, pen, y, size, g.textColor);
+        q.insert(q.end(), v.begin(), v.end());
+        pen += textWidthPx(font, s, size) + g.gap;
+    };
+    emitAt(formatClock(static_cast<int>(std::floor(hud.clockSeconds)))); // clock field: pen then advances by the fixed field
+    pen = g.sbX + g.gap + g.clockAdvance;
+    if (hud.names)
+        for (const auto& s : fields) emitAt(s);
     return q;
 }
 

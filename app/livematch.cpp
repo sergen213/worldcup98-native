@@ -909,9 +909,8 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
         for (const auto& e : cfgFile.settings.gameplay)
             if (e.key == k) { try { dst = std::stof(std::string(e.value)); } catch (...) {} }
     };
-    knob("hud_sb_x", geo.sbX); knob("hud_sb_w", geo.sbW); knob("hud_sb_y", geo.sbY); knob("hud_sb_h", geo.sbH);
-    knob("hud_name_cx0", geo.nameCx[0]); knob("hud_name_cx1", geo.nameCx[1]);
-    knob("hud_score_cx", geo.scoreCx); knob("hud_clock_cy", geo.clockCy);
+    knob("hud_sb_x", geo.sbX); knob("hud_sb_y", geo.sbY); knob("hud_sb_h", geo.sbH);
+    knob("hud_gap", geo.gap); knob("hud_clock_adv", geo.clockAdvance); knob("hud_base_w", geo.baseWidth);
     knob("hud_radar_x", geo.radarX); knob("hud_radar_y", geo.radarY); knob("hud_radar_w", geo.radarW); knob("hud_radar_h", geo.radarH);
     knob("hud_dot_half", geo.dotHalf); knob("hud_shirt_head_px", geo.shirtHeadPx); knob("hud_shirt_size", geo.shirtSize);
     scene.setHudGeometry(geo);

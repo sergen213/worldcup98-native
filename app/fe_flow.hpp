@@ -64,6 +64,7 @@ public:
                : lineup16View_      ? "FEFLOW16"
                : stad08View_        ? "FEFLOW08"
                : cfg87View_            ? "FEFLOW87"
+               : wc13View_             ? "FEFLOW13" // World Cup controller board (pass-24wc13)
                : cfg32View_ == 32      ? "FEFLOW32"
                : cfg32View_ == 33      ? "FEFLOW33"
                : leagueCfg_         ? cfgName_.c_str()
@@ -214,6 +215,26 @@ public:
     [[nodiscard]] int cfg87Dev(int i) const { return cfg87Dev_[std::size_t(i & 3)]; } // device slot (contr frame 1 + slot)
     void setCfg87Dev(int i, int v) { cfg87Dev_[std::size_t(i & 3)] = v & 7; }
     [[nodiscard]] std::string cfg87Caption(std::string_view name) const; // FC-remap caption of a cfg87 widget (gate evidence)
+
+    // ---- World Cup controller board FEFLOW13 (pass-24wc13; MENU_PARITY §4 rank-4) ----
+    // LAY header "world cup controller select screen"; member widget list byte-identical to
+    // FEFLOW87, plate art = feflow13.fsh. Init handler FUN_0044e440 [C analysis/pass24wc13
+    // fe87_dec3 disassembly 0x44e440..0x44e574]: event branch 0x3ea pushes NAME:feflow06
+    // (Esc/back = straight to the hub, NOT a stack pop as on FEFLOW87); tag tree 'fe06'/'quit'
+    // send FUN_00459410 tuples (0x3e9,0x82e,0x10f1 / 0x3ea,0x82e,0x10f3 = World Cup exit
+    // variant) then push NAME:feflow37 (confirm popup); 'fe08' forward: FUN_00446624()==2
+    // guard (2-controller play stays), FUN_0045a24c() < 0 -> FUN_00448428 (no edge), else
+    // FUN_00448418(0) + FUN_0045a198 + push NAME:feflow56 (launch transition, null LAY).
+    // Init tail writes 0x66 + 'fe15' = options jump. Open event 0x68 zeroes the device-slot
+    // group DAT_00608748..0x608784 [C fe87_dec1/dec2, same slot cluster as FEFLOW87].
+    bool openWc13(); // false = layout absent from this tree
+    [[nodiscard]] bool onWc13() const { return wc13View_; }
+    presentation::FeDrawStats drawWc13(render::SpriteBatch& ui) const;
+    [[nodiscard]] int wc13Row() const { return wc13Row_; }
+    void setWc13Row(int r) { wc13Row_ = r & 3; }
+    [[nodiscard]] int wc13Dev(int i) const { return wc13Dev_[std::size_t(i & 3)]; } // device slot (contr frame 1 + slot)
+    void setWc13Dev(int i, int v) { wc13Dev_[std::size_t(i & 3)] = v & 7; }
+    [[nodiscard]] std::string wc13Caption(std::string_view name) const; // FC-remap caption (gate evidence)
     // ---- FEFLOW43 management grid + feflow41 LOAD / feflow42 SAVE lists (MENU_PARITY.md rows 29/30) --
     // FEFLOW43.LAY (analysis/pass13 sweep dump): the full team-management grid — back collage, bt00..bt07
     // formation/kick-takers/strategy/positioning/aggression/custom/line-up/bias edit buttons + canc/save/
@@ -549,6 +570,12 @@ public:
     int cfg87Row_ = 0;                                  // slot-row cursor (0..3)
     std::array<int, 4> cfg87Dev_{};                     // device slot per controller row (0 = keyboard, contr frame 1 + slot)
     formats::ScreenLayout cfg87_;                       // shootout board layout
+    bool wc13View_ = false;                             // FEFLOW13 World Cup controller board (pass-24wc13)
+    bool haveWc13_ = false;                             // layout present on this tree
+    formats::ScreenLayout wc13_;                        // World Cup controller board layout
+    std::vector<std::string> wc13Visible_;              // scene-ownership visible set (composite whitelist)
+    int wc13Row_ = 0;                                   // slot-row cursor (0..3)
+    std::array<int, 4> wc13Dev_{};                      // device slot per controller row (0 = keyboard, contr frame 1 + slot)
     int cfg32Idx_ = 0;                                  // feflow32 pool cursor ([0x607fd4]/[0x608064])
     int cfg33Left_ = 0, cfg33Right_ = 1;                // feflow33 per-side pool cursors
     int cfg33Side_ = 0;                                 // 0 = left side focused (UP/DOWN)
@@ -587,6 +614,7 @@ public:
     std::string popName_;              // gate evidence label ("FEFLOW10"/"FEFLOW37"/"igconsel"/...)
     int popSel_ = 0;                   // focused button slot (two-axis cursor)
     bool popQuitCtx_ = false;          // hub 'quit' wedge context: confirm -> quitRequested_ (exit confirm)
+    bool popWcExit_ = false;           // FEFLOW13 'fe06' context (pass-24wc13): confirm -> close WC family to hub
     std::vector<std::string> popVisible_; // composite whitelist for the active popup
     [[nodiscard]] const char* popupButtonName(int slot) const; // focused-slot widget name for the active popup
     [[nodiscard]] std::string wcTeamName(std::uint16_t id, const char* fallback) const; // FCDB fullName -> literal

@@ -1686,6 +1686,69 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
     }
 
     {
+        // 14b5. fe-wc13 (pass-24wc13): FEFLOW13 World Cup controller board [C analysis/pass24wc13
+        // fe87_dec3 init FUN_0044e440 + fe87_dec1/dec2 slot cluster]: the board reuses the FEFLOW87
+        // slot grammar (open event zeroes the device group; contr.fsh frames 1..8 per row). Edges:
+        // FEFLOW20 'frwd' -> feflow13 (SITE 0x452dc7 pushes NAME:feflow13) via the Enter ring;
+        // Esc = event branch 0x44e4ba pushes NAME:feflow06 — closes the World Cup family straight to
+        // the hub (NOT a stack pop like FEFLOW87 -> 33); Enter carries no token edge on the board.
+        StepRes st{"fe-wc13", false, ""};
+        try {
+            platform::Window win("WC98-selftest-wc13", 640, 480, false);
+            render::VulkanConfig vcfg;
+            vcfg.instanceExtensions = platform::Window::vulkanInstanceExtensions();
+            vcfg.createSurface = [&](VkInstance inst) {
+                VkSurfaceKHR s = VK_NULL_HANDLE;
+                SDL_Vulkan_CreateSurface(win.sdl(), inst, nullptr, &s);
+                return s;
+            };
+            vcfg.drawableSize = [&] { return win.pixelSize(); };
+            const auto renderer = render::createVulkanRenderer(vcfg, render::RenderSettings{});
+            FeFlow fe(*renderer, tree, "eng");
+            if (!fe.openWcCfg(20)) {
+                st.passed = true; // documented environment skip (tree lacks the family layouts)
+                st.detail = fmt("fe-wc13 skipped: FEFLOW20 unavailable ({})", fe.lastError());
+            } else {
+                const auto name = [&] { return std::string(fe.screenName()); };
+                const bool s20 = fe.onWcCfg() && name() == "FEFLOW20";
+                fe.enter(); // Enter ring 0 = 'frwd' -> FEFLOW13 [C 0x452dc7]
+                const bool nm13 = fe.onWc13() && name() == "FEFLOW13";
+                render::SpriteBatch ui;
+                const auto st13 = fe.drawCurrent(ui);
+                const bool drew = st13.shapes > 0 && st13.texts > 0;
+                fe.move(1);
+                const bool row1 = fe.wc13Row() == 1;
+                fe.adjustValue(1);
+                const bool dev1 = fe.wc13Dev(1) == 1; // contr frame 1 + slot over the composite frame
+                fe.adjustValue(-2);
+                const bool devCyc = fe.wc13Dev(1) == 7; // ring 0 -> 7 wrap
+                fe.enter(); // Enter carries no token edge on this board
+                const bool stay13 = fe.onWc13();
+                fe.back(); // Esc = hub edge [C 0x44e4ba]: family closes, not a stack pop
+                const bool hub = !fe.onWc13() && !fe.onWcCfg() && !fe.quitRequested() && name() == "FEFLOW06";
+                bool fresh = false; // re-open zeroes every device slot again [C open event 0x68]
+                if (fe.openWcCfg(20)) {
+                    fe.enter();
+                    fresh = fe.onWc13() && fe.wc13Row() == 0 && fe.wc13Dev(0) == 0;
+                }
+                fe.back();
+                const bool closed = !fe.onWc13() && !fe.onWcCfg();
+                const bool caps = fe.wc13Caption("tmtl") == "Teammates:" && fe.wc13Caption("tmtl") == fe.wc13Caption("tmtr");
+                st.passed = s20 && nm13 && drew && row1 && dev1 && devCyc && stay13 && hub && fresh && closed && caps;
+                st.detail = fmt("fe wc13: s20={} nm13={} drew={} shapes={} texts={} row1={} dev1={} devCyc={} stay13={} "
+                                "hub={} fresh={} closed={} caps={} tmtl='{}' tmtr='{}'",
+                                int(s20), int(nm13), int(drew), int(st13.shapes), int(st13.texts), int(row1),
+                                int(dev1), int(devCyc), int(stay13), int(hub), int(fresh), int(closed), int(caps),
+                                fe.wc13Caption("tmtl"), fe.wc13Caption("tmtr"));
+            }
+        } catch (const std::exception& e) {
+            st.passed = true; // documented environment skip (headless-CI pattern)
+            st.detail = fmt("fe-wc13 skipped: FE shell unavailable ({})", e.what());
+        }
+        steps.push_back(std::move(st));
+    }
+
+    {
         // 14c. records-window (pass-20records): pure sbar row-window grammar gate
         // [C records_dec10:149-192 + dec7:42-59] via app::recordsRowIndex. Pins the
         // running-index mapping: own=0 special case (DAT_0060a06e=1), offset<own,

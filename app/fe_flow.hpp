@@ -63,6 +63,7 @@ public:
                : setup07View_       ? "FEFLOW07"
                : lineup16View_      ? "FEFLOW16"
                : stad08View_        ? "FEFLOW08"
+               : stad51View_        ? "FEFLOW51"
                : cfg87View_            ? "FEFLOW87"
                : wc13View_             ? "FEFLOW13" // World Cup controller board (pass-24wc13)
                : cfg32View_ == 32      ? "FEFLOW32"
@@ -174,6 +175,17 @@ public:
     bool openStad08();   // friendly-confirm 'fe08' chain / --fe-stadium08 gate; false = layout absent
     [[nodiscard]] bool onStad08() const { return stad08View_; }
     presentation::FeDrawStats drawStad08(render::SpriteBatch& ui) const; // composite + tile/name overlays
+    // ---- FEFLOW51 practice stadium-select board (pass 33) --------------------------------------
+    // Sibling of FEFLOW08 for the practise chain: FEFLOW50 config 'fe08' wedge tag (LAY object
+    // comment "goes to feflow51") opens this board. Event grammar [C] FE51_459ff0 @0x459ff0 +
+    // generic click handler FUN_0044b878 @0x44b878: mpNN ball-pin click -> DAT_0057cb54 = tile
+    // index (loop "mp%02d" 0..9); nslt = DAT_0057cb54 wrap -1, nsrt = wrap +1; sint cycles
+    // DAT_0060cbca %7 (HALF LENGTH), wint DAT_0060cbd0 byte3 +1 (WEATHER), hint toggles
+    // DAT_0060cbc9 1<->2 (DAY/NIGHT); fe16 wedge -> FUN_004520b4 (lineup/match); fe50 back;
+    // quit fe06 pop; fe15/fe41/fe89 nav tags.
+    bool openStad51();   // practise-config confirm edge / --fe-stadium51 gate; false = layout absent
+    [[nodiscard]] bool onStad51() const { return stad51View_; }
+    presentation::FeDrawStats drawStad51(render::SpriteBatch& ui) const; // composite + pin/name overlays
     // ---- Lineups screen FEFLOW16 (pass-21igscn; analysis/pass21igscn/NOTES.md §2) -------------
     // feflow16 = team lineups board: LAY grid lpNN/lsNN (left 11, number+name rows) and
     // rpNN/rsNN (right 11), tmlt/tmrt center-aligned team-name slots (fontID 4). Scene edge
@@ -309,7 +321,7 @@ public:
         if (formats::iequals(name, "fe32")) return 3; // Practise (feflow50 setup)
         return -1;                                    // quit/options/saveload/credits + disabled modes
     }
-    [[nodiscard]] bool onHub() const { return haveHub_ && hubView_ && !optsView_ && !slView_ && !credView_; }
+    [[nodiscard]] bool onHub() const { return haveHub_ && hubView_ && !optsView_ && !slView_ && !credView_ && !setupScreen_; } // config screen supersedes the hub (Enter must reach its confirm branch)
     [[nodiscard]] int hubCursor() const { return hubSel_; }
     [[nodiscard]] bool quitRequested() const { return quitRequested_; }
     void setPointerDown(bool down) { ptrDown_ = down; } // mouse button -> PUSHEDSHAPE* painting
@@ -561,17 +573,20 @@ public:
     // Layouts loaded eagerly in the ctor; scene-ownership whitelists exclude the netplay chat widgets
     // (chat/cha2/cha3), the footix/mascot runtime surfaces and the null.fsh hit-region polygons
     // (ltll/ltlr/rtlr/rtrr + stad/sare/0000 cover boxes) per LAY_COMPOSITOR_NOTES.md.
-    formats::ScreenLayout setup07_, stad08_, lineup16_;
-    bool haveSetup07_ = false, haveStad08_ = false, haveLineup16_ = false; // layouts present on this tree
+    formats::ScreenLayout setup07_, stad08_, stad51_, lineup16_;
+    bool haveSetup07_ = false, haveStad08_ = false, haveStad51_ = false, haveLineup16_ = false; // layouts present on this tree
     bool setup07View_ = false;  // FEFLOW07 shown (hub fe07 wedge / --fe-setup07 gate)
     int s07Row_ = 0;            // two-axis row cursor: 0 = left team side, 1 = right team side
     int s07Left_ = 0, s07Right_ = 1; // pool indices of the matchup sides (ltlb/ltrb/rtlb/rtrb cycle)
-    std::vector<std::string> setup07Visible_, stad08Visible_;
+    std::vector<std::string> setup07Visible_, stad08Visible_, stad51Visible_;
     std::vector<std::string> lineup16Visible_; // lpNN/lsNN/rpNN/rsNN + tmlt/tmrt/ftix/shdr/shdl/back art
     bool stad08View_ = false;   // FEFLOW08 shown ('fe08' friendly-confirm chain / --fe-stadium08 gate)
     bool lineup16View_ = false; // FEFLOW16 lineups board (fe16 wedge on stad08; pass-21igscn §2)
     int s08Sel_ = 0;            // mpNN tile cursor (mp00..mp09, mod 10; nslt/nsrt arrows cycle)
     int s08Half_ = 0, s08Weather_ = 0, s08Night_ = 0; // sint/wint/hint fake-interface cycle state [H]
+    bool stad51View_ = false;   // FEFLOW51 shown (practise-config 'fe08' chain / --fe-stadium51 gate)
+    int s51Sel_ = 0;            // FEFLOW51 mpNN pin cursor = DAT_0057cb54 tile index [C]
+    int s51Half_ = 0, s51Weather_ = 0, s51Night_ = 1; // sint %7 / wint +1 / hint 1<->2 [C slots cbca/cbd0/cbc9]
     formats::ScreenLayout cfg32_, cfg33_;               // controller-select family layouts
     bool haveCfg32_ = false, haveCfg33_ = false;        // present on this tree
     int cfg32View_ = 0;                                 // 0/32/33 = shown screen

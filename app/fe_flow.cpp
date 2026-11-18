@@ -306,6 +306,18 @@ FeFlow::FeFlow(render::Renderer& r, fs::path tree, std::string lang) : r_(r), tr
                 haveStad08_ = true;
             }
         } catch (const std::exception& e) { lastError_ = std::string("FEFLOW08: ") + e.what(); }
+        // FEFLOW51 practice stadium board (pass 33): the FEFLOW50 config screen's 'fe08' wedge tag
+        // (object comment "goes to feflow51") opens it. Event grammar [C] FE51 handler @0x459ff0 +
+        // generic click FUN_0044b878: mpNN pins -> DAT_0057cb54 tile index ("mp%02d" loop),
+        // nslt/nsrt wrap +/-, sint = DAT_0060cbca %7 (HALF LENGTH), wint = DAT_0060cbd0 b3 +1
+        // (WEATHER), hint = DAT_0060cbc9 toggle 1<->2 (DAY/NIGHT); fe16 wedge -> FUN_004520b4.
+        const std::string t51 = presentation::readLayout((tree_ / "FE/PACK/LAYOUTS/LAYOUTS.BIG").string() + "@FEFLOW51.LAY", d);
+        try {
+            if (!t51.empty()) {
+                stad51_ = formats::ScreenLayout::build("FEFLOW51", formats::LayoutDocument::parse(std::string_view(t51)), nullptr, nullptr, "PC");
+                haveStad51_ = true;
+            }
+        } catch (const std::exception& e) { lastError_ = std::string("FEFLOW51: ") + e.what(); }
         // FEFLOW16 lineups board (pass-21igscn §2): scene edge [C] edges_table.txt:22
         // (feflow08 helper FUN_0043ce4c @0x43cf27 pushes NAME:feflow16 0x562020).
         const std::string t16 = presentation::readLayout((tree_ / "FE/PACK/LAYOUTS/LAYOUTS.BIG").string() + "@FEFLOW16.LAY", d);
@@ -329,6 +341,13 @@ FeFlow::FeFlow(render::Renderer& r, fs::path tree, std::string lang) : r_(r), tr
         if (haveStad08_)
             stad08Visible_ = {"back", "titl", "flag", "quit", "fe06", "fe15", "fe89", "fe41", "fe07",
                               "fe16", "flgp", "nslt", "nsrt", "stme", "sint", "wint", "hint"};
+        // FEFLOW51 whitelist (pass 33): the France-map collage object is named "null" (object 1,
+        // shapeID=back); excluded = mpNN pins (releasedshapeid=null, ball sprites painted as
+        // overlays), stad/sare/0000/masc null.fsh hit polygons (stadium preview + footix cover),
+        // stme textid=0 slot (caption painted as overlay), chat/cha2/cha3 soup surfaces.
+        if (haveStad51_)
+            stad51Visible_ = {"null", "flag", "quit", "fe06", "fe15", "fe89", "fe41", "fe50", "fe16",
+                              "help", "nslt", "nsrt", "flgp", "flgc", "sint", "wint", "hint"};
         // FEFLOW16 whitelist: all 49 widgets are scene-owned art (back/shdr/shdl panels, ftix
         // footix pane 188x173, tmlt/tmrt name slots, lpNN/lsNN/rpNN/rsNN row slots textid=0;
         // dynamic roster rows paint as overlays, pass-21igscn NOTES §2).
@@ -732,6 +751,7 @@ FeDrawStats FeFlow::drawCurrent(render::SpriteBatch& ui) const {
     if (setup07View_) return drawSetup07(ui); // FEFLOW07 matchup screen (hub fe07 wedge)
     if (lineup16View_) return drawLineup16(ui); // FEFLOW16 lineups board (fe16 wedge on the map)
     if (stad08View_) return drawStad08(ui);   // FEFLOW08 stadium select (fe08 confirm chain)
+    if (stad51View_) return drawStad51(ui);   // FEFLOW51 practise stadium board (pass 33)
     if (cfg87View_) return drawCfg87(ui);  // FEFLOW87 shootout controller board (pass-23fe87; above 33)
     if (wc13View_) return drawWc13(ui);    // FEFLOW13 World Cup controller board (pass-24wc13; above the family board)
     if (cfg32View_) return drawCfg32(ui);  // FEFLOW32/33 controller-select family (pass-20cfg)
@@ -918,6 +938,7 @@ void FeFlow::move(int delta) {
     }
     if (lineup16View_) return; // lineups board: arrow keys inert (no cursor widgets)
     if (stad08View_) { s08Sel_ = (s08Sel_ + delta + 10) % 10; return; }         // mpNN tile ring cursor
+    if (stad51View_) { s51Sel_ = (s51Sel_ + delta + 10) % 10; return; }         // FEFLOW51 pin ring [C wrap ±]
     if (wcCfg_) { // keyloop_notes.txt/wcfamily_notes.txt: 18 = tmNN row cursor [H]; 23/24 strk/stsc button
         // focus (engine mouse-only, port maps up/down to the two buttons); 35 = ssnN table rows.
         if (wcCfg_ == 18) wcRow_ = std::clamp(wcRow_ + delta, 0, 31);
@@ -1018,6 +1039,7 @@ void FeFlow::adjustValue(int dir) {
         return;
     }
     if (stad08View_) { move(dir); return; } // nslt/nsrt arrows = tile ring (L/R axis of two-axis grammar)
+    if (stad51View_) { move(dir); return; } // FEFLOW51 nslt/nsrt wrap the pin index (DAT_0057cb54 ±1 [C])
     if (leagueCfg_) { cycleLeagueScreen(dir); return; } // left/right = gofd/gobk screen chain
     if (wcCfg_) { // feflow35 'nglt'/'ngrt': group index (v +/- 1) & 7, full table repaint (decoded 1:1)
         if (wcCfg_ == 35) wcGroup_ = (wcGroup_ + dir + 8) & 7; // feflow18/23/24 keyloops carry no L/R tag
@@ -1091,6 +1113,7 @@ bool FeFlow::enter() {
         return true;
     }
     if (stad08View_) { stad08View_ = false; return true; } // stadium confirm: shell starts the match [H]
+    if (stad51View_) { stad51View_ = false; return true; } // 'fe16' wedge semantics: start the practise match [C FUN_004520b4]
     if (cfg87View_) return false; // Enter on the shootout board: no token edge (fe08 forward is mouse-only [C])
     if (wc13View_) return false;  // Enter on FEFLOW13: no token edge — the handler performs click payloads only (pass-24wc13)
     if (cfg32View_ == 32) { cfg32View_ = 0; return true; } // 'fe50' forward: CPU match with pool team [C]
@@ -1157,7 +1180,8 @@ bool FeFlow::enter() {
     }
     if (setupScreen_) { // friendly config accepted: the 'fe08' widget tag opens stadium select first
         if (!setupPractise_ && haveStad08_ && openStad08()) return false;
-        return true; // no FEFLOW08 layout on this tree: shell starts the match from here (pre-slice)
+        if (setupPractise_ && haveStad51_ && openStad51()) return false; // practise 'fe08' tag -> feflow51 [C LAY comment "goes to feflow51"]
+        return true; // no layout on this tree: shell starts the match from here (pre-slice)
     }
     if ((sel_ == int(FeEntry::Exhibition) || sel_ == int(FeEntry::Practise)) && haveSetup_) {
         // Friendly / practise entries open their match-setup screen first (feflow09/feflow50).
@@ -1189,6 +1213,7 @@ void FeFlow::back() {
     if (setup07View_) { setup07View_ = false; hubView_ = true; return; } // Esc -> hub ('fe06' exit wedge [C] help=77)
     if (lineup16View_) { lineup16View_ = false; return; } // Esc pops the board back to the map
     if (stad08View_) { stad08View_ = false; if (!setupScreen_) hubView_ = true; return; } // Esc -> parent scene
+    if (stad51View_) { stad51View_ = false; if (!setupScreen_) hubView_ = true; return; } // 'fe50'/'fe06' exit -> practise config [C]
     if (cfg87View_) { cfg87View_ = false; return; } // Esc on the shootout board = 'fe07' goto feflow33 [C] (33 stays open underneath)
     if (wc13View_) { // Esc on FEFLOW13 = hub edge [C event branch 0x44e4ba pushes NAME:feflow06]: the
                      // board closes the World Cup family straight to the hub, NOT a stack pop (unlike 87).
@@ -1544,6 +1569,13 @@ bool FeFlow::openStad08() {
     if (!haveStad08_) { lastError_ = "FEFLOW08.LAY is absent from this tree"; return false; }
     stad08View_ = true;
     s08Sel_ = std::clamp(s08Sel_, 0, kStadTiles - 1);
+    return true;
+}
+
+bool FeFlow::openStad51() {
+    if (!haveStad51_) { lastError_ = "FEFLOW51.LAY is absent from this tree"; return false; }
+    stad51View_ = true;
+    s51Sel_ = std::clamp(s51Sel_, 0, kStadTiles - 1); // DAT_0057cb54 pin index domain [C]
     return true;
 }
 
@@ -1980,6 +2012,49 @@ FeDrawStats FeFlow::drawStad08(render::SpriteBatch& ui) const {
                 ui.draw(ftex, q.dst, q.uv, q.rgba);
             ++st.texts; // stme slot
             if (const formats::LayoutObject* hp = stad08_.object("help")) {
+                for (const auto& q : presentation::layoutText(*f, name, float(hp->x) + 12.f, float(hp->y) + 4.f, 13.f, render::packRgba(235, 235, 235, 255)))
+                    ui.draw(ftex, q.dst, q.uv, q.rgba);
+                ++st.texts; // help-pane caption (helppaneid semantics)
+            }
+        }
+    }
+    drawCursor(ui, st);
+    return st;
+}
+// ---- FEFLOW51 practise stadium board (pass 33) --------------------------------------------------
+// mpNN pins carry releasedshapeid=null + hilitedshape=hbal (smball.fsh); engine paints ball sprites
+// on the France-map pins, highlighted under the cursor (DAT_0057cb54). Port lane mirrors FEFLOW08:
+// ball sprite per pin (global ball sprite, flat-quad fallback), cursor ring, stme caption centred
+// (textXOffset=80 width=160 alignment=3) + help-pane caption. sint/wint/hint button art (ml_buts/
+// wt_buts/dn_buts shapes) is composite-owned; the value lanes cycle on click.
+FeDrawStats FeFlow::drawStad51(render::SpriteBatch& ui) const {
+    FeDrawStats st = presentation::composite(stad51_, ui, const_cast<ScreenArt&>(art_), text_.get(), &stad51Visible_);
+    for (int i = 0; i < kStadTiles; ++i) {
+        const formats::LayoutObject* o = stad51_.object(std::format("mp{:02d}", i));
+        if (!o) continue;
+        const float x = float(o->x), y = float(o->y), w = float(o->width > 0 ? o->width : 28), h = float(o->height > 0 ? o->height : 26);
+        const ScreenArt::Shape sh = i == s51Sel_
+            ? const_cast<ScreenArt&>(art_).shape("..\\global\\", "smball.fsh", "hbal", -1)
+            : const_cast<ScreenArt&>(art_).shape("..\\global\\", "ball", "b000", -1);
+        if (sh.tex) ui.draw(sh.tex, {x, y, w, h}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu);
+        else ui.draw(0, {x + w * 0.3f, y + h * 0.3f, w * 0.4f, h * 0.4f}, {}, render::packRgba(240, 216, 96, 255));
+        ++st.shapes;
+        if (i == s51Sel_) { // cursor ring around the focused pin
+            const std::uint32_t c = render::packRgba(255, 224, 96, 255);
+            ui.draw(0, {x - 2.f, y - 2.f, w + 4.f, 2.f}, {}, c), ui.draw(0, {x - 2.f, y + h, w + 4.f, 2.f}, {}, c);
+            ui.draw(0, {x - 2.f, y - 2.f, 2.f, h + 4.f}, {}, c), ui.draw(0, {x + w, y - 2.f, 2.f, h + 4.f}, {}, c);
+        }
+    }
+    const std::string_view name = text_ ? text_->stringAt(std::size_t(kStadNameIdx[std::size_t(s51Sel_)])) : std::string_view{};
+    if (!name.empty() && text_ && text_->ready()) {
+        const formats::FfnFont* f = text_->face(4);
+        render::TextureId ftex = text_->faceTexture(4);
+        if (!f || !ftex) { f = text_->font(); ftex = text_->texture(); }
+        if (f && ftex) {
+            for (const auto& q : presentation::layoutTextCentered(*f, name, 400.f, 191.f, 14.f, render::packRgba(245, 235, 200, 255)))
+                ui.draw(ftex, q.dst, q.uv, q.rgba);
+            ++st.texts; // stme slot (centre-aligned)
+            if (const formats::LayoutObject* hp = stad51_.object("help")) {
                 for (const auto& q : presentation::layoutText(*f, name, float(hp->x) + 12.f, float(hp->y) + 4.f, 13.f, render::packRgba(235, 235, 235, 255)))
                     ui.draw(ftex, q.dst, q.uv, q.rgba);
                 ++st.texts; // help-pane caption (helppaneid semantics)
@@ -3373,6 +3448,33 @@ int FeFlow::pointerActivate() {
             if (o && widgetHit(*o, float(ptrX_), float(ptrY_))) { stad08View_ = false; return -1; }
         }
         return -1; // sint/wint/hint fake-interface buttons: cycle the value under the tile cursor [H]
+    }
+    if (stad51View_) { // FEFLOW51 [C FE51 handler @0x459ff0 + generic click FUN_0044b878]: pin click
+                       // sets the DAT_0057cb54 index; nslt/nsrt wrap; sint/wint/hint cycle; 'fe50'
+                       // back icon pops; 'fe16' wedge launches the practise match (FUN_004520b4).
+        if (const formats::LayoutObject* o = stad51_.object("fe16");
+            o && widgetHit(*o, float(ptrX_), float(ptrY_))) { stad51View_ = false; return int(FeEntry::Practise); }
+        for (int i = 0; i < kStadTiles; ++i) {
+            const formats::LayoutObject* o = stad51_.object(std::format("mp{:02d}", i));
+            if (o && widgetHit(*o, float(ptrX_), float(ptrY_))) { s51Sel_ = i; return -1; }
+        }
+        for (const char* n : {"nslt", "nsrt"}) {
+            const formats::LayoutObject* o = stad51_.object(n);
+            if (o && widgetHit(*o, float(ptrX_), float(ptrY_))) { move(n[2] == 'l' ? -1 : 1); return -1; }
+        }
+        for (const char* n : {"sint", "wint", "hint"}) {
+            const formats::LayoutObject* o = stad51_.object(n);
+            if (!o || !widgetHit(*o, float(ptrX_), float(ptrY_))) continue;
+            if (n[0] == 's') s51Half_ = (s51Half_ + 1) % 7;            // DAT_0060cbca cycle %7 [C]
+            else if (n[0] == 'w') s51Weather_ = (s51Weather_ + 1) % 7; // DAT_0060cbd0 byte3 +1 [C]
+            else s51Night_ = s51Night_ == 1 ? 2 : 1;                   // DAT_0060cbc9 toggle 1<->2 [C]
+            return -1;
+        }
+        for (const char* n : {"fe50", "quit"}) {
+            const formats::LayoutObject* o = stad51_.object(n);
+            if (o && widgetHit(*o, float(ptrX_), float(ptrY_))) { stad51View_ = false; return -1; }
+        }
+        return -1; // clicks inside the map panel never launch a match from here
     }
     if (recScreen_) { // bookmark bar + arrows + trivia arrows + back icons [C] LAY widget tags
         const formats::ScreenLayout* sc = recScreen_ == 28 ? &rec28_ : recScreen_ == 29 ? &rec29_

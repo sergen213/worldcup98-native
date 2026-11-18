@@ -117,6 +117,7 @@ int run(int argc, char** argv) {
     int feSave42 = -1;    // --fe-save-manager N: feflow42 SAVE list + tick confirm, rows +N then Enter
     int feRepl57 = -1;    // --fe-replay-load N: FEFLOW57 replay browser over the rply index, rows +N
     int feStad08 = -1;    // --fe-stadium08 N: friendly chain -> FEFLOW08 stadium select, tile cursor +N moves
+    int feStad51 = -1;    // --fe-stadium51 N: practise chain -> FEFLOW51 France-map board, pin cursor +N moves
     int feLineups16 = -1; // --fe-lineups16: stad08 -> fe16 wedge -> FEFLOW16 lineups board (pass-21igscn)
     int feRecords = -1;     // --fe-records N: records family gate; N = page*100 + team-cursor moves (pass-20records)
     int feRecordsRow = 0;   // --fe-records-row N: 9-row results window offset (sbar) +N moves
@@ -170,6 +171,7 @@ int run(int argc, char** argv) {
         else if (a == "--fe-nav-history") { feMode = true, smokeFrames = 1, feNavHistory = std::stoi(next()); } // nav chain: feflow90 -> Enter 'fe91' -> feflow91 capture
         else if (a == "--fe-setup07") { feMode = true, smokeFrames = 1, feSetup07 = std::stoi(next()); }   // FEFLOW07 matchup capture gate; N = side-cursor moves
         else if (a == "--fe-stadium08") { feMode = true, smokeFrames = 1, feStad08 = std::stoi(next()); }  // FEFLOW08 stadium-select chain gate; N = tile-cursor moves
+        else if (a == "--fe-stadium51") { feMode = true, smokeFrames = 1, feStad51 = std::stoi(next()); }  // FEFLOW51 practise stadium board gate; N = pin-cursor moves
         else if (a == "--fe-lineups16") { feMode = true, smokeFrames = 1, feLineups16 = 0; }  // FEFLOW16 lineups board capture
         else if (a == "--fe-mgmt-grid") { feMode = true, smokeFrames = 1, feMgmt43 = std::stoi(next()); }     // FEFLOW43 management grid gate; N = row-cursor moves
         else if (a == "--fe-load-game") { feMode = true, smokeFrames = 1, feLoad41 = std::stoi(next()); }      // feflow41 LOAD list gate; N = lstb row-cursor moves
@@ -341,6 +343,13 @@ int run(int argc, char** argv) {
                 fe->enter(); // confirm -> the 'fe08' widget tag opens stadium select [C] @0x44C3D3/C3C8
                 for (int i = 0; i < feStad08; ++i) fe->move(+1); // mpNN tile ring cursor cycle
             }
+        }
+        if (fe && feStad51 >= 0) {  // --fe-stadium51 N: hub practise wedge -> FEFLOW50 config confirm -> 'fe08' tag ->
+                                    // FEFLOW51 France-map stadium board (pass 33; LAY comment "goes to feflow51")
+            fe->selectNav(int(app::FeEntry::Practise));
+            fe->enter(); // opens the practise config screen (feflow50)
+            fe->enter(); // confirm -> 'fe08' tag opens FEFLOW51 [C]
+            for (int i = 0; i < feStad51; ++i) fe->move(+1); // mpNN pin ring cursor cycle
         }
         if (fe && feLineups16 >= 0) { // --fe-lineups16: friendly chain to the stadium map, then fe16 wedge [C 0x43cf27]
             if (!fe->openStad08()) std::fprintf(stderr, "fe: stadium screen unavailable\n");
@@ -587,7 +596,7 @@ int main(int argc, char** argv) {
             std::puts("usage: wc98-native [--width N] [--height N] [--fullscreen|--windowed] [--smoke N]"
                       " [--fe] [--tree DIR] [--out-prefix P] [--fe-smoke N] [--tournament-saveload N] [--fe-pick N]"
                       " [--fe-mgmt-grid N] [--fe-load-game N] [--fe-save-manager N] [--fe-replay-load N]"
-                      " [--fe-nav exhibition|league|tournament|tournament-load|practise] [--fe-team] [--fe-setup N] [--fe-league] [--fe-league-cfg N] [--fe-setup07 N] [--fe-stadium08 N] [--fe-options-tab N] [--fe-screen NAME]"
+                      " [--fe-nav exhibition|league|tournament|tournament-load|practise] [--fe-team] [--fe-setup N] [--fe-league] [--fe-league-cfg N] [--fe-setup07 N] [--fe-stadium08 N] [--fe-stadium51 N] [--fe-options-tab N] [--fe-screen NAME]"
                       " [--fe-lineups16]"
                       " [--fe-wc-cfg N]"
                       " [--fe-popup NAME] [--fe-popup-keys N] [--fe-popup-enter|--fe-popup-back] [--fe-control N]"

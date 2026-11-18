@@ -263,6 +263,11 @@ if(DEFINED WC98_TREE)
     set_tests_properties(fe_setup07 PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW07: shapes=[1-9][0-9]* texts=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 |texts=0 |cursors=0 ")
     add_test(NAME fe_stadium08 COMMAND wc98-native --fe-stadium08 3 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/stad08)
     set_tests_properties(fe_stadium08 PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW08: shapes=[1-9][0-9]* texts=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 |texts=0 |cursors=0 ")
+    # Practise stadium board (pass 33, analysis/pass33/NOTES.md): hub fe32-wedge Enter opens FEFLOW50 config,
+    # confirm opens FEFLOW51 (France-map back collage + mpNN ball pins + hbal cursor hilite + nslt/nsrt arrow
+    # pair + sint/wint/hint value icons + help-pane stadium name); --fe-stadium51 N cycles the pin ring N times.
+    add_test(NAME fe_stad51 COMMAND wc98-native --fe-stadium51 3 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/stad51)
+    set_tests_properties(fe_stad51 PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW51: shapes=[1-9][0-9]* texts=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 |texts=0 |cursors=0 ")
     # Shared popup lane (FEFLOW10/37 + IG boxes; analysis/pass13/POPUP_LANE_SPEC.md): blur+popp modal with
     # the nvicons ok_1/canc and yes/no button pair, FC-bank runtime captions ("Are you sure you want to
     # Quit?", index 220) + help pane (button help= indices 12/13). Scripted-key gates: two-axis cursor over

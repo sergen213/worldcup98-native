@@ -255,8 +255,14 @@ State helpers (`cmn\sspeech.c`, `cmn\sspeech_c` string pool @0x56ae14, error-lin
 
 - `FUN_004dfc0c` `SNDsentencestatus`: engine object `DAT_006597b0 == 0` or sentence engine
   `DAT_006597e0 == 0` -> `-14` (`SPEECH_NOT_INIT`); sentence flag `DAT_0064b15a == 0` ->
-  `2` idle, else `3` speaking. Who sets `DAT_0064b15a` outside the sentence engine is
-  unrecovered [H].
+  `2` idle, else `3` speaking. The flag's only writers are inside the engine itself
+  (raw-code scan of immediate `0x64b15a`: sites `0x4dfb59/0x4dfbea/0x4dfc24/0x4dfcb5/
+  0x4dfe08/0x4dfe1f`): `FUN_004dfb40` `SNDsentencestart` sets it to 1, `SNDsentencestop`
+  clears it (`0x4dfe08`) and `FUN_004dfe18` (reset, called from `SPEECHINIT` `FUN_004df820`
+  site `0x4df837` and stop site `0x4dfbfd`) zeroes the whole byte block `0x64b158..15b`.
+  There is no external setter: the game side flips it only by calling the API —
+  `SNDsentencestart` call sites `0x48f4ea`, `0x48f77d` (speech-pump glue) and `0x489898`
+  (FE trigger). Earlier "setter unrecovered [H]" residual closed (pass-67).
 - `FUN_004dfb94` `SNDsentencestop`: clears the sentence flag + queue state, stops in-flight
   sentences through the fan-out `FUN_004e2c60` (twice), resets the channel table
   (`&DAT_0064b070` stride 0xc).

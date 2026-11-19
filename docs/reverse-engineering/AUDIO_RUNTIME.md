@@ -232,3 +232,47 @@ count. Port: `MatchAudio::ExeLcg` mirrors `FUN_004ce2f3` (`chantRng_` replaces m
 variant + phrase picks) and `pumpChants` rotates the pool on the 100-frame cadence (even →
 front, odd → back) before lane top-up, matching drain-branch order; gate `test_gameaudio`
 asserts the seed-0 LCG draw sequence.
+
+## 7. Voice/speech pumps + boot registry (pass 57, measured 2026-11-19)
+
+Evidence: `/tmp/wc98pass57/an1..an9.txt` (Ghidra decompile records),
+`/tmp/wc98pass56/cr5.txt` (disassembly `FUN_0048e280`/`FUN_0048e190` + caller region),
+`analysis/pass57speech/NOTES.md`.
+
+State helpers (`cmn\sspeech.c`, `cmn\sspeech_c` string pool @0x56ae14, error-line tags
+`SNDsentencestatus` 0x3b7 / `SNDsentencestop` 0x34d / `SNDphrasestatus` 0x219):
+
+- `FUN_004dfc0c` `SNDsentencestatus`: engine object `DAT_006597b0 == 0` or sentence engine
+  `DAT_006597e0 == 0` -> `-14` (`SPEECH_NOT_INIT`); sentence flag `DAT_0064b15a == 0` ->
+  `2` idle, else `3` speaking. Who sets `DAT_0064b15a` outside the sentence engine is
+  unrecovered [H].
+- `FUN_004dfb94` `SNDsentencestop`: clears the sentence flag + queue state, stops in-flight
+  sentences through the fan-out `FUN_004e2c60` (twice), resets the channel table
+  (`&DAT_0064b070` stride 0xc).
+- `FUN_004dfa60` `SNDphrasestatus`: channel state `-100` -> `8` free, play-status `1` -> `7`
+  complete, `0` -> `3` playing, else `-1`. The port mirrors these codes in
+  `audio::SpeechQueue` (`kStatusFree/Complete/Playing/Busy`, `kSentenceIdle/Speaking`).
+
+Match frame loop `FUN_00409f78` runs the per-frame trio while the livematch scene is live
+(`DAT_00640fb4 == 0xb`): commentary sentence pump `FUN_004901e0` (drains the sentence queue
+through the `+0x10` word-executor callback), voice request drain `FUN_0048fcc0` (status `3`
+-> `sentenceStop`; then releases stamped records through `FUN_0048d0c0` -> `FUN_004e3330`
+and requeues), and crowd layer pump `FUN_0048e650` (per-record `FUN_004e48c4` update).
+The tick host `FUN_004906f8` additionally runs `FUN_0048f920`: gate speech boot
+`DAT_006326b0`; drain queue records whose `SNDphrasestatus != 7` back via `qpush` (break on
+first incomplete), release complete records (slot free `FUN_004e3330`, stamp `+0x24` with the
+current tick), then for the head record latch `_DAT_006326bc = u16@phraseData+0x12` and play
+through the record callback `+0x1c`.
+
+Boot registry (pass-57): every bank open from the PLRS/TEAM/chant installers flows through
+`FUN_0048d198` (format path + loader `FUN_00439810`) into `FUN_0048d114`, which — only
+while the preload gate `DAT_0063241c` is set (enable `FUN_0048d378`, disable `FUN_0048d3f4`) —
+registers each phrase (`FUN_004a4a00` count/entries) into the phrase queue via `qbottom`
+with self-links at record `+0x10/+0xc`. Registration count == parse count. The gameplay
+event -> name-request site is statically unrecovered [H]: no static caller formats
+`AUDIO\PLRS\P%05d.PBK` or picks PLRS ids outside the boot installer `FUN_0048fb10`, so the
+port catalogs + registry-counts (`MatchAudio::nameSlotsRegistered`) but does not play name
+phrases. Voice engine boot `FUN_0048fd54`: audio-engine gate + `DAT_006326b0 == 0`, opens the
+speech device (`FUN_004df820`), reserves the 8-slot record pool (stride `0x2c`, phrase data
+region stamped at record `+0x28`) through `reservememadr` `FUN_0049f5a0`, and prepushes the
+slots via `qbottom`.

@@ -207,6 +207,13 @@ int main() {
         CHECK(!nullPath.crowdStarted() && !nullPath.trafficStarted() && !nullPath.anthemStarted());
         CHECK(nullPath.chantBanks() == 113 && nullPath.announcerBanks() >= 4 &&
               nullPath.plrsBanks() > 0);
+        // Registry mirror (pass-57): FUN_0048d198 -> FUN_0048d114 registers every parsed
+        // phrase while the preload gate DAT_0063241c is set, so registry == parse count.
+        CHECK(ma.nameSlotsRegistered() == ma.plrsPhrases() + ma.announcerPhrases());
+        // Scene-10 CRWD bank table DAT_006325d0 + name pointers DAT_0057eb44/0x566adc
+        // (FUN_0048e280 disassembly): CMIDI.BNK, CROWD.PBK, COMOS.PBK all ship on the CD.
+        for (const char* name : app::MatchAudio::kSceneCrowdSlots)
+            CHECK(std::filesystem::exists(tree / "AUDIO" / "CRWD" / name));
     }
 
     // (f) Chant pump lane (pass-53): boot classification lanes the 113-entry pool by the match

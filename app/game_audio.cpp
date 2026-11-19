@@ -505,8 +505,11 @@ void MatchAudio::catalogAnnouncers(std::uint16_t homeTeamId, std::uint16_t awayT
             if (!std::filesystem::exists(path)) continue;
             try {
                 const auto bytes = readFile(path);
-                announcerPhrases_ += formats::PhraseBank::parse(std::span<const std::uint8_t>{bytes})
-                                         .phraseCount();
+                const std::uint32_t phrases =
+                    formats::PhraseBank::parse(std::span<const std::uint8_t>{bytes})
+                        .phraseCount();
+                announcerPhrases_ += phrases;
+                nameSlotsRegistered_ += phrases; // FUN_0048d114 registration loop (pass-57)
                 ++announcerBanks_;
             } catch (const std::exception&) {
             }
@@ -519,16 +522,24 @@ void MatchAudio::catalogPlayers(const std::vector<std::uint16_t>& ids) {
     // team squads (2 records x 17 slot entries, stride 0x66 with 6-byte slot records over the
     // squad array @DAT_0064101c) and loads `AUDIO\PLRS\P%05d.PBK` (@0x566bc4) for every
     // non-zero player id (u16 at slot+2), one bank pool entry each. FCDB roster ids feed the
-    // same %05d key; the CD ships 1020 Pxxxxx.PBK banks. Phrase decode stays counted, not
-    // played - the id->phrase trigger mapping is undecoded.
+    // same %05d key; the CD ships 1020 Pxxxxx.PBK banks. Pass-57 decoded the boot registry:
+    // each loaded bank flows through FUN_0048d198 (open via FUN_00439810) -> FUN_0048d114,
+    // which registers its parse-count phrase records into the phrase queue while the preload
+    // gate DAT_0063241c is set; the voice pump FUN_0048f920 stamps each play through
+    // _DAT_006326bc = u16@phrase+0x12. The gameplay event -> name-request site stays [H]
+    // (no static caller formats or picks PLRS ids), so playback of name phrases is disabled.
     for (const std::uint16_t id : ids) {
         if (!id) continue;
         const auto path = tree_ / "AUDIO" / "PLRS" / std::format("P{:05d}.PBK", id);
         if (!std::filesystem::exists(path)) continue;
         try {
             const auto bytes = readFile(path);
-            plrsPhrases_ += formats::PhraseBank::parse(std::span<const std::uint8_t>{bytes})
-                                .phraseCount();
+            const std::uint32_t phrases =
+                formats::PhraseBank::parse(std::span<const std::uint8_t>{bytes})
+                    .phraseCount();
+            plrsPhrases_ += phrases;
+            nameSlotsRegistered_ += phrases; // FUN_0048d114 loop, gate DAT_0063241c set
+                                             // by preload enable FUN_0048d378 at boot
             ++plrsBanks_;
         } catch (const std::exception&) {
         }

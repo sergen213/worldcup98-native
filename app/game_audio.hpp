@@ -173,6 +173,18 @@ public:
     std::uint32_t announcerPhrases() const { return announcerPhrases_; }
     std::uint32_t plrsBanks() const { return plrsBanks_; } // PLRS player banks parsed (FUN_0048fb10)
     std::uint32_t plrsPhrases() const { return plrsPhrases_; }
+    // Phrase records registered in the exe boot registry (FUN_0048d198 -> FUN_0048d114: each
+    // loaded bank registers its parse-count phrases while the preload gate DAT_0063241c is
+    // set; playback picks them through the voice pump stamp _DAT_006326bc = u16@phrase+0x12).
+    std::uint32_t nameSlotsRegistered() const { return nameSlotsRegistered_; }
+    // Scene-10 CRWD bank table (pass-57 disassembly of FUN_0048e280): DAT_006325d0 slots
+    // +0 = CMIDI.BNK (bank-table create FUN_004e3128 @0x48e6f6, EDX = handle loaded from
+    // literal @0x566adc), +4 = CROWD.PBK, +8 = COMOS.PBK, names from pointer table
+    // DAT_0057eb44 (0x566ab4/0x566ac0) in the do-while loop at 0x48e283. The phrase-data
+    // arena is reserved under tag "SNDCRD" (@0x566ae8) via FUN_0049f5a0 sized
+    // phraseCount(CROWD.PBK)*3*4 (LEA ESI,[EAX*4]; SUB; SHL 2 at 0x48e73d-0x48e746).
+    static constexpr std::array<const char*, 3> kSceneCrowdSlots = {
+        "CMIDI.BNK", "CROWD.PBK", "COMOS.PBK"};
     std::uint32_t crowdCardSlots() const { return crowdCardSlots_; } // CROWD.CRD slot list size
 
     // Exe request RNG (pass-56): FUN_004ce2f3 — LCG state = state*0x41c64e6d + 0x3039,
@@ -222,6 +234,7 @@ private:
     std::uint32_t whistles_ = 0, kicks_ = 0, goalRoars_ = 0;
     std::uint32_t chantBanks_ = 0, chantPhrases_ = 0, announcerBanks_ = 0, announcerPhrases_ = 0;
     std::uint32_t plrsBanks_ = 0, plrsPhrases_ = 0;
+    std::uint32_t nameSlotsRegistered_ = 0; // FUN_0048d114 registration loop count
     std::uint32_t crowdCardSlots_ = 0;
     int crowdPctApplied_ = -1;
     // Chant pool state (pass-53). Entries carry the team key (C0 + %04d team-id digits, 0 for

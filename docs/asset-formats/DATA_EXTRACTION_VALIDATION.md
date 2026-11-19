@@ -44,7 +44,8 @@ info World Cup 98 schema: 24 leagues, 56 teams, 1782 players (161 goalkeepers)
   ranges, shirt sentinel == 720, attribute nibble ranges, all 9 UI banks parse.
 * `db_json_valid` (ctest, tree-gated): `wc98-dbexplorer --json` output must parse with
   `python3 -m json.tool`, carry `recordOffset`/decimal `raw`, and have no `position2` key.
-* Suite state: 149/151 green; the two failures (`test_sim_scenarios`, `self_test_gameplay`)
+* Suite state: 150/152 green (includes `db_json_valid`); the two failures
+  (`test_sim_scenarios`, `self_test_gameplay`)
   are the in-flight simulation kick-seam lane — unrelated to extraction, not chased.
 
 ## Write-experiment policy

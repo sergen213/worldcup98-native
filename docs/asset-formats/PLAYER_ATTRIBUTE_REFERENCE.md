@@ -50,7 +50,7 @@ not physics parameters; engine skill wiring lives in `Team_buildMatchPlayerAttrs
 
 ## Shirt numbers / roles
 
-* Shirt field 0..1023; in use: **1..22** squad numbers, **255** = 'no number' sentinel
+* Shirt field 0..255 (8 bits); in use: **1..22** squad numbers, **255** = 'no number' sentinel
   (720 reserve-pool players — editor display code must special-case this).
 * Role b17>>4 ∈ 0..10 (161 goalkeepers at role 0). This is the engine's position-code space
   used by the formation slot fill masks (`kSlotFill` table, exe 0x586B74).

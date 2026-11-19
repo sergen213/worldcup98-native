@@ -31,10 +31,16 @@ scan and are **replaced** by the sites below.
   selected file it `sprintf("user\\%s", name)` (format fn `0x49168e`), opens it
   (`0x439870`). If the open **succeeds** → `fn 0x47af18(fd, selector)` reads it (below),
   then `fclose` (`0x42b070`). If the file is **missing** → `selector-1` indexes jump table
-  `0x47b06c` and a built-in **default tactics record block** from `.bss`
-  (`0x588224/0x588250/0x58827c/0x5882a8`, stride `0x2c`) is installed via
-  `FUN_004d2bf0/004d3170/004d31a0` — the retail default-tactics pool used exactly because
-  the CD ships no `USER/` files (exact per-file mapping partially decoded).
+  `0x47b06c` and registry bookkeeping runs (`FUN_004d2bf0/004d3170/004d31a0`).
+  **Pass-46 correction:** those three functions are linked-list maintenance helpers
+  (`+0x1c` next pointer, payload dwords `+0x10`/`+0x14`; decompile in
+  `analysis/pass46tmmng/defdecomp.txt`), and `0x588224/0x588250/0x58827c/0x5882a8`
+  (stride `0x2c`) are the **registry slot pool** itself — `FUN_004d2480(type, slot)`
+  allocates entries at `DAT_005881a4 + slot*0x2c` and `.bss` is zero-filled. A missing
+  file therefore installs an **empty slot**, not embedded default bytes: there is no
+  byte-exact default-tactics table in the image, and retail tactics/positioning come
+  from the FCDB team record + `GEN4TBLS.VIV` G98*.FMT lane
+  (`TEAM_AND_FORMATION_REFERENCE.md`) as integrated.
 * Container reader `fn 0x47af18(fd, selector)`: header = `FCDB` magic (string VA
   `0x565f94`) + version dword@4 == `0x10000`; data pointer = header dword@`0xC`
   (= start byte); section pointers accumulate from `hdr[0xC]` with sizes at

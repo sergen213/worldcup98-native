@@ -329,12 +329,15 @@ retracted. The per-scene SFX data ships as retail spec files:
   1638400,0 | 16,16 | 160,160 | 320,320` — `<<16` fixed-point percent values plus plain
   groups).
 
-The loader chain `FUN_004ac840` (`FUN_004ac930`/`FUN_004ac960` + SND DLL exports
-`PTR_FUN_00580e30`, speech-state branch on `FUN_004e6c40`) installs them;
+The loader chain `FUN_004ac840` (`FUN_004ac930`/`FUN_004ac960` + AUDIOCMN spec-lane slot
+`PTR_FUN_00580e34` = exe `spec_load` `0x4904c8` (pass-63), speech-state branch on
+`FUN_004e6c40`) installs them;
 `FUN_004ac990` chooses the file by mode byte: format `audspc.%s%c` @0x568dc8 (game stem
 `W` + scene letter → `AUDSPC.WE..WS`) or `audsfx.%c` @0x568dd4 (→ `AUDSFX.W`); pool string
-`sfx.%c` @0x568dd7 is the alternate stem. Load destination addresses are inside the SND
-DLL exports [H].
+`sfx.%c` @0x568dd7 is the alternate stem. Load destination is the exe-side AUDIOCMN slot
+block `0x580e2c..0x580e38`, installed at boot by `FUN_00490528` → `FUN_004ac7a0`
+(pass-63); the earlier "load destination addresses are inside the SND DLL exports" claim
+is **retracted** — the DLL receives driver callbacks, see Pass-63 below.
 
 Gate `FUN_0051d670`: entry table `&DAT_0058f3b0` stride 4 indexed by
 `(SNDplay id & 0xffff)*4` — `{+0 u8 type, +2 u8 ambient flag, +3 u8 interval}`; ambient
@@ -351,10 +354,14 @@ allow plays through `PTR_FUN_005896c0` and updates the per-id record array
 `DAT_00644d54 + id*0xc` (`{+0 = entry+2 byte, +4 u16 counter++, last id → DAT_00644d5c}`).
 
 Port: no code change — `MatchAudio::trigger` fires GAME00 slots directly and the
-SNDplay-id→slot mapping is decoded in pass 62 (§10: `{bank = id>>24, slot = low bits}`);
-mirroring the gate itself still needs the runtime-built spec table (pass 61 lane), so the
-gate remains un-mirrored. (The earlier "SND DLL bank tables unrecovered" claim is
-retracted — the DLLs are only the DirectSound driver layer.)
+SNDplay-id→slot mapping is decoded in pass 62 (§10: `{bank = id>>24, slot = low bits}`).
+Pass-63 measured the gate tables as **compile-time static initialization** — there is no
+runtime builder: `DAT_0058f3b0` is 1295 identical dwords `0x64000000` (all ids
+`type=0, ambient=0, interval=100`, so `tick % 100 >= 100` never throttles → allow) and
+`DAT_0058f330` is 8 zero `0x10`-stride ranges; the runtime spec files build only the
+ambient spec pool `DAT_00644d50` + scene selector `DAT_0064492c`. The allow-everything
+default is exactly the port's behavior. (The earlier "SND DLL bank tables unrecovered"
+claim is retracted — the DLLs are only the DirectSound driver layer.)
 
 ## Pass-61: SND callback wiring (SFX request queue)
 
@@ -465,3 +472,48 @@ Port: no code change — `MatchAudio::trigger` fires GAME00 bank slot numbers di
 which is exactly the retail `{bank:1, slot:24}` slot field. Evidence:
 `analysis/pass62bank/NOTES.md`, `/tmp/wc98pass62/snd2.txt`..`snd8.txt`
 (`GhidraWc98Snd1.py`..`Snd8.py`).
+
+## Pass-63: AUDIOCMN spec-lane slots + DLL driver-callback direction
+
+Retracted (pass-60): "Load destination addresses are inside the SND DLL exports [H]" and
+"`PTR_FUN_00580e30` = SND DLL export". The slot block `PTR_FUN_00580e2c..0x580e38` is
+**exe-side**: raw scan of `FIFAWC.EXE` shows the four callback addresses
+(`0x49051c/0x4904fc/0x4904c8/0x48f714`) appear at exactly one site each, inside
+`FUN_00490528` (`0x49055f..0x490572`): `mov ecx,0x48f714; mov ebx,0x4904c8;
+mov edx,0x4904fc; mov eax,0x49051c; call 0x4ac7a0`. `FUN_004ac7a0`
+(`audcommon_install`) first resets the slots to null stubs (`FUN_004ac800`→0,
+`FUN_004ac810`→`*out=0`, `FUN_004ac820`→0, `LAB_004ac830`), then installs non-null args:
+EAX→`0x580e2c`, EDX→`0x580e30`, EBX→`0x580e34`, ECX→`0x580e38` (Watcom arg order).
+
+Installed spec-lane callbacks (decompiled, `/tmp/wc98pass63/aud5.txt`/`aud6.txt`):
+- `0x49051c` sentence-release: `EAX==0` no-op, else free via `FUN_0049f750`.
+- `0x4904fc` sentence-alloc: count probe `FUN_0048e8d0`, reserve via `FUN_0049f5a0`,
+  writes handle to `*out`, returns 1.
+- `0x4904c8` spec-load: `sprintf("common\\%s", EAX)` (format VA 0x567340) → open helper
+  `FUN_00439750` (retry loop); returns success. This is the `COMMON/AUDSFX.W` /
+  `COMMON/AUDSPC.W*` open path (§9) — an exe CRT file open, not a DLL export.
+- `0x48f714` record-query: `DAT_0063271c == 0` → passthrough `param<<32`, else
+  `CONCAT(param, DAT_0063271c + 0xc)` — reads the SFXS bank record field (§10
+  `DAT_0063271c` bank handle) [H for exact field semantics].
+
+The DLL direction is the reverse of what pass-60 assumed: exe resolver `FUN_0052c948`
+(`win\sdriver.c`, strings `iSNDloaddll - COULDN'T …` @0x56ddf0..) does
+`LoadLibraryA("eacsnd.dll")`, calls `_iSNDdllversion@0` (must return `0x80000` —
+required 8.0, mismatch message prints `REQUIRED %i.%i` with args `8,0`), resolves
+`_iSNDdirectsetfunctions@28` and calls it with **7 exe driver thunks**
+(`LAB_0052c854/0x52c830/0x52c8ac/0x52c888/0x52c8ec`, `FUN_0052c864`, `FUN_0052c83c` —
+wrappers onto `FUN_00548ec4`, `FUN_0052bf94`, error-format `FUN_004c7ff3`,
+`FUN_004cd5d0`, `FUN_00547f20`, kernel32 import thunk `jmp [0x5597c0]` [H name unresolved]),
+then stores the remaining 11 `_iSNDdirect*` exports into `DAT_00659e6c..DAT_00659e94`.
+DLL `_iSNDdirectsetfunctions@28` (EACSND.DLL RVA 0x13c8) is a plain 7-store:
+`mov eax,[esp+4..1c]; mov [0x40aa14..0x40aa2c], eax` (DLL DGROUP callback block) — the
+driver stores the exe's callbacks for its own use; nothing writes exe slots from the DLL.
+
+Gate tables are compile-time static (§9 measurement): no write site for
+`DAT_0058f3b0`/`DAT_0058f330` anywhere; shipped values = allow-everything.
+
+Port: no code change — the spec lane's shipped defaults (interval 100, ranges 0) mean the
+retail gate never suppresses, matching the port's direct-fire `trigger`. Evidence:
+`analysis/pass63snd/NOTES.md`, `/tmp/wc98pass63/aud4.txt`..`aud9.txt`,
+`dll1.txt`..`dll7.txt`, `spec1.txt`..`spec4.txt`
+(`GhidraWc98Aud4.py`..`Aud9.py`, `GhidraWc98Dll*.py`, `GhidraWc98Spec*.py`).

@@ -154,9 +154,11 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
   `docs/architecture/RENDERER.md` §coordinate space) so mouse hit boxes track the art on any aspect.
   Registry: `MENU_PARITY.md` (no Open rows), `UI_VALIDATION_WC98.md` (capture evidence + test counts),
   `GAMEPLAY_DISCREPANCIES.md` (UI rows Fixed/Closed). Suite: 152 tests on `main` (post-`v0.5.0`
-  forensic fixes, incl. the new `db_json_valid` JSON-export gate); **150/152 pass in the working
-  tree** — the two failures are `test_sim_scenarios` + `self_test_gameplay` (in-flight kick-seam
-  lane). No UI gate fails.
+  forensic fixes, incl. the new `db_json_valid` JSON-export gate). Clean-worktree `main` run:
+  **151/152**, sole stable failure `fe_replay57_enter` (replay round-trip hash divergence,
+  kick-seam lane; `fe_hilsav_list` flakes intermittently on parallel GPU timing and passes on
+  rerun). With the user's uncommitted simulation lane in the working tree: **150/152** — failures
+  `test_sim_scenarios` + `self_test_gameplay`, while `fe_replay57_enter` passes. No UI gate fails.
 - Second-pass forensic audit in progress (pass-15, 2026-11-10): discrepancy register + validation doc
   landed (`GAMEPLAY_DISCREPANCIES.md` D-01..D-54, `GAMEPLAY_VALIDATION.md`); trig + nine runtime ball
   tables proven byte-exact at **measured WC98 VAs** and gated by new `test_trig_tables` /

@@ -213,8 +213,13 @@ even to `qbottom` (`FUN_004c4800`, tail), odd to `qpush` (`FUN_004c4780`, head),
 reorder changes which lane candidates `FUN_0048d53c` picks first. `FUN_004ce317` is the seed
 setter (wrapper at `PTR_FUN_005940d4` + 0xc); boot classifier `FUN_0048dcd8` seeds it then feeds
 LCG draws into `qfetchindex` picks over the 113 chant packs (lane table `DAT_006324c4/d4/e0`,
-budget `DAT_006324e8 = 3`, same-team flag at record `+0x32`); runtime seed source unrecovered
-[H]. The secondary rotation consumer `FUN_0048e9a0` (gate `DAT_0063268c != 0`) repeats
+budget `DAT_006324e8 = 3`, same-team flag at record `+0x32`); the seed source is decoded
+(pass-68): `FUN_004ce317` is called with `EAX = DAT_00636a14`, the **multimedia timer tick
+counter** (`inittimer` `FUN_00496bb0` zeroes it at `0x496be6`, the timer callback tail
+`0x4966b8` does `INC dword [DAT_00636a14]` per multimedia-timer event alongside the
+`DAT_00636a10` full counter). Audio boots seed the LCG from the current tick count:
+classifier `FUN_0048dcd8` site `0x48dd97`, crowd boot `FUN_0048ed9c` site `0x48ee08` —
+uptime-nondeterministic, so `ExeLcg` seeds stay port-side constants [H]. The secondary rotation consumer `FUN_0048e9a0` (gate `DAT_0063268c != 0`) repeats
 qfetchindex+qpush. The idle envelope target draw (pass-55 machine) is NOT the LCG:
 `FUN_0052f3e0` computes `((tick & 0x7fff) - 0x4000) * secondTick >> 14` from the 64-bit tick
 counter `FUN_004c321c` (`DAT_00585cc0/5cc4/5cc8/5ccc`, carry `DAT_00585cbc`), so
@@ -634,9 +639,15 @@ options rewrite. `DAT_00632774` readers: 0x490528, 0x490634, 0x490674, 0x4906f8
 
 Path formatter `FUN_0048f9d0`: `DAT_00632720 == 0` → `sprintf(buf, "AUDIO\PHRS\%s",
 EDX)` (@0x566b9c), else `sprintf(buf, "%s%s", EDX, DAT_00632720)` (@0x566b94) — an
-installed-root prefix lane. `DAT_00632720` has zero static write sites (reads only at
-0x48f9c9/0x48f9d6): default NULL = CD-relative path; the install-root string is
-populated by a runtime mechanism [H] (same runtime-injection class as the EULZ
-expander). Port: phrase banks load synchronously under a fixed tree path, so no
-mirror change; the formatter semantics are recorded for path-assembly fidelity only.
-Evidence: `analysis/pass65snd/NOTES.md`, `/tmp/wc98pass65/p65.txt`..`p65h.txt`.
+installed-root prefix lane. `DAT_00632720` accesses are exactly two (pass-68 raw scan):
+read `0x48f9d4` in the formatter, and a **write** in an undecoded Watcom tail stub
+`0x48f9c6` (`MOV EAX,EAX` alignment + `MOV dword [0x632720],EAX; RET`, bytes in the
+Ghidra gap `0x48f9bf..0x48f9cf` — the earlier "zero static write sites" wording was
+wrong; the stub sits after the formatter tail's `RET` at `0x48f9c5`). The stub has no
+static caller: an `E8`-rel32 scan and a LE-pointer scan for `0x48f9c6` both find zero
+references, so the install-root string arrives through runtime-computed dispatch
+(same runtime-injection class as the EULZ expander) [H]. Port: phrase banks load
+synchronously under a fixed tree path, so no mirror change; the formatter semantics
+are recorded for path-assembly fidelity only.
+Evidence: `analysis/pass65snd/NOTES.md`, `/tmp/wc98pass65/p65.txt`..`p65h.txt`,
+pass-68 raw scans + disassembly at `/tmp/wc98pass68/p68.txt`..`p68e.txt`.

@@ -263,8 +263,9 @@ State helpers (`cmn\sspeech.c`, `cmn\sspeech_c` string pool @0x56ae14, error-lin
   `audio::SpeechQueue` (`kStatusFree/Complete/Playing/Busy`, `kSentenceIdle/Speaking`).
 
 Match frame loop `FUN_00409f78` runs the per-frame trio while the livematch scene is live
-(`DAT_00640fb4 == 0xb`): commentary sentence pump `FUN_004901e0` (drains the sentence queue
-through the `+0x10` word-executor callback), voice request drain `FUN_0048fcc0` (status `3`
+(`DAT_00640fb4 == 0xb`): speech async-load pump `FUN_004901e0` (pass-64 retraction: NOT a
+sentence queue — it drains the STRASYNCH async load-completion queue `DAT_00632758` and runs
+each record's `+0x10` load-complete callback, §11), voice request drain `FUN_0048fcc0` (status `3`
 -> `sentenceStop`; then releases stamped records through `FUN_0048d0c0` -> `FUN_004e3330`
 and requeues), and crowd layer pump `FUN_0048e650` (per-record `FUN_004e48c4` update).
 The tick host `FUN_004906f8` additionally runs `FUN_0048f920`: gate speech boot
@@ -517,3 +518,65 @@ retail gate never suppresses, matching the port's direct-fire `trigger`. Evidenc
 `analysis/pass63snd/NOTES.md`, `/tmp/wc98pass63/aud4.txt`..`aud9.txt`,
 `dll1.txt`..`dll7.txt`, `spec1.txt`..`spec4.txt`
 (`GhidraWc98Aud4.py`..`Aud9.py`, `GhidraWc98Dll*.py`, `GhidraWc98Spec*.py`).
+
+## 11. STRASYNCH speech async-load lane (pass-64, measured 2026-11-19)
+
+Retracted: "commentary sentence pump `FUN_004901e0` drains the sentence queue through the
+`+0x10` word-executor callback" (§7) and COMMENTARY_WC98.md's "queue flush" / "opens
+`PHRS.PBK` → `DAT_00632734`" wording. Raw disassembly (`/tmp/wc98pass64/com4.txt`,
+`com8.txt`) shows `FUN_004901e0` drains the **async load-completion queue**, and boot
+`FUN_00490250` opens `TYPE.PBK` (not `PHRS.PBK`) into `DAT_00632734`.
+
+Boot `FUN_00490250` ("STRASYNCH" lane; tag string @0x566c18), gate
+`FUN_00490674` = device flag `DAT_00632774`, one-shot `DAT_00632724`:
+- queue object `DAT_00632728` = `FUN_004c3a00` (lockable alloc-queue);
+- sync opens `PHRS.HDR` (@0x566c00) → `DAT_00632730`, `TYPE.PBK` (@0x566c0c) →
+  `DAT_00632734` via path format `FUN_0048f9d0` → full-path builder `FUN_0043933c`
+  (`"%s\%s"` @0x561d34; base dir `DAT_0060133c`, alt `DAT_0060143c` when `DAT_00601338 == 0`)
+  → open helper `FUN_00439810`; on either open failing `DAT_00632724 = 0` and both handles
+  are closed (`FUN_0x42b070`);
+- two queues `DAT_0063273c` (slot pool) + `DAT_00632758` (completion) via `FUN_004c46a0`,
+  and a 16-record slot pool `DAT_00632738` reserved through `FUN_0049f5a0`
+  (tag `STRASYNCH`, count from `FUN_0048e8d0` = `DAT_00632638`, fallback 2), all 16 slots
+  `qbottom`-ed into `DAT_0063273c` (stride `0x14`);
+- `initasync` `FUN_004d82d0` (`win\async.c`, asserts `initasync - DO_NOT…` :0xc4,
+  `FAILED TO START ASYNC THREAD` :0xde) with `EAX=0x10` jobs, `EDX=0x2000` buffer: allocates
+  control block `DAT_0064aedc`, 4 queues, `2*jobs` job records, spawns the I/O thread and
+  waits for its handshake;
+- `PHRS.PBK` (@0x566c24; refs 0x49035d/0x49037e) is formatted twice: first
+  `FUN_004d8840` = `setasyncfile` (`win\async.c` :0x203 `MUST_CALL_initasync`, :0x214
+  strdup via `FUN_0049f5a0`; job record `+0x1c` filename, `+0x20=2`, seq ids `+4/+0x14`)
+  enqueues the async load + wakes the thread (`FUN_004c37b0`); the second build feeds
+  `openhandlea` `FUN_004cf5e0` (`win\fileio.c` :0xba `OPEN_FAILED_ON_%s`, :0xc1
+  `INFO_FAILED_ON_%s`) → handle `DAT_0063272c`.
+
+Submit `FUN_00490144` (callers: chant loader `FUN_0048d53c` site 0x48d5dd, phrase loader
+`FUN_0048953c` site 0x4896f8, boot lane `FUN_00490acc` site 0x490a23): gate `DAT_00632724`;
+pop pool slot (`FUN_004c8790`), copy request-record `+0xc→rec+8`, `+0x14→rec+0xc`,
+`+0x18→rec+0x10` (completion callback), `rec+4 = submitasync` `FUN_004d8730` result
+(thread job id); on enqueue failure requeue slot; pool empty → callback runs **inline**
+(synchronous fallback), returns 0.
+
+Pump `FUN_004901e0` (main frame loop `FUN_00409f78` sites 0x40a09e/0x40a0ec; also
+`FUN_0046b230` 0x46b24f, `FUN_0048f6a4` 0x48f6cd, trigger wrapper `FUN_004893ec` 0x489427):
+queue-object vtable lock `(*DAT_00558464)(DAT_00632728)` + file lock `FUN_00438f58`;
+loop `qfetch` (`FUN_004c4890`) from completion queue `DAT_00632758`: per record run
+`cancelasyncload` `FUN_004d8aa0` (`win\async.c` :0x2f2) on the `+0x4` job id — it frees the
+thread's reserved buffer (`FUN_0049f750`) when the job was still in flight — then if
+`rec+0x10 != 0` invoke the load-complete callback with `EAX = rec+0x8`; record always
+requeued to slot pool `DAT_0063273c` (`FUN_004c4800`). Unlock `FUN_00438f80`,
+`(*DAT_00558528)(DAT_00632728)`.
+
+Teardown `FUN_00490404` (drain set from boot builder `FUN_004907c0`): drains both queues,
+closes `DAT_0063272c`, frees pool `DAT_00632738`, closes+zeroes `DAT_00632730/0x632734`,
+clears `DAT_00632724`. Boot callers: main init 0x409f13, boot builder `FUN_00490728`
+site 0x49079e (lane sequence §pass-51 doc), FE boot `FUN_0044b340` 0x44b363, trigger boot
+`FUN_00489350` 0x48935f.
+
+Strings `C0001800.PBK`/`C0001801.PBK` (@0x566c30/0x566c40, chant names) have zero static
+immediate references — runtime-computed via the `C0%04d` lane (§pass-53), consistent with
+the pointer-table note. The thread's read loop internals (`win\async.c` worker) are not
+port-relevant: the port loads phrase banks synchronously (`MatchAudio::decodeChantLane`),
+so no mirror change; the pump's frame-loop ordering constraint (drain before trigger)
+is noted for `trigger()` callers. Evidence: `analysis/pass64phrs/NOTES.md`,
+`/tmp/wc98pass64/com1.txt`..`com8.txt`.

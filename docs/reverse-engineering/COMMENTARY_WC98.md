@@ -21,13 +21,22 @@ trigger model for M6 commentary integration.
   opens the phrase stream (DAT_0063271c via FUN_00439810), reserves an arena of
   `((HDR.size@+8 + 0x14) >> 10) + 1` × 0x400 B and builds **8 voice records** (stride 0x2c, record link
   at +0x28 = arena cursor advanced by that block size).
-- **Bank loader `FUN_00490250`**: opens `PHRS.HDR` → DAT_00632730 and `PHRS.PBK` → DAT_00632734
-  (path via FUN_0048f9d0 = `AUDIO\PHRS\%s` + lang dir), then a **16-iteration table build**
-  (FUN_004c4800 ×0x10) and two `FUN_0043933c` sidecar opens (`PHRS.INF`, u32@0 → DAT via FUN_00438dac).
+- **Speech async boot `FUN_00490250`** (pass-64 decode, retracts the earlier "opens `PHRS.PBK`
+  → DAT_00632734 / sidecar `PHRS.INF`" wording): opens `PHRS.HDR` → DAT_00632730 and
+  **`TYPE.PBK`** → DAT_00632734 (path via FUN_0048f9d0 → `FUN_0043933c` full-path builder),
+  creates slot-pool queue DAT_0063273c + completion queue DAT_00632758 and a 16-record slot
+  pool (FUN_0049f5a0, tag `STRASYNCH`), runs `initasync` FUN_004d82d0 (0x10 jobs, 0x2000-byte
+  buffer, worker thread), submits `PHRS.PBK` to the async lane via `setasyncfile` FUN_004d8840,
+  and opens `PHRS.PBK` handle DAT_0063272c via `openhandlea` FUN_004cf5e0. Full lane details:
+  AUDIO_RUNTIME.md §11.
 - **Trigger gate `FUN_004893ec`** — **46 callers, addresses 0x452af0..~0x455xxx = the match engine
-  event region** (kickoff/goal/foul per-caller-site): if speech banks ready and no sentence pending
-  (DAT_0057e378), stop any running sentence, enqueue via FUN_004901e0 + FUN_00489460, then walk a
-  **6-entry link table at DAT_0057e3e8** clearing played items. This is the event→phrase request seam.
+  event region** (kickoff/goal/foul per-caller-site): gate device `FUN_00490674` + engine
+  `FUN_0048fd4c`, fires when the pending flag `DAT_0057e378 != 0`: while `SNDsentencestatus == 3`
+  call `SNDsentencestop`; drain `FUN_0048fd38 == 1`; pump the STRASYNCH load-completion queue
+  (`FUN_004901e0`, site 0x489427 — pass-64: NOT an enqueue); build+enqueue via `FUN_00489460`
+  (→ pick `FUN_0048d0dc`, enqueue `FUN_0048d1f8`); then free the **6-entry pointer table at
+  DAT_0057e3e8** (stride 4, `FUN_0049f750`) and clear `DAT_0057e378/0x57e37c`. This is the
+  event→phrase request seam.
 - **Pump `FUN_0048f920`** (per-frame from FUN_004906f8): scans queue items (FUN_004c4890 = peek,
   FUN_004c4800 = advance; item+0x24 = live-slot marker); for each active item calls
   SNDphrasestatus — on 7 (complete) clears the marker, else breaks; when picking a new item sets
@@ -48,9 +57,11 @@ starts playback via the voice records (8-voice pool). autovol = per-word volume 
   0x20) for slots whose pending flag == 1; per hit calls `FUN_0048d0dc` (pick phrase from bank) then
   `FUN_0048d1f8` (enqueue). The DAT_0057e378 gate + DAT_0057e3e8 links seen in the trigger wrapper are
   the same record structure's fields.
-- **Queue flush `FUN_004901e0`** (FE exit, options screen, trigger wrapper): under critical section
-  DAT_00632728 walks all queue items; items with a live cancel thunk at `**(item + 0x10)` get cancelled,
-  then released via FUN_004d8aa0.
+- **Async-load pump `FUN_004901e0`** (pass-64, replaces the "queue flush" reading): under the
+  DAT_00632728 queue-object lock it drains the STRASYNCH completion queue DAT_00632758; per
+  record it runs `cancelasyncload` `FUN_004d8aa0` on the `+0x4` job id, invokes the load-complete
+  callback at `rec+0x10` with `EAX = rec+0x8` when non-null, then requeues the record to the
+  slot pool DAT_0063273c. It never walks sentence items (AUDIO_RUNTIME.md §11).
 - **Stream kill `FUN_004e2c60`** (SNDsentencestop internals): walks the 16 playback slots
   (stride 0x18 at DAT_006597e8) comparing each slot's channel byte (+0x3b) against the current stream's
   channel (`&DAT_00659823 + idx*0x60`), stopping matches via FUN_0052ddbc. `FUN_004dfe18` resets the

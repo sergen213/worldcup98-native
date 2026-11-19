@@ -39,7 +39,8 @@ records (kit/bank/stadium/tactics/nation bits + 20 u16 LE roster slots at byte 2
   module, fitness nibble → stamina (`PlayerAttr+0x18`).
 * Kit artwork: fifa98edit's `JERSnn.FSH` lane is **RTWC-only and absent** here; WC98 kits are
   `PK<teamid>{A,H}.FSH` + `GK/RK/COM/HHIG/PALJER` — `KIT_ASSET_REFERENCE.md`.
-* Tactics DB: `USER\tmmng.db` engine-registered (registrar call at 0x46dfba), no CD content —
+* Tactics DB: `USER\tmmng.db` engine-registered (loader `0x47b08c` called from `0x45946e`;
+  pass-46 correction — earlier `0x46dfba` cite was a wrong-delta scan), no CD content —
   `TMMNG_FORMAT_NOTES.md`.
 * `starting` byte 3 (editor RTWC field): even 82..198, 54 distinct; recorded raw, no engine
   consumer found (slot matching uses the role byte).

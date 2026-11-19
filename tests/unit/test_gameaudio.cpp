@@ -6,6 +6,7 @@
 // Model: docs/reverse-engineering/AUDIO_RUNTIME.md (MUSC/SFXS/CRWD paths, slot mapping).
 #include "check.hpp"
 #include "../app/game_audio.hpp"
+#include "../app/commentary.hpp" // SpeechGain ramp mirror (pass-73)
 
 #include "wc98/file.hpp"
 #include "wc98/formats/bnk.hpp"
@@ -278,6 +279,25 @@ int main() {
         CHECK(rng.draw() == 21468); // state 0xD3DC167E -> bits 16..30 = 21468
         CHECK(rng.draw() == 9988);
         CHECK(rng.draw() == 22117);
+    }
+
+    // Speech master-gain ramp mirror (pass-73): SNDspeechinit (FUN_004df820) stores
+    // cur = vol<<16 with delta 0; SNDspeechautovol (FUN_004df8a4) sets delta =
+    // (target<<16 - cur)/frames (frames clamped >=1); the state-cb pump (installed at
+    // 0x4dfca0) adds delta per frame and clamps at target in both directions, zeroing
+    // delta on clamp. Applied volume = cur>>16 into the SNDvol [0,0x7f] domain.
+    {
+        app::SpeechGain g;
+        g.set(80);
+        CHECK(g.applied() == 80);
+        g.ramp(1, 3);        // delta = (0x10000 - 0x500000)/3 = -1725781 (C truncation)
+        g.tick(); CHECK(g.applied() == 53); // 0x35A8AB >> 16
+        g.tick(); CHECK(g.applied() == 27); // 0x1B5556 >> 16
+        g.tick(); CHECK(g.applied() == 1);  // 0x10001 >> 16, still above target
+        g.tick(); CHECK(g.applied() == 1);  // cur <= target: clamp, delta zeroed
+        g.ramp(0x7f, 1);
+        g.tick();
+        CHECK(g.applied() == 0x7f);         // rising direction clamps in one frame
     }
 
     // (g) Crowd reaction envelope (pass-55): weights from the card header byte 7 (CROWD 70 ->

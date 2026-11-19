@@ -14,13 +14,13 @@ FIFA 99 `.SMP` files use the v2 dialect (`dataOffset` tag `0x97`, size tags
 
 | tag | len | field |
 |-----|-----|-------|
-| 0x82 | 2 | duration (BE ms) |
+| 0x82 | 1 | channels: 1 = mono, 2 = stereo (pass-58 corrected from stale "duration": exe `iSNDplatformplay` `FUN_0052d290` stores the value into the u8 format field at `DAT_00659e9b` with default 1 and whitelists {1,2}; measured `VIDEO/INT_EASP.DCT` @0x18 `82 01 02` immediately before codec tag `83 01 07` — EA-XA stereo frames) |
 | 0x83 | 1 | codec: 7 = EA-XA ADPCM, 9 = MicroTalk/UTK speech (census-confirmed, measured 2026-11-01), 0x0C = PCM16 |
 | 0x84 | 2 | sample rate (BE Hz; e.g. `0x2B11` = 11025) |
 | 0x85 | 2 | num samples per channel (BE) |
 | 0x88 | 4 | data offset — in `.BNK` banks an absolute file offset to raw payload |
 | 0x8A | 4 | padding/reserved (observed 0) |
-| 0x91 | 1 | loop flag |
+| 0x91 | 1 | playback percent (0..100): exe `FUN_0052d290` adds `_DAT_00659e64` and clamps to `[0,100]` before passing it to the play call (`FUN_005483bc`); observed `91 01 64` (=100) in every `GAME01.BNK` chain — not a loop flag (loop bounds are tags `0x86/0x87`) |
 
 Chains are shared: many sounds point into one tag stream; the engine reads forward
 from a table pointer until `0xFF`.

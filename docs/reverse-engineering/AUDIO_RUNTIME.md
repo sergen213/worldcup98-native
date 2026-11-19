@@ -276,3 +276,29 @@ phrases. Voice engine boot `FUN_0048fd54`: audio-engine gate + `DAT_006326b0 == 
 speech device (`FUN_004df820`), reserves the 8-slot record pool (stride `0x2c`, phrase data
 region stamped at record `+0x28`) through `reservememadr` `FUN_0049f5a0`, and prepushes the
 slots via `qbottom`.
+
+## 8. TLV sample-format tag map (pass 58, measured 2026-11-19)
+
+`FUN_0052d290` = `iSNDplatformplay` (`win_sdriver.c`, log strings `s_iSNDplatformplay_*`
+@0x56e140..0x56e230). TLV loop `(u8 tag, u8 len, BE value)` with `0xFF/0xFE` terminators,
+`0xfc` value-less records, `len == 0xFF` extended via `FUN_0052e160`. Parsed fields go into
+the per-stream format block at `DAT_00659e84 + slot*0x10`:
+
+| tag | field | slot | notes |
+|-----|-------|------|-------|
+| 0x81 | rate mode `local_18` | `+3` u8 | whitelist `(0x10,8)` at the play gate; default `0x10` |
+| 0x82 | channels `local_44` | `+4` u8 | default 1, whitelist {1,2}; `!= 1` in driver-1 mode logs `DOLBY_PRO LOG` (0x4f4) |
+| 0x83 | codec `local_20` | `+5` u8 | driver-3 mode requires `codec == 0` else `DIRECTSOUND_3` (0x50e) |
+| 0x84 | sample rate `uVar2` | `+2` u16 | default `0x5622` = 22050 Hz |
+| 0x85 | play arg `local_24` | `+6` u32 | passed to `FUN_005483bc` (num samples per `schl.cpp` observation) |
+| 0x86/0x87 | loop `iVar7/local_1c` | `+10/+14` | sentinel `-1`; forced `-1` when driver == 2 |
+| 0x8A/0x93 | payload/meta pointers | — | `0x93` set feeds the driver-3 float conversion `FUN_004973b0` + `(*DAT_00659e84)` callback |
+| 0x91 | playback percent `iVar9` | — | `+ _DAT_00659e64`, clamped `[0,100]`, play-call argument; observed `91 01 64` (=100) in `GAME01.BNK` chains — NOT a loop flag |
+| 0x92 | driver type `local_14` | `+1` | 0/2 default, 1 = Dolby-pro (mono + codec 0), 3 = DirectSound3 float path |
+
+Error codes `DAT_00585ca0`: 0x477 invalid platform, 0x4f4, 0x50e, 0x531 unsupported driver 3,
+0x544 unsupported sample format (`local_18/local_44` not in {(16,1),(16,2),(8,1),(8,2)}).
+Pass-58 corrected the stale `0x82 = duration` and `0x91 = loop flag` rows in
+`docs/asset-formats/AUDIO.md`; `formats/src/schl.cpp` (`0x82 -> channels`) matches the exe
+and ships unchanged. Evidence: `/tmp/wc98pass58/tlv1.txt`; measured stream
+`VIDEO/INT_EASP.DCT` @0x18 `82 01 02` + `83 01 07` (stereo EA-XA).

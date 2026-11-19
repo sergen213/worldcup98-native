@@ -311,3 +311,45 @@ Pass-58 corrected the stale `0x82 = duration` and `0x91 = loop flag` rows in
 `docs/asset-formats/AUDIO.md`; `formats/src/schl.cpp` (`0x82 -> channels`) matches the exe
 and ships unchanged. Evidence: `/tmp/wc98pass58/tlv1.txt`; measured stream
 `VIDEO/INT_EASP.DCT` @0x18 `82 01 02` + `83 01 07` (stereo EA-XA).
+
+## 9. Per-scene SFX spec files + playback gate (pass 60, measured 2026-11-19)
+
+Evidence: `analysis/pass60sfx/NOTES.md`, `/tmp/wc98pass60/aud4.txt` (disassembly
+`FUN_004ac990`), `/tmp/wc98pass60/aud5.txt` (decompile `FUN_0051d670`, `FUN_0051d480`,
+`FUN_004ac840`).
+
+The pass-49 A1 claim "slot numbers come from the scene handler, scene-LAY driven" is
+retracted. The per-scene SFX data ships as retail spec files:
+
+- `COMMON/AUDSFX.W` (552 B; header `{u16 0x0912, u16 field=6}`; u32 LE payload from
+  offset 4: 480, 1200, 600, 1248, 240, 420, ...);
+- `COMMON/AUDSPC.WE/WF/WG/WI/WJ/WS` (5988 B each; header `{u16 0x0912, u16 field}` where
+  the field measures 7/263/519/775/1287/1031 — monotonically increasing across file
+  order, so offsets/indices [H]; payload begins `0 | 327680,327680 | 655360,655360 | ... |
+  1638400,0 | 16,16 | 160,160 | 320,320` — `<<16` fixed-point percent values plus plain
+  groups).
+
+The loader chain `FUN_004ac840` (`FUN_004ac930`/`FUN_004ac960` + SND DLL exports
+`PTR_FUN_00580e30`, speech-state branch on `FUN_004e6c40`) installs them;
+`FUN_004ac990` chooses the file by mode byte: format `audspc.%s%c` @0x568dc8 (game stem
+`W` + scene letter → `AUDSPC.WE..WS`) or `audsfx.%c` @0x568dd4 (→ `AUDSFX.W`); pool string
+`sfx.%c` @0x568dd7 is the alternate stem. Load destination addresses are inside the SND
+DLL exports [H].
+
+Gate `FUN_0051d670`: entry table `&DAT_0058f3b0` stride 4 indexed by
+`(SNDplay id & 0xffff)*4` — `{+0 u8 type, +2 u8 ambient flag, +3 u8 interval}`; ambient
+range table `&DAT_0058f330` stride `0x10` indexed by scene selector `DAT_0064492c` —
+`{+0 u32 min, +4 u32 max}`. Return values: `1` audio disabled (`PTR_FUN_005896bc` false);
+`3` suppressed when `entry+3 <= tick % modulus` (interval throttle, `tick = FUN_004c321c`),
+or in the ambient lane (`entry+2 == 0`) when `sel = tick % (max-min+1) + min` exceeds
+`DAT_00641220 - DAT_00644e04` or `DAT_00641220 - DAT_00644d5c`, or when the packed
+priority arg (`param_2[1]` u16) is nonzero with `type == 0xe`, or when
+`DAT_00641220 - param_2[0] < cooldown[type*4]` (table `&DAT_0051cf9c` stride 4); `0` =
+allow. Auto-player `FUN_0051d480`: scene-9 lane (`DAT_00640fb4 == 9`, `DAT_00640fe8 == 0`,
+`DAT_00644d6c` set, `DAT_00644d2c == 0`), id = `FUN_0051d810(tick)` (skips `0x50a`), on
+allow plays through `PTR_FUN_005896c0` and updates the per-id record array
+`DAT_00644d54 + id*0xc` (`{+0 = entry+2 byte, +4 u16 counter++, last id → DAT_00644d5c}`).
+
+Port: no code change — `MatchAudio::trigger` fires GAME00 slots directly and the
+SNDplay-id→slot mapping lives in the SND DLL bank tables (unrecovered [H]), so mirroring
+the gate would require a fabricated id map.

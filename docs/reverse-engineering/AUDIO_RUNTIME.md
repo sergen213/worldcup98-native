@@ -351,8 +351,10 @@ allow plays through `PTR_FUN_005896c0` and updates the per-id record array
 `DAT_00644d54 + id*0xc` (`{+0 = entry+2 byte, +4 u16 counter++, last id → DAT_00644d5c}`).
 
 Port: no code change — `MatchAudio::trigger` fires GAME00 slots directly and the
-SNDplay-id→slot mapping lives in the SND DLL bank tables (unrecovered [H]), so mirroring
-the gate would require a fabricated id map.
+SNDplay-id→slot mapping is decoded in pass 62 (§10: `{bank = id>>24, slot = low bits}`);
+mirroring the gate itself still needs the runtime-built spec table (pass 61 lane), so the
+gate remains un-mirrored. (The earlier "SND DLL bank tables unrecovered" claim is
+retracted — the DLLs are only the DirectSound driver layer.)
 
 ## Pass-61: SND callback wiring (SFX request queue)
 
@@ -397,8 +399,9 @@ by plays count (`FUN_0051d180`); consumer `FUN_0051d230 → FUN_0051d3d0` plays
 the entry byte `DAT_0058f3b2 + id*4` via the play slot.
 
 Port: no code change — the exe SFX path is a request-queue + spec-throttle
-model; the id→sample table stays inside the SND/EACSND bank layer
-(unrecovered [H]). Evidence: `analysis/pass61snd/NOTES.md`.
+model; the id→sample resolution is the exe's own bank subsystem (§10, pass 62:
+`{bank:1, slot:24}` id layout), not a table inside the DLLs. Evidence:
+`analysis/pass61snd/NOTES.md`, `analysis/pass62bank/NOTES.md`.
 
 ### 61b: CRWD scene-lane filenames (closes the pass-56 open item)
 Retracted: "scene-10 loader loops slots 0..8 with an undecoded per-slot
@@ -417,3 +420,48 @@ teardown `0x48e300` via `0x42b070`. Common wiring: `FUN_004e3128` attach on
 `DAT_006325c8`, then `FUN_004e4a80` card gate. The port's crowd bed already
 consumes `CROWD.BNK/CRD`; `TRAFF.*` is the scene-10 (stadium) variant of the
 same loader, not a new sample source — no port change.
+
+## 10. SND bank subsystem — id→sample mapping (pass 62, measured 2026-11-19)
+Retracted (pass-60/61): "the SNDplay-id→slot mapping lives in the SND DLL bank tables
+(unrecovered [H])". `EACSND.DLL`/`EACSNDD.DLL` (tree root) are the **DirectSound driver**
+layer — their 13 Watcom `.edata` exports are `_iSNDdirectcaps@4`, `_iSNDcreate3dbuf@32`,
+`_iSNDplay3d@28`, `_iSNDpos3d@12`, `_iSNDrate@8`, `_iSNDremovebuf@4`, `_iSNDserve@0`,
+`_iSNDsetfunctions@28`, `_iSNDstart@8`, `_iSNDstop@0`, `_iSNDstopbuf@4`, `_iSNDvol@8`,
+`_iSNDdllversion@0`. The bank subsystem that resolves play-id→sample lives **inside
+FIFAWC.EXE**:
+
+- Bank registry `DAT_00659de8`, stride 8, 10 slots. `FUN_004e33c0` (SNDbankcreate)
+  validates the bank header: `numpatches` ∈ 1..0xffff;
+  stamps runtime record `{+0 tag 'BNKl' (LE 0x6c4b4e42), +1 u8 = 4, +6 u16 = numpatches,
+  +2 u16 = numpatches*4 + 0x14 (record size)}`, zeroes the patch array from `+0x14`
+  `numpatches` times; table walk breaks at `0x4f < idx+8` → 10 slots max, overflow
+  returns `-9`. File-bank header version byte is read at **+4** by `FUN_004e34e0` /
+  `FUN_004e2d74`: `4` → patch-offset array at `+0x14`, `2` → array at `+0xc`, anything
+  else → "iSNDdownloadbank: BANK VERSION" assert (file string `cmn\sbank.c` @0x56b29c,
+  msg VA 0x56b2a8, return `-11`).
+- `FUN_004e3724` (SNDbankadd2files): gate `DAT_006597b0 != 0` else `-14`; registers the
+  bank pointer into the first empty registry slot, validates tag `+0 == 'BNKl'`, then
+  `FUN_004e34e0` (iSNDdownloadbank) walks the `numpatches` entries — each non-zero delta
+  becomes an absolute file offset (`base + i*4 + delta`) in the version-specific array.
+- `FUN_004e2d74` (SNDplaysetdef): the play-spec dword id — **high byte `id>>24` = bank
+  index into `DAT_00659de8`**, low bits = slot within that bank; rejected (`-8`) unless
+  `slot < bank[+6]` count; dispatches to the driver play lane (`FUN_0052e8b0`).
+  Retail live-match dispatcher ids (`FUN_004ae730`: 0x1f9/0x1fa/0x1fb) therefore carry
+  `bank = 0`; bank index = registration order [H — which bank occupies slot 0 at scene
+  runtime is not statically recovered].
+- Bank-name loader `0x48eff0`: sprintfs `AUDIO\SFXS\%s` (VA 0x566b54) onto a 256-byte
+  template (`ESI=0x48eef0` rep movsd ECX=0x40) carrying embedded names `game00.bnk`
+  (0x48f1e2), `game01.bnk`, `plrs00.bnk`, `plrs01.bnk`; handle stored at
+  `DAT_00632698 + idx*8` `{+0 handle, +4 stream}`. Ambient set `FUN_0048f068` requires
+  `DAT_006326ac` set, `DAT_006326a8` count ≥1, tick ≥ `DAT_0057eb50`; every 0x14 ticks
+  `SNDplaysetdef` + percent `DAT_0063269c`, volume `(count*0x7f)/100`.
+- SFXS pool boot `FUN_0048fd54`: once only (`DAT_006326b0`), device check `FUN_004df820`,
+  loads bank handle `DAT_0063271c`, creates 3 queues (`FUN_004c46a0`×3), allocates an
+  8-entry buffer pool (`DAT_006326c0/c4`) sized `((size+0x14)>>10 + 1)*0x400`, `+0x28`
+  link, pushed via `qbottom` (`FUN_004c4800`) — same queue family as the chant pump
+  (§pass-56).
+
+Port: no code change — `MatchAudio::trigger` fires GAME00 bank slot numbers directly,
+which is exactly the retail `{bank:1, slot:24}` slot field. Evidence:
+`analysis/pass62bank/NOTES.md`, `/tmp/wc98pass62/snd2.txt`..`snd8.txt`
+(`GhidraWc98Snd1.py`..`Snd8.py`).

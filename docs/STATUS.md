@@ -71,7 +71,7 @@ counts in `docs/asset-formats/INVENTORY.md`, `docs/reverse-engineering/EXECUTABL
   (FIFA 99: 80 B/20); roster = 22 little-endian u16 player-id slots
   (bytes 24..67; 1064/1064 slots resolve — FIFA 99's big-endian lane
   leaves nearly all slots unresolved), squad size = filled slots, byte-22 nibble = floor(squad/2)
-  (current squads 22, legends 11); shirtStyle is 6-bit
+  (current squads 22, legend squads 11/13 — 12 legends ×11, four ×13); shirtStyle is 6-bit
   (measured max 32); FSH 0x2D/0x29 palette records + global fallback
   (PAL.PAK = RefPack→SHPI→type-0x01 palette, resolver yields 256
   colours); PT v2 .SMP streams are 756/756 MicroTalk (tag 9) with

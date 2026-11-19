@@ -211,7 +211,7 @@ against the original tree; the deltas table lives in
 - FCDB: 68 B team records; roster = 22 **little-endian** player-id
   slots (1064/1064 resolve; FIFA 99 big-endian lane leaves nearly all unresolved); squad =
   filled slots; byte-22 nibble = floor(squad/2); shirtStyle 6-bit;
-  shirt numbers 0..22 numbered, 255 = "no number" (720 players).
+  shirt numbers 1..22 numbered, 255 = "no number" (720 players).
 - FSH: 0x2D/0x29 palettes + global fallback (PAL.PAK resolver yields
   256 colours); full-tree scan gate.
 - GEN4 G98: header `400\r\n`, KO int8, PK int16-LE, PL/FK int8, no

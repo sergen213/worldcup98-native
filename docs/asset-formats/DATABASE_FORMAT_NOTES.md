@@ -57,4 +57,4 @@ strings load only the `.dbi` set (`common\fcdb.dbi`, `common\fcdb_%s.dbi`,
 strictly-ascending player ids (the game binary-searches them), 1064 roster slots resolve,
 byte-22 nibble == floor(squad/2) (22 u16 LE slots at bytes 24..67), league members resolve
 (single id-0 member in league 217 'CAF'), all 17 attributes are nibbles, 8-bit shirts
-0..22 + 255 sentinel (720).
+1..22 + 255 sentinel (720).

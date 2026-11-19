@@ -77,6 +77,15 @@ if(DEFINED WC98_TREE)
     set_tests_properties(tournament_progression PROPERTIES ENVIRONMENT "WC98_TREE=${WC98_TREE}")
 endif()
 
+# Extraction-layer integrity gate (pass-44forensic): the dbexplorer JSON must be
+# parseable JSON (brace-balance regressions in playerJson/teams broke it once) and
+# carry the WC98 raw/offset fields. python3 ships on CI runners.
+if(DEFINED WC98_TREE)
+    add_test(NAME db_json_valid
+        COMMAND sh -c "$<TARGET_FILE:wc98-dbexplorer> \"$WC98_TREE/COMMON\" --json /tmp/wc98_db_gate.json && python3 -m json.tool /tmp/wc98_db_gate.json > /dev/null && grep -c recordOffset /tmp/wc98_db_gate.json > /dev/null && grep -c position2 /tmp/wc98_db_gate.json | grep -q '^0$'")
+    set_tests_properties(db_json_valid PROPERTIES ENVIRONMENT "WC98_TREE=${WC98_TREE}")
+endif()
+
 # Match simulation (ported from fifa99-native tests/sim.cmake). The F99_SIM_LINKS gate is dropped:
 # the linking gap Anim_evalSkeleton 0x460ACC is implemented against the WC98 rig
 # (docs/reverse-engineering/SIM_PORT_NOTES.md section 5), so all three suites build.

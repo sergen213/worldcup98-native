@@ -13,8 +13,8 @@ Decoder: `formats/src/fcdb.cpp` (WC98 branch). Raw 17 u32 words preserved (`t.ra
 | 12..19 | away kit | same grammar; socks style = `(b19>>4)&3` |
 | 17 | strategy | `b17>>5` |
 | 21 | tactics | `b21>>2` (6-bit formation id; current teams measured {0,1,3,5,6,7,9,10}) |
-| 22..23 | nation + squad size | nationality `((b23&0xF)<<4)\|((b22&0xF0)>>4)`; low nibble b22 = floor(squad/2) (current squads 22 → 11, legends 11 → 5) |
-| 24..67 | roster | 22 u16 LE player slots, 0 = empty; 1064 filled across 56 teams (current squads 22, legends 11; byte-22 nibble = floor(squad/2)) |
+| 22..23 | nation + squad size | nationality `((b23&0xF)<<4)\|((b22&0xF0)>>4)`; low nibble b22 = floor(squad/2) (current squads 22 → 11, legend squads 11 → 5, legend squads 13 → 6) |
+| 24..67 | roster | 22 u16 LE player slots, 0 = empty; 1064 filled across 56 teams (40 current ×22, 12 legend ×11, 4 legend ×13; byte-22 nibble = floor(squad/2)) |
 
 No club flag, no budget field (FIFA 99's 80 B record has both — schema auto-detect uses
 the record size, `FcdbSchema`).

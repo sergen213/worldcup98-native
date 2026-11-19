@@ -95,8 +95,8 @@ int validate(const Db& d) {
         for (auto id : t.roster) { ++rosterRefs; badRoster += !d.playerIndex.contains(id); }
         if (wc98) {
             // WC98: record bytes 24..67 hold 22 u16 LE roster slots; byte-22 nibble = floor(squad/2)
-            // (measured 2026-11-18: 1064 filled slots all resolve; current teams 22 -> nibble 11,
-            // legend teams 11 -> nibble 5).
+            // (measured 2026-11-18: 1064 filled slots all resolve; squads 22 -> nibble 11,
+            // legend squads 11 -> nibble 5, legend squads 13 -> nibble 6 (teams 872/874/875/876)).
             rosterSizeMismatch += t.roster.size() / 2 != ((t.raw[5] >> 16) & 0xF);
             oversized += t.roster.size() > 22;
         } else {
@@ -125,7 +125,7 @@ int validate(const Db& d) {
         gk += gkField(p) == 0;
         for (auto a : p.attributes) skillOut += a > 15; // WC98 nibbles decode as n*4+39 (39..99)
         if (wc98) {
-            // WC98 shirt field is 8 bits ((b17&0xF)<<4 | b16>>4): numbered squads 0..22;
+            // WC98 shirt field is 8 bits ((b17&0xF)<<4 | b16>>4): numbered squads 1..22;
             // 255 = "no number" sentinel (measured: values > 99 are only 255, 720 of 1782).
             shirtSentinel += p.shirtNumber == 255;
             badShirt += p.shirtNumber != 255 && p.shirtNumber > 99;
@@ -144,11 +144,11 @@ std::string playerJson(const Db& d, const FcdbPlayer& p, std::size_t index) {
                                 p.id, jstr(index < d.playerNames.players.size() ? cp1252ToUtf8(d.playerNames.players[index]) : ""), p.nationality,
                                 p.overall, p.value, p.shirtNumber);
     for (std::size_t k = 0; k < p.attributes.size(); ++k) j += std::format("{}{}:{}", k ? "," : "", jstr(attrName(d.db, k)), attrValue(d.db, p.attributes[k]));
-    j += "}}";
+    j += "}";
     if (wc98) { // 1998-only fields (fifa98edit, MIT): role + look + transfer price; raw words + file offset preserve the source bytes
         std::string raw;
-        for (std::size_t k = 0; k < p.raw.size(); ++k) raw += std::format("{}{:#x}", k ? "," : "", p.raw[k]);
-        j += std::format(",\"role\":{},\"startingByte\":{},\"price\":{},\"hair\":[{},{}],\"skinTone\":{},\"face\":[{},{}],\"recordOffset\":{},\"raw\":[{}]}}",
+        for (std::size_t k = 0; k < p.raw.size(); ++k) raw += std::format("{}{}", k ? "," : "", p.raw[k]);
+        j += std::format(",\"role\":{},\"startingByte\":{},\"price\":{},\"hair\":[{},{}],\"skinTone\":{},\"face\":[{},{}],\"recordOffset\":{},\"raw\":[{}]",
                          p.role, p.startingByte, p.price, p.hairStyle, p.hairColor, p.skinTone, p.faceStyle, p.beardStyle, p.recordOffset, raw);
     } else {
         j += std::format(",\"position\":{},\"position2\":{}", p.position, p.position2);
@@ -283,7 +283,7 @@ int main(int argc, char** argv) {
                              jstr(cp1252ToUtf8(n.fullName)), jstr(cp1252ToUtf8(n.shortName)), jstr(cp1252ToUtf8(n.abbreviation)), t.nationality);
             if (wc98) { // 1998 team fields (fifa98edit, MIT); raw words + file offset preserve the source bytes
                 std::string raw;
-                for (std::size_t k = 0; k < 17; ++k) raw += std::format("{}{:#x}", k ? "," : "", t.raw[k]);
+                for (std::size_t k = 0; k < 17; ++k) raw += std::format("{}{}", k ? "," : "", t.raw[k]);
                 j += std::format(",\"bank\":{},\"stadium\":{},\"tactics\":{},\"strategy\":{},\"rosterSize\":{},\"kits\":{{\"home\":{},\"away\":{}}},\"recordOffset\":{},\"raw\":[{}]",
                                  t.bank, t.stadium, t.tactics, t.strategy, t.rosterSize, kitJson(t.home), kitJson(t.away), t.recordOffset, raw);
             } else

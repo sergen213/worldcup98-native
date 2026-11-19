@@ -15,7 +15,7 @@ Decoder: `formats/src/fcdb.cpp` (`FcdbPlayer`). Raw 5 u32 words are preserved on
 | 7 | appearance | `faceStyle<<3 \| beardStyle` |
 | 8..15 | 16 attribute nibbles | hi = attr[2i], lo = attr[2i+1] |
 | 16 | attributes + shirt | low nibble = tackle (attr[16]); hi nibble = shirt high bits |
-| 17 | shirt + role | shirt = `((b17&0xF)<<4)|(b16>>4)` (8 bits, 0..255; measured in-use 0..22, 255 = 'no number' sentinel ×720); role = b17>>4 |
+| 17 | shirt + role | shirt = `((b17&0xF)<<4)|(b16>>4)` (8 bits, 0..255; measured in-use 1..22, 255 = 'no number' sentinel ×720); role = b17>>4 |
 | 18..19 | engine lane | runtime stamina derives from the **fitness nibble** (`PlayerAttr` record +0x18/+0x1B built from `kFitness`, `simulation/src/player.cpp`); DB bytes 18..19 not decoded — semantics unknown, preserved raw |
 
 ## The 17 attributes (order = record order, values = nibbles)
@@ -50,7 +50,7 @@ not physics parameters; engine skill wiring lives in `Team_buildMatchPlayerAttrs
 
 ## Shirt numbers / roles
 
-* Shirt field 0..1023; in use: **0..22** squad numbers, **255** = 'no number' sentinel
+* Shirt field 0..1023; in use: **1..22** squad numbers, **255** = 'no number' sentinel
   (720 reserve-pool players — editor display code must special-case this).
 * Role b17>>4 ∈ 0..10 (161 goalkeepers at role 0). This is the engine's position-code space
   used by the formation slot fill masks (`kSlotFill` table, exe 0x586B74).

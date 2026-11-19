@@ -25,7 +25,7 @@ This document records what the editor does, how much of it holds for our target
 | League record | fixed | variable-size, packed u32: id 12b, field12 12b, flags 24/25, member count 6b @26 + u16 LE member ids; **member id 0 = empty slot** (league 217 row 6) | same shape, WC98 ids |
 | Team record | 20 B slots | **68 B (17 u32 words)**, roster 22 u16 LE slots at bytes 24..67, byte 22 = squad nibble (floor(squad/2)) + nation nibble, kit/bank/stadium/tactics bits | editor bit layout verified against the file (kit colours, tactics `b21>>2`) |
 | Player record | 18 B | **20 B**: id 14b/nation 10b in bytes 0..2, `starting` byte 3, price bytes 4..5, appearance bytes 6..7, 17 nibbles bytes 8..16, shirt 8b + role 4b bytes 16..17 | editor names/scale reused; offsets are WC98-specific |
-| Shirt numbers | — | values 0..22 numbered, **255 = 'no number' sentinel** (720/1782) | editor cannot display WC98 records (18 B parser); sentinel handling untested |
+| Shirt numbers | — | values 1..22 numbered, **255 = 'no number' sentinel** (720/1782) | editor cannot display WC98 records (18 B parser); sentinel handling untested |
 | Role byte | `roles[]` index | b17>>4 ∈ 0..10 (161 GKs at role 0); engine slot masks (`0x586B74`, 17×11 table) consume the **role** byte, not `starting` | confirmed by sim port `fillFromSquad/fillFromPitch` |
 | `FCDB_<LANG>.DBI` STR0 | league+team names | identical; ENG/FR/GER/IT/DUT/SWE/SPA + DAN (Danish added) | compatible |
 | `FCDBP<LANG>.DBI` STR1 | player names | identical, 1782 entries | compatible |

@@ -61,8 +61,8 @@ target_include_directories(test_teamselect PRIVATE ${CMAKE_SOURCE_DIR}/app)
 # Hub wedge -> launch-entry mapping table (FeFlow::hubButtonEntry): pins the Feflow06 cursor-domain
 # edges so a table edit that swaps modes is caught without a tree.
 wc98_test(test_fescenes unit/test_fescenes.cpp)
-target_include_directories(test_fescenes PRIVATE ${CMAKE_SOURCE_DIR}/app)
-target_link_libraries(test_fescenes PRIVATE wc98_formats wc98_renderer wc98_presentation)
+target_include_directories(test_fescenes PRIVATE ${CMAKE_SOURCE_DIR}/app ${CMAKE_SOURCE_DIR}/simulation/include)
+target_link_libraries(test_fescenes PRIVATE wc98_formats wc98_renderer wc98_presentation wc98_simulation)
 
 # App-level tournament save->load scenario (no tree needed): new game -> play each round ->
 # persist SLOT%02d.SAV after the round -> restore; state identical at every boundary.

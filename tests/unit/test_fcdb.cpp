@@ -68,7 +68,8 @@ static void syntheticFifa99() {
     CHECK(cp1252ToUtf8("\xD6l\x80") == "\xC3\x96l\xE2\x82\xAC");
 }
 
-// WC98 (1998) layout: 68-byte team record, 17 words, roster = 20 big-endian u16 at byte 24,
+// WC98 (1998) layout: 68-byte team record, 17 words, roster = 22 little-endian u16 slots at
+// bytes 24..67,
 // kit / bank / stadium / tactics / strategy / nation bits per fifa98edit (MIT, matrix 12.1).
 static void syntheticWc98() {
     Bytes b = {'F', 'C', 'D', 'B'};
@@ -113,7 +114,7 @@ static void syntheticWc98() {
     CHECK(t.home.shirtStyle == 2 && t.home.shirtColor1 == 4);
     CHECK(!t.isClub && t.budget == 0);  // WC98 has no club flag and no budget field
     const auto& p = db.players[0];
-    CHECK(p.id == 42 && p.nationality == 12 && p.startingSlot == 1 && p.price == 777 && p.value == 777);
+    CHECK(p.id == 42 && p.nationality == 12 && p.startingByte == 1 && p.price == 777 && p.value == 777);
     CHECK(p.hairStyle == 5 && p.hairColor == 1 && p.skinTone == 2 && p.faceStyle == 9 && p.beardStyle == 3);
     CHECK(p.shirtNumber == 16 && p.role == 3);
     for (auto a : p.attributes) { CHECK(a == 15); CHECK(wc98SkillValue(a) == 99); }  // 39..99 step 4
@@ -135,13 +136,13 @@ static void original() {
     for (std::size_t i = 0; i < db.players.size(); ++i) idx[db.players[i].id] = i;
     int unresolved = 0, shirtSentinel = 0, skillOut = 0;
     for (const auto& t : db.teams) {
-        CHECK(t.roster.size() <= 20);
+        CHECK(t.roster.size() <= 22);
         CHECK(t.rosterSize == t.roster.size());
         CHECK(t.home.shirtStyle <= 63 && t.away.socksStyle <= 3); // shirtStyle is a 6-bit field (measured max 32 across 56 teams)
         for (auto id : t.roster) unresolved += !idx.contains(id);
     }
     CHECK(unresolved == 0);
-    // League member lists are zero-padded (measured: league 217 'All Time' row 6 = id 0):
+    // League member lists may carry an empty member slot (single instance: league 217 'CAF' row 6 = id 0):
     // id 0 never resolves, so the validator and this gate treat it as an empty slot.
     std::map<std::uint16_t, std::size_t> teamIdx;
     for (std::size_t i = 0; i < db.teams.size(); ++i) teamIdx[db.teams[i].id] = i;

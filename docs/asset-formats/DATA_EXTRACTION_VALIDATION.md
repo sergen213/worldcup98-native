@@ -10,9 +10,9 @@ ok   team names 56 == team records 56
 ok   player names 1782 == player records 1782
 ok   team ids unique
 ok   player ids strictly ascending (binary-searched by the game)
-ok   984 roster references resolve to players (0 unresolved)
+ok   1064 roster references resolve to players (0 unresolved)
 ok   team roster-size field matches the roster list (0 mismatches)
-ok   WC98 rosters fit the 20 u16 slots (0 outside)
+ok   WC98 rosters fit the 22 u16 slots (0 outside)
 ok   league team references resolve (0 unresolved)          # id 0 = empty member slot
 ok   all 17 skill fields are 4-bit nibbles (0 out of range)
 ok   jersey numbers within 0..99 + 255 sentinel (0 outside, 720 sentinels)
@@ -25,16 +25,16 @@ info World Cup 98 schema: 24 leagues, 56 teams, 1782 players (161 goalkeepers)
 |---|---|
 | `FCDB.DBI` size / header | 39 980 B; magic `FCDB`, version 501, table offsets @8/12/16 |
 | Entities | 24 leagues, 56 teams (68 B), 1782 players (20 B) |
-| Roster slots filled | 984 (40/56 teams capped at 20) |
+| Roster slots filled | 1064 (record bytes 24..67 = 22 u16 LE slots; current teams squad 22, legends 11; byte-22 nibble = floor(squad/2)) |
 | Player ids | strictly ascending, min 34 |
 | Role space (b17>>4) | 0..10; 161 goalkeepers |
-| Shirt field | 10 bits; in-use 0..22; 255 sentinel × 720 (reserve pool) |
+| Shirt field | 8 bits (`((b17&0xF)<<4)|(b16>>4)`); in-use 0..22; 255 sentinel × 720 |
 | `starting` byte 3 | even, 82..198, 54 distinct values (editor RTWC semantics; engine slot matching consumes role byte) |
-| League padding | exactly 1 id-0 member slot (league 217 row 6) |
+| League padding | exactly 1 id-0 member slot (league 217 'CAF', member row 6) |
 | Attribute scale | nibble×4+39 → 39..99 step 4; fitness nibble seeds stamina (`PlayerAttr+0x18`) |
 | `FCDB.DBM` (BE mirror) | 46 220 B, version 501 BE, 2094-player superset pool — documented, not decoded |
 | UI banks | `FCENG/GER/FRE/ITA/SPA/DUT/SWE/DAN.BIN` all same string count; id 0 = `FCLG` magic |
-| JSON export | `--json /tmp/wc98_db.json` = 842 233 B (leagues/teams/players, normalized + raw words + names) |
+| JSON export | `--json /tmp/wc98_db.json` = 955 300 B (leagues/teams/players, normalized + `recordOffset` + 17-word `raw` + names) |
 
 ## Test coverage (`test_fcdb`)
 

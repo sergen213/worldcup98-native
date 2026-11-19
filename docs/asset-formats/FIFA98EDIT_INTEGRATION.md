@@ -23,14 +23,14 @@ This document records what the editor does, how much of it holds for our target
 |---|---|---|---|
 | `COMMON/FCDB.DBI` | section framing | identical framing: `FCDB` magic, version 501, three table offsets @8/12/16 | compatible grammar |
 | League record | fixed | variable-size, packed u32: id 12b, field12 12b, flags 24/25, member count 6b @26 + u16 LE member ids; **member id 0 = empty slot** (league 217 row 6) | same shape, WC98 ids |
-| Team record | 20 B slots | **68 B (17 u32 words)**, roster 20 u16 LE slots at byte 24, byte 22 = squad nibble + nation nibble, kit/bank/stadium/tactics bits | editor bit layout verified against the file (kit colours, tactics `b21>>2`) |
-| Player record | 18 B | **20 B**: id 14b/nation 10b in bytes 0..2, `starting` byte 3, price bytes 4..5, appearance bytes 6..7, 17 nibbles bytes 8..16, shirt 10b + role 4b bytes 16..17 | editor names/scale reused; offsets are WC98-specific |
-| Shirt numbers | — | values 0..22 numbered, **255 = 'no number' sentinel** (720/1782 reserve-pool players) | editor display logic would crash on 255 |
+| Team record | 20 B slots | **68 B (17 u32 words)**, roster 22 u16 LE slots at bytes 24..67, byte 22 = squad nibble (floor(squad/2)) + nation nibble, kit/bank/stadium/tactics bits | editor bit layout verified against the file (kit colours, tactics `b21>>2`) |
+| Player record | 18 B | **20 B**: id 14b/nation 10b in bytes 0..2, `starting` byte 3, price bytes 4..5, appearance bytes 6..7, 17 nibbles bytes 8..16, shirt 8b + role 4b bytes 16..17 | editor names/scale reused; offsets are WC98-specific |
+| Shirt numbers | — | values 0..22 numbered, **255 = 'no number' sentinel** (720/1782) | editor cannot display WC98 records (18 B parser); sentinel handling untested |
 | Role byte | `roles[]` index | b17>>4 ∈ 0..10 (161 GKs at role 0); engine slot masks (`0x586B74`, 17×11 table) consume the **role** byte, not `starting` | confirmed by sim port `fillFromSquad/fillFromPitch` |
 | `FCDB_<LANG>.DBI` STR0 | league+team names | identical; ENG/FR/GER/IT/DUT/SWE/SPA + DAN (Danish added) | compatible |
 | `FCDBP<LANG>.DBI` STR1 | player names | identical, 1782 entries | compatible |
 | `FC<lang>.BIN` | UI strings | `FCLG` magic, NUL-separated, string id = index; 9 banks all same count | compatible |
-| DBM files | — | big-endian mirror: magic + version 501 BE, table offsets BE; `FCDB.DBM` = 24/56/**2094** players (Mac 68k artifact pool) | same framing, BE dword; different pool; not consumed by the PC engine — documented, not decoded |
+| DBM files | — | big-endian mirror: magic + version 501 BE, table offsets BE; `FCDB.DBM` = 24/56/**2094** players; bitfields allocate MSB-first (measured team0 word0 `0x0340000e>>21`=26 = LE id) | same framing, BE dword + mirrored bit positions; different pool; not consumed by the PC engine — documented, not decoded (platform unverified) |
 | `USER/tmmng.db` | tactics file on disk | engine registers `tmmng.db` (+`xfer.db`,`custom.db`,`cusplyr.db`) via `user\%s`; CD ships none | open item — `TMMNG_FORMAT_NOTES.md` |
 
 ## 3. What we did NOT reuse

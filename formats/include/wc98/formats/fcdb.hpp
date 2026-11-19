@@ -68,7 +68,7 @@ struct FcdbTeam {
     bool isClub = false;          // FIFA 99 t4 bit 30; WC98 leaves this unset (use nation)
     std::uint8_t nationality = 0; // FIFA 99 t5 bits 20..27 | WC98: bytes 22..23 nation code
     std::uint16_t rivalTeamId = 0; // FIFA 99 t6 bits 11..21 (unused in the 1998 schema)
-    std::vector<std::uint16_t> roster; // player ids (WC98: 20 u16 BE slots at byte 24, 0 = empty)
+    std::vector<std::uint16_t> roster; // player ids (WC98: 22 u16 LE slots at bytes 24..67, 0 = empty)
     std::array<std::uint32_t, 20> raw{}; // FIFA 99 words; WC98 fills the first 17
 
     // --- WC98 (1998 schema) team fields, from fifa98edit ---
@@ -76,8 +76,9 @@ struct FcdbTeam {
     std::uint8_t stadium = 0;    // byte 3 high nibble: stadium index
     std::uint8_t tactics = 0;    // byte 21 >> 2
     std::uint8_t strategy = 0;   // byte 17 >> 5
-    std::uint8_t rosterSize = 0; // byte 22 low nibble * 2
+    std::uint8_t rosterSize = 0; // filled slot count (WC98 record byte-22 nibble = floor(squad/2))
     FcdbKit1998 home, away;      // kit sets (bytes 4..19)
+    std::size_t recordOffset = 0; // byte offset of the record in FCDB.DBI
 };
 
 struct FcdbPlayer {
@@ -98,8 +99,9 @@ struct FcdbPlayer {
     std::uint8_t skinTone = 0;     // byte 6 bits 0..1
     std::uint8_t faceStyle = 0;    // byte 7 high 5 bits
     std::uint8_t beardStyle = 0;   // byte 7 low 3 bits
-    std::uint8_t startingSlot = 0; // byte 3: starting/formation slot
+    std::uint8_t startingByte = 0; // byte 3 (editor's 'starting' field): WC98 values are even 82..198, never 0; no engine consumer found — semantics unknown
     std::uint32_t price = 0;       // bytes 4..5 (LE): transfer price
+    std::size_t recordOffset = 0;  // byte offset of the record in FCDB.DBI
 };
 
 struct FcdbDatabase {

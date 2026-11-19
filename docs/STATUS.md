@@ -68,10 +68,10 @@ counts in `docs/asset-formats/INVENTORY.md`, `docs/reverse-engineering/EXECUTABL
   `test_hud`; docs/reverse-engineering/HUD_WC98.md (items 2/4/5 RESOLVED pass-10; open: strip-rect recovery depth, radar kit recolor).
 - WC98 deltas requiring adaptation (final, locked by port test gates —
   see REUSABILITY.md section 12): FCDB team record 68 B/17 words
-  (FIFA 99: 80 B/20); roster = 20 little-endian u16 player-id slots
-  (bytes 24..64; 984/984 slots resolve — FIFA 99's big-endian resolves
-  31/984), squad size = filled slots, byte-22 nibble = floor(squad/2)
-  (odd squads 11/13 measured; 40/56 teams slot-capped at 20); shirtStyle is 6-bit
+  (FIFA 99: 80 B/20); roster = 22 little-endian u16 player-id slots
+  (bytes 24..67; 1064/1064 slots resolve — FIFA 99's big-endian lane
+  leaves nearly all slots unresolved), squad size = filled slots, byte-22 nibble = floor(squad/2)
+  (current squads 22, legends 11); shirtStyle is 6-bit
   (measured max 32); FSH 0x2D/0x29 palette records + global fallback
   (PAL.PAK = RefPack→SHPI→type-0x01 palette, resolver yields 256
   colours); PT v2 .SMP streams are 756/756 MicroTalk (tag 9) with

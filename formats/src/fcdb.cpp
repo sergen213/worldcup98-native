@@ -137,16 +137,18 @@ FcdbDatabase FcdbDatabase::parse(std::span<const std::uint8_t> d, FcdbSchema sch
             t.tactics = std::uint8_t(b(21) >> 2);
             t.nationality = std::uint8_t(((b(23) & 0x0Fu) << 4) | ((b(22) & 0xF0u) >> 4));
             Reader rr(d, o + 24);
-            for (unsigned i = 0; i < 20; ++i) {
-                // WC98 (1998): roster slots are little-endian player ids (measured:
-                // 984/984 slots resolve via LE; FIFA 99's big-endian reads 31/984).
+            for (unsigned i = 0; i < 22; ++i) {
+                // WC98 (1998): roster slots are little-endian player ids (measured: record
+                // bytes 24..67 hold 22 u16 LE slots; 1064/1064 nonzero ids resolve to players.
+                // FIFA 99's big-endian lane reads separate layouts.)
                 std::uint16_t pid = rr.u16le();
                 if (pid) t.roster.push_back(pid); // 0 marks an unused slot
             }
             // 1998 squad size = filled roster slots; the byte-22 nibble stores floor(squad/2)
-            // (measured: odd squads 11/13 -> nibbles 5/6; 40 of 56 teams are slot-capped at 20).
+            // (measured: 40 current teams squad 22 -> nibble 11; 16 legend teams squad 11 -> 5).
             t.rosterSize = std::uint8_t(t.roster.size());
         }
+        t.recordOffset = o;
         db.teams.push_back(std::move(t));
     }
 
@@ -179,7 +181,7 @@ FcdbDatabase FcdbDatabase::parse(std::span<const std::uint8_t> d, FcdbSchema sch
             auto b = [&](unsigned i) { return std::uint32_t(rec[i]); };
             p.id = std::uint16_t(((b(1) & 0x3Fu) << 8) | b(0));
             p.nationality = std::uint16_t((b(2) << 2) | ((b(1) & 0xC0u) >> 6));
-            p.startingSlot = std::uint8_t(b(3));
+            p.startingByte = std::uint8_t(b(3));
             p.price = b(4) | (b(5) << 8);
             p.value = std::uint16_t(p.price);
             p.hairStyle = std::uint8_t(b(6) >> 4);
@@ -198,6 +200,7 @@ FcdbDatabase FcdbDatabase::parse(std::span<const std::uint8_t> d, FcdbSchema sch
             for (auto a : p.attributes) sum += wc98SkillValue(a);
             p.overall = std::uint8_t(sum / int(p.attributes.size()));
         }
+        p.recordOffset = o;
         db.players.push_back(p);
     }
     return db;

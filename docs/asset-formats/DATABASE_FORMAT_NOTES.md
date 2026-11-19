@@ -27,7 +27,7 @@ fields: `char[6] abbreviation`, `char[11] short name`, then cstring full name.
 
 * League table — variable records, packed u32: id bits 0..11, field12 bits 12..23,
   flags bits 24/25, member count bits 26..31, then `count` u16 LE team ids.
-  **id 0 = empty member slot** (zero padding; league 217 = 'All Time Greats' has a padded row).
+  **id 0 = empty member slot** (single instance: league 217 'CAF' member row 6).
 * Team table — 68 B records (17 u32 words), 56 teams. See `TEAM_AND_FORMATION_REFERENCE.md`.
 * Player table — 20 B records, 1782 players. See `PLAYER_ATTRIBUTE_REFERENCE.md`.
 
@@ -43,14 +43,18 @@ fields: `char[6] abbreviation`, `char[11] short name`, then cstring full name.
 
 `FCDB.DBM` (46 220 B), `FCDBP*.DBM`, `FCDB_<LANG>.DBM`: identical magic/version semantics but
 every framing dword is byte-swapped (version reads 501 BE, table offsets BE). `FCDB.DBM`
-counts: 24 leagues / 56 teams / **2094 players** — a superset pool (Mac 68k companion build);
-record bytes do not byte-match the LE master pool. PC engine path strings load only the
-`.dbi` set (`common\fcdb.dbi`, `common\fcdb_%s.dbi`, `common\fcdbpeng.dbi`, raw 0x164558+);
-DBM files are inventory-documented, deliberately not decoded.
+counts: 24 leagues / 56 teams / **2094 players** — a superset pool (platform unverified);
+record bytes do not byte-match the LE master pool. Note: Watcom bitfields allocate MSB-first —
+measured `FCDB.DBM` team word0 `0x0340000e >> 21` = 26 equals the LE master team0 id
+(`0xe000001a & 0x7ff` = 26), so a BE decoder must mirror bit positions within each word
+(LE field at `[lo,n]` → BE at `[32-lo-n,n]`), not just swap dword reads. PC engine path
+strings load only the `.dbi` set (`common\fcdb.dbi`, `common\fcdb_%s.dbi`,
+`common\fcdbpeng.dbi`); DBM files are inventory-documented, deliberately not decoded.
 
 ## Validation protocol (currently green)
 
 `wc98-dbexplorer <tree>/COMMON --validate`: name counts 24/56/1782, unique team ids,
-strictly-ascending player ids (the game binary-searches them), 984 roster slots resolve,
-roster-size nibble matches filled slots, ≤20-slot rosters, league members resolve (id 0 = pad),
-all 17 attributes are nibbles, shirts 0..22 + 255 sentinel (720).
+strictly-ascending player ids (the game binary-searches them), 1064 roster slots resolve,
+byte-22 nibble == floor(squad/2) (22 u16 LE slots at bytes 24..67), league members resolve
+(single id-0 member in league 217 'CAF'), all 17 attributes are nibbles, 8-bit shirts
+0..22 + 255 sentinel (720).

@@ -73,7 +73,7 @@ MatchData makeMd() {
             wc98::formats::FcdbPlayer p{};
             p.id = std::uint16_t(t * 12 + i);
             p.shirtNumber = std::uint8_t(i + 1);
-            p.startingSlot = std::uint8_t(i < 11 ? i : 0); // GK + 10 field, 1 sub each
+            p.startingByte = std::uint8_t(i < 11 ? i : 0); // GK + 10 field, 1 sub each
             p.position = (i == 0) ? 0 : 3;                  // keeper / midfielder codes
             for (auto& a : p.attributes) a = 10;
             md.sheets[t].squad.push_back(p);

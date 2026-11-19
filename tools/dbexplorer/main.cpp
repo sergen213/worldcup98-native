@@ -94,10 +94,11 @@ int validate(const Db& d) {
     for (const auto& t : db.teams) {
         for (auto id : t.roster) { ++rosterRefs; badRoster += !d.playerIndex.contains(id); }
         if (wc98) {
-            // WC98: the record's own roster-size field (byte 22 nibble * 2) must match the
-            // 20 big-endian u16 slots, and 1998 rosters cap at 20 (fifa98edit, MIT).
-            rosterSizeMismatch += t.rosterSize != t.roster.size();
-            oversized += t.roster.size() > 20;
+            // WC98: record bytes 24..67 hold 22 u16 LE roster slots; byte-22 nibble = floor(squad/2)
+            // (measured 2026-11-18: 1064 filled slots all resolve; current teams 22 -> nibble 11,
+            // legend teams 11 -> nibble 5).
+            rosterSizeMismatch += t.roster.size() / 2 != ((t.raw[5] >> 16) & 0xF);
+            oversized += t.roster.size() > 22;
         } else {
             if (t.isClub && (t.roster.size() < 16 || t.roster.size() > 25)) ++clubOut;
             if (!t.isClub)
@@ -108,7 +109,7 @@ int validate(const Db& d) {
     check(badRoster == 0, std::format("{} roster references resolve to players ({} unresolved)", rosterRefs, badRoster));
     if (wc98) {
         check(rosterSizeMismatch == 0, std::format("team roster-size field matches the roster list ({} mismatches)", rosterSizeMismatch));
-        check(oversized == 0, std::format("WC98 rosters fit the 20 u16 slots ({} outside)", oversized));
+        check(oversized == 0, std::format("WC98 rosters fit the 22 u16 slots ({} outside)", oversized));
     } else {
         check(clubOut == 0, std::format("club rosters within the manual's 16..25 players ({} outside)", clubOut));
         check(natMismatch == 0, std::format("national-team players carry the team's nationality code ({} mismatches)", natMismatch));
@@ -116,7 +117,7 @@ int validate(const Db& d) {
     int badLeague = 0;
     for (const auto& l : db.leagues)
         for (auto id : l.teamIds)
-            badLeague += id != 0 && !d.teamIndex.contains(id); // id 0 = empty member slot (measured: league 217 zero-padded)
+            badLeague += id != 0 && !d.teamIndex.contains(id); // id 0 = empty member slot (single instance: league 217 'CAF' row 6)
     check(badLeague == 0, std::format("league team references resolve ({} unresolved)", badLeague));
     int gk = 0, skillOut = 0, badShirt = 0, shirtSentinel = 0;
     const auto gkField = [&](const FcdbPlayer& p) { return wc98 ? p.role : p.position; }; // 1998: role byte 17 >> 4
@@ -124,8 +125,8 @@ int validate(const Db& d) {
         gk += gkField(p) == 0;
         for (auto a : p.attributes) skillOut += a > 15; // WC98 nibbles decode as n*4+39 (39..99)
         if (wc98) {
-            // WC98 shirt field is 10 bits (0..22 numbered squads); 255 = "no number"
-            // sentinel for reserve-pool players (measured: 720/1782, values > 99 are only 255).
+            // WC98 shirt field is 8 bits ((b17&0xF)<<4 | b16>>4): numbered squads 0..22;
+            // 255 = "no number" sentinel (measured: values > 99 are only 255, 720 of 1782).
             shirtSentinel += p.shirtNumber == 255;
             badShirt += p.shirtNumber != 255 && p.shirtNumber > 99;
         }
@@ -139,14 +140,19 @@ int validate(const Db& d) {
 
 std::string playerJson(const Db& d, const FcdbPlayer& p, std::size_t index) {
     const bool wc98 = d.db.schema == FcdbSchema::WorldCup98;
-    std::string j = std::format("{{\"id\":{},\"name\":{},\"nationality\":{},\"overall\":{},\"value\":{},\"position\":{},\"position2\":{},\"shirt\":{},\"attributes\":{{",
+    std::string j = std::format("{{\"id\":{},\"name\":{},\"nationality\":{},\"overall\":{},\"value\":{},\"shirt\":{},\"attributes\":{{",
                                 p.id, jstr(index < d.playerNames.players.size() ? cp1252ToUtf8(d.playerNames.players[index]) : ""), p.nationality,
-                                p.overall, p.value, p.position, p.position2, p.shirtNumber);
+                                p.overall, p.value, p.shirtNumber);
     for (std::size_t k = 0; k < p.attributes.size(); ++k) j += std::format("{}{}:{}", k ? "," : "", jstr(attrName(d.db, k)), attrValue(d.db, p.attributes[k]));
     j += "}}";
-    if (wc98) // 1998-only fields (fifa98edit, MIT): look + role + transfer price
-        j += std::format(",\"role\":{},\"startingSlot\":{},\"price\":{},\"hair\":[{},{}],\"skinTone\":{},\"face\":[{},{}]", p.role, p.startingSlot,
-                         p.price, p.hairStyle, p.hairColor, p.skinTone, p.faceStyle, p.beardStyle);
+    if (wc98) { // 1998-only fields (fifa98edit, MIT): role + look + transfer price; raw words + file offset preserve the source bytes
+        std::string raw;
+        for (std::size_t k = 0; k < p.raw.size(); ++k) raw += std::format("{}{:#x}", k ? "," : "", p.raw[k]);
+        j += std::format(",\"role\":{},\"startingByte\":{},\"price\":{},\"hair\":[{},{}],\"skinTone\":{},\"face\":[{},{}],\"recordOffset\":{},\"raw\":[{}]}}",
+                         p.role, p.startingByte, p.price, p.hairStyle, p.hairColor, p.skinTone, p.faceStyle, p.beardStyle, p.recordOffset, raw);
+    } else {
+        j += std::format(",\"position\":{},\"position2\":{}", p.position, p.position2);
+    }
     return j + "}";
 }
 
@@ -251,7 +257,8 @@ int main(int argc, char** argv) {
             std::printf("  home %s\n  away %s\n", kitText(team.home).c_str(), kitText(team.away).c_str());
         for (auto id : team.roster) {
             const auto& p = d.db.players[d.playerIndex.at(id)];
-            std::printf("  #%-2u %-20s pos=%-2u ovr=%-2u nat=%-3u", p.shirtNumber, d.player(id).c_str(), p.position, p.overall, p.nationality);
+            std::printf("  #%-2u %-20s pos=%-2u ovr=%-2u nat=%-3u", p.shirtNumber, d.player(id).c_str(),
+                        d.db.schema == FcdbSchema::WorldCup98 ? p.role : p.position, p.overall, p.nationality);
             for (std::size_t k = 0; k < p.attributes.size(); ++k)
                 std::printf(" %.5s=%d", attrName(d.db, k).data(), attrValue(d.db, p.attributes[k]));
             std::printf("\n");
@@ -274,10 +281,12 @@ int main(int argc, char** argv) {
             const auto& n = i < d.names.teams.size() ? d.names.teams[i] : none;
             j += std::format("{}\n{{\"index\":{},\"id\":{},\"name\":{},\"shortName\":{},\"abbreviation\":{},\"nationality\":{}", i ? "," : "", i, t.id,
                              jstr(cp1252ToUtf8(n.fullName)), jstr(cp1252ToUtf8(n.shortName)), jstr(cp1252ToUtf8(n.abbreviation)), t.nationality);
-            if (wc98) // 1998 team fields (fifa98edit, MIT)
-                j += std::format(",\"bank\":{},\"stadium\":{},\"tactics\":{},\"strategy\":{},\"rosterSize\":{},\"kits\":{{\"home\":{},\"away\":{}}}", t.bank,
-                                 t.stadium, t.tactics, t.strategy, t.rosterSize, kitJson(t.home), kitJson(t.away));
-            else
+            if (wc98) { // 1998 team fields (fifa98edit, MIT); raw words + file offset preserve the source bytes
+                std::string raw;
+                for (std::size_t k = 0; k < 17; ++k) raw += std::format("{}{:#x}", k ? "," : "", t.raw[k]);
+                j += std::format(",\"bank\":{},\"stadium\":{},\"tactics\":{},\"strategy\":{},\"rosterSize\":{},\"kits\":{{\"home\":{},\"away\":{}}},\"recordOffset\":{},\"raw\":[{}]",
+                                 t.bank, t.stadium, t.tactics, t.strategy, t.rosterSize, kitJson(t.home), kitJson(t.away), t.recordOffset, raw);
+            } else
                 j += std::format(",\"isClub\":{},\"budget\":{},\"rivalTeamId\":{}", t.isClub, t.budget, t.rivalTeamId);
             j += ",\"players\":[";
             for (std::size_t k = 0; k < t.roster.size(); ++k) j += std::format("{}{}", k ? "," : "", t.roster[k]);
@@ -290,7 +299,7 @@ int main(int argc, char** argv) {
     }
     if (!csvOut.empty()) {
         const bool wc98 = d.db.schema == FcdbSchema::WorldCup98;
-        std::string p = wc98 ? "id,name,nationality,overall,price,position,position2,shirt,role,startingSlot,hairStyle,hairColor,skinTone,faceStyle,beardStyle,teams"
+        std::string p = wc98 ? "id,name,nationality,overall,price,shirt,role,startingByte,hairStyle,hairColor,skinTone,faceStyle,beardStyle,teams"
                              : "id,name,nationality,overall,value,position,position2,shirt,teams";
         for (std::size_t k = 0; k < 17; ++k) p += "," + std::string(attrName(d.db, k));
         p += "\n";
@@ -303,8 +312,8 @@ int main(int argc, char** argv) {
         for (std::size_t i = 0; i < d.db.players.size(); ++i) {
             const auto& pl = d.db.players[i];
             if (wc98)
-                p += std::format("{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}", pl.id, csvField(d.player(pl.id)), pl.nationality, pl.overall,
-                                 pl.price, pl.position, pl.position2, pl.shirtNumber, pl.role, pl.startingSlot, pl.hairStyle, pl.hairColor,
+                p += std::format("{},{},{},{},{},{},{},{},{},{},{},{},{},{}", pl.id, csvField(d.player(pl.id)), pl.nationality, pl.overall,
+                                 pl.price, pl.shirtNumber, pl.role, pl.startingByte, pl.hairStyle, pl.hairColor,
                                  pl.skinTone, pl.faceStyle, pl.beardStyle, csvField(memberOf[pl.id]));
             else
                 p += std::format("{},{},{},{},{},{},{},{},{}", pl.id, csvField(d.player(pl.id)), pl.nationality, pl.overall, pl.value, pl.position,

@@ -15,8 +15,8 @@ Decoder: `formats/src/fcdb.cpp` (`FcdbPlayer`). Raw 5 u32 words are preserved on
 | 7 | appearance | `faceStyle<<3 \| beardStyle` |
 | 8..15 | 16 attribute nibbles | hi = attr[2i], lo = attr[2i+1] |
 | 16 | attributes + shirt | low nibble = tackle (attr[16]); hi nibble = shirt high bits |
-| 17 | shirt + role | shirt = `((b17&0xF)<<4)|(b16>>4)` (10 bits); role = b17>>4 |
-| 18..19 | engine lane | runtime stamina derives from the **fitness nibble** (`PlayerAttr` record +0x18/+0x1B built from `kFitness`, `simulation/src/player.cpp`); DB bytes 18..19 carry no decoded consumer in the engine path — preserved raw |
+| 17 | shirt + role | shirt = `((b17&0xF)<<4)|(b16>>4)` (8 bits, 0..255; measured in-use 0..22, 255 = 'no number' sentinel ×720); role = b17>>4 |
+| 18..19 | engine lane | runtime stamina derives from the **fitness nibble** (`PlayerAttr` record +0x18/+0x1B built from `kFitness`, `simulation/src/player.cpp`); DB bytes 18..19 not decoded — semantics unknown, preserved raw |
 
 ## The 17 attributes (order = record order, values = nibbles)
 

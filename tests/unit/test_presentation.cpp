@@ -294,8 +294,13 @@ void pureLogic() {
     CHECK(kits.kitFile(26, true) == "PK026A");
     CHECK(kits.kitFile(26, false) == "PK026A"); // no PK026H on disk -> home falls back to A
     touch(tmp, "PK031H");
+    touch(tmp, "PK031A");
+    touch(tmp, "PK861H"); // legend team ships H-only (PK861A absent on the real CD)
     CHECK(kits.kitFile(31, false) == "PK031H");
     CHECK(kits.kitFile(31, true) == "PK031A");
+    CHECK(kits.kitFile(861, true) == "PK861H"); // legend teams ship no PK###A -> away falls back to H
+    CHECK(kits.kitFile(861, false) == "PK861H");
+    CHECK(kits.kitFile(99, false) == "PK099A"); // neither side on disk -> nominal A name
     // Officials: PK999B..E table with the team-atlas fallback.
     CHECK(kits.officialKitFile(0) == "PK026A"); // no PK999B marker here -> fallback
     touch(tmp, "PK999D");

@@ -13,8 +13,8 @@ Decoder: `formats/src/fcdb.cpp` (WC98 branch). Raw 17 u32 words preserved (`t.ra
 | 12..19 | away kit | same grammar; socks style = `(b19>>4)&3` |
 | 17 | strategy | `b17>>5` |
 | 21 | tactics | `b21>>2` (6-bit formation id; current teams measured {0,1,3,5,6,7,9,10}) |
-| 22..23 | nation + squad size | nationality `((b23&0xF)<<4)\|((b22&0xF0)>>4)`; low nibble b22 = floor(squad/2) (odd squads 11/13 → 5/6) |
-| 24..64 | roster | 20 u16 LE player ids, 0 = empty slot; 984 filled slots across 56 teams (40 teams slot-capped) |
+| 22..23 | nation + squad size | nationality `((b23&0xF)<<4)\|((b22&0xF0)>>4)`; low nibble b22 = floor(squad/2) (current squads 22 → 11, legends 11 → 5) |
+| 24..67 | roster | 22 u16 LE player slots, 0 = empty; 1064 filled across 56 teams (current squads 22, legends 11; byte-22 nibble = floor(squad/2)) |
 
 No club flag, no budget field (FIFA 99's 80 B record has both — schema auto-detect uses
 the record size, `FcdbSchema`).
@@ -22,7 +22,7 @@ the record size, `FcdbSchema`).
 ## Leagues
 
 24 variable-size records (see `DATABASE_FORMAT_NOTES.md`). Measured: league 104 "World Cup"
-(39 teams), 198 "Classics" (16 legend teams 861..876), then year groups 1930..1978 pairs;
+(40 teams), 198 "Classics" (16 legend teams 861..876), then year groups 1930..1978 pairs;
 member id 0 = empty slot. `field12`/`flag24/25` are container metadata (unused by UI lanes
 decoded so far).
 

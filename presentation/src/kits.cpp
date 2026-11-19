@@ -109,13 +109,15 @@ Look lookOf(const formats::FcdbPlayer& p) {
 KitTextures::KitTextures(const GameData& data) : data_(data) {}
 
 std::string KitTextures::kitFile(std::uint16_t teamId, bool away) const {
-    // Away kits: PK###A (exists for every FCDB id; measured PK026A). Home: PK###H is a distinct
-    // pre-coloured file (measured md5 differs from A); fall back to A when absent.
-    if (!away) {
-        std::string h = std::format("PK{:03d}H", teamId);
-        if (data_.exists(texPath(h))) return h;
-    }
-    return std::format("PK{:03d}A", teamId);
+    // Home and away atlases are distinct pre-coloured files (measured md5 differs). On-disk
+    // counts: 56 `PK###H` for every team 026..876; 41 `PK###A` = only the 40 current teams
+    // 026..845 + PK999A (legend teams 861..876 ship H-only). Away therefore falls back to H
+    // where the A file is absent (e.g. PK861A does not exist on disk).
+    const std::string a = std::format("PK{:03d}A", teamId);
+    const std::string h = std::format("PK{:03d}H", teamId);
+    if (!away) return data_.exists(texPath(h)) ? h : a;
+    if (data_.exists(texPath(a))) return a;
+    return data_.exists(texPath(h)) ? h : a;
 }
 
 std::string KitTextures::officialKitFile(int which) const {

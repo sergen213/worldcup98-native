@@ -2659,9 +2659,10 @@ void FeFlow::saveSelectedSlot() {
 // name caption "#shirt name" (FCDBP names), FC-bank position label (roles list order in
 // fifa98edit: GK SW LB CB RB LM CM RM LF CF RF RCB LCB RCM LCM; labels verified in FCENG.BIN —
 // GK=810 SW=1801 RB=1531 LB=979 RM=1534 LM=982 RF=1533 LF=981 MF=1070 FW=751, CB/RCB/LCB share
-// the sweeper caption [H]), and the aNNN icon columns from FE/PACK/FEFLOW73 (redc/yell/but1..3):
-// selection = starting-slot marker, bio/fatigue = state tiles, card columns driven by the FCDB
-// aggression nibble (attributes[0], 12+ -> red card) [H]. sbar thumb pans the four-row window.
+// the sweeper caption [H]), and the aNNN icon columns from FE/PACK/FEFLOW73 (but1..3):
+// selection = starting-eleven marker (lineup index, first 11 roster slots); the redc/yell card
+// columns are match state and stay intentionally blank (original flow unrecoverable — Wine lane
+// dead). sbar thumb pans the four-row window.
 FeDrawStats FeFlow::drawMgmtGrid(render::SpriteBatch& ui) const {
     FeDrawStats st = presentation::composite(mgmt43_, ui, const_cast<ScreenArt&>(art_), text_.get(), &mgmt43Visible_);
     const int n = gridRosterSize();
@@ -2701,16 +2702,14 @@ FeDrawStats FeFlow::drawMgmtGrid(render::SpriteBatch& ui) const {
         }
         if (!pl) continue;
         // aNNN icon columns (widget "a" + column(0..4) + row): tag per column [H], drawn at the slot.
-        const int aggr = pl->attributes[0]; // nibble 0..15, scale 39+4*n; 12+ ~ aggressive [H]
+        // Columns 3/4 (match/total cards) are match state, not database content: the original FE
+        // card flow is unreachable under Wine (DirectDraw capture dead) — tiles intentionally blank.
         static constexpr std::array<const char*, 5> kTags{"but1", "but2", "but3", "", ""};
         for (int col = 0; col < 5; ++col) {
             const formats::LayoutObject* w = mgmt43_.object(std::format("a{}{}", col, r)); // a0N + row digit
             if (!w) continue;
             std::string_view tag = kTags[std::size_t(col)];
-            if (col >= 3) { // match-card / total-card columns: discipline tiles from FCDB aggression [H]
-                tag = aggr >= 12 ? "redc" : aggr >= 9 ? "yell" : "";
-                if (col == 4 && aggr < 9) continue; // totals mirror the match column, no tile under booking
-            } else if (col == 0 && idx >= 11) {
+            if (col == 0 && idx >= 11) {
                 tag = ""; // outside the starting eleven (first 11 roster slots, lineup model): slot blank
             }
             if (tag.empty()) continue;

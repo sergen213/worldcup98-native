@@ -13,13 +13,16 @@
 | `PK<teamid>A.FSH` / `PK<teamid>H.FSH` | full kit atlas per FCDB team id (026..876): tags `hifa hrsv hlsv hslv hclt hulg hllg hjbk hjfr hair` + model-mirror `m*`/`l*` entries (24 tags, type-0x7B GIMX records) |
 | `PK999{A,B,C,D,E}.FSH` | officials / shared single-set atlases (referee sets) |
 | `GK<nn>_{30,70,90}.FSH` | keeper kit sets GK00..GK05 × 3 LODs (no `_10`; LOD 10 falls back to `_30`) |
-| `RK<nn>_{30,70,90}.FSH` | rookie/keeper alternates |
+| `RK00..RK02_{30,70,90}.FSH` | three keeper-alternate sets (purpose unverified — not consumed by the port) |
 | `COM_{10,30,70,90}.FSH` | shared skin/head parts (`hgvo harm hhdc mhdc ...`) |
-| `HHIG_*` / `HMED_*` / `HLOW_*` | hair + face strip atlases per LOD tier (LOW carries `hair` only; face tags `hifa`/`mdfa` are runtime-composited — no CD bitmap) |
+| `HHIG_10/30/70/90` + `HMED_30/70/90` | hair/face strip atlases per LOD tier — no `HLOW_*` files exist: the LOW tier carries `hair` inside the team/COM atlas, and face tags `hifa`/`mdfa` are runtime-composited (no CD bitmap) |
 | `PALJER(.10).FSH` | numeric jersey-palette swap entries (`0800 0801 1600 1601`) — the runtime recolor path (`pk/rk` handlers `FUN_00411080`/`FUN_004110ec`) |
 
-Home-vs-away: `H` files are distinct pre-coloured atlases (md5 differs from `A`);
-the loader prefers `PK###H`, falls back to `PK###A` when absent (e.g. `PK861H` legends).
+Home-vs-away: `H` files are distinct pre-coloured atlases (md5 differs from `A`). Measured
+on disk: 56 `PK###H` (every team 026..876) but only 41 `PK###A` — the 40 current teams
+026..845 plus `PK999A`; **legend teams 861..876 ship H-only**. The loader therefore prefers
+`PK###H` for home and `PK###A` for away, falling back to `H` where the `A` file is absent
+(PK861A does not exist).
 
 ## Data-driven mapping in the port
 

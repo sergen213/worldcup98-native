@@ -399,3 +399,21 @@ the entry byte `DAT_0058f3b2 + id*4` via the play slot.
 Port: no code change — the exe SFX path is a request-queue + spec-throttle
 model; the id→sample table stays inside the SND/EACSND bank layer
 (unrecovered [H]). Evidence: `analysis/pass61snd/NOTES.md`.
+
+### 61b: CRWD scene-lane filenames (closes the pass-56 open item)
+Retracted: "scene-10 loader loops slots 0..8 with an undecoded per-slot
+filename". Disassembly (`/tmp/wc98pass60/GhidraWc98Aud20.py`): the slot loop
+`FUN_0048e280` runs exactly 2 iterations (`XOR EDX,EDX; ... CMP EDX,0x8;
+JNZ`) over 2 pointer-table entries `DAT_0057eb44/+8` — initial file bytes are
+non-pointer garbage with no static write site (runtime-patched pool [H).
+The filenames come from the scene dispatch `0x48e7a0..0x48e847`:
+scene `DAT_00640fb4 == 10` loads `TRAFF.BNK` (VA 0x566af0) + `TRAFF.CRD`
+(0x566afc); every other scene loads `CROWD.BNK` (0x566b08) + `CROWD.CRD`
+(0x566b14) through loader `FUN_0048e190` — stack buffer format
+`"AUDIO\\CRWD\\%s"` (0x566acc, via `0x49168e`), `EDX = FUN_0048e8d0()` count,
+`FUN_00439810(path, count)` → handle. Handles land in `DAT_006325c0` (bank),
+`DAT_006325c4` (card); slot-loop handles in `DAT_006325d0/5d4`, freed by
+teardown `0x48e300` via `0x42b070`. Common wiring: `FUN_004e3128` attach on
+`DAT_006325c8`, then `FUN_004e4a80` card gate. The port's crowd bed already
+consumes `CROWD.BNK/CRD`; `TRAFF.*` is the scene-10 (stadium) variant of the
+same loader, not a new sample source — no port change.

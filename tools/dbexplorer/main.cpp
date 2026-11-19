@@ -203,11 +203,8 @@ void dumpGen4(const fs::path& dir, const std::string& sel) {
 
 } // namespace
 
-int main(int argc, char** argv) {
-    if (argc < 2) {
-        std::fprintf(stderr, "usage: wc98-dbexplorer <FE-dir> [--lang ENG] [--leagues] [--teams] [--team <index|name>] [--json f] [--csv dir] [--validate] [--gen4 [VIV]]\n");
-        return 2;
-    }
+namespace {
+int run(int argc, char** argv) {
     fs::path dir = argv[1];
     std::string lang = "ENG", jsonOut, csvOut, teamSel, gen4Sel;
     bool leagues = false, teams = false, doValidate = false, doGen4 = false;
@@ -349,4 +346,19 @@ int main(int argc, char** argv) {
     if (doGen4) dumpGen4(dir, gen4Sel);
     if (doValidate) return validate(d) ? 1 : 0;
     return 0;
+}
+
+} // namespace
+
+int main(int argc, char** argv) {
+    if (argc < 2 || argv[1][0] == '-') {
+        std::fprintf(stderr, "usage: wc98-dbexplorer <FE-dir> [--lang ENG] [--leagues] [--teams] [--team <index|name>] [--json f] [--csv dir] [--validate] [--gen4 [VIV]]\n");
+        return 2;
+    }
+    try {
+        return run(argc, argv);
+    } catch (const std::exception& e) {
+        std::fprintf(stderr, "error: %s\n", e.what());
+        return 2;
+    }
 }

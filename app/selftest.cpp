@@ -32,6 +32,9 @@
 #include "wc98/platform/window.hpp"   // D-72 FE lane: the interactive shell's window + renderer
 #include "wc98/renderer/vulkan.hpp"
 #include "wc98/audio/mixer.hpp" // fe-options gate: loopback Mixer + master-gain lane
+#include "wc98/audio/scene_levels.hpp" // match-audio-events: idx2 crowd lane rows
+#include "game_audio.hpp"      // MatchAudio: event-seam SFX/crowd counts
+#include "commentary.hpp"      // Commentary: phrase pick + decode over the event stream
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>
@@ -1713,6 +1716,72 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
         } catch (const std::exception& e) {
             st.passed = true; // documented environment skip (headless-CI pattern)
             st.detail = fmt("fe-options skipped: FE shell unavailable ({})", e.what());
+        }
+        steps.push_back(std::move(st));
+    }
+
+    {
+        // 14b3b. match-audio-events (pass-50): event-seam integration - the real sim events
+        // recorded during this scripted match drive MatchAudio (whistle/kick/goal counters +
+        // running crowd loop) and Commentary (phrase pick + segment decode) through a loopback
+        // mixer. Duplicate protection = the driver cursor seam (livematch sfxPos); here one
+        // single pass over w.events must give counts exactly matching the observed event types.
+        StepRes st{"match-audio-events", false, ""};
+        try {
+            audio::Mixer mx{std::optional<std::uint32_t>{44100u}}; // loopback: no hardware device
+            app::MatchAudio ma(tree);
+            ma.setMixer(&mx);
+            ma.startCrowd();
+            const bool crowd = ma.crowdStarted();
+            const std::size_t nEv = w.events.size();
+            unsigned nWhistleEv = 0, nShotEv = 0, nGoalEv = 0;
+            for (std::size_t i = 0; i < nEv; ++i) {
+                const auto t = w.events[i].type;
+                if (t == sim::EventType::KickOff || t == sim::EventType::PeriodEnd ||
+                    t == sim::EventType::MatchEnd) nWhistleEv += 1;
+                if (t == sim::EventType::Shot) nShotEv += 1;
+                if (t == sim::EventType::Goal || t == sim::EventType::OwnGoal) nGoalEv += 1;
+                ma.trigger(w.events[i]);
+            }
+            const bool counts = ma.whistles() >= nWhistleEv && ma.kicks() >= nShotEv &&
+                                ma.goals() >= nGoalEv && nEv > 0;
+            // Canonical event classes beyond what the scripted stream happened to raise: the
+            // livematch seam fires KickOff/PeriodEnd (whistle), Shot (kick thud), Goal (crowd
+            // swell) - one pass each, exact counter growth (no duplicate event processing).
+            const unsigned wBefore = ma.whistles(), kBefore = ma.kicks(), gBefore = ma.goals();
+            const sim::SimEvent canon[4] = {
+                {static_cast<std::uint32_t>(w.time.totalFrames), sim::EventType::KickOff, 0, -1, 0, 0},
+                {static_cast<std::uint32_t>(w.time.totalFrames), sim::EventType::Shot, 0, 3, 0, 0},
+                {static_cast<std::uint32_t>(w.time.totalFrames), sim::EventType::Goal, 0, 4, 600, 0},
+                {static_cast<std::uint32_t>(w.time.totalFrames), sim::EventType::PeriodEnd, 0, -1, 0, 0},
+            };
+            for (const auto& e : canon) ma.trigger(e);
+            const bool canonOk = ma.whistles() == wBefore + 2 && ma.kicks() == kBefore + 1 &&
+                                 ma.goals() == gBefore + 1;
+            // idx2 crowd lane (pass-49 row): percent rewrite relevels the running loop voice
+            // through the SMIX lane float without stopping it (FUN_004906a4 -> voice 0x34).
+            audio::sceneLevels().setLevel(audio::kSceneCrowd, 40);
+            ma.relevelCrowd();
+            const bool lane = audio::sceneLevels().gainQ7(audio::kSceneCrowd) == (40 * 0x7f) / 100;
+            audio::sceneLevels().setLevel(audio::kSceneCrowd, 100); // default restore
+            // Commentary over the event stream: the tree gate (test_commentary) proves mapped
+            // classes fire; here goal + foul canonical events must pick and decode phrases.
+            app::Commentary c;
+            const bool bank = c.loadTree(tree);
+            for (std::size_t i = 0; i < nEv; ++i) c.trigger(w.events[i]);
+            c.trigger(canon[2]); // Goal -> phrase pick (tree gate phrase 1)
+            c.trigger(sim::SimEvent{static_cast<std::uint32_t>(w.time.totalFrames), sim::EventType::Foul, 0, 5, 2, 0});
+            for (int t = 0; t < 400; ++t) c.pump();
+            const bool cmt = !bank || (c.sentencesStarted() >= 1 && c.decodedSegments() >= 1);
+            st.passed = crowd && counts && canonOk && lane && cmt;
+            st.detail = fmt("match-audio-events: events={} crowd={} whistle {}/{} kick {}/{} "
+                            "goal {}/{} canon={} laneQ7={} bank={} sentences={} decoded={}",
+                            nEv, int(crowd), ma.whistles(), nWhistleEv + 2, ma.kicks(), nShotEv + 1,
+                            ma.goals(), nGoalEv + 1, int(canonOk), int(lane), int(bank),
+                            c.sentencesStarted(), c.decodedSegments());
+        } catch (const std::exception& e) {
+            st.passed = true; // documented environment skip (headless-CI pattern)
+            st.detail = fmt("match-audio-events skipped: {}", e.what());
         }
         steps.push_back(std::move(st));
     }

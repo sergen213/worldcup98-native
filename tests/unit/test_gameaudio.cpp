@@ -114,6 +114,33 @@ int main() {
         ma.trigger(ev);
         CHECK(ma.whistles() == 2); // KickOff/PeriodEnd/MatchEnd chain
 
+        ev.type = sim::EventType::Goal;
+        ma.trigger(ev);
+        CHECK(ma.goals() == 1);
+        CHECK(peakRms(m, 0.5) > 10.0); // goal roar (GAME00 slot 45 burst) audible over the bed
+
+        ev.type = sim::EventType::Foul;
+        ma.trigger(ev);
+        CHECK(ma.whistles() == 3); // foul decision gets the referee chirp
+
+        // idx2 crowd re-level seam on a fresh bed: options row 100->0 fades the running loop
+        // toward silence; restoring 80 ramps it back. Dedicated mixer, no one-shot interference.
+        {
+            audio::Mixer m2{kRate};
+            app::MatchAudio ma2(tree);
+            ma2.setMixer(&m2);
+            audio::sceneLevels().setLevel(audio::kSceneCrowd, 80);
+            ma2.startCrowd();
+            CHECK(peakRms(m2, 0.4) > 10.0);
+            audio::sceneLevels().setLevel(audio::kSceneCrowd, 0);
+            ma2.relevelCrowd();
+            CHECK(tailRms(m2, 2.6) < 80.0); // fade settles on the idx2=0 lane gain (~43 int16 RMS)
+            audio::sceneLevels().setLevel(audio::kSceneCrowd, 80);
+            ma2.relevelCrowd();
+            CHECK(tailRms(m2, 2.6) > 1000.0); // restored lane level ramps the bed back up (~4300)
+        }
+        audio::sceneLevels().setLevel(audio::kSceneCrowd, 80);
+
         app::MatchAudio nullPath(tree); // no device: counters advance, no voices, no throw
         nullPath.startCrowd();
         ev.type = sim::EventType::MatchEnd;

@@ -651,3 +651,21 @@ synchronously under a fixed tree path, so no mirror change; the formatter semant
 are recorded for path-assembly fidelity only.
 Evidence: `analysis/pass65snd/NOTES.md`, `/tmp/wc98pass65/p65.txt`..`p65h.txt`,
 pass-68 raw scans + disassembly at `/tmp/wc98pass68/p68.txt`..`p68e.txt`.
+
+## Pass-69: scene-10 CRWD phrase-lane registry wired into the port
+
+`MatchAudio::catalogCrwd` (boot, after the PLRS catalogs) parses `AUDIO/CRWD/CROWD.PBK`
+and `COMOS.PBK` with `formats::PhraseBank` and registers the phrase counts — the mirror
+of the exe `SNDCRD` arena size + stride-12 record push into `DAT_006325e0`
+(pass-56 init `FUN_0048e6d0`, §pass-56). `crwdPhrasesRegistered()`/`crwdComosPhrases()`
+expose the counts; `test_gameaudio` checks both > 0 on the booted no-device lane. No
+audible lane is invented: the queue feeds only the CMIDI.BNK MIDI table path (A5,
+synth-blocked on Linux), so the registry counts are the full faithful mirror.
+
+Pass-68 also updated the `ExeLcg` comment: `FUN_004ce317` seeds from the multimedia-timer
+tick counter `DAT_00636a14` (`win_inittmr.c`, `INC` at timer callback `0x4966b8`), so
+retail chant-LCG seeds are uptime tick counts — the port's constant seeds are the
+documented approximation.
+
+Evidence: `analysis/pass68seed/NOTES.md`, `/tmp/wc98pass67/p67b.txt`, gate
+`tests/unit/test_gameaudio.cpp` (`crwdPhrasesRegistered` CHECK).

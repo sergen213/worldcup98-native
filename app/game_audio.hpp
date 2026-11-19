@@ -186,12 +186,23 @@ public:
     static constexpr std::array<const char*, 3> kSceneCrowdSlots = {
         "CMIDI.BNK", "CROWD.PBK", "COMOS.PBK"};
     std::uint32_t crowdCardSlots() const { return crowdCardSlots_; } // CROWD.CRD slot list size
+    // Scene-10 CRWD phrase-lane registry (pass-56 init FUN_0048e6d0, caller 0x48e83f):
+    // CROWD.PBK -> DAT_006325d4 sizes the "SNDCRD" arena (FUN_004a49a0 count,
+    // FUN_0049f5a0 reserve, count*12 bytes) and its phraseCount stride-12 records are
+    // pushed into queue DAT_006325e0 via qbottom; FUN_0048e1c4 stamps phrase->MIDI ids
+    // at record +6 (FUN_004e43c0). COMOS.PBK -> DAT_006325d8 is the commentary bank.
+    // CMIDI.BNK drives the MIDI table lane (A5: CMIDI.DLL synth, blocked on Linux), so
+    // the port mirrors the registry counts, not audible MIDI.
+    std::uint32_t crwdPhrasesRegistered() const { return crwdPhrasesRegistered_; }
+    std::uint32_t crwdComosPhrases() const { return crwdComosPhrases_; }
 
     // Exe request RNG (pass-56): FUN_004ce2f3 — LCG state = state*0x41c64e6d + 0x3039,
     // draw = (state >> 16) & 0x7fff. The exe draws it for queue-index picks
     // (FUN_004ce2f3 -> FUN_004c4f30 qfetchindex in boot classification FUN_0048dcd8)
     // and for the pump drain rotation parity (FUN_0048da50 drain branch).
-    // FUN_004ce317 seeds the state; runtime seed source not recovered [H].
+    // FUN_004ce317 seeds the state from DAT_00636a14, the multimedia-timer tick counter
+    // (win_inittmr.c; zeroed by inittimer FUN_00496bb0, INC'd per event at 0x4966b8 -
+    // pass-68), so retail seeds are uptime-nondeterministic and the port keeps constants.
     struct ExeLcg {
         std::uint32_t state = 0;
         std::uint32_t draw() {
@@ -209,6 +220,7 @@ private:
     formats::Pcm decodeChantClip(const std::filesystem::path& path); // first non-empty phrase
     void catalogAnnouncers(std::uint16_t homeTeamId, std::uint16_t awayTeamId); // FUN_0048fa08 lane
     void catalogPlayers(const std::vector<std::uint16_t>& ids);                 // FUN_0048fb10 lane
+    void catalogCrwd();                    // scene-10 CRWD init registry (FUN_0048e6d0)
     static void crowdNotifier(int channel); // DAT_004904b0 slot [2] -> lane re-level
     static MatchAudio* live_;               // one live match audio per process (exe global lanes)
 
@@ -236,6 +248,8 @@ private:
     std::uint32_t plrsBanks_ = 0, plrsPhrases_ = 0;
     std::uint32_t nameSlotsRegistered_ = 0; // FUN_0048d114 registration loop count
     std::uint32_t crowdCardSlots_ = 0;
+    std::uint32_t crwdPhrasesRegistered_ = 0; // CROWD.PBK phraseCount -> DAT_006325e0 records
+    std::uint32_t crwdComosPhrases_ = 0;      // COMOS.PBK phraseCount (DAT_006325d8 slot)
     int crowdPctApplied_ = -1;
     // Chant pool state (pass-53). Entries carry the team key (C0 + %04d team-id digits, 0 for
     // the CGENER generic lane) and the boot classification lane (-1 = dropped, matches the exe's

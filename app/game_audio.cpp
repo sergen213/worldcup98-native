@@ -276,6 +276,7 @@ void MatchAudio::boot(std::uint16_t homeTeamId, std::uint16_t awayTeamId,
     catalogAnnouncers(homeTeamId, awayTeamId);
     catalogPlayers(homeSquadIds);
     catalogPlayers(awaySquadIds);
+    catalogCrwd(); // scene-10 init lane (FUN_0048e6d0)
 }
 
 void MatchAudio::startTraffic() {
@@ -543,6 +544,31 @@ void MatchAudio::catalogPlayers(const std::vector<std::uint16_t>& ids) {
             ++plrsBanks_;
         } catch (const std::exception&) {
         }
+    }
+}
+
+void MatchAudio::catalogCrwd() {
+    // Scene-10 init lane (pass-56 cr5 disassembly of FUN_0048e6d0/FUN_0048e280): the
+    // loader loop formats AUDIO\CRWD\%s (@0x566acc) from pointer table DAT_0057eb44 and
+    // loads exactly two banks -> CROWD.PBK slot DAT_006325d4, COMOS.PBK slot DAT_006325d8.
+    // FUN_004a49a0 reads CROWD.PBK's phrase count, FUN_0049f5a0 reserves an "SNDCRD"
+    // (@0x566ae8) arena of count*12 bytes, and count stride-12 records are pushed into
+    // queue DAT_006325e0 via qbottom; FUN_0048e1c4 stamps phrase->MIDI ids at record +6
+    // (FUN_004e43c0, sentinel EDX = 0xffffffff). The queue feeds the CMIDI.BNK MIDI
+    // table lane, which needs CMIDI.DLL's synth (A5, blocked on Linux) - the port
+    // mirrors the registry counts only, no audible lane is invented.
+    const std::filesystem::path crwd = tree_ / "AUDIO" / "CRWD";
+    try {
+        const auto bytes = readFile(crwd / "CROWD.PBK");
+        crwdPhrasesRegistered_ =
+            formats::PhraseBank::parse(std::span<const std::uint8_t>{bytes}).phraseCount();
+    } catch (const std::exception&) {
+    }
+    try {
+        const auto bytes = readFile(crwd / "COMOS.PBK");
+        crwdComosPhrases_ =
+            formats::PhraseBank::parse(std::span<const std::uint8_t>{bytes}).phraseCount();
+    } catch (const std::exception&) {
     }
 }
 

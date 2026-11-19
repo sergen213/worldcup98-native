@@ -214,6 +214,10 @@ int main() {
         // (FUN_0048e280 disassembly): CMIDI.BNK, CROWD.PBK, COMOS.PBK all ship on the CD.
         for (const char* name : app::MatchAudio::kSceneCrowdSlots)
             CHECK(std::filesystem::exists(tree / "AUDIO" / "CRWD" / name));
+        // CRWD phrase-lane registry mirror (pass-69, FUN_0048e6d0 init): the parsed
+        // phraseCount(CROWD.PBK) sizes the SNDCRD arena and pushes that many stride-12
+        // records into queue DAT_006325e0; COMOS.PBK fills slot DAT_006325d8.
+        CHECK(nullPath.crwdPhrasesRegistered() > 0 && nullPath.crwdComosPhrases() > 0);
     }
 
     // (f) Chant pump lane (pass-53): boot classification lanes the 113-entry pool by the match

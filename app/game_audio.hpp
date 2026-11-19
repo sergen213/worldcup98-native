@@ -196,6 +196,26 @@ public:
     std::uint32_t crwdPhrasesRegistered() const { return crwdPhrasesRegistered_; }
     std::uint32_t crwdComosPhrases() const { return crwdComosPhrases_; }
 
+    // SFXS stream-slot install lane (pass-72): boot owner FUN_0048f1c4 (callers
+    // livematch boot 0x409ef4 + scene boot FUN_00490728) gates on the sound option
+    // DAT_00632774 (user settings, written 0x49074d/0x490813) and installs exactly two
+    // banks through loader FUN_0048eff0 (AUDIO\SFXS\%s @0x566b54; names game00/01.bnk
+    // @0x566b64/0x566b70, plrs00/01.bnk @0x566b7c/0x566b88): slot 0 = game bank chosen by
+    // the language byte [0x60cbd3] (0 or 1 -> game00, else game01), slot 1 = plrs bank
+    // chosen by the tick-counter parity (FUN_004c321c AL bit 0 -> plrs00, else plrs01 -
+    // the earlier A2 note's "music-slot swap" claim is retracted: GAME01.BNK is a sound
+    // bank, not music, and the loop is a teardown). Each loader stores the raw
+    // file handle at DAT_00632698 + slot*8 and registers the bank through
+    // SNDbankadd2files FUN_004e3724 (BNK magic check, BKNL registry DAT_00659de8 max 10,
+    // voice handle into slot+4 via FUN_004e3128). The livematch trio member FUN_0048f228
+    // (0x409f83) is a teardown loop: while the install flag DAT_006326ac is set it kills
+    // each non-zero bank handle (FUN_004e37cc) and frees the file handle (FUN_0042b070),
+    // clearing both arrays and the flag. The port mirrors the four bank registrations;
+    // audible SFX playback stays the existing whistle/kick/goal lane (GAME00 slots).
+    std::uint32_t sfxsGameSounds() const { return sfxsGameSounds_; } // GAME00/01: 53 sounds / 86 slots
+    std::uint32_t sfxsPlrsSounds() const { return sfxsPlrsSounds_; } // PLRS00/01: 17 sounds
+    std::uint32_t sfxsBanksRegistered() const { return sfxsBanksRegistered_; } // BKNL registry adds
+
     // Exe request RNG (pass-56): FUN_004ce2f3 — LCG state = state*0x41c64e6d + 0x3039,
     // draw = (state >> 16) & 0x7fff. The exe draws it for queue-index picks
     // (FUN_004ce2f3 -> FUN_004c4f30 qfetchindex in boot classification FUN_0048dcd8)
@@ -221,6 +241,7 @@ private:
     void catalogAnnouncers(std::uint16_t homeTeamId, std::uint16_t awayTeamId); // FUN_0048fa08 lane
     void catalogPlayers(const std::vector<std::uint16_t>& ids);                 // FUN_0048fb10 lane
     void catalogCrwd();                    // scene-10 CRWD init registry (FUN_0048e6d0)
+    void catalogSfxs();                    // SFXS install lane registry (FUN_0048f1c4/0048eff0)
     static void crowdNotifier(int channel); // DAT_004904b0 slot [2] -> lane re-level
     static MatchAudio* live_;               // one live match audio per process (exe global lanes)
 
@@ -250,6 +271,9 @@ private:
     std::uint32_t crowdCardSlots_ = 0;
     std::uint32_t crwdPhrasesRegistered_ = 0; // CROWD.PBK phraseCount -> DAT_006325e0 records
     std::uint32_t crwdComosPhrases_ = 0;      // COMOS.PBK phraseCount (DAT_006325d8 slot)
+    std::uint32_t sfxsGameSounds_ = 0;        // GAME00/01.BNK sound count (pass-72)
+    std::uint32_t sfxsPlrsSounds_ = 0;        // PLRS00/01.BNK sound count (pass-72)
+    std::uint32_t sfxsBanksRegistered_ = 0;   // banks parsed = BKNL registry adds
     int crowdPctApplied_ = -1;
     // Chant pool state (pass-53). Entries carry the team key (C0 + %04d team-id digits, 0 for
     // the CGENER generic lane) and the boot classification lane (-1 = dropped, matches the exe's

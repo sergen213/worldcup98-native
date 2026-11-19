@@ -754,3 +754,44 @@ curveA[cc] * c0 >> 17` via `+0x128 + i*4`; each written to the voice lane
 
 Port unchanged (re-fade seam approximates the change-gated byte writes).
 Evidence: `analysis/pass71crowd/NOTES.md`, `/tmp/wc98pass71/p71.txt`..`p71d.txt`.
+
+## Pass-72: SFXS stream-slot install lane decoded (A2 retracted)
+
+The earlier A2 framing "GAME01 music-slot shuffle" was wrong: `GAME01.BNK` is a
+sound bank under `AUDIO/SFXS/`, not music, and `FUN_0048f228` is a teardown loop.
+
+Boot owner `FUN_0048f1c4` (livematch boot 0x409ef4 + scene boot `FUN_00490728`):
+gate = sound option `DAT_00632774` (user settings, written at 0x49074d/0x490813)
+`!= 0` and install flag `DAT_006326ac == 0`; reads the language byte `[0x60cbd3]`
+and calls the loader `FUN_0048eff0` twice - slot 0 with name `game00.bnk`
+(@0x566b64, language 0 or 1) or `game01.bnk` (@0x566b70, other), slot 1 with
+`plrs00.bnk` (@0x566b7c) or `plrs01.bnk` (@0x566b88) chosen by the tick-counter
+parity (`FUN_004c321c` AL bit 0 -> plrs00). Loader: copies a 256-byte static
+block @0x48eef0, formats `AUDIO\SFXS\%s` (@0x566b54), opens through the file
+lane `FUN_00439810`, stores the raw handle at `DAT_00632698 + slot*8`, then
+`FUN_004e3128` -> `SNDbankadd2files` `FUN_004e3724` (`cmn\sbank.c` @0x56b29c
+line 0x10d): checks the BNK magic word at the handle, appends the bank pointer
+to the BKNL registry `DAT_00659de8` (stride 8, aborts past 10 entries), loads
+via `FUN_004e34e0` and stores the voice handle into `slot+4`; sets the kill
+handler hook `DAT_006597d0 = FUN_004e37cc`. Boot sets `DAT_006326ac = 1`.
+
+Per-frame livematch member `FUN_0048f228` (0x409f83): when the flag is set it
+clears `DAT_006326ac`, then for slots 0..1 kills each non-zero bank handle via
+`FUN_004e37cc` and frees each non-zero file handle via `FUN_0042b070`
+(`FUN_0049f750` release), storing 0 in both arrays. This is the teardown of the
+install lane, not a swap.
+
+Play sites: `FUN_0048f068` (38 callers, scene handlers) cooldown-gated 20 ticks
+(`DAT_00636a14` vs `DAT_0057eb50` + 0x14) plays bank slot 0's handle
+`DAT_0063269c` at level `DAT_006326a8 * 0x7f / 100` - `DAT_006326a8` is written
+only by the stub 0x48f060 from settings code `FUN_0046b074`/`FUN_0046b230`;
+`FUN_0048f0e4` builds a 16-byte voice record (word0 = caller voice id, byte4 =
+bank handle low byte, byte8 = `arg * percent[idx0] * 0x7f / 10000` through
+`FUN_004906d0`), default-initialises it via `FUN_004e2d00` (`SNDplaysetdef`
+null-pointer guard lane, `cmn\splay.c` @0x56b018 line 0xc3) and plays through
+`FUN_004e2d68` -> `FUN_004e2d74`.
+
+Measured bank contents: GAME00/01 = 53 sounds in an 86-slot table, PLRS00/01 =
+17 sounds each (BNKl v2 headers). Port `MatchAudio::catalogSfxs` registers the
+four banks; gate `test_gameaudio` asserts the counts.
+Evidence: `analysis/pass72sfx/NOTES.md`, `/tmp/wc98pass72/m1.txt`..`m8.txt`.

@@ -218,6 +218,14 @@ int main() {
         // phraseCount(CROWD.PBK) sizes the SNDCRD arena and pushes that many stride-12
         // records into queue DAT_006325e0; COMOS.PBK fills slot DAT_006325d8.
         CHECK(nullPath.crwdPhrasesRegistered() > 0 && nullPath.crwdComosPhrases() > 0);
+        // SFXS install-lane mirror (pass-72, FUN_0048f1c4/FUN_0048eff0 +
+        // SNDbankadd2files FUN_004e3724): the exe registers the game bank (GAME00/01
+        // chosen by language byte) + player bank (PLRS00/01 chosen by tick parity) into
+        // the BKNL registry. Measured bank contents: GAME00/01 = 53 sounds (86-slot
+        // table), PLRS00/01 = 17 sounds each, 4 shipped banks total.
+        CHECK(nullPath.sfxsGameSounds() == 53);
+        CHECK(nullPath.sfxsPlrsSounds() == 17);
+        CHECK(nullPath.sfxsBanksRegistered() == 4);
     }
 
     // (f) Chant pump lane (pass-53): boot classification lanes the 113-entry pool by the match

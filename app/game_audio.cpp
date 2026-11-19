@@ -277,6 +277,7 @@ void MatchAudio::boot(std::uint16_t homeTeamId, std::uint16_t awayTeamId,
     catalogPlayers(homeSquadIds);
     catalogPlayers(awaySquadIds);
     catalogCrwd(); // scene-10 init lane (FUN_0048e6d0)
+    catalogSfxs(); // SFXS install-lane registry (FUN_0048f1c4, pass-72)
 }
 
 void MatchAudio::startTraffic() {
@@ -569,6 +570,35 @@ void MatchAudio::catalogCrwd() {
         crwdComosPhrases_ =
             formats::PhraseBank::parse(std::span<const std::uint8_t>{bytes}).phraseCount();
     } catch (const std::exception&) {
+    }
+}
+
+void MatchAudio::catalogSfxs() {
+    // SFXS install lane (pass-72, FUN_0048f1c4/FUN_0048eff0): the exe boots exactly two
+    // stream slots - game bank (game00.bnk on language byte 0/1, game01.bnk otherwise) and
+    // player bank (plrs00.bnk on tick-parity 1, plrs01.bnk otherwise) - opened through
+    // AUDIO\SFXS\%s and registered via SNDbankadd2files FUN_004e3724 into the BKNL
+    // registry DAT_00659de8 (max 10 entries). The port parses all four shipped banks to
+    // mirror the registry contents (the variant pick itself is uptime-nondeterministic
+    // in the exe: tick parity; language byte mirrors settings::Settings::language).
+    const std::filesystem::path sfxs = tree_ / "AUDIO" / "SFXS";
+    for (const char* name : {"GAME00.BNK", "GAME01.BNK"}) {
+        try {
+            const auto data = readFile(sfxs / name);
+            const formats::Bnk bnk = formats::Bnk::parse(data);
+            sfxsGameSounds_ = static_cast<std::uint32_t>(bnk.sounds.size());
+            ++sfxsBanksRegistered_;
+        } catch (const std::exception&) {
+        }
+    }
+    for (const char* name : {"PLRS00.BNK", "PLRS01.BNK"}) {
+        try {
+            const auto data = readFile(sfxs / name);
+            const formats::Bnk bnk = formats::Bnk::parse(data);
+            sfxsPlrsSounds_ = static_cast<std::uint32_t>(bnk.sounds.size());
+            ++sfxsBanksRegistered_;
+        } catch (const std::exception&) {
+        }
     }
 }
 

@@ -998,7 +998,13 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
     // match + whistle/kick one-shots off the same event seam, independent of speech availability.
     app::MatchAudio matchAudio(tree);
     matchAudio.setMixer(audioMixer);
-    matchAudio.startCrowd();
+    // Match-lane boot seam (pass-51): percent notifier + stadium lane pair (crowd bed +
+    // traffic loop) + home-team anthem sample + team chant/announcer lane catalogs, keyed by
+    // the FCDB team ids the match actually plays with (same GameData as the sim sheets).
+    const std::uint16_t laneHomeId = boot.md.sheets[0].team.id;
+    const std::uint16_t laneAwayId = boot.md.sheets[1].team.id;
+    matchAudio.boot(laneHomeId, laneAwayId,
+                    boot.md.sheets[0].team.roster, boot.md.sheets[1].team.roster);
     std::size_t sfxPos = 0; // SFX sweep cursor (append-only events stream)
 
     auto key = [&](SDL_Scancode sc, bool down) {

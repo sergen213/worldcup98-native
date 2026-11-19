@@ -45,8 +45,10 @@ Classes:
 ## 3. Still-open original-behavior gaps
 
 Tracked as A1–A11 in `AUDIO_DISCREPANCIES.md`: per-scene SFX slot table + `audsfx.%c` banks (A1),
-GAME01 shuffle (`FUN_0048f228`, A2), PLRS/PLRS01 name banks (A3 — absent from CD), CROWD.CRD card
-layering + traffic (A4), CMIDI MIDI director (A5), chant banks (A6), commentary event→phrase
+GAME01 shuffle (`FUN_0048f228`, A2), PLRS name banks (A3 — **shipped**, 1020 `P%05d.PBK`,
+cataloged at boot since pass-51; playback pending trigger decode), CROWD.CRD card
+layering + traffic (A4), CMIDI MIDI director (A5), chant banks (A6 — pool decoded, cataloged),
+commentary event→phrase
 content mapping (A7 — blocked), MicroTalk gain calibration (A8), DCT audio (A9), pan (A10 —
 original has none), doc tag 0x82 conflict (A11).
 
@@ -55,3 +57,22 @@ original has none), doc tag 0x82 conflict (A11).
 - `analysis/pass49audio/pct.txt` — percent-callback decompiles (`FUN_0048ed9c`, `FUN_0048e550`).
 - `analysis/pass49audio/loaders1.txt` — `FUN_004ac580` (percent→`DAT_006448c2/c3` volume bytes), `FUN_004ac840` (audsfx install), `FUN_0048f228` (game01 slot shuffle), `FUN_0049067c` (percent setter), `FUN_00490528` (callback installer), `FUN_0048e300` (crowd shutdown lane).
 - `analysis/pass7/percent1.txt` — live scene percent writes (pass-7e).
+
+## 5. Pass-51 addendum — match-boot lane catalog (2026-11-19)
+
+Rebuilt the match-boot lane installs from FIFAWC.EXE (not from CD file names — the boot builder
+`FUN_00490728` enumerates the lane loaders): chant pool `FUN_0048dfc4` (exe table @0x57eb5c,
+113 slots = 74 team-keyed + 39 `CGENER` generic), announcer `FUN_0048fa08` (`A_T/G_T%04d`),
+squad player banks `FUN_0048fb10` (`AUDIO\PLRS\P%05d.PBK` — the CD ships 1020 banks; the earlier
+"absent" claim was false), anthem `FUN_00490acc` (`ANTH%04d.BNK` slot 0 = nation chant),
+stadium/traffic pair `FUN_0048e78c`, teardown `FUN_004907c0`. Full dossier + decompiles:
+`analysis/pass16audio/NOTES.md`, `docs/reverse-engineering/AUDIO_RUNTIME.md` pass-51 section.
+
+Port side (verified, gates green): `MatchAudio::boot` installs the percent idx2 notifier, CROWD.CRD
+card authority, TRAFF hum loop, ANTH slot-0 one-shot, and decode-counted catalogs of the chant pool
+(113), team announcer banks (4) and squad PLRS banks (38 for teams 26/67). Playback of
+chant/announcer/name phrases is not wired until the request-handler trigger mapping is decoded
+(A3/A6/A7) — catalog = install-state proof, no fabricated playback.
+
+Evidence artifacts: `analysis/pass16audio/NOTES.md`, `/tmp/wc98pass51/{lane_decomp.txt,plrs_fns.txt}`,
+probes `bankprobe.cpp`/`slotprobe2.cpp` (results in NOTES.md).

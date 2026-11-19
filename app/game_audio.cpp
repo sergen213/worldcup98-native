@@ -3,10 +3,13 @@
 
 #include "wc98/file.hpp"
 #include "wc98/formats/bnk.hpp"
+#include "wc98/formats/crd.hpp"
+#include "wc98/formats/phrs.hpp"
 #include "wc98/audio/smix_voice.hpp"
 #include "wc98/audio/scene_levels.hpp"
 
 #include <algorithm>
+#include <format>
 #include <memory>
 
 namespace wc98::app {
@@ -81,12 +84,149 @@ bool startMenuMusic(audio::Mixer& mixer, const std::filesystem::path& tree, std:
     return false;
 }
 
-MatchAudio::MatchAudio(const std::filesystem::path& tree) {
+MatchAudio* MatchAudio::live_ = nullptr;
+
+MatchAudio::MatchAudio(const std::filesystem::path& tree) : tree_(tree) {
     whistle_ = decodeSlot(tree / "AUDIO" / "SFXS" / "GAME00.BNK", kWhistleSlot);
     kick_ = decodeSlot(tree / "AUDIO" / "SFXS" / "GAME00.BNK", kKickSlot);
-    crowd_ = decodeSlot(tree / "AUDIO" / "CRWD" / "CROWD.BNK", kCrowdSlot);
     goalRoar_ = decodeSlot(tree / "AUDIO" / "SFXS" / "GAME00.BNK", kGoalRoarSlot);
     whistleTrill_ = decodeSlot(tree / "AUDIO" / "SFXS" / "GAME00.BNK", kWhistleTrillSlot);
+    // Bed-slot selection (pass-51): the lane builder FUN_0048e78c reads the card file
+    // (AUDIO/CRWD/CROWD.CRD, FUN_0047aeb0 lookup) for its .BNK slot list; CROWD.CRD slots
+    // 0..3, where 0/1 decode to 0.75 s short swells and 2/3 to the 3.03 s murmur loop.
+    // Take the card's slot order and pick the first slot that decodes long enough to be the
+    // continuous bed (>= 2 s); slot 2 is the only candidate that way, so the audible bed is
+    // unchanged, and the card is now the authority for the slot list.
+    std::vector<std::uint32_t> slots{kCrowdSlot};
+    try {
+        const auto card = formats::Crd::parse(readFile(tree / "AUDIO" / "CRWD" / "CROWD.CRD"));
+        std::vector<std::uint32_t> fromCard;
+        for (const auto s : card.bankSlots)
+            if (s != 0xFF) fromCard.push_back(s);
+        crowdCardSlots_ = static_cast<std::uint32_t>(fromCard.size());
+        if (!fromCard.empty()) slots = fromCard;
+    } catch (const std::exception&) { // no card: keep the measured slot
+    }
+    for (const auto slot : slots) {
+        auto pcm = decodeSlot(tree / "AUDIO" / "CRWD" / "CROWD.BNK", slot);
+        if (pcm.frames() >= 22050u * 2u) { crowd_ = std::move(pcm); break; }
+        if (!crowd_.frames() && pcm.frames()) crowd_ = std::move(pcm);
+    }
+    traffic_ = decodeSlot(tree / "AUDIO" / "CRWD" / "TRAFF.BNK", 0); // TRAFF.CRD slot 0 (measured)
+}
+
+void MatchAudio::crowdNotifier(int channel) {
+    (void)channel;
+    if (live_) live_->relevelCrowd(); // percent write -> lane re-level (FUN_0049067c dispatch)
+}
+
+void MatchAudio::boot(std::uint16_t homeTeamId, std::uint16_t awayTeamId,
+                      const std::vector<std::uint16_t>& homeSquadIds,
+                      const std::vector<std::uint16_t>& awaySquadIds) {
+    live_ = this;
+    // DAT_004904b0 percent-notifier install (FUN_0049067c dispatch table): idx2 =
+    // SNDstadiumreactions re-levels the running stadium loops on an options-row write.
+    audio::sceneLevels().setNotifier(audio::kSceneCrowd, &MatchAudio::crowdNotifier);
+    startCrowd();
+    startTraffic();
+    startAnthem(homeTeamId);
+    catalogChants();
+    catalogAnnouncers(homeTeamId, awayTeamId);
+    catalogPlayers(homeSquadIds);
+    catalogPlayers(awaySquadIds);
+}
+
+void MatchAudio::startTraffic() {
+    // Stadium lane pair: the lane builder's second container load is the traffic hum
+    // (AUDIO/CRWD/TRAFF.BNK slot 0, 79.84 s, gated by the same percent idx2), looped by the
+    // FUN_004e3128/FUN_004e4a80 start points. Measured bed RMS 1416 vs crowd bed 9111 -> mix
+    // it under the crowd bed [H gain balance].
+    if (mixer_ && traffic_.frames() && !trafficId_)
+        trafficId_ = mixer_->play(traffic_, 0.12f * smixLaneGain(audio::kSceneCrowd), /*loop=*/true);
+}
+
+void MatchAudio::startAnthem(std::uint16_t homeTeamId) {
+    // Presentation-lane nation sample: AUDIO/ANTH/ANTH%04d.BNK slot 0 = 23.8 s chant sample of
+    // the team's nation (measured: ANTH0026 slot 0 decodes, 765 KB mono 22050). Played once at
+    // match boot (presentation lane gain [H]).
+    const auto file = tree_ / "AUDIO" / "ANTH" / std::format("ANTH{:04d}.BNK", homeTeamId);
+    if (mixer_ && !anthemId_) {
+        const auto anthem = decodeSlot(file, 0);
+        if (anthem.frames())
+            anthemId_ = mixer_->play(anthem, 0.8f * smixLaneGain(audio::kSceneCrowd), /*loop=*/false);
+    }
+}
+
+void MatchAudio::catalogChants() {
+    // Chant pool (pass-51): FUN_0048dfc4 allocates the 113-slot chant lane (DAT_006324c0, loop
+    // `iVar1 < 0x71`) + a 3-slot side pool (DAT_006324d0). The bank names come from the exe's
+    // own table at VA 0x57eb5c (`PTR_s_C0001800_PBK`): 74 team-keyed entries C0+team*10+%02d
+    // variant (e.g. C0001800..C0001801, C0002600, team 47 has six variants), consumed by the
+    // per-chant loader FUN_0048d53c (`AUDIO\CHNT\%s` @0x566a78, `table[req+4]` index). The
+    // remaining 39 CD files are the CGENER%02d generic-chant lane (name string `GENER` in the
+    // same block, absent from the team table). Boot loads all 113, so the port catalogs every
+    // AUDIO/CHNT/*.PBK file; playback stays open - the event->chant trigger mapping is
+    // undecoded (docs/reverse-engineering/AUDIO_DISCREPANCIES.md), and playing banks on an
+    // invented schedule is exactly what the goal doc forbids.
+    const auto dir = tree_ / "AUDIO" / "CHNT";
+    if (!std::filesystem::is_directory(dir)) return;
+    std::vector<std::filesystem::path> files;
+    for (const auto& de : std::filesystem::directory_iterator(dir))
+        if (de.path().filename().string().ends_with(".PBK")) files.push_back(de.path());
+    std::ranges::sort(files);
+    for (const auto& path : files) {
+        try {
+            const auto bytes = readFile(path);
+            chantPhrases_ += formats::PhraseBank::parse(std::span<const std::uint8_t>{bytes})
+                                 .phraseCount();
+            ++chantBanks_;
+        } catch (const std::exception&) { // member present but unparsable: exe skips silently
+        }
+    }
+}
+
+void MatchAudio::catalogAnnouncers(std::uint16_t homeTeamId, std::uint16_t awayTeamId) {
+    // Announcer lane (pass-51): the match-boot installer FUN_0048fa08 loads
+    // `AUDIO\TEAM\A_T%04d.PBK` (@0x566bac) once per match team, ids read from the match record
+    // slots (DAT_00641014 + 0x34 / DAT_00641110 + 0x34, u16), 4 slots per team. The request
+    // handler FUN_0048953c picks the G_T%04d variant (`AUDIO\team\G_T%04d.pbk` @0x56698c) when
+    // DAT_0057e5f8 is set and the A_T variant (@0x566974) otherwise, plus a hardcoded
+    // `AUDIO\team\A_FE_USA.SMP` neutral-English fallback. Catalog both prefixes per team.
+    const std::uint16_t ids[2] = {homeTeamId, awayTeamId};
+    for (const std::uint16_t id : ids) {
+        for (const char* prefix : {"A_T", "G_T"}) {
+            const auto path = tree_ / "AUDIO" / "TEAM" / std::format("{}{:04d}.PBK", prefix, id);
+            if (!std::filesystem::exists(path)) continue;
+            try {
+                const auto bytes = readFile(path);
+                announcerPhrases_ += formats::PhraseBank::parse(std::span<const std::uint8_t>{bytes})
+                                         .phraseCount();
+                ++announcerBanks_;
+            } catch (const std::exception&) {
+            }
+        }
+    }
+}
+
+void MatchAudio::catalogPlayers(const std::vector<std::uint16_t>& ids) {
+    // Player-name announcer lane (pass-51): the match-boot installer FUN_0048fb10 walks both
+    // team squads (2 records x 17 slot entries, stride 0x66 with 6-byte slot records over the
+    // squad array @DAT_0064101c) and loads `AUDIO\PLRS\P%05d.PBK` (@0x566bc4) for every
+    // non-zero player id (u16 at slot+2), one bank pool entry each. FCDB roster ids feed the
+    // same %05d key; the CD ships 1020 Pxxxxx.PBK banks. Phrase decode stays counted, not
+    // played - the id->phrase trigger mapping is undecoded.
+    for (const std::uint16_t id : ids) {
+        if (!id) continue;
+        const auto path = tree_ / "AUDIO" / "PLRS" / std::format("P{:05d}.PBK", id);
+        if (!std::filesystem::exists(path)) continue;
+        try {
+            const auto bytes = readFile(path);
+            plrsPhrases_ += formats::PhraseBank::parse(std::span<const std::uint8_t>{bytes})
+                                .phraseCount();
+            ++plrsBanks_;
+        } catch (const std::exception&) {
+        }
+    }
 }
 
 void MatchAudio::startCrowd() {
@@ -98,13 +238,16 @@ void MatchAudio::startCrowd() {
 }
 
 void MatchAudio::relevelCrowd() {
-    // Options slider writes percent idx2 -> gate value; rewrite the running loop's voice lane
-    // float with a fade (FUN_004906a4 -> FUN_00550530 0.75x -> voice 0x34 float).
+    // Options slider writes percent idx2 -> gate value; rewrite the running lane's voice floats
+    // with a fade (FUN_004906a4 -> FUN_00550530 0.75x -> voice 0x34 float). idx2 gates the whole
+    // stadium lane: bed + traffic hum + presentation sample all follow the percent row.
     const int pct = audio::sceneLevels().level(audio::kSceneCrowd);
     if (pct == crowdPctApplied_) return;
     crowdPctApplied_ = pct;
-    if (mixer_ && crowdId_)
-        mixer_->fade(crowdId_, 0.6f * smixLaneGain(audio::kSceneCrowd), 50); // 50 x 20 ms ticks
+    const float lane = smixLaneGain(audio::kSceneCrowd);
+    if (mixer_ && crowdId_) mixer_->fade(crowdId_, 0.6f * lane, 50); // 50 x 20 ms ticks
+    if (mixer_ && trafficId_) mixer_->fade(trafficId_, 0.12f * lane, 50);
+    if (mixer_ && anthemId_ && mixer_->playing(anthemId_)) mixer_->fade(anthemId_, 0.8f * lane, 50);
 }
 
 void MatchAudio::trigger(const sim::SimEvent& e) {

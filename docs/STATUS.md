@@ -142,6 +142,18 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
 
 
 ## Progress snapshot (third-pass UI reconstruction landed, v0.5.0)
+- **Match-boot audio lane reconstruction (pass-51, 2026-11-19)** — boot builder `FUN_00490728`
+  decoded as the lane-install authority: percent idx2 notifier (`DAT_004904b0[2]`, install site
+  0x490621) drives the crowd re-level; CROWD.CRD card (4 slots) is the crowd-bed authority;
+  TRAFF hum loop + `ANTH\ANTH%04d.BNK` slot-0 anthem wired; decode-counted catalogs install the
+  113-slot chant pool (`FUN_0048dfc4` `iVar1<0x71`, exe name table @0x57eb5c = 74 team-keyed
+  entries + 39 `CGENER` generic, cross-checked against the CD: 0 missing/0 extra), the
+  `A_T/G_T%04d` announcer banks (`FUN_0048fa08`) and the squad `P%05d.PBK` player banks
+  (`FUN_0048fb10`). The CD ships 1020 `AUDIO/PLRS` banks — the pass-49 "A3 absent from CD"
+  claim was false; corrected in `AUDIO_DISCREPANCIES.md`. Chant/announcer/name playback stays
+  unwired until the request-handler trigger mapping decodes (A3/A6/A7) — catalogs prove install
+  state, no fabricated playback. Gates: selftest `match-audio-lanes`, `test_gameaudio` (e);
+  dossier `analysis/pass16audio/NOTES.md`, `AUDIO_RUNTIME.md` pass-51 section.
 - **Recovered-data integration in the runtime (pass-47, 2026-11-19)** — `sim::GameData`
   (`simulation/data.hpp`) loads FCDB.DBI + FCDB_<LANG>.DBI + FCDBP<LANG>.DBI once with recorded
   provenance; `MatchBoot.game`/`FeFlow.game_` thread the instance through team selection,

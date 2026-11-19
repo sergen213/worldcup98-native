@@ -528,6 +528,7 @@ wc98_test(test_gameaudio unit/test_gameaudio.cpp)
 target_sources(test_gameaudio PRIVATE ${CMAKE_SOURCE_DIR}/app/game_audio.cpp)
 target_link_libraries(test_gameaudio PRIVATE wc98_audio)
 target_include_directories(test_gameaudio PRIVATE ${CMAKE_SOURCE_DIR}/simulation/include)
+target_link_libraries(test_gameaudio PRIVATE wc98_simulation) # (e) boot lane: sim::loadGameData
 # Scene sound-level layer grammar (DAT_00632778 percent table + Q7 gain + notifier dispatch).
 wc98_test(test_scene_levels unit/test_scene_levels.cpp)
 target_link_libraries(test_scene_levels PRIVATE wc98_audio)

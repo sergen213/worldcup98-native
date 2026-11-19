@@ -10,6 +10,7 @@
 #include "wc98/file.hpp"
 #include "wc98/formats/bnk.hpp"
 #include "wc98/formats/schl.hpp"
+#include "wc98/sim/data.hpp" // (e) boot lane: sim::loadGameData + FCDB team ids
 #include "wc98/audio/scene_levels.hpp" // director lane percent (DAT_00632778)
 
 #include <algorithm>
@@ -168,6 +169,39 @@ int main() {
         dir.update();
         CHECK(dir.playing());
         audio::sceneLevels().setLevel(audio::kSceneMusic, 80); // restore boot default
+    }
+
+    // (e) Match-lane boot seam (pass-51): boot keys the lane pools by the FCDB match data - the
+    // 113-slot chant pool (FUN_0048dfc4 `iVar1 < 0x71`, exe name table @0x57eb5c + CD CGENER
+    // lane), the A_T/G_T%04d announcer banks for both teams (FUN_0048fa08), the squad P%05d.PBK
+    // player banks (FUN_0048fb10), the CRD card as crowd-bed authority, the stadium lane pair +
+    // anthem voice, and the percent idx2 notifier dispatch re-level over the whole lane.
+    {
+        audio::Mixer m{kRate};
+        const auto game = sim::loadGameData(tree);
+        const std::uint16_t homeId = game.db.teams[0].id;  // id 26: full lane set on the CD
+        const std::uint16_t awayId = game.db.teams[26].id; // id 67: C0006700 + A_T/G_T0067
+        app::MatchAudio ma(tree);
+        ma.setMixer(&m);
+        ma.boot(homeId, awayId, game.db.teams[0].roster, game.db.teams[26].roster);
+        CHECK(ma.crowdStarted() && ma.trafficStarted() && ma.anthemStarted());
+        CHECK(audio::sceneLevels().hasNotifier(audio::kSceneCrowd)); // DAT_004904b0 slot [2]
+        CHECK(ma.crowdCardSlots() == 4);                             // CROWD.CRD slot list
+        CHECK(ma.chantBanks() == 113 && ma.chantPhrases() > 0);      // exe boot pool = 0x71 slots
+        CHECK(ma.announcerBanks() == 4 && ma.announcerPhrases() > 0); // A_T/G_T x both teams
+        CHECK(ma.plrsBanks() >= 30 && ma.plrsPhrases() > 0);          // 19+19 squad banks of 26/67
+        CHECK(peakRms(m, 0.6) > 10.0); // bed + traffic + anthem audible on the loopback lane
+        audio::sceneLevels().setLevel(audio::kSceneCrowd, 0); // percent write -> notifier dispatch
+        CHECK(tailRms(m, 2.6) < 80.0); // whole stadium lane fades to the idx2=0 gain
+        audio::sceneLevels().setLevel(audio::kSceneCrowd, 80);
+        CHECK(tailRms(m, 2.6) > 1000.0); // dispatch again: lane ramps back up
+        audio::sceneLevels().setLevel(audio::kSceneCrowd, 80);
+        app::MatchAudio nullPath(tree); // no device: catalog counters advance, no voices
+        nullPath.boot(game.db.teams[0].id, game.db.teams[1].id,
+                      game.db.teams[0].roster, game.db.teams[1].roster);
+        CHECK(!nullPath.crowdStarted() && !nullPath.trafficStarted() && !nullPath.anthemStarted());
+        CHECK(nullPath.chantBanks() == 113 && nullPath.announcerBanks() >= 4 &&
+              nullPath.plrsBanks() > 0);
     }
 
     std::printf("test_gameaudio: OK\n");

@@ -35,6 +35,7 @@ public:
 
     // DAT_004904b0 slot install (exe writes the table at subsystem-build time).
     void setNotifier(int channel, Notifier n) { notifier_[channel] = n; }
+    [[nodiscard]] bool hasNotifier(int channel) const { return notifier_[channel] != nullptr; }
 
     // FUN_0049067c: store percent, then notify if the channel's notifier is installed.
     void setLevel(int channel, int value);

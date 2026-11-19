@@ -111,3 +111,42 @@ slots do not exist. Crowd chant layering (CROWD.CRD cards + CMIDI.BNK MIDx strea
 proximity gain ramps remain unimplemented.
 
 **Pass 12 addendum — FE menus never call SNDplay [C]** (evidence `analysis/pass12/sfx_fe.txt`, raw streams `nav12/13/14_raw.txt`): a full E8-scan of all `FUN_0051d480` (SNDplay) call sites finds **42 sites, all inside live-match code** (dispatcher `FUN_004ae730`, ids 0x1f9/0x1fa/0x1fb; sites 0x4ae7xx/0x4b8xxx/0x505xxx–0x52xxxx) and **zero** in FE scene handlers, the hub, or the widget path. The per-scene slot table `DAT_0058f3b2` is read-only at exactly 5 sites (0x51d419/46c/600/645, 0x51d7bb); it is built at runtime by the SND bank subsystem near `FUN_0x4ac862` ("sfx tbl" VA 0x568d64; per-scene bank format `"audsfx.%c"` VA 0x568dd7). Menu "sound feedback" in the original = (a) FE music streams (§music queue above), (b) scene ambient banks, and (c) an audio **ramp**: feflow04 tag `"  5"` registers animation/timer callbacks (`FUN_00436180` → `DAT_00600688` pump `FUN_004361d0`, countdown → ramp `FUN_0048ec64(EAX=0xc8)` + callback; selector dispatch `FUN_004447dc` switches `tmflag`/`mesg`/`feflow10`). There are **no per-button click sounds** in the FE. The LAY `nosfx=1` key exists only on FEFLOW82.LAY objecttype=44 label widgets (10 hits); no `nosfx` literal appears in any shipped binary → class-default suppression [H]. Port rule: do NOT synthesize menu click SFX; wire FE music + ambient bank, ramp at scene switches.
+
+**Pass-51 — match-boot lane installs [C]** (evidence `analysis/pass16audio/NOTES.md` +
+`/tmp/wc98pass51/lane_decomp.txt`, string/xref table `analysis/pass8/audio1_strings.txt`).
+The audio subsystem boot builder `FUN_00490728` (gated `DAT_00632774`, 24-iteration loop +
+lane-loader sequence `FUN_0048e8e8/0048d378/0048ed9c/00490acc/00490250/0048fd54/0048dfc4/0048f1c4`;
+teardown `FUN_004907c0` calls the matching drain set) is the authority for what the match scene
+loads. Per-lane installs decoded:
+
+- **Chant pool**: `FUN_0048dfc4` allocates a 113-entry pool (`DAT_006324c0`, loop `iVar1 < 0x71`)
+  + a 3-entry side pool (`DAT_006324d0`). Names come from the exe's own pointer table at VA
+  0x57eb5c (`PTR_s_C0001800_PBK`): 74 team-keyed entries `C0<team*10><2-digit variant>.PBK`
+  (18, 26, 29, 31, 33, 35, 36, 37, 38, 41, 47 with six variants, 49, 52, ... legend ids 862..875),
+  all present on the CD (cross-check: 0 missing, 0 extra in the table). The remaining 39 CD files
+  are the `CGENER%02d` generic-chant lane. Per-chant loader `FUN_0048d53c`: `AUDIO\CHNT\%s`
+  (@0x566a78) with `table[req+4]` name index — the chant index is a request argument, not a
+  filename computation.
+- **Announcer banks (match teams)**: `FUN_0048fa08` loads `AUDIO\TEAM\A_T%04d.PBK` (@0x566bac)
+  once per match team, u16 ids read from the match record slots `DAT_00641014/0x641110` +0x32/+0x34,
+  4 pool slots per team. The request handler `FUN_0048953c` switches per message class:
+  `AUDIO\team\A_T%04d.pbk` (@0x566974) vs `G_T%04d.pbk` (@0x56698c) on `DAT_0057e5f8`, a hardcoded
+  `AUDIO\team\A_FE_USA.SMP` neutral fallback (case 0x32f, `DAT_00640fe8==1`), and tournament
+  schedule/standing requests `AUDIO\pbp\schedule\A/G_sch%03d.smp` + `AUDIO\pbp\standing\A/G_std%03d.smp`.
+- **Player-name banks (squads)**: `FUN_0048fb10` walks both team squads (2 records, stride 0xfc,
+  17 slot entries at 0x66, 6-byte records; id u16 at +2, shirt byte at +0xF) and loads
+  `AUDIO\PLRS\P%05d.PBK` (@0x566bc4) per non-zero id. The CD ships 1020 `Pxxxxx.PBK` banks; FCDB
+  roster ids resolve 19/22 for teams 26/67 (reserve players have no bank); each bank parses with
+  1..2 name phrases.
+- **Anthem lane**: `AUDIO\ANTH\ANTH%04d.BNK` (@0x56735f) xref 0x490b0a in `FUN_00490acc` (boot
+  sequence member); `ANTHEM.EAM` MIDx sits in the same string block. Slot 0 of ANTH banks = 23.8 s
+  nation chant sample (measured).
+- **Stadium pair**: `FUN_0048e78c` loads the CROWD container + card (`CROWD.BNK`/`CROWD.CRD`
+  strings @0x566b08/0x566b14; `FUN_0048e190` = `AUDIO\CRWD\%s`), then `FUN_004e3128`/`FUN_004e4a80`
+  start it (`DAT_006325b0` gate); the traffic hum pair is `TRAFF.BNK`/`TRAFF.CRD` in the same
+  string block.
+Port side (pass-51): `MatchAudio::boot` mirrors this install set — percent idx2 notifier, CROWD.CRD
+card as bed authority, TRAFF loop, ANTH slot-0 one-shot, and decode-counted catalogs for the chant
+pool, announcer banks and squad PLRS banks (playback of chant/announcer/name phrases stays
+disabled until the request-handler trigger mapping is decoded; see AUDIO_DISCREPANCIES A3/A6/A7).
+Gates: `test_gameaudio` (e), selftest `match-audio-lanes` (chants=113, announcers=4, plrs=38).

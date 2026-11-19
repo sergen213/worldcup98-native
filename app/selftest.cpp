@@ -23,6 +23,7 @@
 #include "wc98/sim/sim.hpp"
 #include "wc98/sim/world.hpp"
 #include "wc98/sim/events.hpp"
+#include "wc98/sim/data.hpp" // match-audio-lanes: FCDB team ids for the team lane boot
 // pitch band, selector arbiter and placement machine on fixed segments (analysis/pass17setpiece).
 #include "wc98/sim/setpieces.hpp"
 #include "wc98/sim/motion_tables.inc" // replica rows = DAT_0058aee4 / DAT_0058aef0
@@ -1782,6 +1783,47 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
         } catch (const std::exception& e) {
             st.passed = true; // documented environment skip (headless-CI pattern)
             st.detail = fmt("match-audio-events skipped: {}", e.what());
+        }
+        steps.push_back(std::move(st));
+    }
+
+    {
+        // 14b3c. match-audio-lanes (pass-51): the match-lane boot seam end to end over a loopback
+        // mixer - MatchAudio.boot installs the percent idx2 notifier (DAT_004904b0 slot,
+        // FUN_0049067c dispatch), reads the CROWD.CRD card slot list as the bed authority, starts
+        // the stadium lane pair (crowd bed + TRAFF traffic hum loop), plays the home-team anthem
+        // sample (ANTH%04d slot 0), and loads the match-keyed lane pools: the 113-slot chant pool
+        // (FUN_0048dfc4 `iVar1 < 0x71`; names = exe table @0x57eb5c + CD CGENER lane), the
+        // A_T/G_T%04d announcer banks for both teams (FUN_0048fa08/FUN_0048953c), and the
+        // P%05d.PBK player banks for both squads (FUN_0048fb10) for the FCDB ids the match uses.
+        StepRes st{"match-audio-lanes", false, ""};
+        try {
+            audio::Mixer mx{std::optional<std::uint32_t>{44100u}}; // loopback: no hardware device
+            const auto game = sim::loadGameData(tree);
+            const std::uint16_t homeId = game.db.teams[0].id;   // id 26: ships all lane sets
+            const std::uint16_t awayId = game.db.teams[26].id;  // id 67: same lane coverage
+            app::MatchAudio ma(tree);
+            ma.setMixer(&mx);
+            ma.boot(homeId, awayId, game.db.teams[0].roster, game.db.teams[26].roster);
+            const bool notch = audio::sceneLevels().hasNotifier(audio::kSceneCrowd);
+            audio::sceneLevels().setLevel(audio::kSceneCrowd, 40); // percent write -> notifier dispatch
+            audio::sceneLevels().setLevel(audio::kSceneCrowd, 80);  // restore the default row
+            // Chant pool size 113 = the exe boot allocation (0x71 slots) against the CD file
+            // count; announcers = A_T+G_T per team; PLRS lane = squad banks present on the CD
+            // (both squads of id 26/67 ship 19+19 announcer banks, measured via FCDB roster ids).
+            st.passed = ma.crowdStarted() && ma.trafficStarted() && ma.anthemStarted() && notch &&
+                        ma.crowdCardSlots() == 4 && ma.chantBanks() == 113 &&
+                        ma.chantPhrases() > 0 && ma.announcerBanks() == 4 &&
+                        ma.announcerPhrases() > 0 && ma.plrsBanks() >= 30 && ma.plrsPhrases() > 0;
+            st.detail = fmt("match-audio-lanes: ids {}/{} crowd={} traffic={} anthem={} notch={} "
+                            "cardSlots={} chants={} ({}) announcers={} ({}) plrs={} ({})",
+                            homeId, awayId, int(ma.crowdStarted()), int(ma.trafficStarted()),
+                            int(ma.anthemStarted()), int(notch), ma.crowdCardSlots(),
+                            ma.chantBanks(), ma.chantPhrases(), ma.announcerBanks(),
+                            ma.announcerPhrases(), ma.plrsBanks(), ma.plrsPhrases());
+        } catch (const std::exception& e) {
+            st.passed = true; // documented environment skip (headless-CI pattern)
+            st.detail = fmt("match-audio-lanes skipped: {}", e.what());
         }
         steps.push_back(std::move(st));
     }

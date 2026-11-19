@@ -24,8 +24,11 @@ struct Crd {
     std::array<CrdParams, 2> params;
     std::array<std::uint8_t, 8> bankSlots{}; // .BNK sound slots used, 0xFF = unused
     std::vector<CrdRecord> records;        // non-empty records of the 16 at 0x28
-    std::array<std::uint32_t, 16> tableRefs{}; // u32s at 0x128, relative to 0x128, pointing into the
-                                               // tables (not at table starts); 0 = none; purpose unknown
+    std::array<std::uint32_t, 16> tableRefs{}; // u32s at 0x128, relative to each slot address
+                                               // 0x128+i*4; SNDcrowdload fixups (FUN_004e4a80) to
+                                               // absolute curve pointers (pass-54 measured: slots
+                                               // 0..3 -> tables 0/2/4/6, slots 8..11 -> 1/3/5/7);
+                                               // 0 = unbound slot
     std::vector<std::array<std::uint8_t, 512>> tables; // from 0x168 to EOF, non-decreasing byte curves
 
     static Crd parse(std::span<const std::uint8_t> data);

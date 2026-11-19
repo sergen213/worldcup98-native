@@ -152,7 +152,8 @@ Port side (pass-51): `MatchAudio::boot` mirrors this install set — percent idx
 card as bed authority, TRAFF loop, ANTH slot-0 one-shot, and decode-counted catalogs for the chant
 pool, announcer banks and squad PLRS banks (chant playback wired by pass-53 below; announcer and
 name-phrase playback stays disabled until the request-handler trigger mapping is decoded; see
-AUDIO_DISCREPANCIES A3/A6/A7).
+AUDIO_DISCREPANCIES A3/A6/A7). Pass-54: the card slot list opens as four simultaneous bed layers,
+each bound to its own gain curve by the measured `0x128` slot-pointer fixup (`docs/formats/CRD.md`).
 Gates: `test_gameaudio` (e), selftest `match-audio-lanes` (chants=113, announcers=4, plrs=38).
 
 **Pass-53 — chant pump + boot classification [C]** (evidence `analysis/pass53audio/NOTES.md`

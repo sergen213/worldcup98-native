@@ -104,7 +104,8 @@ public:
     std::uint32_t whistles() const { return whistles_; }
     std::uint32_t kicks() const { return kicks_; }
     std::uint32_t goals() const { return goalRoars_; }
-    bool crowdStarted() const { return crowdId_ != 0; }
+    bool crowdStarted() const;
+    std::uint32_t crowdLayerCount() const { return std::uint32_t(crowdLayers_.size()); }
     bool trafficStarted() const { return trafficId_ != 0; }
     bool anthemStarted() const { return anthemId_ != 0; }
     std::uint32_t chantBanks() const { return chantBanks_; }    // parseable CHNT team banks
@@ -128,12 +129,21 @@ private:
     static MatchAudio* live_;               // one live match audio per process (exe global lanes)
 
     std::filesystem::path tree_;
-    formats::Pcm whistle_, kick_, crowd_;
+    formats::Pcm whistle_, kick_;
     formats::Pcm goalRoar_;     // GAME00 slot 45: 4.1 s loud-noise burst (measured profile)
     formats::Pcm whistleTrill_; // GAME00 slot 85: 1.95 s bright sustained (period-end whistle)
     formats::Pcm traffic_;      // TRAFF.BNK slot 0 (stadium lane pair member)
+    // Stadium bed layers (pass-54): the card's enabled bank slots are opened together, each
+    // bound to its own curve through the measured tableRef pointer (0x128 + i*4 + ref ->
+    // absolute curve address in the card tables region). Pump handler 0x4e502c reads the gain
+    // byte curve[level] (bytes 0..127, scale/127) at the SNDcrowdcontrol level.
+    struct CrowdLayer {
+        formats::Pcm pcm;
+        audio::SoundId id = 0;
+        std::array<std::uint8_t, 512> curve{}; // empty == unbound (fallback gate curve)
+    };
+    std::vector<CrowdLayer> crowdLayers_;
     audio::Mixer* mixer_ = nullptr;
-    audio::SoundId crowdId_ = 0;
     audio::SoundId goalId_ = 0;
     audio::SoundId trafficId_ = 0;
     audio::SoundId anthemId_ = 0;
@@ -163,14 +173,18 @@ private:
     formats::Pcm chantClip_;            // last decoded clip (decode evidence for gates)
     std::uint32_t chantSegments_ = 0;   // decoded segment count across clips (gate evidence)
     std::mt19937 chantRng_{0x98u};      // variant draw (exe random FUN_004c3ea0)
-    // CROWD.CRD controller curve (pass-52 RE): percent row -> SNDcrowdcontrol level
-    // (pct*0x7f/100, clamped >= 1, FUN_004906a4) -> card level->gain table entry, normalized
-    // at the curve's full-position value. The zero-floor table pair (t4/t6) is the stadium
-    // bed gate curve: entry 0..4 == 0 reproduces "options row 0 -> bed silent"; the 21-floor
-    // pair (t0/t2) is the anticipation/reaction layer curve, not wired (no port chant layer).
+    // CROWD.CRD controller curve fallback (pass-52 RE): percent row -> SNDcrowdcontrol level
+    // (pct*0x7f/100, clamped >= 1, FUN_004906a4). Bound layers carry their own measured curve;
+    // this zero-floor table (t4) gates the unbound fallback layer and the presentation voices.
     std::array<std::uint8_t, 512> crowdCurve_{};
     bool crowdCurveValid_ = false;
     [[nodiscard]] float crowdCurveRatio() const; // applied percent -> curve gain 0..1
+    [[nodiscard]] float crowdLayerGain(const CrowdLayer& layer) const; // slot curve gain byte/127
+    // TRAFF.CRD controller curve (measured: slot 0 ref 0x40 -> table 0, flat 117), same
+    // SNDcrowdcontrol level path as the bed; the hum runs at its curve gain.
+    std::array<std::uint8_t, 512> trafficCurve_{};
+    bool trafficCurveValid_ = false;
+    [[nodiscard]] float trafficGain() const;
 };
 
 } // namespace wc98::app

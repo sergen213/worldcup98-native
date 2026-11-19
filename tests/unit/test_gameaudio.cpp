@@ -101,6 +101,10 @@ int main() {
         ma.setMixer(&m);
         ma.startCrowd();
         CHECK(ma.crowdStarted());
+        // CROWD.CRD opens its whole enabled slot list as bed layers (measured card: slots
+        // 0..3 -> two swell + two murmur voices, each on its own tableRef curve).
+        CHECK(ma.crowdCardSlots() == 4);
+        CHECK(ma.crowdLayerCount() == 4);
         const double ambience = peakRms(m, 0.5);
         CHECK(ambience > 10.0); // crowd loop audible through the mixer
 
@@ -135,10 +139,10 @@ int main() {
             CHECK(peakRms(m2, 0.4) > 10.0);
             audio::sceneLevels().setLevel(audio::kSceneCrowd, 0);
             ma2.relevelCrowd();
-            CHECK(tailRms(m2, 2.6) < 80.0); // fade settles on the idx2=0 lane gain (~43 int16 RMS)
+            CHECK(tailRms(m2, 2.6) < 80.0); // fade settles to silence (lane gain 0; measured ~8)
             audio::sceneLevels().setLevel(audio::kSceneCrowd, 80);
             ma2.relevelCrowd();
-            CHECK(tailRms(m2, 2.6) > 1000.0); // restored lane level ramps the bed back up (~4300)
+            CHECK(tailRms(m2, 2.6) > 1000.0); // restored lane level ramps the bed back up (measured ~1700)
         }
         audio::sceneLevels().setLevel(audio::kSceneCrowd, 80);
 

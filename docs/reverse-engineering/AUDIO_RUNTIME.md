@@ -795,3 +795,55 @@ Measured bank contents: GAME00/01 = 53 sounds in an 86-slot table, PLRS00/01 =
 17 sounds each (BNKl v2 headers). Port `MatchAudio::catalogSfxs` registers the
 four banks; gate `test_gameaudio` asserts the counts.
 Evidence: `analysis/pass72sfx/NOTES.md`, `/tmp/wc98pass72/m1.txt`..`m8.txt`.
+
+## Pass-73: speech autovol ramp + beat scheduler fully decoded (A8 ramp closed)
+
+`SNDspeechinit` `FUN_004df820` (0x4df820..0x4df8a2): gate `DAT_006597b0`,
+validate vol in `[0,0x7f]`, store `cur = vol << 16` (`DAT_00588d68`, 16.16),
+delta `DAT_00588d6c = 0`, install state-cb pump `0x4dfca0` into `DAT_006597c4`
+and cleanup handler `0x4dfc64` into `DAT_006597e0`.
+
+`SNDspeechautovol` `FUN_004df8a4`: validate vol `[-1,0x7f]`, frames clamped
+`>=1`, server getter `(*DAT_00558464)(DAT_006597bc)` via
+`FUN_0052bc04/FUN_0052bc58` (SND-server object, DLL-side internals [H]), then
+`delta = (serverCur - cur)/frames`, target `DAT_0064b064 = serverCur`.
+
+Pump `0x4dfca0` (registered per tick; called from `0x4df847` region): delta
+`!= 0` → `cur += delta`; clamp both directions at target (`>= target` with
+delta>0, `<= target` with delta<0 → `cur = target`, delta=0); apply `cur>>16`
+through `SNDvol` `FUN_0052c71c` to the voice group pair `DAT_00588d74`
+(current) then `DAT_00588d70` (previous, swapped at `0x4dfdc7`); negative cur
+→ sentence stop `FUN_004dfb94`.
+
+Beat scheduler (inside pump when delta==0 and byte `DAT_0064b15a` != 0):
+idx byte `DAT_0064b159` walks `0..0x13` over the 20-slot table
+`DAT_0064b068` stride 12 `{u16@0 vol low, u16@2, u32@4 id, u32@8 voice handle
+| -100 unused}`; compare `SNDgroupgetvol FUN_0052c780(DAT_00588d74)` against
+`entry>>16` and exit when greater (operand always 0 at shipped add sites,
+`XOR EBX,EBX` literal — semantics unresolved [H]); cycle bytes
+`DAT_0064b158/159/15b` (final count / beat idx / entries); build
+`SNDplaysetdef` record via `FUN_004e2d00` `{+0 = entry[4], byte+4 = entry[0]
+low byte, byte+8 = cur>>16}`, play `FUN_004e2d68`, handle → `DAT_00588d74`
+and entry+8. Add site `FUN_004df968` (guard `>=0x13` → `0xfffffff3` full) is
+fed from commentary records: `record+0xe` sound id through mapper
+`FUN_0048d2f0` (`EAX = [DAT_00632420]` when `DAT_0063241c` set else 0),
+returned slot idx stored to `record+0x6`; enable `FUN_004dfb40`, reset
+`FUN_004dfe18` (zeroes 15a/158/159/15b), status `FUN_004dfa60`
+(`8 = unused, 7 = playing, 3 = queued`) / `FUN_004dfc0c` (`3 = running`).
+Beat-add caller clusters: `0x48f4df..0x48f775` (commentary request lane
+`FUN_0048f730`: gate sound option `DAT_006326b0`, skip while running, priority
+compare `FUN_0048f664` = max `+0x18` over queues `DAT_006326e4/632700`, pick
+type-3 record `FUN_0048d070`) and scene boot `0x48987d`.
+
+Game-side vol source: `FUN_004906a4 = percent[idx]*0x7f/100 clamp>=1` over
+the scene percent table `DAT_00632778`; duck caller `FUN_0048fca0` (gate
+`DAT_006326b0`) from scene boot `0x4904bc` autovol's with percent idx3,
+frames=1. Sentence stop `FUN_004dfb94` clears the beat flag, closes both voice
+lanes (`FUN_004e2c60`) and resets beat state.
+
+Port: `SpeechGain` (`app/commentary.hpp`) already mirrored the ramp; pass-73
+gate `test_gameaudio` asserts exact fixed-point division/truncation numbers
+(`set(80) → ramp(1,3)`: applied 53, 27, 1, clamp) — A8 autovol-ramp residual
+closed. Beat scheduler stays exe-side scheduling semantics (port commentary
+queue models sentence scheduling; gate operand unresolved [H]).
+Evidence: `analysis/pass73gain/NOTES.md`, `/tmp/wc98pass73/a1..a10*.txt`.

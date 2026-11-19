@@ -9,6 +9,7 @@
 
 #include "wc98/file.hpp"
 #include "wc98/formats/bnk.hpp"
+#include "wc98/formats/crd.hpp"
 #include "wc98/formats/schl.hpp"
 #include "wc98/sim/data.hpp" // (e) boot lane: sim::loadGameData + FCDB team ids
 #include "wc98/audio/scene_levels.hpp" // director lane percent (DAT_00632778)
@@ -244,6 +245,51 @@ int main() {
         for (int frame = 0; frame < 400; ++frame) maSilent.pumpChants();
         CHECK(maSilent.chantPlays() >= 1 && maSilent.chantActive() == 0); // requests, no voices
         audio::sceneLevels().setLevel(audio::kSceneCrowd, 80);
+    }
+
+    // (g) Crowd reaction envelope (pass-55): weights from the card header byte 7 (CROWD 70 ->
+    // be 358 / bc 154, exe FUN_004e4ba0), fresh machine indexes the curve at (358*358)>>9 = 250,
+    // the idle pump walk (FUN_004e510c) breathes the blend index inside the blend formula's
+    // algebraic band [250, 404] (level range [0, 0x1ff]), and SNDcrowdpulse (FUN_004e4cac) ramps
+    // the 16.16 level toward the card record pulse target, clamped at the record ceiling.
+    // TRAFF weights byte 7 = 4 -> be 20/bc 492.
+    {
+        app::CrowdEnvelope env;
+        env.init(0x46, 132);
+        CHECK(env.be() == 358 && env.bc() == 154);
+        CHECK(env.blendIndex() == 250); // fresh machine: level 0
+        for (int i = 0; i < 4000; ++i) env.tick(); // long idle walk (~67 s at 60 fps)
+        CHECK(env.blendIndex() >= 250 && env.blendIndex() <= 404); // [be^2>>9, (be^2+bc*511)>>9]
+        CHECK(env.level() >= 0 && env.level() <= (0x1ff << 16)); // target clamp [0, 0x1ff]
+        // Card record 0 (CROWD.CRD bytes 0x28..0x37 measured dump): delta 350, ceiling 450
+        // (u16 0x01c2 at bytes 6..7), ramp step 0x38000 = 3.5 in 16.16, idle rate 0x40000
+        // (u32 at bytes 12..15) -> 132 ramp frames at 60 fps. Record 1: delta 250, ceiling 450,
+        // step 0x28000 = 2.5, rate 0x60000 -> 198 frames.
+        const auto crowdBytes = readFile(tree / "AUDIO" / "CRWD" / "CROWD.CRD");
+        const formats::Crd card = formats::Crd::parse(std::span<const std::uint8_t>(crowdBytes));
+        CHECK(card.records.size() >= 2);
+        CHECK((card.records[0].values ==
+              std::array<std::uint16_t, 6>{350, 450, 0x8000, 0x0003, 0x0000, 0x0004}));
+        CHECK((card.records[1].values ==
+              std::array<std::uint16_t, 6>{250, 450, 0x8000, 0x0002, 0x0000, 0x0006}));
+        CHECK(card.records[0].rate() == 0x40000 && card.records[1].rate() == 0x60000); // idle ramp
+        CHECK(card.records[0].step() == 0x38000 && card.records[1].step() == 0x28000);  // ramp step
+        const formats::CrdRecord rec = card.records[0];
+        CHECK(rec.step() == 0x38000 && rec.rate() == 0x40000); // rate * 0x21 >> 16 == 132 frames
+        app::CrowdEnvelope pe;
+        pe.init(0x46, 132);
+        CHECK(pe.pulse(rec));                                   // fresh level 0 < ceiling: applied
+        for (int i = 0; i < 100; ++i) pe.tick();                // 100 x step 0x38000 = 350<<16
+        CHECK(pe.level() == 350 << 16);                         // exact pulse arrival (0 + delta)
+        CHECK(pe.pulse(rec));                                   // ramp on up to the ceiling
+        // pulse arrival at the ceiling, then the idle pump resumes the random walk: tick only
+        // up to the arrival tick so the ceiling clamp is checked while the pulse is still live.
+        for (int i = 0; i < 200 && pe.level() < (450 << 16); ++i) pe.tick();
+        CHECK(pe.level() == 450 << 16);                         // ceiling clamp (values[1] = 0x1c2)
+        CHECK(!pe.pulse(rec));                                  // at ceiling: exe status -8 refusal
+        app::CrowdEnvelope trafEnv;
+        trafEnv.init(0x04, 132);
+        CHECK(trafEnv.be() == 20 && trafEnv.bc() == 492);       // TRAFF byte 7 = 4
     }
 
     std::printf("test_gameaudio: OK\n");

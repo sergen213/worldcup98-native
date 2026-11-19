@@ -1717,6 +1717,8 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
             matchAudio.relevelCrowd(); // idx2 seam: options reaction row -> loop voice float
         }
         matchAudio.pumpChants(); // pass-53 chant pump (FUN_0048da50): per-frame counter, 100-frame load cadence
+        matchAudio.tickCrowd();  // pass-55 crowd envelope pump (FUN_004e510c idle walk + FUN_005444
+                                 // blend consumer): bed/hum voice gains follow the reaction machine
         if (menuMusic) menuMusic->update(); // FE music seam: fade-out at launch (FUN_0048ec64), rotation pump
 
         // In-game pause menu composite over the live frame (IGMENU scene tick=0x43FC40; list widget

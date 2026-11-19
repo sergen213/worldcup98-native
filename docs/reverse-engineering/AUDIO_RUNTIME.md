@@ -176,3 +176,22 @@ wrong and `decodeChantClip` now decodes flat members at the record boundary. Por
 `classifyChants` mirrors the lane table, `pumpChants` mirrors cadence/retire/top-up, wired
 per-frame in `livematch.cpp`; gate detail `match-audio-lanes` now reports
 `chantPump plays/active/clip` and `test_gameaudio` (f) asserts lanes + audible clip.
+
+**Pass-55 — crowd reaction envelope machine [C]** (evidence `analysis/pass55crowd/NOTES.md`).
+The event-envelope blend residual from pass-54 is decoded: the `cmn\scrowd.c` reaction machine
+shares one 16.16 level across the CROWD/TRAFF cards. Install `FUN_004e4ba0` derives blend
+weights from the card header byte 7 (`be = byte7 << 9 / 100`, `bc = 0x200 - be`; CROWD 70 ->
+358/154, TRAFF 4 -> 20/492). The idle pump `FUN_004e510c` walks the level through alternating
+ramp states (`DAT_005894ab` 0 up/1 down/2 up/3 down, then 2<->3 forever), drawing a random
+target clamped [0,0x1ff] on every ramp arrival and dividing the distance by a card-record ramp
+rate (`rate * 0x21 >> 16`: record 0 -> 132 frames, record 1 -> 198). `SNDcrowdpulse`
+(`FUN_004e4cac`) reads record delta/ceiling/step (u16 pair at record bytes 4..7: measured delta
+350, ceiling **450** = 0x01c2 — an earlier gate note said 394, decimal arithmetic error) and
+refuses with status -8 when the level already sits at/above the ceiling, else ramps to
+`level + delta` clamped at the ceiling. The blend consumer `FUN_005444` computes
+`cc = (be*be + bc*(c0>>16)) >> 9` every frame and indexes the card curve tables at `cc >> 16`;
+for CROWD algebra this band is [250, 404], so the bed index breathes instead of sitting at one
+fixed level (closing the A4 fixed-bed discrepancy). Port `CrowdEnvelope` mirrors the machine
+exactly; `tickCrowd()` pumps it per frame in `livematch.cpp` and re-fades the layer voices only
+when the curve index moves. Gates: `test_gameaudio` (g) card-truth record CHECKs + pulse
+arrival/clamp/refusal; selftest `match-crowd-envelope` start 250 / walk band / pulse ramp +3.5.

@@ -115,6 +115,15 @@ MatchAudio::MatchAudio(const std::filesystem::path& tree) : tree_(tree) {
             crowdCurve_ = card.tables[4];
             crowdCurveValid_ = true;
         }
+        // Reaction machine (pass-55): weights from header byte 7 (measured CROWD 70 ->
+        // be 358/bc 154), idle ramp frames from record 0 byte 12 (exe rate * 0x21 >> 16).
+        crowdRecords_ = card.records;
+        {
+            const int rate = crowdRecords_.empty()
+                ? 132
+                : std::max(1, int((std::int64_t(crowdRecords_[0].rate()) * 0x21) >> 16));
+            crowdEnvelope_.init(card.byte7, rate);
+        }
         for (std::size_t i = 0; i < slots.size(); ++i) {
             CrowdLayer layer;
             layer.pcm = decodeSlot(tree / "AUDIO" / "CRWD" / "CROWD.BNK", slots[i]);
@@ -143,6 +152,10 @@ MatchAudio::MatchAudio(const std::filesystem::path& tree) : tree_(tree) {
             trafficCurve_ = traf.tables[0];
             trafficCurveValid_ = true;
         }
+        // Traffic card (pass-55): header byte 7 = 4 -> weights be 20/bc 480; the card ships
+        // no reaction records (all 0x00 -> SNDcrowdpulse refuses it, measured dump).
+        trafficRecords_ = traf.records;
+        trafficEnvelope_.init(traf.byte7, 132); // no records: idle rate default 132 frames [H]
     } catch (const std::exception&) { // no card: gain falls back to the bed curve
     }
 }
@@ -150,6 +163,100 @@ MatchAudio::MatchAudio(const std::filesystem::path& tree) : tree_(tree) {
 void MatchAudio::crowdNotifier(int channel) {
     (void)channel;
     if (live_) live_->relevelCrowd(); // percent write -> lane re-level (FUN_0049067c dispatch)
+}
+
+// --- CrowdEnvelope (pass-55) -------------------------------------------------------------
+// Mirror of the cmn\scrowd.c reaction machine: idle pump FUN_004e510c (DAT_005894ab state
+// walk), pulse FUN_004e4cac, blend consumer FUN_005444. The exe shares ONE machine between
+// the CROWD and TRAFF cards (single 16.16 level, slot curve pointers per card); the port
+// runs the bed and hum envelopes independently, each from its own card header byte 7 [H].
+void CrowdEnvelope::init(std::uint32_t cardByte7, int rateFrames) {
+    // FUN_004e4ba0 install: weights from header byte 7 (be = byte7<<9/100, bc = 0x200 - be).
+    be_ = int((cardByte7 << 9) / 100);
+    bc_ = 0x200 - be_;
+    c0_ = 0;
+    c4_ = 0;
+    c8_ = 0;
+    ab_ = 0;
+    // Idle ramp frames, exe `*(int*)(recordArea + 0xc + cardIdx*0x10) * 0x21 >> 0x10`
+    // (record byte 12 u32, CROWD record 0 measured 0x40000 -> 132 frames at 60 fps).
+    rateFrames_ = std::max(1, rateFrames);
+}
+
+int CrowdEnvelope::targetLevel() {
+    // exe draw = (int)(rng64 >> 32) + (int)rng64 clamped [0, 0x1ff] (PRNG FUN_0052f3e0,
+    // 128-bit state approximated like the chant variant draw [H]).
+    return int(rng_() % 0x200u);
+}
+
+void CrowdEnvelope::tick() {
+    switch (ab_) {
+    case 0: // ramp toward target (up); on arrival draw a new target
+        c0_ += c8_;
+        if (c4_ <= c0_) {
+            c0_ = c4_;
+            const std::int64_t t = std::int64_t(targetLevel()) << 16;
+            // exe: distance = target below current ? (c0 - target*0x10000) : 0x10000 (rise by 1.0)
+            const std::int64_t dist = t < c0_ ? std::int64_t(c0_ - t) : 0x10000;
+            c4_ = std::int32_t(t);
+            std::int64_t step = dist / rateFrames_; // exe frames = rate * 0x21 >> 16
+            if (step < 1) step = 1;
+            c8_ = std::int32_t(step);
+            ab_ = 1;
+        }
+        break;
+    case 1: // ramp down toward target; on arrival draw target + frame count, switch to ramp up
+        c0_ -= c8_;
+        if (c0_ <= c4_) {
+            c0_ = c4_;
+            c4_ = std::int32_t(std::int64_t(targetLevel()) << 16);
+            const int frames = rampFrames(); // exe reads a runtime frame slot (+0x18) [H]
+            c8_ = std::int32_t((std::int64_t(c4_) - c0_) / frames); // signed: ramp direction
+            ab_ = 2;
+        }
+        break;
+    case 2: // ramp (c8 may be negative -> walks down); arrival draws + switches to 3
+        c0_ += c8_;
+        if (c4_ <= c0_) {
+            c0_ = c4_;
+            c4_ = std::int32_t(std::int64_t(targetLevel()) << 16);
+            const int frames = rampFrames(); // exe frame slot (+0xc) [H]
+            // exe case 2 arrival: c8 = (c0 - target) / frames -> positive walk down in case 3
+            c8_ = std::int32_t((std::int64_t(c0_) - std::int64_t(c4_)) / frames);
+            ab_ = 3;
+        }
+        break;
+    default: // 3: ramp down toward target; arrival draws + switches back to 2
+        c0_ -= c8_;
+        if (c0_ <= c4_) {
+            c0_ = c4_;
+            c4_ = std::int32_t(std::int64_t(targetLevel()) << 16);
+            const int frames = rampFrames();
+            c8_ = std::int32_t((std::int64_t(c4_) - c0_) / frames); // exe: signed, up in case 2
+            ab_ = 2;
+        }
+        break;
+    }
+}
+
+bool CrowdEnvelope::pulse(const formats::CrdRecord& rec) {
+    // SNDcrowdpulse FUN_004e4cac: ceiling = record bytes 4..7 MSB half (values[1]),
+    // delta = bytes 2..5 MSB half (values[0]); only when the level is below the ceiling
+    // (exe returns 0xfffffff8 in the refused case).
+    const std::int64_t ceiling = std::int64_t(rec.values[1]) << 16;
+    if (c0_ >= ceiling) return false;
+    std::int64_t target = std::int64_t(c0_) + (std::int64_t(rec.values[0]) << 16);
+    if (ceiling < target) target = ceiling;
+    c4_ = std::int32_t(target);
+    c8_ = std::int32_t(rec.step()); // u32 16.16 ramp step per frame
+    ab_ = 0;                        // ramp up into the pulse target
+    return true;
+}
+
+int CrowdEnvelope::blendIndex() const {
+    // FUN_005444 control dword high half: cc = (be*be + bc*(c0>>16)) >> 9, used directly as
+    // the curve table index (CROWD algebraic band [250, 404] over level [0, 0x1ff]).
+    return std::clamp((be_ * be_ + bc_ * (c0_ >> 16)) >> 9, 0, 0x1ff);
 }
 
 void MatchAudio::boot(std::uint16_t homeTeamId, std::uint16_t awayTeamId,
@@ -426,17 +533,26 @@ float MatchAudio::crowdCurveRatio() const {
 }
 
 float MatchAudio::crowdLayerGain(const CrowdLayer& layer) const {
-    if (layer.curve[511] == 0) return crowdCurveRatio(); // unbound slot -> fallback curve
-    const int pct = std::clamp(crowdPctApplied_, 0, 100);
-    const int level = std::max(1, pct * 0x7f / 100);     // FUN_004906a4
-    return float(layer.curve[std::min(level, 511)]) / 127.f;
+    // FUN_005444 consumer: every frame the slot's gain comes from its curve table at the
+    // envelope blend index (cc high half, CROWD algebraic band [250, 404]), scaled by the
+    // percent-lane controller (curve byte * DAT_005894ac >> 0x17). Modeled here as the
+    // blend curve gain times the percent lane linearly [M]: blend moves the bed up/down
+    // within the slot curve, the options row gates it to silence.
+    const float pct = std::clamp(crowdPctApplied_, 0, 100) / 100.f;
+    const int idx = std::min(crowdEnvelope_.blendIndex(), 511);
+    if (layer.curve[511] == 0) { // unbound slot -> fallback percent curve (no card: linear gate)
+        if (!crowdCurveValid_) return pct;
+        const int max = std::max(1, int(crowdCurve_[127]));
+        return crowdCurveRatio() * float(crowdCurve_[idx]) / float(max);
+    }
+    return float(layer.curve[idx]) / 127.f * pct;
 }
 
 float MatchAudio::trafficGain() const {
     if (!trafficCurveValid_) return crowdCurveRatio();
-    const int pct = std::clamp(crowdPctApplied_, 0, 100);
-    const int level = std::max(1, pct * 0x7f / 100);
-    return float(trafficCurve_[std::min(level, 511)]) / 127.f;
+    const float pct = std::clamp(crowdPctApplied_, 0, 100) / 100.f;
+    const int idx = std::min(trafficEnvelope_.blendIndex(), 511);
+    return float(trafficCurve_[idx]) / 127.f * pct;
 }
 
 bool MatchAudio::crowdStarted() const {
@@ -450,12 +566,44 @@ void MatchAudio::startCrowd() {
     // crowd/CRWD stream per FUN_0047a7c4) scales the loop voices through the SMIX voice lane;
     // the card controller curves (pass-52/54) then shape each slot's voice float.
     crowdPctApplied_ = audio::sceneLevels().level(audio::kSceneCrowd);
+    appliedCrowdIdx_ = crowdEnvelope_.blendIndex();
+    appliedTrafficIdx_ = trafficEnvelope_.blendIndex();
     if (!mixer_) return;
     const float lane = smixLaneGain(audio::kSceneCrowd);
     for (auto& layer : crowdLayers_)
         if (!layer.id)
             layer.id = mixer_->play(layer.pcm, 0.6f * lane * crowdLayerGain(layer),
                                     /*loop=*/true);
+}
+
+void MatchAudio::applyCrowdGains() {
+    // Re-fade the running lane voices to their current blended gains (the exe consumer
+    // writes the voice gain bytes directly; a short fade approximates the seam [M]).
+    if (!mixer_) return;
+    const float lane = smixLaneGain(audio::kSceneCrowd);
+    for (auto& layer : crowdLayers_)
+        if (layer.id) mixer_->fade(layer.id, 0.6f * lane * crowdLayerGain(layer), 2);
+    if (trafficId_) mixer_->fade(trafficId_, 0.12f * lane * trafficGain(), 2);
+}
+
+void MatchAudio::tickCrowd() {
+    // Frame pump (pass-55): idle walk + blend. Voices are rewritten only when the curve
+    // index moves (FUN_005444 change gate), like the exe consumer.
+    crowdEnvelope_.tick();
+    trafficEnvelope_.tick();
+    const int ci = crowdEnvelope_.blendIndex();
+    const int ti = trafficEnvelope_.blendIndex();
+    const bool moved = ci != appliedCrowdIdx_ || ti != appliedTrafficIdx_;
+    appliedCrowdIdx_ = ci;
+    appliedTrafficIdx_ = ti;
+    if (moved) applyCrowdGains();
+}
+
+bool MatchAudio::crowdPulse(std::size_t recordIdx) {
+    // SNDcrowdpulse lane (FUN_004e4cac): absent records (byte 0 == 0) are refused; the
+    // parse only keeps records present in the card, so this is the enable gate.
+    if (recordIdx >= crowdRecords_.size()) return false;
+    return crowdEnvelope_.pulse(crowdRecords_[recordIdx]);
 }
 
 void MatchAudio::relevelCrowd() {

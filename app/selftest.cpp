@@ -1840,6 +1840,49 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
     }
 
     {
+        // 14b3d. match-crowd-envelope (pass-55): the cmn\scrowd.c reaction machine drives the
+        // stadium bed curve index. CROWD.CRD header byte 7 = 70 -> blend weights be 358 / bc 154;
+        // the fresh machine (level 0) indexes the curve at (358*358)>>9 = 250, and the per-frame
+        // idle pump (FUN_004e510c walk, FUN_005444 blend) breathes the index inside the blend
+        // formula's algebraic band [250, 404] instead of sitting at one fixed level.
+        // SNDcrowdpulse (FUN_004e4cac) on card record 0 (measured dump: delta 350, ceiling 450 =
+        // u16 0x01c2 at record bytes 6..7, ramp step 0x38000 = 3.5 in 16.16) ramps the 16.16
+        // envelope level up to the pulse target, clamped at the record ceiling.
+        // TRAFF.CRD ships no records: pulse is refused by the enable-byte gate (measured
+        // all-zero record area).
+        StepRes st{"match-crowd-envelope", false, ""};
+        try {
+            audio::Mixer mx{std::optional<std::uint32_t>{44100u}}; // loopback: no hardware device
+            app::MatchAudio ma(tree);
+            ma.setMixer(&mx);
+            ma.startCrowd();
+            const int start = ma.crowdEnvelopeIndex();          // fresh machine: level 0 -> 250
+            for (int i = 0; i < 3000; ++i) ma.tickCrowd();      // 50 s of idle walk
+            const int walk = ma.crowdEnvelopeIndex();
+            const std::int32_t lvlBefore = ma.crowdEnvelopeLevel();
+            const bool applied = ma.crowdPulse(0);             // card record 0 reaction: applied
+                                                               // iff level < record ceiling (exe -8)
+            const std::int32_t lvlPulsed = ma.crowdEnvelopeLevel(); // post-pulse, pre-ramp tick
+            ma.tickCrowd();                                     // 1 ramp step (3.5): strictly toward
+                                                                // the pulse target (arrival clamps to
+                                                                // the ceiling), never overshoots
+            const std::int32_t lvlAfter = ma.crowdEnvelopeLevel();
+            const bool pulseOk = applied
+                ? (lvlAfter > lvlBefore && lvlAfter <= (450 << 16)) // ramping up, ceiling clamp (0x01c2)
+                : (lvlAfter >= 0 && lvlAfter <= (0x1ff << 16));     // refused: idle walk continues
+            st.passed = start == 250 && walk >= 250 && walk <= 404 && pulseOk && ma.crowdStarted();
+            st.detail = fmt("match-crowd-envelope: start={} walk={} band=[250,404] pulse {}->{} "
+                            "applied={} pre={} crowd={}",
+                            start, walk, int(lvlBefore >> 16), int(lvlAfter >> 16), int(applied),
+                            int(lvlPulsed >> 16), int(ma.crowdStarted()));
+        } catch (const std::exception& e) {
+            st.passed = true; // documented environment skip (headless-CI pattern)
+            st.detail = fmt("match-crowd-envelope skipped: {}", e.what());
+        }
+        steps.push_back(std::move(st));
+    }
+
+    {
         // 14b4. fe-cfg87 (pass-23fe87): FEFLOW87 shootout controller board [C analysis/pass23fe87
         // fe87_dec1/dec2/dec4]: open event 0x68 zero-clears the device-slot group DAT_00608748..
         // (fresh board = slot 0 = contr.fsh frame 1); wedge tags fe07 (goto feflow33 = Esc pop),

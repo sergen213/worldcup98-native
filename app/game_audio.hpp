@@ -3,11 +3,13 @@
 // crowd ambience + whistle/kick SFX (BNK slots), driven off the sim event seam.
 // RE grounding: docs/reverse-engineering/AUDIO_RUNTIME.md §Menu/SFX paths; evidence analysis/pass8/.
 #include "wc98/audio/mixer.hpp" // SoundId + Mixer (OpenAL soft; one per process)
+#include "wc98/formats/crd.hpp"
 #include "wc98/formats/schl.hpp"
 #include "wc98/sim/events.hpp"
 
 #include <array>
 #include <cstdint>
+#include <algorithm>
 #include <filesystem>
 #include <memory>
 #include <random>
@@ -55,6 +57,49 @@ private:
     bool reenterPending_ = false; // enterScene() during the ramp-out: restart when the seam ends
 };
 
+// Crowd reaction envelope (pass-55): the cmn\scrowd.c reaction machine behind the stadium
+// lane. SNDcrowdload (FUN_004e4a80) derives the blend weights from the card header byte 7:
+// be = (byte7 << 9) / 100, bc = 0x200 - be (CROWD 70 -> 358/154). The per-frame idle pump
+// (FUN_00510c) walks a 16.16 level c0 through alternating ramp states (exe DAT_005894ab:
+// case 0 up, 1 down, 2 up, 3 down, then 2 <-> 3 forever): when a ramp lands on its target
+// it draws a new random target clamped to [0, 0x1ff] and divides the remaining distance by
+// a ramp frame count read from the card records (byte 12 u32; exe frames = rate * 0x21 >>
+// 16, measured 132/198/264 frames - ~2..4 s ramps at 60 fps). The consumer (FUN_005444)
+// computes every frame the control blend cc = (be * be + bc * (c0 >> 16)) >> 9 and indexes
+// the card curve tables at [cc >> 16] - CROWD lands in the blend formula's algebraic band
+// [250, 404] (be = 358, bc = 154, level in [0, 0x1ff]), so the bed gain breathes instead
+// of sitting at one fixed level. SNDcrowdcontrol
+// (FUN_004e4d8c) keeps the percent-lane controller level in the low half of cc (pass-49/52
+// options gate); the envelope drives the curve index. SNDcrowdpulse (FUN_004e4cac) raises
+// the target by a card record's delta, clamped at the record ceiling, ramping at the
+// record step. Random target draws are an approximation [H] of the exe 128-bit PRNG
+// (FUN_004c321c state) the way the chant variant draw is modeled.
+class CrowdEnvelope {
+public:
+    // cardByte7 = header weight; rateFrames = idle ramp frames (exe record byte 12 formula).
+    void init(std::uint32_t cardByte7, int rateFrames); // fresh machine (c0 = level 0)
+    void tick();                        // per-frame idle pump (exact state machine)
+    // SNDcrowdpulse record lane: delta/ceiling/step from the card record (CrdRecord).
+    // Returns true when the pulse was applied (exe FUN_004e4cac status: success vs -8
+    // "level already at/above ceiling").
+    bool pulse(const formats::CrdRecord& rec);
+    [[nodiscard]] int blendIndex() const; // curve index cc >> 16 (exe control blend)
+    [[nodiscard]] std::int32_t level() const { return c0_; } // 16.16 envelope level
+    [[nodiscard]] int be() const { return be_; }             // blend weights (gates)
+    [[nodiscard]] int bc() const { return bc_; }
+private:
+    int targetLevel();  // random walk target (clamped 0..0x1ff)
+    int rampFrames() { return std::max(1, int(rng_() % std::uint32_t(std::max(2, rateFrames_ * 2)))) + 1; }
+
+    int be_ = 0, bc_ = 0x200;       // blend weights (exe DAT_005894b8.hi / DAT_005894bc)
+    std::int32_t c0_ = 0;           // envelope level, 16.16 (DAT_005894c0)
+    std::int32_t c4_ = 0;           // ramp target, 16.16 (DAT_005894c4)
+    std::int32_t c8_ = 0;           // ramp step per frame (DAT_005894c8)
+    int ab_ = 0;                    // ramp state (DAT_005894ab)
+    int rateFrames_ = 132;          // idle ramp frames, record 0 rate at install (FUN_00510c)
+    std::mt19937 rng_{0x1998u};
+};
+
 // Live-match audio: CROWD.BNK ambience loop + GAME00.BNK whistle/kick one-shots. Bank decode is
 // best-effort (missing files leave the slots silent). With mixer == nullptr (no OpenAL device)
 // trigger() still counts events, so drivers stay headless-safe like Commentary's null-mixer path.
@@ -82,6 +127,20 @@ public:
     // Crowd-bed re-level seam (pass-49): options stadium-reaction row -> percent idx2 rewrites
     // the SMIX voice lane float of the running loop (FUN_004906a4 -> voice offset 0x34), faded.
     void relevelCrowd();
+
+    // Crowd envelope seam (pass-55): the reaction machine pumps every frame while the
+    // stadium lane runs (exe SMIX update chain driving FUN_00510c idle walk + FUN_005444
+    // blend consumer). Re-fades the running bed/traffic voices when the curve index moves
+    // (the exe consumer only rewrites voice bytes on change). Call per frame next to
+    // pumpChants() (livematch seam).
+    void tickCrowd();
+    // SNDcrowdpulse lane (FUN_004e4cac): raise the crowd envelope target by the card
+    // record's delta (clamped at the record ceiling). Event -> record-index mapping is
+    // undecoded (runtime vtable dispatch, AUDIO_DISCREPANCIES A4); the API is exercised by
+    // the gates, not wired to sim events.
+    bool crowdPulse(std::size_t recordIdx); // SNDcrowdpulse lane; true when applied
+    [[nodiscard]] int crowdEnvelopeIndex() const { return crowdEnvelope_.blendIndex(); }
+    [[nodiscard]] std::int32_t crowdEnvelopeLevel() const { return crowdEnvelope_.level(); }
 
     // Chant pump (pass-53): the exe's chant-lane pump FUN_0048da50. Boot enables the lane on
     // the match-scene entry (enable FUN_0048d378, site 0x49078f; disable on scene exit
@@ -180,6 +239,12 @@ private:
     bool crowdCurveValid_ = false;
     [[nodiscard]] float crowdCurveRatio() const; // applied percent -> curve gain 0..1
     [[nodiscard]] float crowdLayerGain(const CrowdLayer& layer) const; // slot curve gain byte/127
+    // Reaction envelopes (pass-55): weights from the card byte 7, idle walk + blend. The
+    // blend index feeds crowdLayerGain/trafficGain curve lookups.
+    CrowdEnvelope crowdEnvelope_, trafficEnvelope_;
+    std::vector<formats::CrdRecord> crowdRecords_, trafficRecords_;
+    int appliedCrowdIdx_ = -1, appliedTrafficIdx_ = -1; // last faded curve index (change gate)
+    void applyCrowdGains(); // re-fade bed + traffic + anthem to the current blended gains
     // TRAFF.CRD controller curve (measured: slot 0 ref 0x40 -> table 0, flat 117), same
     // SNDcrowdcontrol level path as the bed; the hum runs at its curve gain.
     std::array<std::uint8_t, 512> trafficCurve_{};

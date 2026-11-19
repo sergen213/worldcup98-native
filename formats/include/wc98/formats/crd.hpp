@@ -15,12 +15,22 @@ struct CrdParams {           // two 12-byte groups at 0x08 and 0x14
 };
 
 struct CrdRecord {           // 16 bytes; present records start with 01 FF 00 00
+    // Reaction record (pass-55 RE, cmn\scrowd.c): byte 0 = existence/enable gate
+    // (SNDcrowdpulse FUN_004e4cac refuses records with byte 0 == 0), then six u16 at 4..15:
+    // values[0] = pulse delta (exe adds delta << 16 to the 16.16 envelope level),
+    // values[1] = pulse target ceiling (level clamped after the add), values[2..3] = pulse
+    // ramp step as u32 (16.16 per frame, measured 0x38000 = 3.5), values[4..5] = idle ramp
+    // frames as u32 (exe formula frames = rate * 0x21 >> 16; CROWD: 132/198/16500/264).
     std::array<std::uint16_t, 6> values{};
+    std::uint32_t step() const { return std::uint32_t(values[2]) | (std::uint32_t(values[3]) << 16); }
+    std::uint32_t rate() const { return std::uint32_t(values[4]) | (std::uint32_t(values[5]) << 16); }
 };
 
 struct Crd {
     std::uint8_t version = 0;              // byte 4, 2 in FIFA 99
-    std::uint8_t byte7 = 0;                // unknown (CROWD 0x46, TRAFF 0x04)
+    std::uint8_t byte7 = 0;                // envelope blend weight (pass-55): SNDcrowdload
+                                           // computes be = (byte7 << 9) / 100, bc = 0x200 - be
+                                           // (CROWD 0x46=70 -> 358/154; TRAFF 0x04 -> 20/492)
     std::array<CrdParams, 2> params;
     std::array<std::uint8_t, 8> bankSlots{}; // .BNK sound slots used, 0xFF = unused
     std::vector<CrdRecord> records;        // non-empty records of the 16 at 0x28

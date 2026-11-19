@@ -375,10 +375,14 @@ void MatchAudio::classifyChants() {
 
 // Chant frame pump (pass-53): exe scene handler FUN_0048da50. The request cadence counter
 // (DAT_00636a14) gates loads at every 100 frames (`< 0x64` guard, increment sites
-// 0x48db33/0x48dbeb/0x48dc27 in the pump body); between cadence hits the three request
-// queues drain delay/stop entries, then the top-up fires only while the match scene is
-// live (FUN_004adb30) and the queues are empty. Port: voices retire on the mixer play-status
-// probe (SNDplay status analog), then lanes refill under the caps.
+// 0x48db33/0x48dbeb/0x48dc27 in the pump body); between cadence hits the drain branch walks
+// qlength/2 steps (FUN_004c4af0), each step a LCG draw (FUN_004ce2f3) whose parity picks
+// qbottom (FUN_004c4800) vs qpush (FUN_004c4780) on the fetched entry — queue rotation
+// between head and tail, not a play-vs-stop choice (pass-56 decode: the earlier residual
+// "play-vs-stop random branch" claim is retracted, the branch reorders the pool). Then the
+// top-up fires only while the match scene is live (FUN_004adb30) and the queues are empty.
+// Port: voices retire on the mixer play-status probe (SNDplay status analog), the pool
+// order rotates on the cadence, then lanes refill under the caps.
 void MatchAudio::pumpChants() {
     ++chantPumpTick_;
     if (mixer_) {
@@ -392,6 +396,18 @@ void MatchAudio::pumpChants() {
         }
     }
     if ((chantPumpTick_ % 100) != 0) return; // 100-frame cadence gate
+    // Drain rotation (FUN_0048da50 drain branch, pass-56): length/2 steps, each step an
+    // LCG draw; even parity pushes the fetched entry to the queue bottom, odd pushes it
+    // to the top. Mirrored as pool reordering: even -> front, odd -> back.
+    for (std::size_t i = 0, n = chantEntries_.size() / 2; i < n; ++i) {
+        if ((chantRng_.draw() & 1u) == 0) {
+            std::rotate(chantEntries_.begin(), chantEntries_.begin() + 1,
+                        chantEntries_.end());
+        } else {
+            std::rotate(chantEntries_.begin(), chantEntries_.end() - 1,
+                        chantEntries_.end());
+        }
+    }
     if (!mixer_ || chantEntries_.empty() || mixer_ == nullptr) return; // device-less: exe needs one
     if (chantActiveTotal_ >= chantVoices_.size()) return;              // 3-slot pool full
     for (int lane = 0; lane < 3; ++lane) {
@@ -403,7 +419,7 @@ void MatchAudio::pumpChants() {
 }
 
 // Lane request (FUN_0048d53c loader + FUN_0048d678 start): pick a random pool entry of the
-// lane (exe random draws FUN_004c3ea0 in classification/queueing), decode its chant clip,
+// lane (exe LCG draws FUN_004ce2f3 drive the queue index picks), decode its chant clip,
 // and start it at the percent-idx2 scaled level: the start site FUN_0048d678 feeds
 // SNDautovol the target FUN_004906d0 computes as (playVol * percent[idx2] * 0x7f) / 10000,
 // so the options stadium-reaction row gates chant audibility; row 0 => target 0 => silent.
@@ -412,7 +428,7 @@ bool MatchAudio::playChantLane(int lane) {
     for (auto& e : chantEntries_)
         if (e.lane == lane) candidates.push_back(&e);
     if (candidates.empty()) return false;
-    auto& entry = *candidates[chantRng_() % candidates.size()];
+    auto& entry = *candidates[chantRng_.draw() % candidates.size()];
     const auto clip = decodeChantClip(entry.path);
     chantPlays_ += 1; // request counted even on decode-miss: exe request counter semantics
     if (clip.samples.empty()) return false;
@@ -445,7 +461,7 @@ formats::Pcm MatchAudio::decodeChantClip(const std::filesystem::path& path) {
         for (std::uint32_t p = 0; p < bank.phraseCount(); ++p)
             if (!bank.emptyPhrase(p)) playable.push_back(p);
         if (playable.empty()) return out;
-        const std::uint32_t phrase = playable[chantRng_() % playable.size()];
+        const std::uint32_t phrase = playable[chantRng_.draw() % playable.size()];
         const auto member = formats::refpack::decompressIfNeeded(bank.memberBytes(phrase));
         const std::span<const std::uint8_t> m{member};
         if (!formats::BigArchive::isBig(m)) {

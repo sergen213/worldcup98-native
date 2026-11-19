@@ -183,8 +183,9 @@ shares one 16.16 level across the CROWD/TRAFF cards. Install `FUN_004e4ba0` deri
 weights from the card header byte 7 (`be = byte7 << 9 / 100`, `bc = 0x200 - be`; CROWD 70 ->
 358/154, TRAFF 4 -> 20/492). The idle pump `FUN_004e510c` walks the level through alternating
 ramp states (`DAT_005894ab` 0 up/1 down/2 up/3 down, then 2<->3 forever), drawing a random
-target clamped [0,0x1ff] on every ramp arrival and dividing the distance by a card-record ramp
-rate (`rate * 0x21 >> 16`: record 0 -> 132 frames, record 1 -> 198). `SNDcrowdpulse`
+target clamped [0,0x1ff] on every ramp arrival (pass-56: the draw is time-based
+`((tick & 0x7fff) - 0x4000) * secondTick >> 14`, `FUN_0052f3e0`, not the request LCG) and
+dividing the distance by a card-record ramp rate (`rate * 0x21 >> 16`: record 0 -> 132 frames, record 1 -> 198). `SNDcrowdpulse`
 (`FUN_004e4cac`) reads record delta/ceiling/step (u16 pair at record bytes 4..7: measured delta
 350, ceiling **450** = 0x01c2 — an earlier gate note said 394, decimal arithmetic error) and
 refuses with status -8 when the level already sits at/above the ceiling, else ramps to
@@ -195,3 +196,39 @@ fixed level (closing the A4 fixed-bed discrepancy). Port `CrowdEnvelope` mirrors
 exactly; `tickCrowd()` pumps it per frame in `livematch.cpp` and re-fades the layer voices only
 when the curve index moves. Gates: `test_gameaudio` (g) card-truth record CHECKs + pulse
 arrival/clamp/refusal; selftest `match-crowd-envelope` start 250 / walk band / pulse ramp +3.5.
+
+**Pass-56 — chant drain rotation, request LCG, scene-10 CROWD phrase lane [C]** (evidence
+`analysis/pass56crowd/NOTES.md` + `/tmp/wc98pass56/dr1..dr12.txt`, `s10.txt`, `cr*.txt`).
+The pump `FUN_0048da50` drain branch (`0x48dbb6..0x48dc82` disassembly) is queue rotation, not
+play-vs-stop: when `qlength(DAT_00632524) < 3` it walks `qlength(DAT_00632508)/2` steps (Watcom
+callee-saved `ECX` carries the queue base across the call sites), each step drawing the request
+LCG `FUN_004ce2f3` (`state = state*0x41c64e6d + 0x3039`, draw `(state >> 16) & 0x7fff`, verified
+from the seed-0 sequence 0, 21468, 9988, 22117), reducing it mod length (`IDIV` at 0x48dbf5) and
+fetching through `FUN_004c4f30` (`qfetchindex`); the fetched entry is then re-added by parity —
+even to `qbottom` (`FUN_004c4800`, tail), odd to `qpush` (`FUN_004c4780`, head), per the
+`cmn\queue.c` helper strings (`s_qpush` 0x569560, `s_qbottom` 0x569568). The pass-53 residual
+"play-vs-stop random branch" claim is retracted — the branch only reorders the pool, and the
+reorder changes which lane candidates `FUN_0048d53c` picks first. `FUN_004ce317` is the seed
+setter (wrapper at `PTR_FUN_005940d4` + 0xc); boot classifier `FUN_0048dcd8` seeds it then feeds
+LCG draws into `qfetchindex` picks over the 113 chant packs (lane table `DAT_006324c4/d4/e0`,
+budget `DAT_006324e8 = 3`, same-team flag at record `+0x32`); runtime seed source unrecovered
+[H]. The secondary rotation consumer `FUN_0048e9a0` (gate `DAT_0063268c != 0`) repeats
+qfetchindex+qpush. The idle envelope target draw (pass-55 machine) is NOT the LCG:
+`FUN_0052f3e0` computes `((tick & 0x7fff) - 0x4000) * secondTick >> 14` from the 64-bit tick
+counter `FUN_004c321c` (`DAT_00585cc0/5cc4/5cc8/5ccc`, carry `DAT_00585cbc`), so
+`CrowdEnvelope`'s mt19937 stays a [H] approximation. Scene-10 CROWD phrase lane `FUN_0048e6d0` (caller 0x48e83f, once-guard
+`DAT_006325b4`): `CMIDI.BNK` (@0x566adc) → `DAT_006325cc`; `FUN_004e3128`/`FUN_004e3724` init
+`DAT_006325d0`; `FUN_0048e280` loads exactly two banks — `CROWD.PBK` → `DAT_006325d4`,
+`COMOS.PBK` → `DAT_006325d8` — through the `AUDIO\CRWD\%s` format (`FUN_0048e190` @0x566acc) +
+loader `FUN_00439810` with type arg `FUN_0048e8d0` (`DAT_00632638`, fallback 2 when
+`DAT_00632634 == 0`); three queues spawn at `DAT_006325e0/5fc/618`; the phrase count of
+`CROWD.PBK` (`FUN_004a49a0`) sizes a `SNDCRD` (@0x566ae8) reserve (`FUN_0049f5a0` →
+`DAT_006325dc`) of `count*12` bytes and `count` stride-12 records are pushed into
+`DAT_006325e0` via `qbottom`; `FUN_0048e1c4` stamps phrase→MIDI ids at record `+6`
+(`FUN_004e43c0`, sentinel `EDX = 0xffffffff`, `EBX = entry+0x14`). The `AUDIO/CRWD/CROWD` file
+is a plain `dir` listing, not data; chant name registry `DAT_0057eb44` carries `CROWD.PBK` +
+`COMOS.PBK` headers and the 113 `CHNT/*.PBK` pack names matching the boot classifier's 0x71
+count. Port: `MatchAudio::ExeLcg` mirrors `FUN_004ce2f3` (`chantRng_` replaces mt19937 for
+variant + phrase picks) and `pumpChants` rotates the pool on the 100-frame cadence (even →
+front, odd → back) before lane top-up, matching drain-branch order; gate `test_gameaudio`
+asserts the seed-0 LCG draw sequence.

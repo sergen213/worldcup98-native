@@ -247,6 +247,20 @@ int main() {
         audio::sceneLevels().setLevel(audio::kSceneCrowd, 80);
     }
 
+    // Request RNG mirror (pass-56): exe random FUN_004ce2f3 is an LCG
+    // (state = state*0x41c64e6d + 0x3039, draw = (state >> 16) & 0x7fff). The pump drain
+    // branch (FUN_0048da50) consumes draw parity to rotate queue entries between head and
+    // tail (qpush FUN_004c4780 vs qbottom FUN_004c4800), not play-vs-stop; the boot
+    // classification (FUN_0048dcd8) feeds the same draw into qfetchindex picks.
+    // Seed-0 draw sequence verified against the exe LCG arithmetic.
+    {
+        app::MatchAudio::ExeLcg rng;
+        CHECK(rng.draw() == 0);     // state 0x3039 (12345) -> (0x3039>>16) == 0
+        CHECK(rng.draw() == 21468); // state 0xD3DC167E -> bits 16..30 = 21468
+        CHECK(rng.draw() == 9988);
+        CHECK(rng.draw() == 22117);
+    }
+
     // (g) Crowd reaction envelope (pass-55): weights from the card header byte 7 (CROWD 70 ->
     // be 358 / bc 154, exe FUN_004e4ba0), fresh machine indexes the curve at (358*358)>>9 = 250,
     // the idle pump walk (FUN_004e510c) breathes the blend index inside the blend formula's

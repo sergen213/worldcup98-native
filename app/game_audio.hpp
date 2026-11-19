@@ -175,6 +175,19 @@ public:
     std::uint32_t plrsPhrases() const { return plrsPhrases_; }
     std::uint32_t crowdCardSlots() const { return crowdCardSlots_; } // CROWD.CRD slot list size
 
+    // Exe request RNG (pass-56): FUN_004ce2f3 — LCG state = state*0x41c64e6d + 0x3039,
+    // draw = (state >> 16) & 0x7fff. The exe draws it for queue-index picks
+    // (FUN_004ce2f3 -> FUN_004c4f30 qfetchindex in boot classification FUN_0048dcd8)
+    // and for the pump drain rotation parity (FUN_0048da50 drain branch).
+    // FUN_004ce317 seeds the state; runtime seed source not recovered [H].
+    struct ExeLcg {
+        std::uint32_t state = 0;
+        std::uint32_t draw() {
+            state = state * 0x41c64e6du + 0x3039u;
+            return (state >> 16u) & 0x7fffu;
+        }
+    };
+
 private:
     void startTraffic(); // TRAFF.BNK slot 0: 79.8 s traffic hum loop (stadium lane pair member)
     void startAnthem(std::uint16_t homeTeamId); // presentation-lane chant sample (home nation)
@@ -231,7 +244,7 @@ private:
     int chantHomeKey_ = 0, chantAwayKey_ = 0; // match teams * 10 (classification seam)
     formats::Pcm chantClip_;            // last decoded clip (decode evidence for gates)
     std::uint32_t chantSegments_ = 0;   // decoded segment count across clips (gate evidence)
-    std::mt19937 chantRng_{0x98u};      // variant draw (exe random FUN_004c3ea0)
+    ExeLcg chantRng_{0x1998u};          // variant/rotation draw (FUN_004ce2f3 LCG)
     // CROWD.CRD controller curve fallback (pass-52 RE): percent row -> SNDcrowdcontrol level
     // (pct*0x7f/100, clamped >= 1, FUN_004906a4). Bound layers carry their own measured curve;
     // this zero-floor table (t4) gates the unbound fallback layer and the presentation voices.

@@ -159,6 +159,8 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
   kick-seam lane; `fe_hilsav_list` flakes intermittently on parallel GPU timing and passes on
   rerun). With the user's uncommitted simulation lane in the working tree: **150/152** — failures
   `test_sim_scenarios` + `self_test_gameplay`, while `fe_replay57_enter` passes. No UI gate fails.
+  All gate/capture runs go through the headless lane (`SDL_VIDEODRIVER=dummy` →
+  `platform::dummyLane` + `VK_EXT_headless_surface`), so they never open windows on the user's display.
 - Second-pass forensic audit in progress (pass-15, 2026-11-10): discrepancy register + validation doc
   landed (`GAMEPLAY_DISCREPANCIES.md` D-01..D-54, `GAMEPLAY_VALIDATION.md`); trig + nine runtime ball
   tables proven byte-exact at **measured WC98 VAs** and gated by new `test_trig_tables` /

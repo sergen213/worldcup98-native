@@ -2009,9 +2009,10 @@ int runLiveMatch(int argc, char** argv) {
     vcfg.validation = g.validation || std::getenv("WC98_VK_VALIDATE") != nullptr; // render-demo env pattern
     vcfg.validationCounter = messages;
     vcfg.instanceExtensions = platform::Window::vulkanInstanceExtensions();
+    vcfg.headlessFallback = platform::dummyLane();
     vcfg.createSurface = [&](VkInstance inst) {
         VkSurfaceKHR surface = VK_NULL_HANDLE;
-        if (!SDL_Vulkan_CreateSurface(window->sdl(), inst, nullptr, &surface)) std::cerr << "SDL_Vulkan_CreateSurface: " << SDL_GetError() << '\n';
+        if (!vcfg.headlessFallback && !SDL_Vulkan_CreateSurface(window->sdl(), inst, nullptr, &surface)) std::cerr << "SDL_Vulkan_CreateSurface: " << SDL_GetError() << '\n';
         return surface;
     };
     vcfg.drawableSize = [&] { return window->pixelSize(); };

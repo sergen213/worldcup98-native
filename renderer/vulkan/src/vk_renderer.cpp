@@ -132,6 +132,10 @@ public:
             createInstance(cfg);
             if (cfg.createSurface) {
                 surface_ = cfg.createSurface(instance_);
+                if (!surface_ && cfg.headlessFallback) {
+                    surface_ = createHeadlessSurface();
+                    if (surface_) headless_ = true;
+                }
                 if (!surface_) throw std::runtime_error("window surface creation failed");
             }
             pickDevice();
@@ -158,6 +162,7 @@ public:
 private:
     // --- setup ---
     void createInstance(const VulkanConfig& cfg);
+    VkSurfaceKHR createHeadlessSurface();
     void pickDevice();
     void createDevice();
     void createObjects();
@@ -201,6 +206,7 @@ private:
     PFN_vkCmdBeginDebugUtilsLabelEXT cmdBeginLabel_ = nullptr;
     PFN_vkCmdEndDebugUtilsLabelEXT cmdEndLabel_ = nullptr;
     VkSurfaceKHR surface_ = VK_NULL_HANDLE;
+    bool headless_ = false; // dummy-display lane: present renders to a throwaway target
     VkPhysicalDevice phys_ = VK_NULL_HANDLE;
     VkPhysicalDeviceProperties props_{};
     VkPhysicalDeviceMemoryProperties memProps_{};
@@ -258,6 +264,8 @@ void VulkanRenderer::createInstance(const VulkanConfig& cfg) {
     bool debugUtils = hasExtension(available, VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
     if (cfg.validation && !debugUtils) throw std::runtime_error("validation requested but VK_EXT_debug_utils is unavailable");
     if (debugUtils) exts.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+    if (cfg.headlessFallback && hasExtension(available, VK_EXT_HEADLESS_SURFACE_EXTENSION_NAME))
+        exts.push_back(VK_EXT_HEADLESS_SURFACE_EXTENSION_NAME);
 
     const char* layer = "VK_LAYER_KHRONOS_validation";
     if (cfg.validation) {
@@ -298,6 +306,19 @@ void VulkanRenderer::createInstance(const VulkanConfig& cfg) {
         VK(create(instance_, &dbg, nullptr, &messenger_));
         log::info("vulkan: validation layer enabled");
     }
+}
+
+VkSurfaceKHR VulkanRenderer::createHeadlessSurface() {
+    // VK_EXT_headless_surface: a surface with no monitor behind it. RADV/lavapipe report a
+    // presentable queue for it, so the swapchain (FIFO) + present() run offscreen; captures
+    // read the rendered images, the user's real display never sees a frame.
+    auto* fn = reinterpret_cast<PFN_vkCreateHeadlessSurfaceEXT>(vkGetInstanceProcAddr(instance_, "vkCreateHeadlessSurfaceEXT"));
+    if (!fn) return VK_NULL_HANDLE;
+    const VkHeadlessSurfaceCreateInfoEXT ci{VK_STRUCTURE_TYPE_HEADLESS_SURFACE_CREATE_INFO_EXT};
+    VkSurfaceKHR surface = VK_NULL_HANDLE;
+    if (fn(instance_, &ci, nullptr, &surface) != VK_SUCCESS) return VK_NULL_HANDLE;
+    log::info("vulkan: headless surface (dummy display lane)");
+    return surface;
 }
 
 void VulkanRenderer::pickDevice() {
@@ -537,7 +558,7 @@ bool VulkanRenderer::recreateSwapchain() {
     VkSurfaceCapabilitiesKHR caps;
     VK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(phys_, surface_, &caps));
     VkExtent2D extent = caps.currentExtent;
-    if (extent.width == UINT32_MAX) { // surface size follows the swapchain (Wayland)
+    if (extent.width == UINT32_MAX || extent.width == 0) { // surface size follows the swapchain (Wayland, headless surface)
         auto [w, h] = drawableSize_ ? drawableSize_() : std::pair<std::uint32_t, std::uint32_t>{640, 480};
         extent.width = std::clamp(w, caps.minImageExtent.width, caps.maxImageExtent.width);
         extent.height = std::clamp(h, caps.minImageExtent.height, caps.maxImageExtent.height);
@@ -1214,6 +1235,14 @@ void VulkanRenderer::recordFrame(PerFrame& pf, const Frame& f, VkImage out, VkEx
 
 bool VulkanRenderer::present(const Frame& f) {
     if (!surface_) throw std::logic_error("present() on a renderer created without a surface");
+    if (headless_) {
+        // Dummy-display lane: there is no monitor to scan out to. Render the frame to a
+        // throwaway target (keeps the gate's shader/coverage work identical) and report success.
+        auto [w, h] = drawableSize_ ? drawableSize_() : std::pair<std::uint32_t, std::uint32_t>{640, 480};
+        if (w == 0 || h == 0) return false;
+        renderOffscreen(f, w, h);
+        return true;
+    }
     if (drawableSize_) {
         auto [w, h] = drawableSize_();
         if (w == 0 || h == 0) return false;

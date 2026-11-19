@@ -283,10 +283,14 @@ int run(int argc, char** argv) {
 
     render::VulkanConfig vcfg;
     vcfg.validation = g.validation || std::getenv("WC98_VK_VALIDATE") != nullptr; // render-demo env pattern
+    // Headless gate lane: SDL_VIDEODRIVER=dummy → SDL cannot make a Vulkan surface, so render
+    // through a VK_EXT_headless_surface swapchain (offscreen). Nothing reaches the user's display.
+    vcfg.headlessFallback = platform::dummyLane();
     auto messages = std::make_shared<std::atomic<std::uint32_t>>(0);
     vcfg.validationCounter = messages;
     vcfg.instanceExtensions = platform::Window::vulkanInstanceExtensions();
     vcfg.createSurface = [&](VkInstance inst) {
+        if (vcfg.headlessFallback) return VkSurfaceKHR{VK_NULL_HANDLE}; // renderer builds the headless surface
         VkSurfaceKHR surface = VK_NULL_HANDLE;
         if (!SDL_Vulkan_CreateSurface(window->sdl(), inst, nullptr, &surface)) log::error("SDL_Vulkan_CreateSurface: {}", SDL_GetError());
         return surface;

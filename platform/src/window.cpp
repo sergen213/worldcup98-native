@@ -4,11 +4,17 @@
 #include <SDL3/SDL_vulkan.h>
 
 #include <algorithm>
+#include <cstring>
 #include <ranges>
 #include <stdexcept>
 #include <string>
 
 namespace wc98::platform {
+
+bool dummyLane() {
+    const char* d = SDL_GetCurrentVideoDriver();
+    return d && std::strcmp(d, "dummy") == 0;
+}
 
 [[noreturn]] static void sdlFail(const char* what) { throw std::runtime_error(std::string(what) + ": " + SDL_GetError()); }
 
@@ -19,8 +25,12 @@ Window::Window(const char* title, int width, int height, bool fullscreen) {
     if (!SDL_InitSubSystem(SDL_INIT_VIDEO)) sdlFail("SDL_InitSubSystem(VIDEO)");
     // Gamepads are optional: a broken pad subsystem must never stop the shell from starting.
     if (!SDL_InitSubSystem(SDL_INIT_GAMEPAD)) { /* pads stay absent */ }
-    SDL_WindowFlags flags = SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
-    if (fullscreen) flags |= SDL_WINDOW_FULLSCREEN;
+    // The dummy video driver (SDL_VIDEODRIVER=dummy, headless gate lane) rejects SDL_WINDOW_VULKAN
+    // and fullscreen; the renderer then falls back to a VK_EXT_headless_surface swapchain.
+    const bool dummyDriver = [] { const char* d = SDL_GetCurrentVideoDriver(); return d && std::strcmp(d, "dummy") == 0; }();
+    SDL_WindowFlags flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
+    if (!dummyDriver) flags |= SDL_WINDOW_VULKAN;
+    if (fullscreen && !dummyDriver) flags |= SDL_WINDOW_FULLSCREEN;
     window_ = SDL_CreateWindow(title, width, height, flags);
     if (!window_) {
         SDL_QuitSubSystem(SDL_INIT_VIDEO);
@@ -156,6 +166,7 @@ std::pair<std::uint32_t, std::uint32_t> Window::pointSize() const {
 }
 
 std::vector<const char*> Window::vulkanInstanceExtensions() {
+    if (const char* d = SDL_GetCurrentVideoDriver(); d && std::strcmp(d, "dummy") == 0) return {}; // headless lane: renderer adds VK_EXT_headless_surface
     Uint32 n = 0;
     const char* const* ext = SDL_Vulkan_GetInstanceExtensions(&n);
     if (!ext) sdlFail("SDL_Vulkan_GetInstanceExtensions");

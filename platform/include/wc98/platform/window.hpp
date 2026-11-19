@@ -23,6 +23,11 @@ private:
     long long lastMs_ = 0;
 };
 
+// True when SDL is running the dummy video driver (SDL_VIDEODRIVER=dummy): the headless gate
+// lane. Windows are created without Vulkan/fullscreen flags and the renderer falls back to a
+// VK_EXT_headless_surface target, so nothing is ever shown on the user's real display.
+bool dummyLane();
+
 class Window {
 public:
     // Initialises the SDL video + gamepad subsystems (gamepad failure is non-fatal: pads stay

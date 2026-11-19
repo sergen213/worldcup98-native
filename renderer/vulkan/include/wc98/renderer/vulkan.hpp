@@ -29,6 +29,10 @@ struct VulkanConfig {
     std::vector<const char*> instanceExtensions;
     std::function<VkSurfaceKHR(VkInstance)> createSurface;
     std::function<std::pair<std::uint32_t, std::uint32_t>()> drawableSize;
+    // When the window backend is the SDL dummy driver (SDL_VIDEODRIVER=dummy, the headless
+    // gate lane), SDL cannot create a Vulkan surface; build a VK_EXT_headless_surface swapchain
+    // instead so gates render + "present" offscreen without touching any user display.
+    bool headlessFallback = false;
 };
 
 [[nodiscard]] bool validationRequestedByEnv();

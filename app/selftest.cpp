@@ -1362,6 +1362,7 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
         try {
             platform::Window win("WC98-selftest-fe", 640, 480, false);
             render::VulkanConfig vcfg;
+            vcfg.headlessFallback = platform::dummyLane();
             vcfg.instanceExtensions = platform::Window::vulkanInstanceExtensions();
             vcfg.createSurface = [&](VkInstance inst) {
                 VkSurfaceKHR s = VK_NULL_HANDLE;
@@ -1409,6 +1410,7 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
         try {
             platform::Window win("WC98-selftest-wc", 640, 480, false);
             render::VulkanConfig vcfg;
+            vcfg.headlessFallback = platform::dummyLane();
             vcfg.instanceExtensions = platform::Window::vulkanInstanceExtensions();
             vcfg.createSurface = [&](VkInstance inst) {
                 VkSurfaceKHR s = VK_NULL_HANDLE;
@@ -1493,6 +1495,7 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
         try {
             platform::Window win("WC98-selftest-lgnav", 640, 480, false);
             render::VulkanConfig vcfg;
+            vcfg.headlessFallback = platform::dummyLane();
             vcfg.instanceExtensions = platform::Window::vulkanInstanceExtensions();
             vcfg.createSurface = [&](VkInstance inst) {
                 VkSurfaceKHR s = VK_NULL_HANDLE;
@@ -1540,6 +1543,7 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
         try {
             platform::Window win("WC98-selftest-lg79attr", 640, 480, false);
             render::VulkanConfig vcfg;
+            vcfg.headlessFallback = platform::dummyLane();
             vcfg.instanceExtensions = platform::Window::vulkanInstanceExtensions();
             vcfg.createSurface = [&](VkInstance inst) {
                 VkSurfaceKHR s = VK_NULL_HANDLE;
@@ -1580,6 +1584,7 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
         try {
             platform::Window win("WC98-selftest-l16", 640, 480, false);
             render::VulkanConfig vcfg;
+            vcfg.headlessFallback = platform::dummyLane();
             vcfg.instanceExtensions = platform::Window::vulkanInstanceExtensions();
             vcfg.createSurface = [&](VkInstance inst) {
                 VkSurfaceKHR s = VK_NULL_HANDLE;
@@ -1622,6 +1627,7 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
         try {
             platform::Window win("WC98-selftest-opts", 640, 480, false);
             render::VulkanConfig vcfg;
+            vcfg.headlessFallback = platform::dummyLane();
             vcfg.instanceExtensions = platform::Window::vulkanInstanceExtensions();
             vcfg.createSurface = [&](VkInstance inst) {
                 VkSurfaceKHR s = VK_NULL_HANDLE;
@@ -1722,6 +1728,7 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
         try {
             platform::Window win("WC98-selftest-cfg87", 640, 480, false);
             render::VulkanConfig vcfg;
+            vcfg.headlessFallback = platform::dummyLane();
             vcfg.instanceExtensions = platform::Window::vulkanInstanceExtensions();
             vcfg.createSurface = [&](VkInstance inst) {
                 VkSurfaceKHR s = VK_NULL_HANDLE;
@@ -1784,6 +1791,7 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
         try {
             platform::Window win("WC98-selftest-wc13", 640, 480, false);
             render::VulkanConfig vcfg;
+            vcfg.headlessFallback = platform::dummyLane();
             vcfg.instanceExtensions = platform::Window::vulkanInstanceExtensions();
             vcfg.createSurface = [&](VkInstance inst) {
                 VkSurfaceKHR s = VK_NULL_HANDLE;

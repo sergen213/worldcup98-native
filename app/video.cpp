@@ -57,9 +57,10 @@ int runVideoPlay(const std::string& path, int gate, unsigned width, unsigned hei
             return 2;
         }
         vcfg.instanceExtensions = platform::Window::vulkanInstanceExtensions();
+        vcfg.headlessFallback = platform::dummyLane();
         vcfg.createSurface = [&](VkInstance inst) {
             VkSurfaceKHR surface = VK_NULL_HANDLE;
-            if (!SDL_Vulkan_CreateSurface(window->sdl(), inst, nullptr, &surface))
+            if (!vcfg.headlessFallback && !SDL_Vulkan_CreateSurface(window->sdl(), inst, nullptr, &surface))
                 std::printf("SDL_Vulkan_CreateSurface: %s\n", SDL_GetError());
             return surface;
         };

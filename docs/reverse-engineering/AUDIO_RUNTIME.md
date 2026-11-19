@@ -669,3 +669,52 @@ documented approximation.
 
 Evidence: `analysis/pass68seed/NOTES.md`, `/tmp/wc98pass67/p67b.txt`, gate
 `tests/unit/test_gameaudio.cpp` (`crwdPhrasesRegistered` CHECK).
+
+## Pass-70: crowd tick pump body decoded (`0x4e5018..0x4e510b`, Ghidra-unassigned tail)
+
+The tick handler the SNDcrowd lane registers (`DAT_006597c8 = LAB_004e5018`,
+control `DAT_006597e4 = FUN_004e4fd8`) sits in a code gap Ghidra never
+function-ized; forcing disassembly (`Listing.getInstructions(AddressSet, False)`
++ `FunctionManager.createFunction`) recovered it (`analysis/pass70crowd/NOTES.md`,
+`/tmp/wc98pass70/p70i.txt`). Retracted claim: the pass-54 doc's "pump `0x4e502c`
+per-slot gain byte `curve[level]`" is wrong — `0x4e502c` is `PUSH EDX`, a Watcom
+argument instruction for the idle/blend call site `0x4e502d`; no gain byte is
+computed in the pump body.
+
+Decoded pump semantics:
+
+- Runs only while the lane state byte (`0x5894a8`) is `2` or `4`; any other
+  state returns immediately.
+- Envelope position dword `0x5894ac += delta 0x5894b0`, clamped at floor
+  `0x5894b4`. On a *downward* floor hit the pump clears the delta and runs an
+  8-iteration release loop (`EDX` stepping 0..0x20 by 4, body
+  `FUN_004e2c60`) that stops every crowd-type voice: `FUN_004e2c60` takes the
+  voice mutex (`FUN_0052bc04`), allocates a slot (`FUN_0052c0c0`), then walks 16
+  stride-`0x18` voice slots from `DAT_006597e8`, stopping each with type byte
+  `+0x3b == crowd type`, state `+0xc == 1`, and id ≥ 0 via `FUN_0052ddbc`.
+  State then becomes `3`. A *upward* floor hit just clamps position and clears
+  the delta.
+- A second ramp word `0x5894be` ticks ±4 per call toward the control level word
+  `0x5894cc` (written by `SNDcrowdcontrol` `FUN_004e4d8c`), snapping once the
+  distance reaches ≤4; the lane's dword `0x5894bc` low half is re-stamped with
+  the control level on convergence.
+- Pump tail always calls the idle machine `FUN_004e510c` then the blend
+  consumer `FUN_004e5444` (pass-55 machine).
+- Stop `FUN_004e4f80` (`SNDcrowdstop` lane entry) runs the same 8×
+  `FUN_004e2c60` release while state ∈ {2,3}, then state → 1;
+  `FUN_004e4fd8` (shutdown control) clears the tick pointer and state flag.
+
+Byte-scan reality check: raw LE-pointer scans for the envelope fields
+(`0x5894ac/b0/b4/b8/bc/be`) hit additional sites in `0x4e59xx..0x4e63xx`, but
+that region is `cmn\sstream.c` (`SNDstreamqueue/purge/chunksleft`, stream
+record dispatch `FUN_004e5e48` on `SCDl/SCHl/SCKl/SCLl/SCEl` magics) — the hits
+are operand-byte collisions, not crowd references. Crowd envelope references are
+only the pump body + idle/blend pair.
+
+No port change: the pump's ±4 ramp is approximated — the port blends the
+control level into the curve index and re-fades the voice lanes on change
+(`applyCrowdGains` seam), instead of stepping the word by 4 per tick;
+floor-release is driver-side (`Mixer` owns voice slots) and the exe stop-list
+is mirrored by layer fade-out.
+
+Evidence: `analysis/pass70crowd/NOTES.md`, `/tmp/wc98pass70/p70.txt`..`p70k.txt`.

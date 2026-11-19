@@ -18,3 +18,6 @@ squashfs-root/
 
 # agent/verification build dirs
 build-*/
+
+# local database-export reference dumps (Phase 11 policy)
+wc98-db*.json

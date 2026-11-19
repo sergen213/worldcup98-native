@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -82,6 +83,24 @@ public:
     // the SMIX voice lane float of the running loop (FUN_004906a4 -> voice offset 0x34), faded.
     void relevelCrowd();
 
+    // Chant pump (pass-53): the exe's chant-lane pump FUN_0048da50. Boot enables the lane on
+    // the match-scene entry (enable FUN_0048d378, site 0x49078f; disable on scene exit
+    // FUN_0048d3f4 site 0x4907ee) and installs the runtime patch bank DAT_00632420
+    // (SNDbnkcreate, FUN_0048d0c0 adder). Every 100 frames (counter gate 0x64, DAT_00636a14
+    // >= 0x64 in the pump body) the pump drains its three request queues and, when the match
+    // is live (FUN_004adb30) and the queues are empty, tops up lanes 0/1/2 while the pool
+    // stays under its 3-slot cap (DAT_006324d0) and each lane under its desired cap
+    // (DAT_006324e0, set to 1 by the boot classification FUN_0048dcd8). Lane assignment from
+    // classification: home-team-keyed banks -> lane 0, away -> lane 1, same-team or generic
+    // (CGENER) -> lane 2; neither team having banks assigns every entry lane -1 (silent).
+    // Clip level comes from the percent idx2 table (FUN_0048d678 -> FUN_004906d0
+    // (vol * percent[idx2] * 0x7f) / 10000), i.e. the options reaction row gates the chant.
+    void pumpChants();
+    std::uint32_t chantPlays() const { return chantPlays_; } // clips started (request counter)
+    std::uint32_t chantActive() const { return chantActiveTotal_; } // live pool voices
+    std::uint32_t chantLaneCount(int lane) const { return chantLaneCount_[std::size_t(lane)]; }
+    const formats::Pcm& lastChantClip() const { return chantClip_; } // last decoded clip (gate)
+
     std::uint32_t whistles() const { return whistles_; }
     std::uint32_t kicks() const { return kicks_; }
     std::uint32_t goals() const { return goalRoars_; }
@@ -100,6 +119,9 @@ private:
     void startTraffic(); // TRAFF.BNK slot 0: 79.8 s traffic hum loop (stadium lane pair member)
     void startAnthem(std::uint16_t homeTeamId); // presentation-lane chant sample (home nation)
     void catalogChants();                    // full CHNT pool (FUN_0048dfc4, 113 slots)
+    void classifyChants();                   // boot lane split (FUN_0048dcd8 classification)
+    bool playChantLane(int lane);            // pump top-up: load + play one clip (FUN_0048d53c)
+    formats::Pcm decodeChantClip(const std::filesystem::path& path); // first non-empty phrase
     void catalogAnnouncers(std::uint16_t homeTeamId, std::uint16_t awayTeamId); // FUN_0048fa08 lane
     void catalogPlayers(const std::vector<std::uint16_t>& ids);                 // FUN_0048fb10 lane
     static void crowdNotifier(int channel); // DAT_004904b0 slot [2] -> lane re-level
@@ -120,6 +142,27 @@ private:
     std::uint32_t plrsBanks_ = 0, plrsPhrases_ = 0;
     std::uint32_t crowdCardSlots_ = 0;
     int crowdPctApplied_ = -1;
+    // Chant pool state (pass-53). Entries carry the team key (C0 + %04d team-id digits, 0 for
+    // the CGENER generic lane) and the boot classification lane (-1 = dropped, matches the exe's
+    // node +8 lane field). Voice slots mirror the 3-slot pump pool DAT_006324d0.
+    struct ChantEntry {
+        std::filesystem::path path;
+        int teamKey = 0; // C0%04d team-id table key; 0 = generic (CGENER) entry
+        int lane = -1;
+    };
+    struct ChantVoice {
+        audio::SoundId id = 0;
+        int lane = -1;
+    };
+    std::vector<ChantEntry> chantEntries_;
+    std::array<ChantVoice, 3> chantVoices_{};
+    std::array<std::uint32_t, 3> chantLaneCount_{}, chantLaneActive_{}, chantLaneDesired_{};
+    std::uint32_t chantActiveTotal_ = 0, chantPlays_ = 0;
+    std::uint64_t chantPumpTick_ = 0;   // frame counter (exe DAT_00636a14, 100-frame gate)
+    int chantHomeKey_ = 0, chantAwayKey_ = 0; // match teams * 10 (classification seam)
+    formats::Pcm chantClip_;            // last decoded clip (decode evidence for gates)
+    std::uint32_t chantSegments_ = 0;   // decoded segment count across clips (gate evidence)
+    std::mt19937 chantRng_{0x98u};      // variant draw (exe random FUN_004c3ea0)
     // CROWD.CRD controller curve (pass-52 RE): percent row -> SNDcrowdcontrol level
     // (pct*0x7f/100, clamped >= 1, FUN_004906a4) -> card level->gain table entry, normalized
     // at the curve's full-position value. The zero-floor table pair (t4/t6) is the stadium

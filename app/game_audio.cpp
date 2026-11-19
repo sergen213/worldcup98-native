@@ -5,10 +5,13 @@
 #include "wc98/formats/bnk.hpp"
 #include "wc98/formats/crd.hpp"
 #include "wc98/formats/phrs.hpp"
+#include "wc98/formats/refpack.hpp"
+#include "wc98/formats/schl.hpp"
 #include "wc98/audio/smix_voice.hpp"
 #include "wc98/audio/scene_levels.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <format>
 #include <memory>
 
@@ -138,7 +141,10 @@ void MatchAudio::boot(std::uint16_t homeTeamId, std::uint16_t awayTeamId,
     startCrowd();
     startTraffic();
     startAnthem(homeTeamId);
+    chantHomeKey_ = int(homeTeamId); // classification seam: DAT_006324b8/bc team keys (C0%04d digits)
+    chantAwayKey_ = int(awayTeamId);
     catalogChants();
+    classifyChants();
     catalogAnnouncers(homeTeamId, awayTeamId);
     catalogPlayers(homeSquadIds);
     catalogPlayers(awaySquadIds);
@@ -170,14 +176,18 @@ void MatchAudio::startAnthem(std::uint16_t homeTeamId) {
 void MatchAudio::catalogChants() {
     // Chant pool (pass-51): FUN_0048dfc4 allocates the 113-slot chant lane (DAT_006324c0, loop
     // `iVar1 < 0x71`) + a 3-slot side pool (DAT_006324d0). The bank names come from the exe's
-    // own table at VA 0x57eb5c (`PTR_s_C0001800_PBK`): 74 team-keyed entries C0+team*10+%02d
-    // variant (e.g. C0001800..C0001801, C0002600, team 47 has six variants), consumed by the
+    // own table at VA 0x57eb5c (`PTR_s_C0001800_PBK`): 74 team-keyed entries `C0%04d` digits =
+    // match-record nationality id at `DAT_00641014 + 0x32` (boot classification FUN_0048dcd8
+    // builds the same name with format string @0x566a88) + %02d variant (e.g. C0001800..C0001801,
+    // C0002600), consumed by the
     // per-chant loader FUN_0048d53c (`AUDIO\CHNT\%s` @0x566a78, `table[req+4]` index). The
     // remaining 39 CD files are the CGENER%02d generic-chant lane (name string `GENER` in the
     // same block, absent from the team table). Boot loads all 113, so the port catalogs every
-    // AUDIO/CHNT/*.PBK file; playback stays open - the event->chant trigger mapping is
-    // undecoded (docs/reverse-engineering/AUDIO_DISCREPANCIES.md), and playing banks on an
-    // invented schedule is exactly what the goal doc forbids.
+    // AUDIO/CHNT/*.PBK file; playback is driven by the frame pump (pumpChants), whose lane
+    // model + request cadence is decoded in pass 53 (analysis/pass53/ch5/ch6/ch7.txt): the
+    // lane pair (home 0 / away 1 / shared+generic 2), the 100-frame request cadence, and
+    // the percent idx2 clip level. The old "trigger mapping undecoded, catalog only" state
+    // is closed: chants run continuously like the exe pump, not on invented event triggers.
     const auto dir = tree_ / "AUDIO" / "CHNT";
     if (!std::filesystem::is_directory(dir)) return;
     std::vector<std::filesystem::path> files;
@@ -190,9 +200,150 @@ void MatchAudio::catalogChants() {
             chantPhrases_ += formats::PhraseBank::parse(std::span<const std::uint8_t>{bytes})
                                  .phraseCount();
             ++chantBanks_;
+            ChantEntry entry;
+            entry.path = path;
+            const std::string name = path.filename().string(); // C0 + %04d team id + %02d variant
+            if (name.size() >= 6 && name.compare(0, 2, "C0") == 0 &&
+                std::all_of(name.begin() + 2, name.begin() + 6,
+                            [](char c) { return std::isdigit(static_cast<unsigned char>(c)) != 0; }))
+                entry.teamKey = std::stoi(name.substr(2, 4)); // CGENER entries stay key 0
+            chantEntries_.push_back(std::move(entry));
         } catch (const std::exception&) { // member present but unparsable: exe skips silently
         }
     }
+}
+
+// Boot classification (pass-53 RE, analysis/pass53/ch5.txt/ch6.txt): FUN_0048dcd8 walks the
+// 113-entry pool and stamps every node's lane field (+8) from the team-bank availability flags
+// DAT_006324b8/bc (home/away team present in the runtime chant-team vector DAT_005883d8,
+// lookup FUN_00446a94). Flags: neither team has banks -> lane -1 (pool silent, pump never
+// fires); a same-team match (local_20) -> lane 2; otherwise the entry's team lands lane 0
+// (home) or 1 (away), and the pump body FUN_0048da50 fans out over the lanes topping each
+// lane while laneCount > 0 and lane active < desired (DAT_006324e0, cap 1 per lane, set on
+// first assignment) with the 3-slot pool cap (DAT_006324d0, e8 decrement on assign).
+void MatchAudio::classifyChants() {
+    bool homeHas = false, awayHas = false;
+    for (const auto& e : chantEntries_) {
+        if (e.teamKey == chantHomeKey_) homeHas = true;
+        if (e.teamKey == chantAwayKey_) awayHas = true;
+    }
+    for (auto& e : chantEntries_) {
+        if (!homeHas && !awayHas) {
+            e.lane = -1; // DAT_006324b8 == 0 && DAT_006324bc == 0: whole pool dropped
+            continue;
+        }
+        if (chantHomeKey_ == chantAwayKey_) e.lane = 2; // same-team branch (local_20)
+        else if (e.teamKey == chantHomeKey_) e.lane = 0;
+        else if (e.teamKey == chantAwayKey_) e.lane = 1;
+        else e.lane = e.teamKey == 0 ? 2 : -1; // CGENER generic lane; other teams dropped
+        if (e.lane >= 0) {
+            ++chantLaneCount_[std::size_t(e.lane)];
+            if (chantLaneDesired_[std::size_t(e.lane)] == 0)
+                chantLaneDesired_[std::size_t(e.lane)] = 1; // DAT_006324e0[lane] += 1 cap
+        }
+    }
+}
+
+// Chant frame pump (pass-53): exe scene handler FUN_0048da50. The request cadence counter
+// (DAT_00636a14) gates loads at every 100 frames (`< 0x64` guard, increment sites
+// 0x48db33/0x48dbeb/0x48dc27 in the pump body); between cadence hits the three request
+// queues drain delay/stop entries, then the top-up fires only while the match scene is
+// live (FUN_004adb30) and the queues are empty. Port: voices retire on the mixer play-status
+// probe (SNDplay status analog), then lanes refill under the caps.
+void MatchAudio::pumpChants() {
+    ++chantPumpTick_;
+    if (mixer_) {
+        for (auto& v : chantVoices_) {
+            if (v.id != 0 && !mixer_->playing(v.id)) {
+                if (v.lane >= 0 && chantLaneActive_[std::size_t(v.lane)] > 0)
+                    --chantLaneActive_[std::size_t(v.lane)];
+                if (chantActiveTotal_ > 0) --chantActiveTotal_;
+                v = {};
+            }
+        }
+    }
+    if ((chantPumpTick_ % 100) != 0) return; // 100-frame cadence gate
+    if (!mixer_ || chantEntries_.empty() || mixer_ == nullptr) return; // device-less: exe needs one
+    if (chantActiveTotal_ >= chantVoices_.size()) return;              // 3-slot pool full
+    for (int lane = 0; lane < 3; ++lane) {
+        if (chantLaneCount_[std::size_t(lane)] == 0) continue;
+        if (chantLaneActive_[std::size_t(lane)] >= chantLaneDesired_[std::size_t(lane)]) continue;
+        if (chantActiveTotal_ >= chantVoices_.size()) break;
+        playChantLane(lane);
+    }
+}
+
+// Lane request (FUN_0048d53c loader + FUN_0048d678 start): pick a random pool entry of the
+// lane (exe random draws FUN_004c3ea0 in classification/queueing), decode its chant clip,
+// and start it at the percent-idx2 scaled level: the start site FUN_0048d678 feeds
+// SNDautovol the target FUN_004906d0 computes as (playVol * percent[idx2] * 0x7f) / 10000,
+// so the options stadium-reaction row gates chant audibility; row 0 => target 0 => silent.
+bool MatchAudio::playChantLane(int lane) {
+    std::vector<ChantEntry const*> candidates;
+    for (auto& e : chantEntries_)
+        if (e.lane == lane) candidates.push_back(&e);
+    if (candidates.empty()) return false;
+    auto& entry = *candidates[chantRng_() % candidates.size()];
+    const auto clip = decodeChantClip(entry.path);
+    chantPlays_ += 1; // request counted even on decode-miss: exe request counter semantics
+    if (clip.samples.empty()) return false;
+    chantClip_ = clip;
+    const int pct = audio::sceneLevels().level(audio::kSceneCrowd);
+    if (pct < 1) return false; // percent idx2 -> SNDautovol target 0: silent request
+    const float gain = std::min(1.0f, float(pct) / 100.0f) * smixLaneGain(audio::kSceneCrowd);
+    for (auto& v : chantVoices_) {
+        if (v.lane == -1) {
+            v.id = mixer_->play(clip, gain, /*loop=*/false);
+            v.lane = lane;
+            ++chantLaneActive_[std::size_t(lane)];
+            ++chantActiveTotal_;
+            return true;
+        }
+    }
+    return false;
+}
+
+// Clip decode (pass-53): CHNT banks are phrase-grouped segment banks (classLetter 'a', the
+// pass-52 histogram); a chant clip is one top-level phrase = all its segments in TOC order,
+// each segment decoded with decodePlayTrack (the commentary lane seam, SPEECH_PHRASES.md §1).
+// The phrase is drawn randomly (exe variant randomness), segments concatenate into one clip.
+formats::Pcm MatchAudio::decodeChantClip(const std::filesystem::path& path) {
+    formats::Pcm out;
+    try {
+        const auto bytes = readFile(path);
+        const auto bank = formats::PhraseBank::parse(std::span<const std::uint8_t>{bytes});
+        std::vector<std::uint32_t> playable;
+        for (std::uint32_t p = 0; p < bank.phraseCount(); ++p)
+            if (!bank.emptyPhrase(p)) playable.push_back(p);
+        if (playable.empty()) return out;
+        const std::uint32_t phrase = playable[chantRng_() % playable.size()];
+        const auto member = formats::refpack::decompressIfNeeded(bank.memberBytes(phrase));
+        const std::span<const std::uint8_t> m{member};
+        if (!formats::BigArchive::isBig(m)) {
+            // Flat member (measured: retail CHNT banks are one phrase = one member holding a
+            // 20-byte phrase record + a PT play track, e.g. C0002600.PBK = 23100 B, one
+            // phrase, one record classLetter 'a', decode@20 -> 43008 frames). Decode it at
+            // the record boundary like the commentary lane.
+            ++chantSegments_;
+            return formats::decodePlayTrack(m, std::min<std::size_t>(20, m.size()));
+        }
+        const auto nested = formats::BigArchive::parse(m);
+        for (std::uint32_t i = 0; i < bank.recordCount(); ++i) {
+            const auto& r = bank.record(i);
+            if (r.phrase != phrase || r.segment >= nested.entries.size()) continue;
+            const auto seg = formats::BigArchive::payload(m, nested.entries[r.segment]);
+            const auto pcm = formats::decodePlayTrack(seg, std::min<std::size_t>(20, seg.size()));
+            if (pcm.frames() == 0) continue; // MIDx/empty payloads: exe skips, counts decoded
+            ++chantSegments_;
+            if (out.samples.empty()) {
+                out = pcm;
+            } else if (pcm.sampleRate == out.sampleRate && pcm.channels == out.channels) {
+                out.samples.insert(out.samples.end(), pcm.samples.begin(), pcm.samples.end());
+            }
+        }
+    } catch (const std::exception&) { // malformed bank/phrase: silent, like the exe loader lane
+    }
+    return out;
 }
 
 void MatchAudio::catalogAnnouncers(std::uint16_t homeTeamId, std::uint16_t awayTeamId) {

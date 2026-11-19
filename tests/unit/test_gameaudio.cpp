@@ -204,6 +204,44 @@ int main() {
               nullPath.plrsBanks() > 0);
     }
 
+    // (f) Chant pump lane (pass-53): boot classification lanes the 113-entry pool by the match
+    // teams (FUN_0048dcd8: home -> lane 0, away -> lane 1, CGENER -> lane 2), and the pump
+    // FUN_0048da50 tops the 3-slot voice pool on the 100-frame cadence. Clips are phrase-grouped
+    // segment banks (class 'a', pass-52 census): first non-empty phrase, segments concatenated
+    // through decodePlayTrack. The percent idx2 row gates audibility (FUN_004906d0 target
+    // vol*percent[idx2]*0x7f/10000), so row 0 keeps requests silent with no voice.
+    {
+        audio::Mixer m2{kRate};
+        const auto game = sim::loadGameData(tree);
+        app::MatchAudio ma2(tree);
+        ma2.setMixer(&m2);
+        ma2.boot(game.db.teams[0].id, game.db.teams[26].id,
+                 game.db.teams[0].roster, game.db.teams[26].roster);
+        CHECK(ma2.chantPlays() == 0 && ma2.chantActive() == 0); // boot catalogs; pump not run yet
+        CHECK(ma2.chantLaneCount(0) > 0 && ma2.chantLaneCount(1) > 0 &&
+              ma2.chantLaneCount(2) > 0); // id 26/67 both ship C0 banks + CGENER pool
+        for (int frame = 0; frame < 1200; ++frame) ma2.pumpChants(); // 12 cadence hits
+        CHECK(ma2.chantPlays() >= 1);
+        CHECK(ma2.chantActive() >= 1);
+        const auto& clip = ma2.lastChantClip();
+        CHECK(clip.frames() > 0);
+        double acc = 0.0; // decoded chant clip content (SPEECH_PHRASES.md §1 lane) must be loud
+        for (const auto s : clip.samples) acc += double(s) * double(s);
+        const double rms = clip.samples.empty() ? 0.0
+                         : std::sqrt(acc / double(clip.samples.size()));
+        CHECK(rms > 10.0);
+        CHECK(ma2.chantActive() <= 3); // DAT_006324d0 pool cap
+        audio::Mixer m3{kRate};
+        app::MatchAudio maSilent(tree);
+        maSilent.setMixer(&m3);
+        maSilent.boot(game.db.teams[0].id, game.db.teams[26].id,
+                      game.db.teams[0].roster, game.db.teams[26].roster);
+        audio::sceneLevels().setLevel(audio::kSceneCrowd, 0); // SNDautovol target 0 -> silent
+        for (int frame = 0; frame < 400; ++frame) maSilent.pumpChants();
+        CHECK(maSilent.chantPlays() >= 1 && maSilent.chantActive() == 0); // requests, no voices
+        audio::sceneLevels().setLevel(audio::kSceneCrowd, 80);
+    }
+
     std::printf("test_gameaudio: OK\n");
     return 0;
 }

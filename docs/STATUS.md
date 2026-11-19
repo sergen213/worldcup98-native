@@ -142,6 +142,19 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
 
 
 ## Progress snapshot (third-pass UI reconstruction landed, v0.5.0)
+- **Chant pump + classification wired (pass-53, 2026-11-19)** — the exe chant lane runs
+  continuously in the match scene: pump `FUN_0048da50` (per-frame tick host `FUN_004906f8`,
+  100-frame load cadence, per-lane voice top-up under capacity caps, loader `FUN_0048d53c`
+  requests) and boot classification `FUN_0048dcd8` (lane stamps `-1/0/1/2` from team
+  availability flags `DAT_006324b8/bc`, membership test `FUN_00446a94`; `C0%04d` chant names
+  keyed by the match-record `+0x32` nationality ids — pass-51 `team*10` claim corrected from
+  the format string @0x566a88). Measured: retail `CHNT/*.PBK` are flat single-phrase banks
+  (record + `PT` track; C0002600 → 43008 frames), so `decodeChantClip` decodes flat members
+  at the record boundary instead of skipping them. Port: `MatchAudio::classifyChants` +
+  `pumpChants` mirror the lane/cadence/retire model, wired per-frame in `livematch.cpp`;
+  percent idx2 gates chant audibility (`SNDautovol` target). Gates: `test_gameaudio` (f),
+  selftest `match-audio-lanes` `chantPump plays/active/clip`; dossier
+  `analysis/pass53audio/NOTES.md`, `AUDIO_RUNTIME.md` pass-53 section, A6 closed.
 - **Match-boot audio lane reconstruction (pass-51, 2026-11-19)** — boot builder `FUN_00490728`
   decoded as the lane-install authority: percent idx2 notifier (`DAT_004904b0[2]`, install site
   0x490621) drives the crowd re-level; CROWD.CRD card (4 slots) is the crowd-bed authority;

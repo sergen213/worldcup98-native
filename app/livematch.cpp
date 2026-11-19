@@ -1716,6 +1716,7 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
             for (; sfxPos < w.events.size(); ++sfxPos) matchAudio.trigger(w.events[sfxPos]);
             matchAudio.relevelCrowd(); // idx2 seam: options reaction row -> loop voice float
         }
+        matchAudio.pumpChants(); // pass-53 chant pump (FUN_0048da50): per-frame counter, 100-frame load cadence
         if (menuMusic) menuMusic->update(); // FE music seam: fade-out at launch (FUN_0048ec64), rotation pump
 
         // In-game pause menu composite over the live frame (IGMENU scene tick=0x43FC40; list widget

@@ -121,8 +121,11 @@ loads. Per-lane installs decoded:
 
 - **Chant pool**: `FUN_0048dfc4` allocates a 113-entry pool (`DAT_006324c0`, loop `iVar1 < 0x71`)
   + a 3-entry side pool (`DAT_006324d0`). Names come from the exe's own pointer table at VA
-  0x57eb5c (`PTR_s_C0001800_PBK`): 74 team-keyed entries `C0<team*10><2-digit variant>.PBK`
-  (18, 26, 29, 31, 33, 35, 36, 37, 38, 41, 47 with six variants, 49, 52, ... legend ids 862..875),
+  0x57eb5c (`PTR_s_C0001800_PBK`): 74 team-keyed entries `C0%04d` digits = match-record
+  nationality id `+0x32` (pass-53 correction: boot classification `FUN_0048dcd8` builds the
+  names with format `C0%04d` @0x566a88 from `DAT_00641014/0x641110 + 0x32` — direct ids, the
+  earlier `team*10` claim was wrong) + `%02d` variant (18, 26, 29, 31, 33, 35, 36, 37, 38, 41,
+  47 with six variants, 49, 52, ... legend ids 862..875),
   all present on the CD (cross-check: 0 missing, 0 extra in the table). The remaining 39 CD files
   are the `CGENER%02d` generic-chant lane. Per-chant loader `FUN_0048d53c`: `AUDIO\CHNT\%s`
   (@0x566a78) with `table[req+4]` name index — the chant index is a request argument, not a
@@ -147,6 +150,28 @@ loads. Per-lane installs decoded:
   string block.
 Port side (pass-51): `MatchAudio::boot` mirrors this install set — percent idx2 notifier, CROWD.CRD
 card as bed authority, TRAFF loop, ANTH slot-0 one-shot, and decode-counted catalogs for the chant
-pool, announcer banks and squad PLRS banks (playback of chant/announcer/name phrases stays
-disabled until the request-handler trigger mapping is decoded; see AUDIO_DISCREPANCIES A3/A6/A7).
+pool, announcer banks and squad PLRS banks (chant playback wired by pass-53 below; announcer and
+name-phrase playback stays disabled until the request-handler trigger mapping is decoded; see
+AUDIO_DISCREPANCIES A3/A6/A7).
 Gates: `test_gameaudio` (e), selftest `match-audio-lanes` (chants=113, announcers=4, plrs=38).
+
+**Pass-53 — chant pump + boot classification [C]** (evidence `analysis/pass53audio/NOTES.md`
++ `ch1.txt`..`ch7.txt`, flat-bank probe `chantprobe.cpp`). The pump `FUN_0048da50` runs
+per-frame from the commentary tick host `FUN_004906f8` (sole caller 0x49070e) under gate
+`DAT_006324b4`: each frame stamps the lane voice delay `+10` and applies
+`FUN_004906d0`/`SNDautovol` when it resolves; the load cadence `DAT_0057eb40 <=
+DAT_00636a14 ⇒ +100` drains queues, releases one `+8`-lane voice (`DAT_006324d4[lane]--`)
+and tops up lanes 0..2 iff `DAT_006324c4[lane] != 0 && DAT_006324d4[lane] <
+DAT_006324e0[lane]` while the match scene is live (`FUN_004adb30`) and the request count is
+`< 3`, requesting through loader `FUN_0048d53c`. Boot classification `FUN_0048dcd8` stamps
+node `+8` lanes from the team availability flags `DAT_006324b8/bc` (membership test
+`FUN_00446a94` over the u16 vector at `DAT_005883d8`, setter `FUN_0048dc8c`): neither team
+present ⇒ every node `-1` (pool silent), same-nation match (`local_20`, ids at record `+0x32`)
+⇒ lane 2, otherwise home lane 0 / away lane 1, generic draws lane 2; capacity `DAT_006324e0`
+bumps to 1 per lane on first assignment with budget `DAT_006324e8` decrementing. Measured flat
+banks: retail `CHNT/*.PBK` are single-phrase flat members (C0002600.PBK: one phrase, one
+record 'a', `decodePlayTrack(m,20)` → 43008 frames; offset 0 → 0) — the pass-52 flat skip was
+wrong and `decodeChantClip` now decodes flat members at the record boundary. Port:
+`classifyChants` mirrors the lane table, `pumpChants` mirrors cadence/retire/top-up, wired
+per-frame in `livematch.cpp`; gate detail `match-audio-lanes` now reports
+`chantPump plays/active/clip` and `test_gameaudio` (f) asserts lanes + audible clip.

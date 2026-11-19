@@ -1811,16 +1811,26 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
             // Chant pool size 113 = the exe boot allocation (0x71 slots) against the CD file
             // count; announcers = A_T+G_T per team; PLRS lane = squad banks present on the CD
             // (both squads of id 26/67 ship 19+19 announcer banks, measured via FCDB roster ids).
+            // Pass-53: the boot classification (FUN_0048dcd8) lanes the pool for the match
+            // teams, and the 100-frame pump (FUN_0048da50) must start clip voices: pump the
+            // lane for 24 cadence hits and require started plays + live pool voices.
+            for (int frame = 0; frame < 2400; ++frame) ma.pumpChants();
             st.passed = ma.crowdStarted() && ma.trafficStarted() && ma.anthemStarted() && notch &&
                         ma.crowdCardSlots() == 4 && ma.chantBanks() == 113 &&
                         ma.chantPhrases() > 0 && ma.announcerBanks() == 4 &&
-                        ma.announcerPhrases() > 0 && ma.plrsBanks() >= 30 && ma.plrsPhrases() > 0;
+                        ma.announcerPhrases() > 0 && ma.plrsBanks() >= 30 && ma.plrsPhrases() > 0 &&
+                        ma.chantPlays() >= 1 && ma.chantActive() >= 1 &&
+                        ma.lastChantClip().frames() > 0;
             st.detail = fmt("match-audio-lanes: ids {}/{} crowd={} traffic={} anthem={} notch={} "
-                            "cardSlots={} chants={} ({}) announcers={} ({}) plrs={} ({})",
+                            "cardSlots={} chants={} ({}) lanes={} announcers={} ({}) plrs={} ({}) "
+                            "chantPump plays={} active={} clip={}fr",
                             homeId, awayId, int(ma.crowdStarted()), int(ma.trafficStarted()),
                             int(ma.anthemStarted()), int(notch), ma.crowdCardSlots(),
-                            ma.chantBanks(), ma.chantPhrases(), ma.announcerBanks(),
-                            ma.announcerPhrases(), ma.plrsBanks(), ma.plrsPhrases());
+                            ma.chantBanks(), ma.chantPhrases(),
+                            int(ma.chantLaneCount(0) + ma.chantLaneCount(1) + ma.chantLaneCount(2)),
+                            ma.announcerBanks(), ma.announcerPhrases(), ma.plrsBanks(),
+                            ma.plrsPhrases(), ma.chantPlays(), ma.chantActive(),
+                            ma.lastChantClip().frames());
         } catch (const std::exception& e) {
             st.passed = true; // documented environment skip (headless-CI pattern)
             st.detail = fmt("match-audio-lanes skipped: {}", e.what());

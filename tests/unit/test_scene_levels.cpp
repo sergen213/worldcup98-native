@@ -12,8 +12,8 @@ struct Route { int lastChannel = -1; int calls = 0; };
 Route routes[6];
 
 void noteOne(int channel) { routes[1].lastChannel = channel; ++routes[1].calls; }
-void noteTwo(int channel) { routes[2].lastChannel = channel; ++routes[2].calls; }
-void noteFour(int channel) { routes[4].lastChannel = channel; ++routes[4].calls; }
+void noteTwo(int channel) { routes[2].lastChannel = channel; ++routes[2].calls; } // crowd lane
+void noteFour(int channel) { routes[3].lastChannel = channel; ++routes[3].calls; } // speech lane
 } // namespace
 
 int main() {
@@ -27,8 +27,8 @@ int main() {
 
     // 2. FUN_004906a4 rows: pct -> (pct*0x7f)/100, floor at 1 (exe clamp).
     lv.setLevel(kSceneCommentary, 80);   CHECK(lv.gainQ7(kSceneCommentary) == (80 * 0x7f) / 100);  // 101
-    lv.setLevel(kSceneSpeechQueue, 65);  CHECK(lv.gainQ7(kSceneSpeechQueue) == (65 * 0x7f) / 100); // 82: idx4=65 speech row
-    lv.setLevel(kSceneStream, 0);        CHECK(lv.gainQ7(kSceneStream) == 1);                      // clamp-to-1
+    lv.setLevel(kSceneSpeech, 65);       CHECK(lv.gainQ7(kSceneSpeech) == (65 * 0x7f) / 100);      // 82: idx3 speech row
+    lv.setLevel(kSceneCrowd, 0);         CHECK(lv.gainQ7(kSceneCrowd) == 1);                       // clamp-to-1
 
     // 3. FUN_004906d0 exact rows (signed 32-bit): (val*pct*127)/100 incl. negative operand.
     lv.setLevel(kSceneMusic, 80);
@@ -41,21 +41,21 @@ int main() {
 
     // 4. FUN_0049067c + DAT_004904b0 routing: notifier fires iff installed; slot [0] is NULL.
     lv.setNotifier(kSceneCommentary, noteOne);
-    lv.setNotifier(kSceneMusic, noteTwo);
-    lv.setNotifier(kSceneSpeechQueue, noteFour);
+    lv.setNotifier(kSceneCrowd, noteTwo);
+    lv.setNotifier(kSceneSpeech, noteFour);
     lv.setLevel(kSceneCommentary, 80); // -> FUN_0048d7a0 lane
     CHECK(routes[1].calls == 1 && routes[1].lastChannel == kSceneCommentary);
-    lv.setLevel(kSceneMusic, 90);      // -> FUN_0048e430 lane
-    CHECK(routes[2].calls == 1 && routes[2].lastChannel == kSceneMusic);
+    lv.setLevel(kSceneCrowd, 90);      // -> FUN_0048e430 lane
+    CHECK(routes[2].calls == 1 && routes[2].lastChannel == kSceneCrowd);
     lv.setLevel(kSceneMaster, 50);     // notifier slot [0] = 0: no dispatch (no route installed)
     CHECK(routes[0].calls == 0);
-    lv.setLevel(kSceneSpeechQueue, 65);
-    CHECK(routes[4].calls == 1 && routes[4].lastChannel == kSceneSpeechQueue);
+    lv.setLevel(kSceneSpeech, 65);
+    CHECK(routes[3].calls == 1 && routes[3].lastChannel == kSceneSpeech);
 
     // 5. Scene override row observed live under Wine (pass-7 winedbg): {80,80,80,80,65,80}.
     const int scene[6] = {80, 80, 80, 80, 65, 80};
     for (int i = 0; i < kSceneChannels; ++i) lv.setLevel(i, scene[i]);
-    CHECK(lv.gainQ7(kSceneCommentary) == 101 && lv.gainQ7(kSceneSpeechQueue) == 82);
+    CHECK(lv.gainQ7(kSceneCommentary) == 101 && lv.gainQ7(kSceneSpeech) == 101 && lv.gainQ7(kSceneMusic) == 82);
 
     std::printf("scene-levels: init 100, Q7 rows {101,82}, clamp-to-1, signed scaled rows, notifier routing\n");
     return 0;

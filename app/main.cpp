@@ -10,6 +10,7 @@
 #include "saveload.hpp"
 #include "tournament_demo.hpp"
 #include "game_audio.hpp" // FE menu music + shared runtime-audio helpers
+#include "wc98/audio/scene_levels.hpp" // settings [audio] -> DAT_00632778 percent table at boot
 #include "video.hpp" // --video-play FILE.DCT (docs/asset-formats/VIDEO.md)
 
 #include "wc98/config/settings.hpp"
@@ -58,10 +59,19 @@ void loadFePalette(const std::filesystem::path& root) {
 // headless capture driver runMatchDemo for their existing evidence semantics.
 int launchEntry(app::FeEntry e, const std::filesystem::path& tree, const std::string& prefix, int userTeam = -1,
                 bool liveMatch = false, platform::Window* window = nullptr, render::Renderer* renderer = nullptr,
-                bool recordReplay = false) {
+                bool recordReplay = false, audio::Mixer* externalAudio = nullptr,
+                app::MenuMusicDirector* music = nullptr) {
     switch (e) {
     case app::FeEntry::Exhibition: {
-        if (liveMatch && window && renderer) return app::runLiveLoop(tree, prefix + "_fe_live", 0, *window, *renderer, recordReplay);
+        if (liveMatch && window && renderer) {
+            // Scene seam (FUN_0048ec64 0xc8-tick ramp): the FE stream fades out as the match
+            // launches, and the live loop reuses the shell's SND context (retail device model).
+            if (music) music->fadeOut();
+            const int rc = app::runLiveLoop(tree, prefix + "_fe_live", 0, *window, *renderer, recordReplay,
+                                            false, 0, 1, externalAudio, music);
+            if (music) music->enterScene(); // back at the FE: ramp the stream in again
+            return rc;
+        }
         const std::string p = prefix + "_fe_exhibition";
         const std::string ts = tree.string(); // keep the path alive across runMatchDemo (argv view)
         const char* argv[] = {"wc98-native", p.c_str(), "--tree", ts.c_str()};
@@ -307,15 +317,21 @@ int run(int argc, char** argv) {
         if (!fe->loadCaptureScreen(feScreenName, err)) { std::cerr << "fe-screen " + feScreenName << ": " << err << '\n'; return 2; }
     }
     std::unique_ptr<audio::Mixer> feAudio; // owns the one OpenAL context during the FE loop
-    if (feMode) { // menu music: AUDIO/MUSC FE_*.ASF as a looping SCHl stream (AUDIO_RUNTIME.md);
-        // best-effort like the live-match mixer: headless CI has no OpenAL device.
+    app::MenuMusicDirector menuMusic;     // FE music lane: rotation + scene-transition seam
+    // settings.ini [audio] -> percent table DAT_00632778 before any audio plays: the lanes read
+    // the table through smixLaneGain(), the live match re-applies speech at its pump seam.
+    audio::sceneLevels().setLevel(audio::kSceneMusic, cfg.audio.music);
+    audio::sceneLevels().setLevel(audio::kSceneSpeech, cfg.audio.commentary);
+    audio::sceneLevels().setLevel(audio::kSceneMaster, cfg.audio.sfx);
+    if (feMode) { // menu music: AUDIO/MUSC FE_*.ASF rotation (AUDIO_RUNTIME.md); best-effort like
+        // the live-match mixer: headless CI has no OpenAL device.
         try { feAudio = std::make_unique<audio::Mixer>(); } catch (const std::exception& e) { std::cout << "audio: no output device (" << e.what() << ")\n"; }
         if (feAudio) {
-            std::string track;
-            if (app::startMenuMusic(*feAudio, tree, &track)) std::cout << "fe: menu music " << track << '\n';
+            feAudio->setMasterGain(float(cfg.audio.sfx) / 100.f); // [audio] sfx -> master bus
+            if (menuMusic.start(*feAudio, tree)) std::cout << "fe: menu music " << menuMusic.trackName() << '\n';
         }
     }
-    if (fe) fe->setAudioContext(&cfg, feAudio.get()); // options volume rows drive settings.ini + live mixer gain
+    if (fe) fe->setAudioContext(&cfg, feAudio.get(), &menuMusic); // options volume rows drive settings.ini + scene lanes
     int totalShapes = 0, totalTexts = 0, totalCursors = 0, presented = 0, navRc = -1;
     bool prevLmb = false; // mouse button edge state for widgetHit activation (Phase 1)
         if (fe && feTeam) { fe->selectNav(int(app::FeEntry::Tournament)); fe->enter(); } // hub wedge fe11 -> team-select grid (FEFLOW11)
@@ -497,7 +513,8 @@ int run(int argc, char** argv) {
                 const int act = fe->pointerActivate();
                 if (act >= 0) { // launches a mode: same path as Enter on that hub wedge
                     navRc = launchEntry(app::FeEntry(act), tree, outPrefix, fe->pickedTeam(),
-                                        smokeFrames == 0 && !strictNav, window.get(), renderer.get(), recordReplay);
+                                        smokeFrames == 0 && !strictNav, window.get(), renderer.get(), recordReplay,
+                                        feAudio.get(), &menuMusic);
                     std::cout << "fe: entry " << act << " returned " << navRc << '\n';
                     if (strictNav && navRc != 0 && navRc != 2 && navRc != 77) return navRc;
                 }
@@ -514,12 +531,14 @@ int run(int argc, char** argv) {
             frame.ui = &ui;
             totalCursors += presented == 0 ? st.cursors : 0;
         }
+        menuMusic.update(); // FUN_0048eb98 rotation + seam ramps ride the FE frame loop
         auto launchSelected = [&] { // Enter/confirm: Tournament entry opens team-select; confirm launches with the pick.
             const bool launched = fe->enter();
             if (fe->quitRequested()) { navRc = 0; return false; } // hub 'quit' wedge -> clean app exit
             if (!launched) return true; // show the team-select screen (next Enter confirms pickedTeam())
             navRc = launchEntry(app::FeEntry(fe->selected()), tree, outPrefix, fe->pickedTeam(),
-                                smokeFrames == 0 && !strictNav, window.get(), renderer.get(), recordReplay);
+                                smokeFrames == 0 && !strictNav, window.get(), renderer.get(), recordReplay,
+                                feAudio.get(), &menuMusic);
             std::cout << "fe: entry " << fe->selected() << " returned " << navRc << '\n';
             if (strictNav && navRc != 0 && navRc != 2 && navRc != 77) return false; // gate mode propagates failures
             fe->back(); // leave team-select (no-op on the menu)

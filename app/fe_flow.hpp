@@ -28,7 +28,8 @@ class Renderer;
 class SpriteBatch;
 } // namespace wc98::render
 namespace wc98::config { struct Settings; }   // settings.ini model (config/include/wc98/config/settings.hpp)
-namespace wc98::audio  { class Mixer; }       // audio mixer for live volume updates (audio/include/wc98/audio/mixer.hpp)
+namespace wc98::audio { class Mixer; } // audio mixer for live volume updates (audio/include/wc98/audio/mixer.hpp)
+namespace wc98::app { class MenuMusicDirector; } // FE music lane owner (app/game_audio.hpp)
 
 namespace wc98::app {
 
@@ -455,7 +456,7 @@ public:
     void defOptions();             // 'deft': row-cursor reset
     void forwardOptions() { commitOptions(); optsView_ = false; } // 'fwrd': commit + pop to caller
     // settings.ini [audio] master <-> audio::Mixer gain wiring (options volume row).
-    void setAudioContext(config::Settings* settings, audio::Mixer* mixer) { settings_ = settings; mixer_ = mixer; }
+    void setAudioContext(config::Settings* settings, audio::Mixer* mixer, MenuMusicDirector* music = nullptr) { settings_ = settings; mixer_ = mixer; menuMusic_ = music; }
     [[nodiscard]] bool audioDirty() const { return audioDirty_; }
     std::string poolName(std::uint32_t id) const; // FCDB fullName for a pool id (""-name fallback)
     presentation::FeDrawStats drawTeams(render::SpriteBatch& ui) const; // team-select frame (flat panel + FFN rows)
@@ -720,9 +721,10 @@ public:
     std::vector<int> igVals_;        // current value index per row
     std::vector<std::string> igVisible_; // composite whitelist: scene-owned art only
     static std::vector<OptRow> parseIgRows(std::string_view rowsProp);
-    bool audioDirty_ = false;           // volume changed -> main.cpp saves settings.ini
+    bool audioDirty_ = false; // volume changed -> main.cpp saves settings.ini
     config::Settings* settings_ = nullptr;
     audio::Mixer* mixer_ = nullptr;
+    MenuMusicDirector* menuMusic_ = nullptr; // FE music lane (app/game_audio.hpp)
     // ---- Save/Load entry (Feflow89.LAY) ---------------------------------------------------
     // Six slot buttons b000..b005 (textID 4640 -> FC bank out of range, dynamic per engine); the
     // port paints "Slot n" + WCT1 file state rows on the button geometry. Selecting a row with an

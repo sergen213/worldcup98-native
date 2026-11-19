@@ -318,10 +318,12 @@ public:
     // autovol ramp (site 0x48fcb2). Scene DEFAULT percents MEASURED live pass 7e (winedbg launch-under-
     // debugger, analysis/pass7/percent1.txt): setter triples FUN_0046b074 writes idx4=65 (@0x46b095) +
     // idx3=80 (@0x46b0f8), FUN_0046b130 quintet loop writes idx{0,2,1,5}=80; live table snapshot
-    // DAT_00632778 = {80,80,80,80,65,80,1} (idx6=1 static). Speech scene level = idx4 getter
-    // FUN_0048ed9c@0x48ee63 -> 65 %.
+    // DAT_00632778 = {80,80,80,80,65,80,1} (idx6=1 static). idx4 (65) is the MUSIC stream lane -
+    // read inside the CONFIRMED music-queue builder FUN_0048ed9c@0x48ee63 (AUDIO_RUNTIME.md §music
+    // queue), NOT speech; the speech lane is idx3=80 (notify cb DAT_004904b0[3]=FUN_0048fca0 ->
+    // SNDspeechautovol FUN_004df8a4, ramp site 0x48fcb2 = the seam above).
     static constexpr int kScenePct[7] = {80, 80, 80, 80, 65, 80, 1};
-    static constexpr int kSceneSpeechPct = 65; // table idx4 (speech volume getter consumer)
+    static constexpr int kSceneSpeechPct = 80; // table idx3 scene default (SNDspeechautovol lane)
     static constexpr int percentToVol(int pct) { const int v = pct * SpeechGain::kMaxVol / 100; return v < 1 ? 1 : v; }
     void setScenePercent(int pct) { volume_ = percentToVol(pct); gain_.ramp(volume_, kRampTicks); }
 

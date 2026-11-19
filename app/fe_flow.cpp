@@ -9,6 +9,8 @@
 #include "saveload.hpp"                    // USER/SLOTnn.SAV load path (Phase 3)
 #include "wc98/config/settings.hpp"        // settings.ini [audio] volume rows (Phase 2)
 #include "wc98/audio/mixer.hpp"            // live master-gain updates from the options screen
+#include "wc98/audio/scene_levels.hpp"     // DAT_00632778 percent table writes from volume rows
+#include "game_audio.hpp"                  // MenuMusicDirector::relevel seam
 #include "wc98/formats/slot.hpp"           // slotFileName()
 #include "wc98/formats/multitext.hpp" // .HIS cell multitext panes (pass-20records)
 #include "wc98/formats/rply.hpp"      // FEFLOW57 replay-browser index rows (pass-29)
@@ -1108,7 +1110,14 @@ void FeFlow::adjustValue(int dir) {
     } else if (int* vol = audioSliderRow(settings_, r.label)) { // mode-1 volume slider row (160/162/1186/1187)
         *vol = std::clamp(*vol + dir * 5, 0, 100);
         audioDirty_ = true;
-        if (mixer_ && r.label == 160) mixer_->setMasterGain(float(*vol) / 100.f); // [H] music row drives the FE stream gain
+        // Percent table DAT_00632778 write (FUN_0049067c setter triple @0x46b095): music row ->
+        // stream lane idx2, commentary row -> speech-queue lane idx4, sfx row -> master lane idx0.
+        // smixLaneGain() re-reads the table on the next trigger, livematch re-applies speech every
+        // pump seam, and the director ramps the live FE voice (SNDstreamautovol seam).
+        audio::sceneLevels().setLevel(r.label == 160 ? audio::kSceneMusic
+                                 : r.label == 162 ? audio::kSceneSpeech : audio::kSceneMaster, *vol);
+        if (r.label == 160) { if (menuMusic_) menuMusic_->relevel(); } // [H] music row drives the FE stream lane
+        else if (r.label != 162 && mixer_) mixer_->setMasterGain(float(*vol) / 100.f); // sfx row -> master bus
     }
 }
 
@@ -3726,7 +3735,12 @@ void FeFlow::cycleTab(int dir) {
 void FeFlow::commitOptions() {
     if (!settings_) return;
     audioDirty_ = true;
-    if (mixer_) mixer_->setMasterGain(float(settings_->audio.music) / 100.f);
+    // Slider values persist into the scene percent table (FUN_0049067c writers) + live lanes.
+    audio::sceneLevels().setLevel(audio::kSceneMusic, settings_->audio.music);
+    audio::sceneLevels().setLevel(audio::kSceneSpeech, settings_->audio.commentary);
+    audio::sceneLevels().setLevel(audio::kSceneMaster, settings_->audio.sfx);
+    if (mixer_) mixer_->setMasterGain(float(settings_->audio.sfx) / 100.f);
+    if (menuMusic_) menuMusic_->relevel();
 }
 
 // 'deft' tag: FUN_00459410 -> FUN_004593d4 = list-cursor state reset (NOT a settings reset: the

@@ -214,10 +214,12 @@ void duckModel() {
     c.pump();                                         // one pump tick advances cur toward the scene level
     CHECK(c.masterGain() < 1.f && c.masterGain() > 0.f);
     // Scene defaults MEASURED live (pass 7e, analysis/pass7/percent1.txt): table snapshot
-    // DAT_00632778 = {80,80,80,80,65,80,1}; speech scene level = idx4 getter -> 65 %.
-    CHECK(app::Commentary::kScenePct[4] == 65 && app::Commentary::kSceneSpeechPct == 65);
-    c.setScenePercent(app::Commentary::kSceneSpeechPct); // live setter triple @0x46b095 value
-    CHECK(c.volume() == app::Commentary::percentToVol(65));
+    // DAT_00632778 = {80,80,80,80,65,80,1}; speech scene level = idx3 (notify cb
+    // DAT_004904b0[3] = FUN_0048fca0 speech-gate family; idx4=65 is the MUSIC lane, pass-49
+    // correction from the pass-7 register read).
+    CHECK(app::Commentary::kScenePct[3] == 80 && app::Commentary::kSceneSpeechPct == 80);
+    c.setScenePercent(app::Commentary::kSceneSpeechPct); // live setter triple @0x46b0f8 idx3=80
+    CHECK(c.volume() == app::Commentary::percentToVol(80));
 }
 // --- tree gate: real PHRS.PBK selection + decode (skipping when the tree is absent) ---
 

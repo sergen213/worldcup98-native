@@ -1,7 +1,8 @@
 // Derived from fifa99-native (same author), ported for World Cup 98
 // Runtime-audio gate: deterministic OpenAL-soft LOOPBACK capture (no sound device). Asserts the
-// FE music SCHl stream renders audible PCM over >1 s, the whistle/kick/crowd BNK slots decode to
-// non-silent PCM, and a scripted KickOff event fires the SFX voice on the loopback mixer.
+// FE music SCHl stream renders audible PCM over >1 s, the whistle/kick/trill/roar/crowd BNK
+// slots decode to non-silent PCM, the scripted event seam fires SFX voices on the loopback
+// mixer, and the idx2 crowd re-level seam fades the running bed to the lane gain.
 // Model: docs/reverse-engineering/AUDIO_RUNTIME.md (MUSC/SFXS/CRWD paths, slot mapping).
 #include "check.hpp"
 #include "../app/game_audio.hpp"
@@ -9,6 +10,7 @@
 #include "wc98/file.hpp"
 #include "wc98/formats/bnk.hpp"
 #include "wc98/formats/schl.hpp"
+#include "wc98/audio/scene_levels.hpp" // director lane percent (DAT_00632778)
 
 #include <algorithm>
 #include <cmath>
@@ -24,6 +26,17 @@ namespace {
 constexpr std::uint32_t kRate = 44100; // loopback render rate (Mixer contract)
 
 // Pull `seconds` of stereo loopback output, return the max RMS over 0.1 s windows.
+double tailRms(audio::Mixer& m, double seconds) {
+    std::vector<std::int16_t> out(std::size_t(kRate * 2 * seconds));
+    for (std::size_t off = 0; off < out.size(); off += 4096) {
+        const std::size_t n = std::min<std::size_t>(4096, out.size() - off);
+        m.render(std::span<std::int16_t>(out).subspan(off, n));
+    }
+    double acc = 0;
+    for (std::size_t i = out.size() - 4410; i < out.size(); ++i) acc += double(out[i]) * out[i] / 4410.0;
+    return std::sqrt(acc); // RMS of the final 0.1 s: the settled post-fade gain
+}
+
 double peakRms(audio::Mixer& m, double seconds) {
     std::vector<std::int16_t> out(std::size_t(kRate * 2 * seconds));
     for (std::size_t off = 0; off < out.size(); off += 4096) {
@@ -72,6 +85,8 @@ int main() {
         const auto game = tree / "AUDIO" / "SFXS" / "GAME00.BNK";
         CHECK(peakAbs(decodeSlot(81, game)) > 200); // whistle (acoustic-verified chirp)
         CHECK(peakAbs(decodeSlot(23, game)) > 50);  // ball-strike thud
+        CHECK(peakAbs(decodeSlot(85, game)) > 200); // period-end whistle trill (1.95 s bright)
+        CHECK(peakAbs(decodeSlot(45, game)) > 200); // goal roar (4.12 s loud-noise burst)
         const auto crowd = decodeSlot(2, tree / "AUDIO" / "CRWD" / "CROWD.BNK");
         CHECK(crowd.frames() > 44100);              // ~3 s loop material
         CHECK(peakAbs(crowd) > 50);
@@ -104,6 +119,28 @@ int main() {
         ev.type = sim::EventType::MatchEnd;
         nullPath.trigger(ev);
         CHECK(nullPath.whistles() == 1 && !nullPath.crowdStarted());
+    }
+
+    // (d) MenuMusicDirector: lane percent -> re-level, launch fade-out seam, re-entry ramp.
+    {
+        audio::sceneLevels().setLevel(audio::kSceneMusic, 50); // options music row -> idx2
+        audio::Mixer m{kRate};
+        app::MenuMusicDirector dir;
+        CHECK(dir.start(m, tree));
+        CHECK(!dir.trackName().empty());
+        CHECK(dir.playing());
+        CHECK(peakRms(m, 1.0) > 8.0); // audible through the 50% lane (SMIX installer float < 1)
+        dir.fadeOut();                // launch seam: 200-tick ramp (FUN_0048ec64 0xc8)
+        for (int i = 0; i < 300 && dir.playing(); ++i) dir.update();
+        CHECK(!dir.playing());        // seam complete -> stream stopped (rotation halted at exit)
+        dir.enterScene();             // returning to the FE: ramp-in seam
+        CHECK(dir.playing());
+        CHECK(peakRms(m, 1.5) > 8.0); // audible again (gain ramping up from 0)
+        audio::sceneLevels().setLevel(audio::kSceneMusic, 80);
+        dir.relevel();                // options row changed while playing
+        dir.update();
+        CHECK(dir.playing());
+        audio::sceneLevels().setLevel(audio::kSceneMusic, 80); // restore boot default
     }
 
     std::printf("test_gameaudio: OK\n");

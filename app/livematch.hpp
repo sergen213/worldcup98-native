@@ -23,12 +23,17 @@
 namespace wc98::platform {
 class Window;
 }
+namespace wc98::audio {
+class Mixer;
+}
 namespace wc98::render {
 class Renderer;
 class SpriteBatch;
 }
 
 namespace wc98::app {
+
+class MenuMusicDirector; // FE music lane owner (app/game_audio.hpp)
 
 // Exhibition-match bootstrap shared by runMatchDemo and the live loop: loads the FE PAL palette,
 // the two FCDB.DBI teams (+ sheets, formation tables, ANIM.MO clips) and the STR0 HUD abbreviations.
@@ -192,9 +197,14 @@ private:
 // 0 ok / 1 assert failure / 2 skip (tree) / 3 validation messages.
 // recordReplay: stream every controller-0 tick through app::ReplayRecorder and, on exit, write
 // user/rplyNNNN.dat + rplyindx.dat under the tree (docs/asset-formats/RPLY.md).
+// externalMixer: the FE shell's OpenAL context — live match must reuse it, the original keeps one
+// SND device across scene seams (a second Mixer = a second device, no longer the retail mix).
+// menuMusic: the FE music director; update() runs per frame, fadeOut() ramps the stream out at the
+// scene seam (FUN_0048ec64 0xc8 ticks) exactly like the original scene switch.
 int runLiveLoop(const std::filesystem::path& tree, const std::string& prefix, int smokeFrames,
                 platform::Window& window, render::Renderer& renderer, bool recordReplay = false,
-                bool igPauseSmoke = false, int boardScript = 0, int quality = 1); // 1 stats tour / 2 half board / 3 full-time boards (gates fe_igstats/fe_ighalf/fe_igscsum/fe_igflsum) / 4 highlights browser / 5 save list (gates fe_highlite_browser/fe_hilsav_list) / 6 IGTEAM management page cycle + ab-swap + hub (gate fe_mgmt_pages, §E) / 7 manmarks ratings board from igteam72 'M' key (gate fe_manmarks_grid, §E) / 8 camera popup chain C->IGCAMERA->IGCAMSEL+mode apply (gate fe_camera_pages, §G) / 9 practise pages PRACT1<->PRACT2 tab cycle + keeper toggle (gate fe_practise_pages, §G); quality = h23 DAT_00644778 tier word
+                bool igPauseSmoke = false, int boardScript = 0, int quality = 1, // 1 stats tour / 2 half board / 3 full-time boards (gates fe_igstats/fe_ighalf/fe_igscsum/fe_igflsum) / 4 highlights browser / 5 save list (gates fe_highlite_browser/fe_hilsav_list) / 6 IGTEAM management page cycle + ab-swap + hub (gate fe_mgmt_pages, §E) / 7 manmarks ratings board from igteam72 'M' key (gate fe_manmarks_grid, §E) / 8 camera popup chain C->IGCAMERA->IGCAMSEL+mode apply (gate fe_camera_pages, §G) / 9 practise pages PRACT1<->PRACT2 tab cycle + keeper toggle (gate fe_practise_pages, §G)
+                audio::Mixer* externalMixer = nullptr, MenuMusicDirector* menuMusic = nullptr); // quality = h23 DAT_00644778 scene-level tier word
 
 // CLI driver: --tree DIR [--live-match-smoke N] [--out-prefix P]. Standalone wrapper that owns its
 // window + Vulkan swapchain; "skip:" exits with 2 like the other tree gates.

@@ -30,6 +30,11 @@ public:
     void stop(SoundId id);
     [[nodiscard]] bool playing(SoundId id) const;
     void setGain(SoundId id, float gain);
+    // Scene-transition gain ramp (SNDstreamautovol semantics, FUN_004e6aa0 + state-cb tick): move
+    // the voice's gain toward `target` in `ticks` engine ticks (1 tick = 1/50 s, the pump applies a
+    // step every 20 ms). The original ramps stream volumes over the scene-switch seam (FUN_0048ec64
+    // argument 0xc8 = 200 ticks at FE scene transitions).
+    void fade(SoundId id, float target, int ticks);
     void setMasterGain(float gain);
     // Loopback devices only: refills streams and renders interleaved stereo output.
     void render(std::span<std::int16_t> stereo);
@@ -45,6 +50,7 @@ private:
     mutable std::mutex mu_;
     std::vector<std::unique_ptr<Voice>> voices_;
     SoundId nextId_ = 1;
+    std::uint64_t tickCount_ = 0; // pump iterations; a fade step fires every 2 (20 ms = 1/50 s tick)
     std::jthread pump_; // last member: stops before the rest is destroyed
 };
 

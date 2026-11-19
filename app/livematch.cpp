@@ -19,6 +19,7 @@
 #include "livematch.hpp"
 #include "commentary.hpp"
 #include "game_audio.hpp"
+#include "wc98/audio/scene_levels.hpp" // speech/commentary lane re-level from the percent table
 
 #include "wc98/config/settings.hpp"
 #include "wc98/file.hpp"
@@ -932,7 +933,7 @@ static constexpr std::array<IgMenuRow, 10> kIgMenuRows{
 
 int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames,
                 platform::Window& window, render::Renderer& renderer, bool recordReplay, bool igPauseSmoke, int boardScript,
-                int quality) {
+                int quality, audio::Mixer* externalMixer, MenuMusicDirector* menuMusic) {
     MatchBoot boot;
     if (!boot.init(tree)) return 2;
 
@@ -980,17 +981,23 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
     int controlledPid = -1;
 
     // Commentary: mixer is best-effort — headless CI has no OpenAL device, and the adapter then
-    // runs decode-only (queue advances on silent completion).
+    // runs decode-only (queue advances on silent completion). The FE shell passes its own context
+    // (externalMixer): retail keeps one SND device across the scene seam, so a match launched from
+    // the FE must join the FE mix instead of opening a second device.
     std::unique_ptr<audio::Mixer> mixer;
-    try { mixer = std::make_unique<audio::Mixer>(); } catch (const std::exception& e) { std::cout << "commentary: no audio device (" << e.what() << ")\n"; }
-    app::Commentary commentary(mixer.get());
+    if (!externalMixer) {
+        try { mixer = std::make_unique<audio::Mixer>(); } catch (const std::exception& e) { std::cout << "commentary: no audio device (" << e.what() << ")\n"; }
+    }
+    audio::Mixer* audioMixer = externalMixer ? externalMixer : mixer.get();
+    app::Commentary commentary(audioMixer);
     const bool haveSpeech = commentary.loadTree(tree);
     if (!haveSpeech) std::cout << "commentary: AUDIO/PHRS/PHRS.PBK unavailable, queue idle\n";
     std::size_t evPos = 0; // World::events is append-only (world.hpp emit)
+    int speechPctApplied = app::Commentary::kSceneSpeechPct; // percent table idx3 (SNDspeechautovol)
     // Runtime SFX (docs/reverse-engineering/AUDIO_RUNTIME.md): crowd ambience loop for the whole
     // match + whistle/kick one-shots off the same event seam, independent of speech availability.
     app::MatchAudio matchAudio(tree);
-    matchAudio.setMixer(mixer.get());
+    matchAudio.setMixer(audioMixer);
     matchAudio.startCrowd();
     std::size_t sfxPos = 0; // SFX sweep cursor (append-only events stream)
 
@@ -1687,6 +1694,9 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
         snap.hud.controlled[0] = controlledPid; // user 1's player drives the shirt label + ground marker
 
         if (haveSpeech && (presented % 2) == 0) { // commentary pump every 2 render frames, trigger seam from events
+            // Speech lane re-level on percent-table change (options commentary row -> idx3).
+            const int pct = audio::sceneLevels().level(audio::kSceneSpeech);
+            if (pct != speechPctApplied) { speechPctApplied = pct; commentary.setScenePercent(pct); }
             const std::uint32_t before = commentary.sentencesStarted();
             for (; evPos < w.events.size(); ++evPos) commentary.trigger(w.events[evPos]);
             if (commentary.sentencesStarted() > before)
@@ -1698,7 +1708,9 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
         }
         if ((presented % 2) == 0) { // SFX trigger seam: same events, own cursor; counts even with no device
             for (; sfxPos < w.events.size(); ++sfxPos) matchAudio.trigger(w.events[sfxPos]);
+            matchAudio.relevelCrowd(); // idx2 seam: options reaction row -> loop voice float
         }
+        if (menuMusic) menuMusic->update(); // FE music seam: fade-out at launch (FUN_0048ec64), rotation pump
 
         // In-game pause menu composite over the live frame (IGMENU scene tick=0x43FC40; list widget
         // 'menu' x=176 y=138 w=286 h=211 -> 19 px rows, FEFLOW73 pattern). The LAY objects carry

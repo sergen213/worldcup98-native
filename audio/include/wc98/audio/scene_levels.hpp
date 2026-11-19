@@ -3,8 +3,8 @@
 // (FUN_004906a4 / FUN_004906d0), setter+notifier dispatch FUN_0049067c over the notifier
 // table DAT_004904b0{0, FUN_0048d7a0, FUN_0048e430, FUN_0048fca0, FUN_0048ec38, FUN_0049091c},
 // and init FUN_00490728 (one-time flag DAT_00632774; table[0..5] = 100).
-// Dossier: analysis/pass17s6audio/{NOTES.md,DECOMPILE/}. The percent values are user/scene
-// driven at runtime (winedbg pass-7 observed {80,80,80,80,65,80}; idx4 = speech 65).
+// table Dossier: analysis/pass17s6audio/{NOTES.md,DECOMPILE/}. Scene defaults measured live
+// (winedbg pass-7e): {80,80,80,80,65,80} — idx4 (music lane, read in FUN_0048ed9c@0x48ee63) = 65.
 #include <array>
 #include <cstdint>
 #include <functional>
@@ -12,12 +12,17 @@
 namespace wc98::audio {
 
 // Channel indices into the percent table (DAT_00632778 stride 4) and notifier table.
+// Role proof (pass-49): the live capture GET idx=4 inside the FE-music list builder
+// FUN_0048ed9c ret=0x48ee63 (analysis/pass7/percent1.txt) + gainQ7 callers FUN_0048eb98/FUN_0048ecbc
+// (analysis/pass7/gain5.txt) pin idx4 = music stream lane (SNDsetvol FUN_004e6aa0, gate DAT_00632644);
+// FUN_0048fca0 applies FUN_004df8a4 = SNDspeechautovol -> idx3 = speech/commentary stream;
+// FUN_0048e550/FUN_0048e430 gate the crowd stream slots DAT_006325b0/5b8 -> idx2.
 enum SceneChannel : int {
-    kSceneMaster = 0,        // notifier slot [0] = 0 (no subsystem callback)
+    kSceneMaster = 0,        // notifier slot [0] = 0 (no subsystem callback); SFX + speech-queue vol
     kSceneCommentary = 1,    // FUN_0048d7a0: gate DAT_006324b4, gain via FUN_004906d0 + FUN_0048d304
-    kSceneMusic = 2,         // FUN_0048e430: gates DAT_006325b0/5b8, stop flag 5b4, relevel FUN_0048e100
-    kSceneStream = 3,        // FUN_0048fca0: gate DAT_006326b0, apply FUN_004df8a4
-    kSceneSpeechQueue = 4,   // FUN_0048ec38: EA-XA lane; gate DAT_00632644, apply FUN_004e6aa0
+    kSceneCrowd = 2,         // FUN_0048e430: gates DAT_006325b0/5b8, stop flag 5b4, relevel FUN_0048e100
+    kSceneSpeech = 3,        // FUN_0048fca0: gate DAT_006326b0, apply FUN_004df8a4 SNDspeechautovol
+    kSceneMusic = 4,         // FUN_0048ec38: gate DAT_00632644, apply FUN_004e6aa0; consumer FUN_0048ed9c@0x48ee63
     kSceneCd = 5,            // FUN_0049091c: gates DAT_00632790 + positions 7a8/7ac
     kSceneChannels = 6,
 };

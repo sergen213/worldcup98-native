@@ -281,10 +281,16 @@ Boot registry (pass-57): every bank open from the PLRS/TEAM/chant installers flo
 while the preload gate `DAT_0063241c` is set (enable `FUN_0048d378`, disable `FUN_0048d3f4`) —
 registers each phrase (`FUN_004a4a00` count/entries) into the phrase queue via `qbottom`
 with self-links at record `+0x10/+0xc`. Registration count == parse count. The gameplay
-event -> name-request site is statically unrecovered [H]: no static caller formats
-`AUDIO\PLRS\P%05d.PBK` or picks PLRS ids outside the boot installer `FUN_0048fb10`, so the
-port catalogs + registry-counts (`MatchAudio::nameSlotsRegistered`) but does not play name
-phrases. Voice engine boot `FUN_0048fd54`: audio-engine gate + `DAT_006326b0 == 0`, opens the
+event -> name linkage is decoded (pass-66): there is **no runtime name-id feeder** —
+the boot installer `FUN_0048fb10` itself picks the ids from the FCDB pointer table
+`DAT_0064101c` (u32 stride-4 record pointers; name id = u16 at record `+2`, byte at
+`+0xF` stored to queue record `+4`), formats `AUDIO\PLRS\P%05d.PBK` as the sole
+formatter (only static reference 0x48fc19), and `FUN_0048d198` loads every non-zero
+id once at boot; live speech reaches the banks through the trigger wrapper
+`FUN_004893ec` (match-code sites 0x452af0..0x454494 group) + request drain
+`FUN_0048fcc0` and the phrase pump `FUN_0048f920`. The port catalogs + registry-counts
+(`MatchAudio::nameSlotsRegistered`) but does not play name phrases. Voice engine boot
+`FUN_0048fd54`: audio-engine gate + `DAT_006326b0 == 0`, opens the
 speech device (`FUN_004df820`), reserves the 8-slot record pool (stride `0x2c`, phrase data
 region stamped at record `+0x28`) through `reservememadr` `FUN_0049f5a0`, and prepushes the
 slots via `qbottom`.

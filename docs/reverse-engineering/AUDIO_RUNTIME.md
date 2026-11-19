@@ -107,8 +107,10 @@ burst as the goal crowd swell [H, profile-selected — slot roles beyond 81/23 a
 inference], #23 on Shot (`app/game_audio.{hpp,cpp}`, gate `test_gameaudio` (a)-(d)). Slot
 inventory measured in full (`analysis/pass49audio/GAME00_slots.txt`): bank slots 0..35/42/44/
 45/46 + 80..85, 36-41/43 empty; CROWD.BNK carries only slots 0..3, so per-event crowd "chorus"
-slots do not exist. Crowd chant layering (CROWD.CRD cards + CMIDI.BNK MIDx streams) and
-proximity gain ramps remain unimplemented.
+slots do not exist. Crowd chant layering (CROWD.CRD cards) and proximity gain ramps
+were implemented after this note (pass-54/55: card-slot bed layers + curve gains +
+`CrowdEnvelope` blend + `crowdPulse`/`relevelCrowd` in `MatchAudio`); the CMIDI.BNK
+MIDI-director stream lane stays device-blocked (A5).
 
 **Pass 12 addendum — FE menus never call SNDplay [C]** (evidence `analysis/pass12/sfx_fe.txt`, raw streams `nav12/13/14_raw.txt`): a full E8-scan of all `FUN_0051d480` (SNDplay) call sites finds **42 sites, all inside live-match code** (dispatcher `FUN_004ae730`, ids 0x1f9/0x1fa/0x1fb; sites 0x4ae7xx/0x4b8xxx/0x505xxx–0x52xxxx) and **zero** in FE scene handlers, the hub, or the widget path. The per-scene slot table `DAT_0058f3b2` is read-only at exactly 5 sites (0x51d419/46c/600/645, 0x51d7bb); it is built at runtime by the SND bank subsystem near `FUN_0x4ac862` ("sfx tbl" VA 0x568d64; per-scene bank format `"audsfx.%c"` VA 0x568dd7). Menu "sound feedback" in the original = (a) FE music streams (§music queue above), (b) scene ambient banks, and (c) an audio **ramp**: feflow04 tag `"  5"` registers animation/timer callbacks (`FUN_00436180` → `DAT_00600688` pump `FUN_004361d0`, countdown → ramp `FUN_0048ec64(EAX=0xc8)` + callback; selector dispatch `FUN_004447dc` switches `tmflag`/`mesg`/`feflow10`). There are **no per-button click sounds** in the FE. The LAY `nosfx=1` key exists only on FEFLOW82.LAY objecttype=44 label widgets (10 hits); no `nosfx` literal appears in any shipped binary → class-default suppression [H]. Port rule: do NOT synthesize menu click SFX; wire FE music + ambient bank, ramp at scene switches.
 
@@ -537,7 +539,8 @@ Boot `FUN_00490250` ("STRASYNCH" lane; tag string @0x566c18), gate
   are closed (`FUN_0x42b070`);
 - two queues `DAT_0063273c` (slot pool) + `DAT_00632758` (completion) via `FUN_004c46a0`,
   and a 16-record slot pool `DAT_00632738` reserved through `FUN_0049f5a0`
-  (tag `STRASYNCH`, count from `FUN_0048e8d0` = `DAT_00632638`, fallback 2), all 16 slots
+  (tag `STRASYNCH`; the "count" arg `FUN_0048e8d0` is the **SNDMEM memory-class index**,
+  pass-65 §12 — fallback 2 when the heap is not installed), all 16 slots
   `qbottom`-ed into `DAT_0063273c` (stride `0x14`);
 - `initasync` `FUN_004d82d0` (`win\async.c`, asserts `initasync - DO_NOT…` :0xc4,
   `FAILED TO START ASYNC THREAD` :0xde) with `EAX=0x10` jobs, `EDX=0x2000` buffer: allocates
@@ -580,3 +583,48 @@ port-relevant: the port loads phrase banks synchronously (`MatchAudio::decodeCha
 so no mirror change; the pump's frame-loop ordering constraint (drain before trigger)
 is noted for `trigger()` callers. Evidence: `analysis/pass64phrs/NOTES.md`,
 `/tmp/wc98pass64/com1.txt`..`com8.txt`.
+
+## 12. SND memory-class subsystem + audio boot install order (pass-65, measured 2026-11-19)
+
+Corrects the pass-56/pass-64 reading of `FUN_0048e8d0` as a phrase/speech count: it
+returns the **SNDMEM memory-class index** `DAT_00632638` (fallback `2` when the heap
+flag `DAT_00632634 == 0`). `DAT_00632638` is written by `FUN_0049f4c0` =
+`getfreememclass` (`cmn\memstd.c`, debug assert `NO_FREE CLASSES` :0x10): scans the
+class table `&DAT_006414a0 + k*4` until NULL, returns the registered-class count, which
+`createMemClass` `FUN_0049f1f0` (`CLASS_NUMBER_OF…` assert :0xd8) then consumes as its
+**class slot index** (`(&DAT_0064149c)[EAX & 0xf] = header`). All twelve `FUN_0048e8d0`
+consumer sites (0x48e1ad, 0x48e734, 0x48ee89, 0x48eaa0, 0x48f022, 0x48faa9,
+0x48fc2d, 0x48fd8e/0xfde8/0xfe17, 0x490283/0x4902a9) pass it as the loader `FUN_00439810`
+memory-class tag argument — allocation class, not record count.
+
+Install `0x48e8e8` (sole caller `0x49078a`): gated on enable flag `DAT_00632774`
+(`FUN_00490674`), once via `DAT_00632634`; `FUN_0049f5a0` = `reserveMemAdr`
+(`BAD SIZE VALUE` assert :0x2cc) with `EAX = "SNDSYS"` (@0x566b20),
+`EDX = DAT_0063263c` → block `DAT_00632640`; then `FUN_0049f1f0 createMemClass`
+(`EAX` = class index, `EDX = "SNDMEM"` @0x566b28, stack args incl. item size `0x20`,
+align `0x8`; header tag marker u16 `0x4253` at `+0x20`, `+0x28 = 0x7fffffff` max,
+`+0x40` align, `+0x44` granularity). Size setter `0x48e8a0` (`if (EAX > 0)
+DAT_0063263c = EAX`) is called at boot `0x43cc02` with `EAX = 0x300000` — **3 MiB audio
+heap reservation**; pass-64's `EDX = 0x140` note was a wrong-register read of this
+lane. Teardown `0x48e960` (caller `0x4907f3`) runs `removeMemClass` `FUN_0049f470`
+(`FUN_004c3a80` + `FUN_00494368`) on the class, frees `DAT_00632640` via `FUN_0042b070`,
+clears both fields.
+
+Audio boot `FUN_00490728` (boot-chain site `0x43cc07`): device probe `FUN_004e95f0` →
+`DAT_00632774 = (uint)(-1 < ret)`; success installs in order `FUN_0048e8e8` (SNDMEM
+heap) → `FUN_0048d378` (chant pool) → `FUN_0048ed9c` (CRWD boot lane) → `FUN_00490acc`
+→ `FUN_00490250` (STRASYNCH §11) → `FUN_0048fd54` (announcer) → `FUN_0048dfc4` →
+`FUN_0048f1c4`, after `FUN_004e9840(0xffffffff)` + `FUN_004e41d4` and percent-table
+static default: `DAT_00632778` ← **100 for all six scene slots** (loop while
+`iVar2 != 0x18`); the `{80,80,80,80,65,80,1}` snapshot (pass-7e) is the later
+options rewrite. `DAT_00632774` readers: 0x490528, 0x490634, 0x490674, 0x4906f8
+(frame pump), 0x490728, 0x4907c0 (teardown).
+
+Path formatter `FUN_0048f9d0`: `DAT_00632720 == 0` → `sprintf(buf, "AUDIO\PHRS\%s",
+EDX)` (@0x566b9c), else `sprintf(buf, "%s%s", EDX, DAT_00632720)` (@0x566b94) — an
+installed-root prefix lane. `DAT_00632720` has zero static write sites (reads only at
+0x48f9c9/0x48f9d6): default NULL = CD-relative path; the install-root string is
+populated by a runtime mechanism [H] (same runtime-injection class as the EULZ
+expander). Port: phrase banks load synchronously under a fixed tree path, so no
+mirror change; the formatter semantics are recorded for path-assembly fidelity only.
+Evidence: `analysis/pass65snd/NOTES.md`, `/tmp/wc98pass65/p65.txt`..`p65h.txt`.

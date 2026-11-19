@@ -105,6 +105,14 @@ MatchAudio::MatchAudio(const std::filesystem::path& tree) : tree_(tree) {
             if (s != 0xFF) fromCard.push_back(s);
         crowdCardSlots_ = static_cast<std::uint32_t>(fromCard.size());
         if (!fromCard.empty()) slots = fromCard;
+        // Level->gain curve from the card tables (pass-52): the zero-floor pair t4/t6 gates the
+        // stadium bed (entry 0 == silent); tableRefs @0x128 point into these tables with a small
+        // read offset (pump 0x4e502c reads table[cur]+ref), whose exact runtime index is
+        // undecoded, so the port indexes the raw curve by SNDcrowdcontrol level.
+        if (card.tables.size() >= 5 && card.tables[4][127] != 0) {
+            crowdCurve_ = card.tables[4];
+            crowdCurveValid_ = true;
+        }
     } catch (const std::exception&) { // no card: keep the measured slot
     }
     for (const auto slot : slots) {
@@ -142,7 +150,9 @@ void MatchAudio::startTraffic() {
     // FUN_004e3128/FUN_004e4a80 start points. Measured bed RMS 1416 vs crowd bed 9111 -> mix
     // it under the crowd bed [H gain balance].
     if (mixer_ && traffic_.frames() && !trafficId_)
-        trafficId_ = mixer_->play(traffic_, 0.12f * smixLaneGain(audio::kSceneCrowd), /*loop=*/true);
+        trafficId_ = mixer_->play(traffic_,
+                                  0.12f * smixLaneGain(audio::kSceneCrowd) * crowdCurveRatio(),
+                                  /*loop=*/true);
 }
 
 void MatchAudio::startAnthem(std::uint16_t homeTeamId) {
@@ -229,12 +239,26 @@ void MatchAudio::catalogPlayers(const std::vector<std::uint16_t>& ids) {
     }
 }
 
+// Percent row -> SNDcrowdcontrol level -> CROWD.CRD curve entry. FUN_004906a4 computes
+// level = pct*0x7f/100 clamped to >= 1 and FUN_004e4d8c (SNDcrowdcontrol, cmn\scrowd.c) feeds
+// the pump handler 0x4e502c, which scales it through the card controller struct. Normalizing
+// at curve[127] (the percent lane's max level) keeps options 100 == full lane gain and entry 0
+// (options 0 -> level 1 -> curve 0) == silent bed, matching the measured original envelope.
+float MatchAudio::crowdCurveRatio() const {
+    const int pct = std::clamp(crowdPctApplied_, 0, 100);
+    if (!crowdCurveValid_) return pct / 100.f;
+    const int level = std::max(1, pct * 0x7f / 100); // FUN_004906a4
+    return float(crowdCurve_[std::min(level, 127)]) / float(crowdCurve_[127]);
+}
+
 void MatchAudio::startCrowd() {
     // Scene-level layer (pass-49 correction: DAT_00632778 idx2 = SNDstadiumreactions, the
-    // crowd/CRWD stream per FUN_0047a7c4) scales this loop through the SMIX voice lane.
+    // crowd/CRWD stream per FUN_0047a7c4) scales this loop through the SMIX voice lane, then
+    // the CRD controller curve (pass-52) shapes it: SMIX float * curve level->gain ratio.
     crowdPctApplied_ = audio::sceneLevels().level(audio::kSceneCrowd);
     if (mixer_ && crowd_.frames() && !crowdId_)
-        crowdId_ = mixer_->play(crowd_, 0.6f * smixLaneGain(audio::kSceneCrowd), /*loop=*/true);
+        crowdId_ = mixer_->play(crowd_, 0.6f * smixLaneGain(audio::kSceneCrowd) * crowdCurveRatio(),
+                                /*loop=*/true);
 }
 
 void MatchAudio::relevelCrowd() {
@@ -244,7 +268,7 @@ void MatchAudio::relevelCrowd() {
     const int pct = audio::sceneLevels().level(audio::kSceneCrowd);
     if (pct == crowdPctApplied_) return;
     crowdPctApplied_ = pct;
-    const float lane = smixLaneGain(audio::kSceneCrowd);
+    const float lane = smixLaneGain(audio::kSceneCrowd) * crowdCurveRatio();
     if (mixer_ && crowdId_) mixer_->fade(crowdId_, 0.6f * lane, 50); // 50 x 20 ms ticks
     if (mixer_ && trafficId_) mixer_->fade(trafficId_, 0.12f * lane, 50);
     if (mixer_ && anthemId_ && mixer_->playing(anthemId_)) mixer_->fade(anthemId_, 0.8f * lane, 50);

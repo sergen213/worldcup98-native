@@ -6,6 +6,7 @@
 #include "wc98/formats/schl.hpp"
 #include "wc98/sim/events.hpp"
 
+#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <memory>
@@ -119,6 +120,14 @@ private:
     std::uint32_t plrsBanks_ = 0, plrsPhrases_ = 0;
     std::uint32_t crowdCardSlots_ = 0;
     int crowdPctApplied_ = -1;
+    // CROWD.CRD controller curve (pass-52 RE): percent row -> SNDcrowdcontrol level
+    // (pct*0x7f/100, clamped >= 1, FUN_004906a4) -> card level->gain table entry, normalized
+    // at the curve's full-position value. The zero-floor table pair (t4/t6) is the stadium
+    // bed gate curve: entry 0..4 == 0 reproduces "options row 0 -> bed silent"; the 21-floor
+    // pair (t0/t2) is the anticipation/reaction layer curve, not wired (no port chant layer).
+    std::array<std::uint8_t, 512> crowdCurve_{};
+    bool crowdCurveValid_ = false;
+    [[nodiscard]] float crowdCurveRatio() const; // applied percent -> curve gain 0..1
 };
 
 } // namespace wc98::app

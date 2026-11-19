@@ -870,3 +870,25 @@ light one in `FeFlow::paintCaption` **[H]**.
 - Gates: IGSTATS shapes=23 texts=180, IGSCSUM texts=91, IGFLSUM texts=87; captures
   analysis/pass43igfix/captures/ig_{igstats,igscsum,igflsum}.png; suite green (sim lane
   excluded, in-flight work).
+
+## 34. Round 2026-11-18 — pass-44pointer: pointer un-projection through the UI content rect [LANDED]
+- Interaction defect (goal §7 resolution/scaling): the mouse was mapped by scaling the **whole
+  window** into the 640x480 canvas (`app/main.cpp` FE hub + `app/livematch.cpp` live pointer and
+  the gate-side `motion`/`click` pushers). The UI pipeline always draws into `render::fit4x3(window)`,
+  so on any non-4:3 window the letterbox offset was folded into the canvas — every widget hit box
+  sat `fit4x3().x` pixels inboard of the art it covered (1280x720: 160 px, i.e. a fifth of the
+  screen). Hub wedges, view-screen buttons, the pause-menu rows and the confirm-box buttons all
+  responded at the wrong place, and the drift grew with the aspect mismatch.
+- Fix: one coordinate-space contract in `presentation/` (`docs/architecture/RENDERER.md` "Window
+  coordinate space"): `uiPointerFromWindow` (window points -> UI, offset-subtract + rect scale) and
+  `uiWindowFromPointer` (UI -> window points, for the scripted mouse lanes). Both use
+  `Window::pointSize()` (SDL mouse events are window *points*; `pixelSize()` is swapchain space and
+  carries the HiDPI scale factor), so mapping is correct independent of DPI scaling.
+- Gate: `test_presentation` pointer block (16:9 offset, bar clamp, 4:3 identity, forward-map
+  round trip). Capture lane `--fe-pointer X,Y` injects window-space coordinates through the same
+  un-projection: `/tmp/p3/inter/hub_pointer_fe00.png` vs `hub_plain_fe00.png` differs in exactly
+  two clusters — cursor sprite at the injected point, and the hovered wedge band (x 448..512,
+  y 240..320 = virtual ~(493,240)) showing the HILITED wedge art.
+- Mouse-driven IG lanes re-verified through the forward map: `fe_hub`, `fe_igmenu` (hover row 6 +
+  click-activate IGSTATS), `fe_igoptns_m`, `fe_igstats`, `fe_ighalf` PASS. Suite 149/151 (the two
+  in-flight simulation-lane tests stay excluded).

@@ -23,6 +23,7 @@
 #include "wc98/sim/sim.hpp"
 #include "wc98/sim/world.hpp"
 #include "wc98/sim/events.hpp"
+#include "wc98/sim/team.hpp"  // substitution: Squad_* line-up sheet lane (squad.cpp)
 #include "wc98/sim/data.hpp" // match-audio-lanes: FCDB team ids for the team lane boot
 // pitch band, selector arbiter and placement machine on fixed segments (analysis/pass17setpiece).
 #include "wc98/sim/setpieces.hpp"
@@ -2118,6 +2119,71 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                             corner.second.x, corner.second.y, corner.second.z, throwin.first);
             steps.push_back(std::move(st));
         }
+    }
+
+    {
+        // Substitution (§11 integrated sequence): the exe's injury-sub chain end to end -
+        // bench pick 0x49FA00 (same-position mode, then attacker/defender lanes), request
+        // 0x49F03C (writes the requested line-up slot), apply 0x49F140 (bench entries leave
+        // the confirmed line-up pending, +0x22++), and the State186 carry-out 0x49F684:
+        // pending--, substitutions-left--, squad rebind, Substitution event (a=off, b=on).
+        StepRes st{"substitution", false, ""};
+        int outPid = -1, outSq = -1, bench = 0xff;
+        for (int k = 1; k < w.teams[0].playerCount && outPid < 0; ++k) {
+            const int q = w.teams[0].players[k];
+            if (q < 0) continue; // empty roster slot
+            for (int mode : {0, 1, 2}) {
+                const int cand = sim::Squad_pickInjurySub_49FA00(w, 0, k, mode);
+                if (cand == 0xff) continue;
+                const int sq = w.attrs[w.players[std::size_t(q)].attr].squadIndex;
+                if (cand == sq) continue;
+                outPid = q; outSq = sq; bench = cand;
+                break;
+            }
+        }
+        if (outPid >= 0) {
+            const int left = sim::Squad_subsLeft_49ED4C(w, 0);
+            const bool subsCounting = w.opt.maxSubs != 9999; // 0x66E588 decrement lane
+            sim::Squad_substitute_49F03C(w, 0, outSq, bench);
+            sim::Squad_applyLineup_49F140(w, 0);
+            const int pending = sim::Squad_pendingCount_66E586(w, 0);
+            w.events.clear();
+            sim::Team_removeInjured_49F684(w, 0);
+            const sim::SimEvent* ev = nullptr;
+            for (const auto& e : w.events)
+                if (e.type == sim::EventType::Substitution) { ev = &e; break; }
+            st.passed = pending == 1 && ev && ev->team == 0 && ev->a == outSq && ev->b == bench &&
+                        sim::Squad_pendingCount_66E586(w, 0) == 0 &&
+                        w.attrs[w.players[std::size_t(ev->player)].attr].squadIndex == bench &&
+                        (!subsCounting || sim::Squad_subsLeft_49ED4C(w, 0) == left - 1);
+            st.detail = fmt("sub: pid {} squad {} -> {} pending {} left {}->{}", outPid, outSq, bench,
+                            pending, left, sim::Squad_subsLeft_49ED4C(w, 0));
+        } else {
+            st.detail = "no eligible bench substitution";
+        }
+        steps.push_back(std::move(st));
+    }
+
+    {
+        // Full-time seam (§11 match completion + final presentation): Match_requestPeriodEnd
+        // (whistle 2 = full-time pair, presentation phase 0xf) then the time-up dispatch
+        // (Match_onEvent case 9: whistle seq 2, period-end seq 9). seq9PeriodEnd emits
+        // PeriodEnd, switches to the presentation phase, and CutScene_play marks the scene.
+        StepRes st{"match-complete", false, ""};
+        sim::Match_requestPeriodEnd(w, 2, 0xf, 2);
+        sim::Match_dispatchEvent(w, 9, 0);
+        w.events.clear();
+        bool sawEnd = false;
+        for (int i = 0; i < 1500 && runner.tick(); ++i) {
+            for (const auto& e : w.events)
+                if (e.type == sim::EventType::PeriodEnd) sawEnd = true;
+            if (sawEnd && w.match.cutScene == 1) break;
+        }
+        const bool present = w.match.phase == 0xf || w.match.phase == 0x10 || w.match.phase == 0x11;
+        st.passed = sawEnd && present && w.match.cutScene == 1 && w.match.endWhistle == 2;
+        st.detail = fmt("full-time: phase {:#x} cut={} whistle {} elapsed {} s", w.match.phase,
+                        w.match.cutScene, w.match.endWhistle, w.match.elapsedSec);
+        steps.push_back(std::move(st));
     }
     writeJson(outJson, steps);
     int passed = 0;

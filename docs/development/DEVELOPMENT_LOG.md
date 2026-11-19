@@ -536,3 +536,27 @@ arc descent. `scenarioFallRecovery` lane C is now a flight stop-zone gate (kick
 fired live-phase under the M7 settle grammar; probe-measured landing (-210,-1317)
 with speed-decay closure + determinism tuple on seed 0x2E7A). Suite **119/119**,
 self-test **14/14**.
+
+## Pass-54 §11 integrated gates: substitution + full-time seams (2026-11-19)
+Two integrated self-test lanes (goal §11 items 11/14) landed in `app/selftest.cpp`,
+both driving committed exe-decoded lanes, no invented state:
+- `substitution`: injury-sub chain end to end — bench pick `Squad_pickInjurySub_49FA00`
+  (same-position mode 0, then attacker/defender lanes 1/2), request `Squad_substitute_49F03C`
+  (writes the requested line-up slot), apply `Squad_applyLineup_49F140` (bench entries leave
+  the confirmed line-up pending, +0x22++), State186 carry-out `Team_removeInjured_49F684`:
+  pending--, substitutions-left--, squad rebind, `Substitution` event (a=off squad, b=on
+  squad). Gate asserts pending 1->0, event team/a/b, attribute-record squad rebind, and the
+  0x66E588 decrement lane (`subsLeft 3->2`, skipped when maxSubs==9999).
+- `match-complete`: full-time seam — `Match_requestPeriodEnd(2, 0xf, 2)` (whistle 2 =
+  full-time pair, presentation phase 0xf) then time-up dispatch (`Match_onEvent` case 9:
+  whistle seq 2, period-end seq 9). `seq9PeriodEnd` emits `PeriodEnd`, switches to the
+  presentation phase, `CutScene_play` marks the scene. Gate asserts `PeriodEnd` observed,
+  phase 0xf/0x10/0x11, `cutScene==1`, `endWhistle==2`. Audio side of this seam is already
+  gated by `match-audio-events` (canonical PeriodEnd -> trill counter 2/2).
+Measured (dummy lane, seed 0x2E7A): substitution pid 1 squad 1 -> 17 pending 1 left 3->2;
+full-time phase 0xf cut=1 whistle 2 elapsed 2734 s. Self-test **30/32** (the two failing
+rows `passing`/`animation` are the known open simulation-WIP lanes in the working tree,
+not this pass); suite **150/152** (same two lanes fail as `test_sim_scenarios` /
+`self_test_gameplay` exit codes). No original substitution commentary/crowd audio lane is
+decoded in FIFAWC.EXE (COMMENTARY_WC98 has no substitution trigger), so the gate asserts
+no audio reaction — none is invented.

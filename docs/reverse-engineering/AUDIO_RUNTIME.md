@@ -226,9 +226,18 @@ loader `FUN_00439810` with type arg `FUN_0048e8d0` (`DAT_00632638`, fallback 2 w
 `DAT_006325dc`) of `count*12` bytes and `count` stride-12 records are pushed into
 `DAT_006325e0` via `qbottom`; `FUN_0048e1c4` stamps phrase→MIDI ids at record `+6`
 (`FUN_004e43c0`, sentinel `EDX = 0xffffffff`, `EBX = entry+0x14`). The `AUDIO/CRWD/CROWD` file
-is a plain `dir` listing, not data; chant name registry `DAT_0057eb44` carries `CROWD.PBK` +
-`COMOS.PBK` headers and the 113 `CHNT/*.PBK` pack names matching the boot classifier's 0x71
-count. Port: `MatchAudio::ExeLcg` mirrors `FUN_004ce2f3` (`chantRng_` replaces mt19937 for
+is a plain `dir` listing, not data. `DAT_0057eb44` is the CRWD loader field block (pass-59
+byte scan): `+0`/`+4` hold the two loader name pointers `CROWD.PBK`/`COMOS.PBK`;
+`+8..+0x14` are runtime state fields, not names — slot `+8` is boot-lane scratch that
+`FUN_0048ed9c` consumes (zeroed after two `FUN_0048ea3c` releases), `FUN_0048f068` writes a
+replay schedule time `DAT_00636a14 + 0x14` to `+0x0C`, and write site `0x48f321` inside
+`FUN_0048f2d8` stores a `FUN_0048d070`/`FUN_0048f290` result at `+0x10`; the loader loop
+(`XOR EDX / ADD EDX,4 / CMP EDX,0x8`) iterates only the two name entries, so these fields
+never load a bank. The chant registry `DAT_0057eb5c` (= `DAT_0057eb44 + 0x18`) is exactly 113
+name pointers: 74 `C0%04d` team banks + 39 `CGENER%02d` generic banks (boot classifier 0x71
+count), terminated by a pointer to `$FIFAVER$AUDIOV0-5-9` at `0x57ecc0` and followed by a
+separate pointer array whose tail entries are `.DCT` video names (video subsystem registry,
+not chants). Port: `MatchAudio::ExeLcg` mirrors `FUN_004ce2f3` (`chantRng_` replaces mt19937 for
 variant + phrase picks) and `pumpChants` rotates the pool on the 100-frame cadence (even →
 front, odd → back) before lane top-up, matching drain-branch order; gate `test_gameaudio`
 asserts the seed-0 LCG draw sequence.

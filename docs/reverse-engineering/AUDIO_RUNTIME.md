@@ -353,3 +353,49 @@ allow plays through `PTR_FUN_005896c0` and updates the per-id record array
 Port: no code change — `MatchAudio::trigger` fires GAME00 slots directly and the
 SNDplay-id→slot mapping lives in the SND DLL bank tables (unrecovered [H]), so mirroring
 the gate would require a fabricated id map.
+
+## Pass-61: SND callback wiring (SFX request queue)
+
+`PTR_FUN_005896b4..005896c8` start as compile-time stubs (`.data` measured:
+`FUN_004e6c00/c10/c20/c30`) and are installed at runtime by `FUN_004e6b50`
+(audio-common installer, boot caller `FUN_00490528`, enable flag
+`DAT_00632774`, lane enable `DAT_006326b0` via `FUN_0048fd4c`). Watcom
+register args from the boot site (`0x49057f` disasm): `EAX=0x48f730`,
+`EDX=0`, `EBX=0x48f728`, `ECX=0x48f78c`, stack pushes `0x48f830`, `0x48f8bc`.
+The installer clears to stubs, always installs the gate (`EBX`), and installs
+the play/submit slots only when scene `DAT_00640fb4` ∉ {10, 0xc} — SFX is
+stub-disabled in those scenes. `FUN_00490634` reinstalls all-zero (disabled).
+
+Installed callbacks:
+- gate `0x48f728` = `jmp 0x48ffb8`: probes the SFX request queue
+  `DAT_00632734` (iterators `FUN_004a49a0/4a4a00/4a4a30`); `AL` = pending
+  flag, `ECX` = queue struct; empty queue (`DAT_00632724 == 0`) → `AL = 0`.
+- play `0x48f830` (slot `0x5896c0`): guards `DAT_006326b0`, capacity via
+  `FUN_004906a4`, pool-allocates from `DAT_006326c8` (`FUN_004c4890`), entry
+  `{+4=EAX, +8=DL type byte, +0x18=BL, +0x1c=cb 0x48f47c}`, submits through
+  `FUN_0048f3e0` (request struct with cb pair `0x48f3a4/0x48f380`; flags byte
+  `entry+0x20 & 0x3f` selects the pos/pan lane at `FUN_0048f2d8`) → handle;
+  pushes into the in-flight queue `DAT_006326e4`.
+- pump `0x48f8bc` (slot `0x5896b8`): qfetchs `DAT_006326e4`, advances the
+  record (`LEA EDX,[record+0x14]; FUN_0048d084`), publishes
+  `DAT_006326bc = u16 [record+0x12]`, invokes the entry callback `[entry+0x1c]`,
+  recycles the entry.
+- submit form 2 `0x48f78c` (slot `0x5896c4`) with `cb 0x490094`/`0x49001c`;
+  level probe `0x48f730` (slot `0x5896b4`, `CMP EAX,3`, lookup `FUN_0048d070`).
+
+Boot-level clamp: `FUN_004e6c40` scans ids `0..0x509` through the gate slot
+and stores `DAT_00644de4 = max` gate byte; `FUN_004e6db0` advances the per-id
+level byte `DAT_00644d54 + id*0xc + 8` clamped at that max through the
+percent table. Gate modulus at `FUN_0051d670`: default branch `ECX = 100`;
+`tick % ECX >= entry interval byte` (`DAT_0058f3b0 + id*4 + 3`) throttles.
+Ambient range table `DAT_0058f330` stride `0x10`: scene-9 allow only when
+`|DAT_00646924| < DAT_00644934` and `tick - DAT_00644d5c <
+[DAT_0058f330 + DAT_0064492c*0x10]` (`FUN_004adb30`). Ambient spec table
+`DAT_00644d50` stride 8 `{u16 id, u16 value (0x8000 sentinel), u32 aux}`,
+count `DAT_00644d48` ≤ 20, scene-9-only adds (`FUN_0051d0c0`), insert-sorted
+by plays count (`FUN_0051d180`); consumer `FUN_0051d230 → FUN_0051d3d0` plays
+the entry byte `DAT_0058f3b2 + id*4` via the play slot.
+
+Port: no code change — the exe SFX path is a request-queue + spec-throttle
+model; the id→sample table stays inside the SND/EACSND bank layer
+(unrecovered [H]). Evidence: `analysis/pass61snd/NOTES.md`.

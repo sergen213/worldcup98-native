@@ -60,6 +60,7 @@ struct FcdbLeague {
     std::uint16_t field12 = 0; // bits 12..23, meaning unknown
     bool flag24 = false, flag25 = false;
     std::vector<std::uint16_t> teamIds;
+    std::size_t recordOffset = 0; // byte offset of the record in FCDB.DBI
 };
 
 struct FcdbTeam {
@@ -133,8 +134,22 @@ struct FclgStrings {
     static FclgStrings parse(std::span<const std::uint8_t> data); // throws FormatError
 };
 
-// Recognises FCDB / STR0 / STR1 DBI files (all start with a 4-char magic and version 501).
+// Recognises FCDB / STR0/STR1 DBI files (all start with a 4-char magic and version 501).
 [[nodiscard]] bool isDbi(std::span<const std::uint8_t> data);
+
+// ---- binary round-trip encoding (Phase-10 byte-for-byte validation) ----
+// encode* rebuilds a record's bytes from the decoded fields; unknown bits stay preserved
+// through the raw words recorded by parse. packBits* re-encodes ONLY the documented
+// bit fields (every other bit zero) — decoding a packBits record must reproduce the
+// decoded fields exactly, proving the bit layout is symmetric both ways.
+[[nodiscard]] std::vector<std::uint8_t> encodeLeagueRecord(const FcdbLeague& l);
+[[nodiscard]] std::vector<std::uint8_t> encodeTeamRecord(const FcdbTeam& t, FcdbSchema schema);
+[[nodiscard]] std::vector<std::uint8_t> encodePlayerRecord(const FcdbPlayer& p);
+[[nodiscard]] std::vector<std::uint8_t> packTeam1998Bits(const FcdbTeam& t);
+[[nodiscard]] std::vector<std::uint8_t> packPlayer1998Bits(const FcdbPlayer& p);
+// Splices every decoded record back over a copy of the original file; the result equals
+// `original` byte-for-byte when decode/encode cover the whole file.
+[[nodiscard]] std::vector<std::uint8_t> reencodeFile(std::span<const std::uint8_t> original, const FcdbDatabase& db);
 
 // cp1252 -> UTF-8 (for JSON/CSV export of database and UI strings).
 std::string cp1252ToUtf8(std::string_view s);

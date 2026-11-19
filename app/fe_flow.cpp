@@ -656,51 +656,28 @@ FeFlow::FeFlow(render::Renderer& r, fs::path tree, std::string lang) : r_(r), tr
     loadTeams();
 }
 
-// Team-select list data: ZWCUP.RES pool ids (40) + FCDB/FCDB<LANG>.DBI STR0 fullName names
-// (localized name tables: exe language reload FUN_0047ac14 re-reads the FCDB_<lang>.DBI pair).
-// Non-throwing: a tree without these assets leaves the pool empty and Enter keeps launching
-// the tournament driver directly (pre-team-select behaviour).
+// Team-select list data: ZWCUP.RES pool ids (40) + the GameData pair (FCDB.DBI records +
+// FCDB_<LANG>.DBI STR0 fullName; exe language reload FUN_0047ac14 re-reads the FCDB_<lang>.DBI
+// pair). Non-throwing: a tree without these assets leaves the pool empty and Enter keeps
+// launching the tournament driver directly (pre-team-select behaviour).
 void FeFlow::loadTeams() {
     try {
         const auto res = wc98::readFile(tree_ / "FE/TEAMHIST.ENG/ZWCUP.RES");
         tournament::ZwcupRes z;
         if (!tournament::parseZwcupRes(std::as_bytes(std::span(res)), z)) return;
         poolIds_ = z.ids;
-        const auto dbPath = wc98::findCaseInsensitive(tree_, "COMMON/FCDB.DBI");
-        std::string nmUp = cfgLang_;
-        for (char& c : nmUp) c = char(std::toupper(static_cast<unsigned char>(c)));
-        auto nmPath = wc98::findCaseInsensitive(tree_, "COMMON/FCDB_" + nmUp + ".DBI");
-        if (nmPath.empty()) nmPath = wc98::findCaseInsensitive(tree_, "COMMON/FCDB_ENG.DBI");
-        if (!dbPath.empty() && !nmPath.empty()) {
-            const auto db = formats::FcdbDatabase::parse(wc98::readFile(dbPath));
-            const auto names = formats::FcdbNames::parse(wc98::readFile(nmPath));
-            // League-config roster rows (FEFLOW73 pnNN, 74/79 prNN, 80 pnNN): keep the full record
-            // set + STR1 player-name table (COMMON/FCDBP<LANG>.DBI, entries parallel to players).
-            fcdb_ = db;
-            std::string up = cfgLang_;
-            for (char& c : up) c = char(std::toupper(static_cast<unsigned char>(c)));
-            if (const auto pp = wc98::findCaseInsensitive(tree_, "COMMON/FCDBP" + up + ".DBI"); !pp.empty()) {
-                try { fcdbPlayerNames_ = formats::FcdbNames::parse(wc98::readFile(pp)).players; }
-                catch (const std::exception&) {} // name table absent: rows draw jersey numbers only
-            }
-            fcdbTeamFullNames_.clear();
-            fcdbTeamFullNames_.reserve(names.teams.size());
-            for (const auto& t : names.teams) fcdbTeamFullNames_.push_back(t.fullName);
-            for (const std::uint16_t id : poolIds_) {
-                const auto it = std::ranges::find(db.teams, id, &formats::FcdbTeam::id);
-                const auto idx = std::size_t(std::distance(db.teams.begin(), it));
-                poolNames_.push_back(it != db.teams.end() && idx < names.teams.size() ? names.teams[idx].fullName
-                                                                                      : std::string());
-                // Flag art file: "FNNN" = record index, not the id (F030 = Argentina, F031 = Australia).
-                char ff[8];
-                std::snprintf(ff, sizeof ff, "F%03u", unsigned(idx));
-                poolFlagFile_.push_back(it != db.teams.end() ? ff : std::string{});
-            }
-        } else {
-            poolNames_.assign(poolIds_.size(), std::string());
-            poolFlagFile_.assign(poolIds_.size(), std::string());
+        game_ = sim::loadGameData(tree_, cfgLang_); // provenance recorded in GameData
+        for (const std::uint16_t id : poolIds_) {
+            std::size_t idx = 0;
+            const bool ok = game_->teamIndexForId(id, idx);
+            poolNames_.push_back(ok ? game_->fullName(idx) : std::string());
+            // Flag art file: "FNNN" = record index, not the id (F030 = Argentina, F031 = Australia).
+            char ff[8];
+            std::snprintf(ff, sizeof ff, "F%03u", unsigned(idx));
+            poolFlagFile_.push_back(ok ? ff : std::string{});
         }
     } catch (const std::exception&) {
+        game_.reset();
         poolIds_.clear();
         poolNames_.clear();
         poolFlagFile_.clear();
@@ -1369,20 +1346,20 @@ FeDrawStats FeFlow::drawLeague(render::SpriteBatch& ui) const {
 // through presentation::kitColor (fifa98edit hslCols palette table).
 void FeFlow::paintRosterRow(const formats::LayoutObject& row, render::SpriteBatch& ui, int rosterIdx,
                             bool hilited, FeDrawStats& st) const {
-    if (!fcdb_) return; // no FCDB data on this tree: rows stay shape-only (pre-slice behaviour)
+    if (!game_) return; // no FCDB data on this tree: rows stay shape-only (pre-slice behaviour)
     const formats::FcdbTeam* team = cfgTeam();
     if (!team) return;
     std::string cap;
     const formats::FcdbPlayer* pl = nullptr;
     const int pid = std::size_t(rosterIdx) < team->roster.size() ? team->roster[std::size_t(rosterIdx)] : 0;
     if (pid != 0) { // squad slot (0 = empty; FCDB player ids are ascending, names parallel players)
-        const auto it = std::ranges::find(fcdb_->players, std::uint16_t(pid), &formats::FcdbPlayer::id);
-        if (it != fcdb_->players.end()) {
+        const auto it = std::ranges::find(game_->db.players, std::uint16_t(pid), &formats::FcdbPlayer::id);
+        if (it != game_->db.players.end()) {
             pl = &*it;
-            const std::size_t idx = std::size_t(std::distance(fcdb_->players.begin(), it));
+            const std::size_t idx = std::size_t(std::distance(game_->db.players.begin(), it));
             cap = std::format("#{}", pl->shirtNumber);
-            if (idx < fcdbPlayerNames_.size() && !fcdbPlayerNames_[idx].empty())
-                cap += " " + fcdbPlayerNames_[idx];
+            if (idx < game_->playerNames.size() && !game_->playerNames[idx].empty())
+                cap += " " + game_->playerNames[idx];
         }
     }
     presentation::paintRowLabel(ui, row, cap, *text_, 0, hilited, pl ? &team->home : nullptr, st);
@@ -1395,14 +1372,14 @@ void FeFlow::paintRosterRow(const formats::LayoutObject& row, render::SpriteBatc
 // parity per analysis/pass12/keyloop_notes.txt: up/down = row cursor / s001 value, left/right =
 // gofd/gobk screen chain, Enter activates (alok applies on 76), Esc backs out to FEFLOW73.
 const formats::FcdbTeam* FeFlow::cfgTeam() const {
-    if (!fcdb_) return nullptr;
+    if (!game_) return nullptr;
     // FEFLOW73 opens directly from the main menu (no pool screen ran): poolIds_ is empty there.
     // The original paints the first national team into pn rows in that state, so fall back to the
     // FCDB head team instead of blank rows.
-    if (poolIds_.empty()) return fcdb_->teams.empty() ? nullptr : &fcdb_->teams.front();
+    if (poolIds_.empty()) return game_->db.teams.empty() ? nullptr : &game_->db.teams.front();
     const std::size_t i = std::size_t(cfgTeamPool_) % poolIds_.size();
-    const auto it = std::ranges::find(fcdb_->teams, poolIds_[i], &formats::FcdbTeam::id);
-    return it == fcdb_->teams.end() ? nullptr : &*it;
+    const auto it = std::ranges::find(game_->db.teams, poolIds_[i], &formats::FcdbTeam::id);
+    return it == game_->db.teams.end() ? nullptr : &*it;
 }
 
 bool FeFlow::openLeagueCfg(int screenId) {
@@ -1514,7 +1491,7 @@ FeDrawStats FeFlow::drawLeagueCfg(render::SpriteBatch& ui) const {
     }
     // FEFLOW74 kit picker: rows 0/1 = home/away tricolour swatches of the team (FCDB kit fields);
     // custom saved kits are .WCF state the port does not simulate (open item, documented).
-    if (leagueCfg_ == 74 && fcdb_) {
+    if (leagueCfg_ == 74 && game_) {
         const formats::FcdbTeam* team = cfgTeam();
         for (int i = 0; i < 9; ++i) {
             const formats::LayoutObject* row = lg74_.object("kt" + std::format("{:02d}", i));
@@ -1673,10 +1650,10 @@ bool FeFlow::openStad51() {
 
 // FCDB record for a cup-pool index (team-id lookup in the full DBI team table).
 const formats::FcdbTeam* FeFlow::poolTeamFor(int poolIdx) const {
-    if (!fcdb_ || poolIds_.empty()) return nullptr;
+    if (!game_ || poolIds_.empty()) return nullptr;
     const std::size_t i = std::size_t(poolIdx) % poolIds_.size();
-    const auto it = std::ranges::find(fcdb_->teams, poolIds_[i], &formats::FcdbTeam::id);
-    return it == fcdb_->teams.end() ? nullptr : &*it;
+    const auto it = std::ranges::find(game_->db.teams, poolIds_[i], &formats::FcdbTeam::id);
+    return it == game_->db.teams.end() ? nullptr : &*it;
 }
 
 // Five skill rows (Shooting/Passing/Running/Defence/Overall) as bar fractions on the widget's
@@ -1685,13 +1662,13 @@ const formats::FcdbTeam* FeFlow::poolTeamFor(int poolIdx) const {
 // squad nibbles; nibble scale 0..15 -> *2/3 rounded (game value = nibble*4+39).
 std::array<int, 5> FeFlow::teamBars(const formats::FcdbTeam* t) const {
     std::array<int, 5> out{2, 2, 2, 2, 2}; // deterministic fixture when FCDB is absent [H]
-    if (!fcdb_ || !t) return out;
+    if (!game_ || !t) return out;
     auto avg = [&](std::initializer_list<int> idxs) {
         int n2 = 0, d2 = 0;
         for (const std::uint16_t pid : t->roster) {
             if (pid == 0) continue;
-            const auto it = std::ranges::find(fcdb_->players, std::uint16_t(pid), &formats::FcdbPlayer::id);
-            if (it == fcdb_->players.end()) continue;
+            const auto it = std::ranges::find(game_->db.players, std::uint16_t(pid), &formats::FcdbPlayer::id);
+            if (it == game_->db.players.end()) continue;
             for (const int i : idxs) n2 += it->attributes[std::size_t(i)];
             d2 += int(idxs.size());
         }
@@ -1702,8 +1679,8 @@ std::array<int, 5> FeFlow::teamBars(const formats::FcdbTeam* t) const {
     int allNum = 0, allDen = 0;
     for (const std::uint16_t pid : t->roster) {
         if (pid == 0) continue;
-        const auto it = std::ranges::find(fcdb_->players, std::uint16_t(pid), &formats::FcdbPlayer::id);
-        if (it == fcdb_->players.end()) continue;
+        const auto it = std::ranges::find(game_->db.players, std::uint16_t(pid), &formats::FcdbPlayer::id);
+        if (it == game_->db.players.end()) continue;
         for (const std::uint8_t a : it->attributes) allNum += a;
         allDen += 17;
     }
@@ -2182,7 +2159,7 @@ FeDrawStats FeFlow::drawLineup16(render::SpriteBatch& ui) const {
     };
     flagOver("shdl", s07Left_);
     flagOver("shdr", s07Right_);
-    if (!fcdb_ || !text_ || !text_->ready()) { drawCursor(ui, st); return st; } // data-less: art-only
+    if (!game_ || !text_ || !text_->ready()) { drawCursor(ui, st); return st; } // data-less: art-only
     const formats::FfnFont* f = text_->face(4); // board rows: face-4 green (face-5 atlas renders invisible glyphs)
     render::TextureId ftex = text_->faceTexture(4);
     if (!f || !ftex) { f = text_->font(); ftex = text_->texture(); }
@@ -2192,8 +2169,8 @@ FeDrawStats FeFlow::drawLineup16(render::SpriteBatch& ui) const {
     if (!f || !ftex) { drawCursor(ui, st); return st; }
     auto teamFor = [&](int poolIdx) -> const formats::FcdbTeam* {
         if (poolIdx < 0 || std::size_t(poolIdx) >= poolIds_.size()) return nullptr;
-        const auto it = std::ranges::find(fcdb_->teams, poolIds_[std::size_t(poolIdx)], &formats::FcdbTeam::id);
-        return it == fcdb_->teams.end() ? nullptr : &*it;
+        const auto it = std::ranges::find(game_->db.teams, poolIds_[std::size_t(poolIdx)], &formats::FcdbTeam::id);
+        return it == game_->db.teams.end() ? nullptr : &*it;
     };
     const std::uint32_t kInk = render::packRgba(245, 235, 200, 255);
     // Team-name captions (tmlt/tmrt center-align slots, fontID 4).
@@ -2223,11 +2200,11 @@ FeDrawStats FeFlow::drawLineup16(render::SpriteBatch& ui) const {
             const formats::FcdbPlayer* pl = nullptr;
             std::size_t pidx = 0;
             if (pid != 0) {
-                const auto it = std::ranges::find(fcdb_->players, std::uint16_t(pid), &formats::FcdbPlayer::id);
-                if (it != fcdb_->players.end()) { pl = &*it; pidx = std::size_t(std::distance(fcdb_->players.begin(), it)); }
+                const auto it = std::ranges::find(game_->db.players, std::uint16_t(pid), &formats::FcdbPlayer::id);
+                if (it != game_->db.players.end()) { pl = &*it; pidx = std::size_t(std::distance(game_->db.players.begin(), it)); }
             }
             const float y = baseY + float(i) * 17.f;
-            const std::string_view nm = (pl && pidx < fcdbPlayerNames_.size()) ? fcdbPlayerNames_[pidx] : std::string_view{};
+            const std::string_view nm = (pl && pidx < game_->playerNames.size()) ? game_->playerNames[pidx] : std::string_view{};
             std::string label, num;
             if (!nm.empty()) {
                 // [C] "%c.%s": initial of the name + the surname (text after the first space).
@@ -2311,7 +2288,7 @@ void FeFlow::ensureFixtureReplays() {
     try {
         fs::create_directories(defaultSlotDir());
         MatchBoot boot; // same boot + seed + pad stream as the live loop: replayFile re-drive = match=1
-        if (!boot.init(tree_)) return;
+        if (!boot.init(tree_, cfgLang_)) return;
         for (int slot = 0; slot < 2; ++slot) {
             sim::SimRunner fr(boot.md, boot.opt, 0x2E7A);
             sim::Input_assignController(fr.world(), 0, 1, 0); // live-loop controller binding
@@ -2590,20 +2567,20 @@ void FeFlow::ensureFixtureSlots() {
 
 // FCDB record for a grid row of the active team (poolTeamFor + fallback to head team, cfgTeam model).
 const formats::FcdbPlayer* FeFlow::gridPlayer(int rosterIdx) const {
-    if (!fcdb_) return nullptr;
+    if (!game_) return nullptr;
     const formats::FcdbTeam* t = poolTeamFor(mgmtTeam_);
-    if (!t && !fcdb_->teams.empty()) t = &fcdb_->teams.front(); // empty pool: head team (cfgTeam fallback)
+    if (!t && !game_->db.teams.empty()) t = &game_->db.teams.front(); // empty pool: head team (cfgTeam fallback)
     if (!t) return nullptr;
     const int pid = std::size_t(rosterIdx) < t->roster.size() ? t->roster[std::size_t(rosterIdx)] : 0;
     if (pid == 0) return nullptr; // empty squad slot
-    const auto it = std::ranges::find(fcdb_->players, std::uint16_t(pid), &formats::FcdbPlayer::id);
-    return it == fcdb_->players.end() ? nullptr : &*it;
+    const auto it = std::ranges::find(game_->db.players, std::uint16_t(pid), &formats::FcdbPlayer::id);
+    return it == game_->db.players.end() ? nullptr : &*it;
 }
 
 int FeFlow::gridRosterSize() const {
-    if (!fcdb_) return 0;
+    if (!game_) return 0;
     const formats::FcdbTeam* t = poolTeamFor(mgmtTeam_);
-    if (!t && !fcdb_->teams.empty()) t = &fcdb_->teams.front();
+    if (!t && !game_->db.teams.empty()) t = &game_->db.teams.front();
     if (!t) return 0;
     int n = 0;
     for (const std::uint16_t id : t->roster)
@@ -2683,10 +2660,10 @@ FeDrawStats FeFlow::drawMgmtGrid(render::SpriteBatch& ui) const {
             std::string cap;
             if (pl) {
                 cap = std::format("#{}", pl->shirtNumber);
-                const auto it = std::ranges::find(fcdb_->players, pl->id, &formats::FcdbPlayer::id);
-                const std::size_t pidx = std::size_t(std::distance(fcdb_->players.begin(), it));
-                if (it != fcdb_->players.end() && pidx < fcdbPlayerNames_.size() && !fcdbPlayerNames_[pidx].empty())
-                    cap += " " + fcdbPlayerNames_[pidx];
+                const auto it = std::ranges::find(game_->db.players, pl->id, &formats::FcdbPlayer::id);
+                const std::size_t pidx = std::size_t(std::distance(game_->db.players.begin(), it));
+                if (it != game_->db.players.end() && pidx < game_->playerNames.size() && !game_->playerNames[pidx].empty())
+                    cap += " " + game_->playerNames[pidx];
             }
             presentation::paintRowLabel(ui, *w, cap, *text_, 0, idx == mgmtRow_ && n > 0, nullptr, st);
         }
@@ -4120,11 +4097,11 @@ FeDrawStats FeFlow::drawCheats(render::SpriteBatch& ui) const {
 // FCDB fullName for a team id (classic-era records 861..876 included); the dataset's literal string
 // paints when the record is absent (Czechoslovakia: no FCDB entry on this tree).
 std::string FeFlow::wcTeamName(std::uint16_t id, const char* fallback) const {
-    if (fcdb_ && !fcdbTeamFullNames_.empty()) {
-        const auto it = std::ranges::find(fcdb_->teams, id, &formats::FcdbTeam::id);
-        if (it != fcdb_->teams.end()) {
-            const auto idx = std::size_t(std::distance(fcdb_->teams.begin(), it));
-            if (idx < fcdbTeamFullNames_.size() && !fcdbTeamFullNames_[idx].empty()) return fcdbTeamFullNames_[idx];
+    if (game_) {
+        std::size_t idx = 0;
+        if (game_->teamIndexForId(id, idx)) {
+            const std::string nm = game_->fullName(idx);
+            if (!nm.empty()) return nm;
         }
     }
     return fallback;
@@ -4133,11 +4110,11 @@ std::string FeFlow::wcTeamName(std::uint16_t id, const char* fallback) const {
 // Shield/flag art file for a team id: "FNNN" = FCDB record INDEX (same rule as the pool flags);
 // "" when no record. FE/GLOBAL ships F000..F046, so the classic entries 861..876 (idx 41+) resolve.
 std::string FeFlow::wcFlagFile(std::uint16_t id) const {
-    if (!fcdb_) return {};
-    const auto it = std::ranges::find(fcdb_->teams, id, &formats::FcdbTeam::id);
-    if (it == fcdb_->teams.end()) return {};
+    if (!game_) return {};
+    const auto it = std::ranges::find(game_->db.teams, id, &formats::FcdbTeam::id);
+    if (it == game_->db.teams.end()) return {};
     char ff[8];
-    std::snprintf(ff, sizeof ff, "F%03u", unsigned(std::distance(fcdb_->teams.begin(), it)));
+    std::snprintf(ff, sizeof ff, "F%03u", unsigned(std::distance(game_->db.teams.begin(), it)));
     return ff;
 }
 

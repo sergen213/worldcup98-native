@@ -7,6 +7,19 @@ project goals.
 
 ## [0.5.0] - 2026-11-18 — third-pass UI reconstruction: pointer mapping through the UI rect, IG bar/header/slider art, credits roll (pass-24..44)
 
+### Added
+
+- **Single game database in the runtime (pass-47)**: `sim::GameData` (`simulation/data.hpp`) loads
+  FCDB.DBI + the localized name tables once and is the one identity source behind team selection,
+  league/roster/history/highlights rows, kit lookups and the HUD strip — `MatchBoot.game` /
+  `FeFlow.game_` carry the instance, no screen keeps a second copy of names or ids. League entries
+  list only pools with a non-empty member list (original behaviour; the 60-entry pad is skipped),
+  tournament-history names read FCDB instead of ZWCUP club names, and the World-Cup pool is
+  FCDB-qualified + ZWCUP-list teams (70 ids). New gates: `game_data_valid` (counts + provenance),
+  `game_data_identity` (`tests/tools/identity_check.py` compares the runtime `wc98-gamecheck --json`
+  view against `wc98-dbexplorer --json`, teams + players, ids+names+rosters), `db_roundtrip`
+  (byte-exact FCDB re-encode), `dbexplorer_usage` (clean exit codes).
+
 ### Fixed
 
 - **Pointer input now un-projects through the UI content rect instead of the whole window (pass-44pointer)**:

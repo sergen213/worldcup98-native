@@ -11,6 +11,7 @@
 #include "wc98/formats/layout.hpp"
 #include "wc98/presentation/fe_screen.hpp"
 #include "wc98/presentation/ig_optns.hpp"
+#include "wc98/sim/data.hpp"
 #include "team_select.hpp"
 
 #include <filesystem>
@@ -663,11 +664,10 @@ public:
     // Flag art file per pool entry: "FNNN" = the team's record INDEX in FCDB.DBI (measured:
     // F030.FSH f000 = Argentina shield, F031.FSH = Australia; their DBI ids are 86/87).
     std::vector<std::string> poolFlagFile_;
-    // Full FCDB record set for the league-config roster rows (FEFLOW73 pnNN, 74/79 prNN, 80 pnNN);
-    // kept from loadTeams' parse. Names = FCDBP<lang>.DBI STR1 entries parallel to fcdb_->players.
-    std::optional<formats::FcdbDatabase> fcdb_;
-    std::vector<std::string> fcdbTeamFullNames_; // STR0 fullName parallel to fcdb_->teams (history boards)
-    std::vector<std::string> fcdbPlayerNames_;
+    // The single game database (ZWCUP pool ids -> FCDB.DBI records + localized STR0/STR1 name
+    // tables), loaded once by loadTeams through sim::loadGameData. Every roster/league/history
+    // row and the match lineup read the same records (goal: UI and gameplay share identity).
+    std::optional<sim::GameData> game_;
     [[nodiscard]] const formats::FcdbTeam* cfgTeam() const; // active grid team (null = no FCDB data)
     void cycleLeagueScreen(int dir); // gofd/gobk chain 72->74->75->79->80 (keyloop_notes.txt)
     [[nodiscard]] int rosterSize() const; // squad rows on the active grid team

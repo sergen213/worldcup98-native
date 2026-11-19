@@ -142,6 +142,18 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
 
 
 ## Progress snapshot (third-pass UI reconstruction landed, v0.5.0)
+- **Recovered-data integration in the runtime (pass-47, 2026-11-19)** — `sim::GameData`
+  (`simulation/data.hpp`) loads FCDB.DBI + FCDB_<LANG>.DBI + FCDBP<LANG>.DBI once with recorded
+  provenance; `MatchBoot.game`/`FeFlow.game_` thread the instance through team selection,
+  league/roster/history/highlights rows, kit swatches and the HUD strip (no second name/id copies).
+  League entries filter to pools with non-empty member lists (pad skipped, original behaviour);
+  World-Cup pool = FCDB qualified flag + ZWCUP list (70 ids); history-screen names read FCDB.
+  New gates: `game_data_valid` (wc98-gamecheck counts + kit on-disk availability),
+  `game_data_identity` (`tests/tools/identity_check.py`: runtime view == `wc98-dbexplorer --json`,
+  teams+players ids/names/rosters), `db_roundtrip` (byte-exact FCDB re-encode),
+  `dbexplorer_usage`. Register rows D-75/D-76 record the remaining RE-blocked sources
+  (finals-history qualified lists, `kFeDesc` default lineups / tmmng). Matrix:
+  `docs/asset-formats/INTEGRATION_STATUS.md` pass-47.
 - **Third-pass UI reconstruction (pass-24..44, 2026-11-17/18)** — the user-visible Windows front end and
   in-match presentation are reproduced from the shipped asset/exe lanes rather than approximated:
   scene-handler registries decoded per slot (`FE_MENU_SCREENS_WC98.md`), every reachable FE wedge and

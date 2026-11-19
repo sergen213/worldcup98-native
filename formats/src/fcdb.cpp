@@ -76,6 +76,7 @@ FcdbDatabase FcdbDatabase::parse(std::span<const std::uint8_t> d, FcdbSchema sch
         l.flag24 = bits(v, 24, 1);
         l.flag25 = bits(v, 25, 1);
         for (unsigned i = 0, n = bits(v, 26, 6); i < n; ++i) l.teamIds.push_back(r.u16le());
+        l.recordOffset = o;
         db.leagues.push_back(std::move(l));
     }
 
@@ -246,6 +247,109 @@ FclgStrings FclgStrings::parse(std::span<const std::uint8_t> d) {
             start = i + 1;
         }
     return s;
+}
+
+std::vector<std::uint8_t> encodeLeagueRecord(const FcdbLeague& l) {
+    std::uint32_t w = std::uint32_t(l.id) | (std::uint32_t(l.field12) << 12) | (l.flag24 ? 1u << 24 : 0u) |
+                      (l.flag25 ? 1u << 25 : 0u) | (std::uint32_t(l.teamIds.size()) << 26);
+    std::vector<std::uint8_t> b;
+    for (unsigned s = 0; s < 32; s += 8) b.push_back(std::uint8_t(w >> s));
+    for (auto t : l.teamIds) {
+        b.push_back(std::uint8_t(t));
+        b.push_back(std::uint8_t(t >> 8));
+    }
+    return b;
+}
+
+std::vector<std::uint8_t> encodeTeamRecord(const FcdbTeam& t, FcdbSchema schema) {
+    const std::size_t words = schema == FcdbSchema::WorldCup98 ? 17 : 20;
+    std::vector<std::uint8_t> b;
+    for (std::size_t i = 0; i < words; ++i)
+        for (unsigned s = 0; s < 32; s += 8) b.push_back(std::uint8_t(t.raw[i] >> s));
+    return b;
+}
+
+std::vector<std::uint8_t> encodePlayerRecord(const FcdbPlayer& p) {
+    std::vector<std::uint8_t> b;
+    for (auto w : p.raw)
+        for (unsigned s = 0; s < 32; s += 8) b.push_back(std::uint8_t(w >> s));
+    return b;
+}
+
+// Inverse of the 1998 team decode above: documented bit fields only, everything
+// else zero (home kit bytes 4..11, away kit bytes 12..19, strategy byte 17, tactics
+// byte 21, nation bytes 22..23, 22 roster slots at bytes 24..67).
+std::vector<std::uint8_t> packTeam1998Bits(const FcdbTeam& t) {
+    std::vector<std::uint8_t> r(68, 0);
+    r[0] = std::uint8_t(t.id & 0xFFu);
+    r[1] = std::uint8_t(((t.id >> 8) & 0x7u) | ((t.bank & 0x1Fu) << 3));
+    r[2] = std::uint8_t((t.bank >> 5) & 0xFFu);
+    r[3] = std::uint8_t(((t.bank >> 13) & 0xFu) | (t.stadium << 4));
+    r[4] = std::uint8_t((t.home.shirtColor1 & 31u) | (t.home.shirtColor2 & 7u) << 5); // 5-bit c2: bits 0..2 at b4 bits 5..7, bits 3..4 at b5 bits 0..1
+    r[5] = std::uint8_t(((t.home.shirtColor2 >> 3) & 3u) | (t.home.shirtStyle << 2));
+    r[6] = std::uint8_t((t.home.shirtColor3 & 31u) | ((t.home.shortsColor1 & 7u) << 5));
+    r[7] = std::uint8_t(((t.home.shortsColor1 >> 3) & 3u) | (t.home.shortsStyle << 6));
+    r[8] = std::uint8_t((t.home.shortsColor2 & 31u) | ((t.home.socksColor1 & 7u) << 5));
+    r[9] = std::uint8_t((t.home.socksColor1 >> 3) & 3u);
+    r[10] = std::uint8_t(t.home.socksColor2 & 31u);
+    r[11] = std::uint8_t(t.home.socksStyle << 6);
+    r[12] = std::uint8_t((t.away.shirtColor1 & 31u) | (t.away.shirtColor2 & 7u) << 5); // same split as home
+    r[13] = std::uint8_t(((t.away.shirtColor2 >> 3) & 3u) | (t.away.shirtStyle << 2));
+    r[14] = std::uint8_t((t.away.shirtColor3 & 31u) | ((t.away.shortsColor1 & 7u) << 5));
+    r[15] = std::uint8_t(((t.away.shortsColor1 >> 3) & 3u) | (t.away.shortsStyle << 6));
+    r[16] = std::uint8_t((t.away.shortsColor2 & 31u) | ((t.away.socksColor1 & 7u) << 5));
+    r[17] = std::uint8_t(((t.away.socksColor1 >> 3) & 3u) | (t.strategy << 5));
+    r[18] = std::uint8_t(t.away.socksColor2 & 31u);
+    r[19] = std::uint8_t((t.away.socksStyle << 4) & 0x30u);
+    r[21] = std::uint8_t((t.tactics << 2) & 0xFCu);
+    r[22] = std::uint8_t((t.nationality & 0xFu) << 4);
+    r[23] = std::uint8_t(t.nationality >> 4);
+    for (std::size_t i = 0; i < 22; ++i) {
+        const std::uint16_t pid = i < t.roster.size() ? t.roster[i] : 0;
+        r[24 + 2 * i] = std::uint8_t(pid);
+        r[24 + 2 * i + 1] = std::uint8_t(pid >> 8);
+    }
+    return r;
+}
+
+// Inverse of the 1998 player decode above; bytes 18..19 (unknown) stay zero.
+std::vector<std::uint8_t> packPlayer1998Bits(const FcdbPlayer& p) {
+    std::vector<std::uint8_t> r(20, 0);
+    auto bit = [&](unsigned byte, unsigned lo, std::uint32_t v, unsigned n) {
+        r[byte] = std::uint8_t(r[byte] | ((v & ((1u << n) - 1u)) << lo));
+    };
+    bit(0, 0, p.id, 8);
+    bit(1, 0, p.id >> 8, 6);
+    bit(1, 6, p.nationality & 0x3u, 2); // 10-bit nation: low bits at byte 1 bits 6..7
+    bit(2, 0, p.nationality >> 2, 8);
+    bit(3, 0, p.startingByte, 8);
+    bit(4, 0, p.price, 8);
+    bit(5, 0, p.price >> 8, 8);
+    bit(6, 4, p.hairStyle, 4);
+    bit(6, 2, p.hairColor, 2);
+    bit(6, 0, p.skinTone, 2);
+    bit(7, 3, p.faceStyle, 5);
+    bit(7, 0, p.beardStyle, 3);
+    for (unsigned i = 0; i < 8; ++i) {
+        bit(8 + i, 4, p.attributes[2 * i], 4);
+        bit(8 + i, 0, p.attributes[2 * i + 1], 4);
+    }
+    bit(16, 0, p.attributes[16], 4);
+    bit(16, 4, p.shirtNumber, 4);
+    bit(17, 0, p.shirtNumber >> 4, 4);
+    bit(17, 4, p.role, 4);
+    return r;
+}
+
+std::vector<std::uint8_t> reencodeFile(std::span<const std::uint8_t> original, const FcdbDatabase& db) {
+    std::vector<std::uint8_t> out(original.begin(), original.end());
+    auto splice = [&](std::size_t at, const std::vector<std::uint8_t>& bytes) {
+        if (at + bytes.size() <= out.size()) std::copy(bytes.begin(), bytes.end(), out.begin() + std::ptrdiff_t(at));
+    };
+    for (const auto& l : db.leagues) splice(l.recordOffset, encodeLeagueRecord(l));
+    for (const auto& t : db.teams) splice(t.recordOffset, encodeTeamRecord(t, db.schema));
+    for (const auto& p : db.players) splice(p.recordOffset, encodePlayerRecord(p));
+    return out;
 }
 
 std::string cp1252ToUtf8(std::string_view s) {

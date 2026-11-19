@@ -3,7 +3,7 @@
 // prints / exports leagues, teams and players, plus a consistency validation.
 // The FCDB lives in FE/ in FIFA 99 and in COMMON/ in World Cup 98.
 //   wc98-dbexplorer <db-dir (WC98: COMMON)> [--lang ENG] [--leagues] [--teams] [--team <index|name>]
-//                  [--json out.json] [--csv out-dir] [--validate]
+//                  [--json out.json] [--csv out-dir] [--validate] [--roundtrip]
 #include "common/json.hpp"
 #include "wc98/file.hpp"
 #include "wc98/formats/big.hpp"
@@ -138,6 +138,64 @@ int validate(const Db& d) {
     return problems;
 }
 
+// Phase-10 byte round trip: decode -> encode must reproduce the original file
+// byte-for-byte, and every documented bit field must be decode/encode symmetric.
+int roundtrip(const fs::path& dir) {
+    const auto raw = load(dir, "FCDB.DBI");
+    const auto db = FcdbDatabase::parse(raw, FcdbSchema::WorldCup98);
+    int problems = 0;
+    auto check = [&](bool ok, const std::string& what) {
+        std::printf("%s %s\n", ok ? "ok  " : "FAIL", what.c_str());
+        problems += !ok;
+    };
+    bool leagueExact = true;
+    for (const auto& l : db.leagues) {
+        const auto enc = encodeLeagueRecord(l);
+        leagueExact &= l.recordOffset + enc.size() <= raw.size() && std::memcmp(raw.data() + l.recordOffset, enc.data(), enc.size()) == 0;
+    }
+    check(leagueExact, std::format("{} league records re-encode bit-exactly from decoded fields", db.leagues.size()));
+    check(reencodeFile(raw, db) == raw, std::format("FCDB.DBI {} B rebuilds byte-for-byte (raw-preserving encoders)", raw.size()));
+
+    auto tcopy = raw;
+    for (const auto& t : db.teams) {
+        const auto packed = packTeam1998Bits(t);
+        std::memcpy(&tcopy[t.recordOffset], packed.data(), packed.size());
+    }
+    const auto db2 = FcdbDatabase::parse(tcopy, FcdbSchema::WorldCup98);
+    auto kitEq = [](const FcdbKit1998& x, const FcdbKit1998& y) {
+        return x.shirtStyle == y.shirtStyle && x.shirtColor1 == y.shirtColor1 && x.shirtColor2 == y.shirtColor2 &&
+               x.shirtColor3 == y.shirtColor3 && x.shortsStyle == y.shortsStyle && x.shortsColor1 == y.shortsColor1 &&
+               x.shortsColor2 == y.shortsColor2 && x.socksStyle == y.socksStyle && x.socksColor1 == y.socksColor1 &&
+               x.socksColor2 == y.socksColor2;
+    };
+    bool teamSym = db2.teams.size() == db.teams.size();
+    for (std::size_t i = 0; teamSym && i < db.teams.size(); ++i) {
+        const auto& a = db.teams[i];
+        const auto& b = db2.teams[i];
+        teamSym &= a.id == b.id && a.bank == b.bank && a.stadium == b.stadium && a.tactics == b.tactics && a.strategy == b.strategy &&
+                   a.nationality == b.nationality && a.roster == b.roster && kitEq(a.home, b.home) && kitEq(a.away, b.away);
+    }
+    check(teamSym, std::format("{} team records: packBits reparse reproduces every field", db.teams.size()));
+
+    auto pcopy = raw;
+    for (const auto& p : db.players) {
+        const auto packed = packPlayer1998Bits(p);
+        std::memcpy(&pcopy[p.recordOffset], packed.data(), packed.size());
+    }
+    const auto db3 = FcdbDatabase::parse(pcopy, FcdbSchema::WorldCup98);
+    bool playerSym = db3.players.size() == db.players.size();
+    for (std::size_t i = 0; playerSym && i < db.players.size(); ++i) {
+        const auto& a = db.players[i];
+        const auto& b = db3.players[i];
+        playerSym &= a.id == b.id && a.nationality == b.nationality && a.role == b.role && a.shirtNumber == b.shirtNumber &&
+                     a.startingByte == b.startingByte && a.price == b.price && a.overall == b.overall && a.hairStyle == b.hairStyle &&
+                     a.hairColor == b.hairColor && a.skinTone == b.skinTone && a.faceStyle == b.faceStyle && a.beardStyle == b.beardStyle &&
+                     a.attributes == b.attributes;
+    }
+    check(playerSym, std::format("{} player records: packBits reparse reproduces every field", db.players.size()));
+    return problems;
+}
+
 std::string playerJson(const Db& d, const FcdbPlayer& p, std::size_t index) {
     const bool wc98 = d.db.schema == FcdbSchema::WorldCup98;
     std::string j = std::format("{{\"id\":{},\"name\":{},\"nationality\":{},\"overall\":{},\"value\":{},\"shirt\":{},\"attributes\":{{",
@@ -207,7 +265,7 @@ namespace {
 int run(int argc, char** argv) {
     fs::path dir = argv[1];
     std::string lang = "ENG", jsonOut, csvOut, teamSel, gen4Sel;
-    bool leagues = false, teams = false, doValidate = false, doGen4 = false;
+    bool leagues = false, teams = false, doValidate = false, doGen4 = false, doRoundtrip = false;
     for (int i = 2; i < argc; ++i) {
         std::string a = argv[i];
         auto next = [&] { if (i + 1 >= argc) throw std::runtime_error(a + " needs a value"); return std::string(argv[++i]); };
@@ -218,6 +276,7 @@ int run(int argc, char** argv) {
         else if (a == "--json") jsonOut = next();
         else if (a == "--csv") csvOut = next();
         else if (a == "--validate") doValidate = true;
+        else if (a == "--roundtrip") doRoundtrip = true;
         else if (a == "--gen4") { doGen4 = true; if (i + 1 < argc && argv[i + 1][0] != '-') gen4Sel = next(); }
         else { std::fprintf(stderr, "unknown option %s\n", a.c_str()); return 2; }
     }
@@ -344,6 +403,7 @@ int run(int argc, char** argv) {
         w("leagues.csv", l);
     }
     if (doGen4) dumpGen4(dir, gen4Sel);
+    if (doRoundtrip) return roundtrip(dir) ? 1 : 0;
     if (doValidate) return validate(d) ? 1 : 0;
     return 0;
 }
@@ -352,7 +412,7 @@ int run(int argc, char** argv) {
 
 int main(int argc, char** argv) {
     if (argc < 2 || argv[1][0] == '-') {
-        std::fprintf(stderr, "usage: wc98-dbexplorer <FE-dir> [--lang ENG] [--leagues] [--teams] [--team <index|name>] [--json f] [--csv dir] [--validate] [--gen4 [VIV]]\n");
+        std::fprintf(stderr, "usage: wc98-dbexplorer <FE-dir> [--lang ENG] [--leagues] [--teams] [--team <index|name>] [--json f] [--csv dir] [--validate] [--roundtrip] [--gen4 [VIV]]\n");
         return 2;
     }
     try {

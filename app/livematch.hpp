@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "wc98/formats/layout.hpp"
@@ -39,8 +40,9 @@ struct MatchBoot {
     std::array<int, 2> teamIndex{0, 26}; // FCDB.DBI indices with shipped PK###H + PK###A atlases (measured)
     std::array<std::string, 2> abbrv{};  // FCDB STR0 rows pair 1:1 with the FCDB.DBI team order
     std::array<std::string, 2> names{};  // FCDB STR0 fullName rows (IG board typ1/typ2 captions)
+    sim::GameData game;                  // FCDB.DBI + STR0/STR1 tables, provenance recorded once
 
-    bool init(const std::filesystem::path& root);
+    bool init(const std::filesystem::path& root, std::string_view lang = "ENG");
 };
 
 // World -> MatchSnapshot. Field sources are the exe offsets named in the sim headers

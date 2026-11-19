@@ -26,7 +26,28 @@ struct MatchData {
     AnimData anim;
 };
 
-formats::FcdbDatabase loadFcdb(const std::filesystem::path& gameDir); // DATA/CMN/FE/FCDB.DBI
+// The one database the whole game reads: FCDB.DBI + the localized STR0/STR1 name
+// tables (FE/FEFLOW73/74/79/80 rows and the IG lanes draw from these same records the
+// match plays with). Provenance = the exact files loaded, never re-derived per screen.
+struct GameData {
+    formats::FcdbDatabase db;
+    formats::FcdbNames teamNames;                 // COMMON/FCDB_<LANG>.DBI STR0
+    std::vector<std::string> playerNames;         // COMMON/FCDBP<LANG>.DBI STR1 (parallel to db.players)
+    std::string language;                         // upper-case LANG actually used
+    std::filesystem::path dbPath, namesPath, playerNamesPath; // provenance
+    std::size_t dbBytes = 0;
+
+    bool teamIndexForId(std::uint16_t id, std::size_t& out) const; // record index of a ZWCUP pool id
+    std::string fullName(std::size_t teamIndex) const;
+    std::string abbreviation(std::size_t teamIndex) const;
+    std::string playerName(std::size_t playerIndex) const; // '' when the name table is absent
+};
+
+// Loads the DB + name pair for one tree; lang upper-cases to FCDB_<LANG>.DBI with
+// FCDB_ENG.DBI fallback. Throws if FCDB.DBI is missing (same contract as loadFcdb).
+GameData loadGameData(const std::filesystem::path& gameDir, std::string_view lang = "ENG");
+
+formats::FcdbDatabase loadFcdb(const std::filesystem::path& gameDir); // COMMON/FCDB.DBI
 // Sheet for db.teams[teamIndex], squad in roster order.
 TeamSheet makeTeamSheet(const formats::FcdbDatabase& db, std::size_t teamIndex);
 // Reads <gameDir>/DATA/CMN/AI/GEN4TBLS.T (case-insensitive lookup) into d.formations; false on failure.

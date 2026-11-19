@@ -81,7 +81,7 @@ bool savePng(render::Renderer& r, const render::Frame& frame, const fs::path& pa
     return bool(out);
 }
 
-bool MatchBoot::init(const fs::path& root) {
+bool MatchBoot::init(const fs::path& root, std::string_view lang) {
     data = std::make_unique<presentation::GameData>(root);
     // Preflight the assets the slice needs so a missing CD copy skips (ctest SKIP_RETURN_CODE 2).
     const char* need[] = {"COMMON/FCDB.DBI", "COMMON/AISEQS.TBI", "COMMON/ANIM.MO", "COMMON/GEN4TBLS.VIV",
@@ -97,9 +97,14 @@ bool MatchBoot::init(const fs::path& root) {
     if (pal.empty()) pal = wc98::findCaseInsensitive(root, "PAL.PAK");
     if (!pal.empty()) formats::setGlobalPalette(formats::wc98GlobalPaletteFromPalArchive(wc98::readFile(pal)));
 
-    // Teams: FCDB.DBI carries 56 teams (team table @0x204, count 56, record size 68). Index 0 = id
-    // 26 and index 26 = id 67 both ship PK###H + PK###A atlases: home kit of the first, away of the latter.
-    auto db = sim::loadFcdb(root);
+    // Teams: the single game database. FCDB.DBI carries 56 teams (team table @0x204, count 56,
+    // record size 68); the localized FCDB_<LANG>.DBI/FCDBP<LANG>.DBI supply the display identities.
+    // Index 0 = id 26 and index 26 = id 67 both ship PK###H + PK###A atlases: home kit of the
+    // first, away of the latter.
+    try {
+        game = sim::loadGameData(root, lang);
+    } catch (const std::exception& e) { std::cerr << "skip: " << e.what() << '\n'; return false; }
+    const auto& db = game.db;
     if (db.teams.size() <= std::size_t(teamIndex[1])) { std::cerr << "skip: FCDB has " << db.teams.size() << " teams\n"; return false; }
 
     md.sheets[0] = sim::makeTeamSheet(db, std::size_t(teamIndex[0]));
@@ -107,15 +112,13 @@ bool MatchBoot::init(const fs::path& root) {
     if (!sim::loadFormationTables(md, root)) { std::cerr << "skip: GEN4TBLS.VIV formation tables unreadable\n"; return false; }
     if (md.sheets[0].squad.size() < 11 || md.sheets[1].squad.size() < 11) { std::cerr << "skip: squad under 11 players\n"; return false; }
 
-    // HUD strip names: FCDB STR0 (COMMON/FCDB_ENG.DBI) rows pair 1:1 with the FCDB.DBI team order.
-    try {
-        const formats::FcdbNames nm = formats::FcdbNames::parse(data->file("COMMON/FCDB_ENG.DBI"));
-        for (int t = 0; t < 2; ++t)
-            if (std::size_t(teamIndex[std::size_t(t)]) < nm.teams.size()) {
-                abbrv[std::size_t(t)] = nm.teams[std::size_t(teamIndex[std::size_t(t)])].abbreviation;
-                names[std::size_t(t)] = nm.teams[std::size_t(teamIndex[std::size_t(t)])].fullName; // IG board typ1/typ2 captions
-            }
-    } catch (const std::exception& e) { std::cout << "hud: no STR0 abbreviations (" << e.what() << ")\n"; }
+    // HUD strip names: FCDB STR0 rows pair 1:1 with the FCDB.DBI team order (same GameData the
+    // match plays with; IG typ1/typ2 captions take fullName).
+    for (int t = 0; t < 2; ++t) {
+        const std::size_t idx = std::size_t(teamIndex[std::size_t(t)]);
+        abbrv[std::size_t(t)] = game.abbreviation(idx);
+        names[std::size_t(t)] = game.fullName(idx);
+    }
 
     if (!sim::loadMatchAnimData(md, root)) { std::cerr << "skip: ANIM.MO clips unreadable\n"; return false; }
     return true;
@@ -1222,14 +1225,8 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
     IgPracData prac{2, true, true}; // 2 players (FC#1249 stepper), keepers On (FC#1920/#374 rows)
     auto buildIgMgmt = [&] {
         IgMgmtData d;
-        static std::unique_ptr<formats::FcdbDatabase> db;   // FCDB.DBI + STR1 player names, loaded once
-        static std::vector<std::string> pnames;
-        static bool loaded = false;
-        if (!loaded) {
-            loaded = true;
-            try { const auto p = wc98::findCaseInsensitive(tree, "COMMON/FCDB.DBI"); if (!p.empty()) db = std::make_unique<formats::FcdbDatabase>(formats::FcdbDatabase::parse(wc98::readFile(p))); } catch (const std::exception&) {}
-            try { const auto p = wc98::findCaseInsensitive(tree, "COMMON/FCDBPENG.DBI"); if (!p.empty()) pnames = formats::FcdbNames::parse(wc98::readFile(p)).players; } catch (const std::exception&) {}
-        }
+        // Names come from the boot GameData: same FCDB.DBI + FCDBP<LANG>.DBI pair the match
+        // lineup and attributes were built from (STR1 rows are parallel to the player pool).
         for (int t = 0; t < 2; ++t) {
             IgTeamMgmt& tm = d.teams[std::size_t(t)];
             const auto& sheet = boot.md.sheets[std::size_t(t)];
@@ -1240,10 +1237,8 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
                 const auto& p = sheet.squad[std::size_t(i)];
                 IgMgmtRow r;
                 r.shirt = p.shirtNumber;
-                if (db) { // STR1 names are parallel to FCDB.DBI players (FC-bank rule of the league rows)
-                    const auto it = std::ranges::find(db->players, p.id, &formats::FcdbPlayer::id);
-                    if (it != db->players.end()) { const std::size_t idx = std::size_t(std::distance(db->players.begin(), it)); if (idx < pnames.size()) r.name = pnames[idx]; }
-                }
+                const auto it = std::ranges::find(boot.game.db.players, p.id, &formats::FcdbPlayer::id);
+                if (it != boot.game.db.players.end()) r.name = boot.game.playerName(std::size_t(std::distance(boot.game.db.players.begin(), it)));
                 for (int pid = 0; pid < sim::kPlayers; ++pid) { // live stamina + formation dot + card flags via PlayerState.attr -> World::attrs
                     const auto& ps = w.players[std::size_t(pid)];
                     if (int(ps.team) != t || int(ps.dbPlayer) != i) continue;

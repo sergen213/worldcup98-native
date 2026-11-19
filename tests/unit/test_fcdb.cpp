@@ -173,9 +173,71 @@ static void original() {
         CHECK(FcdbNames::parse(fe("FCDB_" + std::string(l) + ".DBI")).teams.size() == 56);
 }
 
+// Phase-10 byte round trip against the real tree: every league record re-encodes
+// bit-exactly from decoded fields (all bits are documented), the whole file rebuilds
+// byte-for-byte through the raw-preserving encoders, and the documented bit fields
+// decode/encode symmetrically (packBits + reparse reproduces every decoded field).
+static void originalRoundtrip() {
+    auto root = treeDirOrSkip();
+    const auto dbBytes = wc98::readFile(wc98::findCaseInsensitive(root, "COMMON/FCDB.DBI"));
+    const auto db = FcdbDatabase::parse(dbBytes, FcdbSchema::WorldCup98);
+    CHECK(db.schema == FcdbSchema::WorldCup98);
+    CHECK(db.leagues.size() == 24 && db.teams.size() == 56 && db.players.size() == 1782);
+
+    for (const auto& l : db.leagues) {
+        const auto enc = encodeLeagueRecord(l);
+        CHECK(l.recordOffset + enc.size() <= dbBytes.size());
+        CHECK(std::memcmp(dbBytes.data() + l.recordOffset, enc.data(), enc.size()) == 0);
+    }
+    CHECK(reencodeFile(dbBytes, db) == dbBytes);
+
+    // Bit-field symmetry: splice packBits over the file, reparse, compare decoded fields.
+    Bytes tcopy = dbBytes;
+    for (const auto& t : db.teams) {
+        const auto packed = packTeam1998Bits(t);
+        CHECK(packed.size() == 68);
+        std::memcpy(&tcopy[t.recordOffset], packed.data(), 68);
+    }
+    const auto db2 = FcdbDatabase::parse(tcopy, FcdbSchema::WorldCup98);
+    CHECK(db2.teams.size() == db.teams.size());
+    for (std::size_t i = 0; i < db.teams.size(); ++i) {
+        const auto& a = db.teams[i];
+        const auto& b = db2.teams[i];
+        CHECK(a.id == b.id && a.bank == b.bank && a.stadium == b.stadium && a.tactics == b.tactics && a.strategy == b.strategy);
+        CHECK(a.nationality == b.nationality && a.roster == b.roster);
+        const auto kitEq = [](const FcdbKit1998& x, const FcdbKit1998& y) {
+            return x.shirtStyle == y.shirtStyle && x.shirtColor1 == y.shirtColor1 && x.shirtColor2 == y.shirtColor2 &&
+                   x.shirtColor3 == y.shirtColor3 && x.shortsStyle == y.shortsStyle && x.shortsColor1 == y.shortsColor1 &&
+                   x.shortsColor2 == y.shortsColor2 && x.socksStyle == y.socksStyle && x.socksColor1 == y.socksColor1 &&
+                   x.socksColor2 == y.socksColor2;
+        };
+        CHECK(kitEq(a.home, b.home) && kitEq(a.away, b.away));
+    }
+
+    Bytes pcopy = dbBytes;
+    for (const auto& p : db.players) {
+        const auto packed = packPlayer1998Bits(p);
+        CHECK(packed.size() == 20);
+        std::memcpy(&pcopy[p.recordOffset], packed.data(), 20);
+    }
+    const auto db3 = FcdbDatabase::parse(pcopy, FcdbSchema::WorldCup98);
+    CHECK(db3.players.size() == db.players.size());
+    for (std::size_t i = 0; i < db.players.size(); ++i) {
+        const auto& a = db.players[i];
+        const auto& b = db3.players[i];
+        CHECK(a.id == b.id && a.nationality == b.nationality && a.role == b.role && a.shirtNumber == b.shirtNumber);
+        CHECK(a.startingByte == b.startingByte && a.price == b.price && a.overall == b.overall);
+        CHECK(a.hairStyle == b.hairStyle && a.hairColor == b.hairColor && a.skinTone == b.skinTone);
+        CHECK(a.faceStyle == b.faceStyle && a.beardStyle == b.beardStyle && a.attributes == b.attributes);
+    }
+    std::fprintf(stderr, "WC98 FCDB round trip: %zu B file byte-exact, 24 leagues bit-exact, %zu teams + %zu players symmetric\n",
+                 dbBytes.size(), db.teams.size(), db.players.size());
+}
+
 int main() {
     syntheticFifa99();
     syntheticWc98();
     original();
+    originalRoundtrip();
     return 0;
 }

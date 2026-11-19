@@ -84,6 +84,21 @@ if(DEFINED WC98_TREE)
     add_test(NAME db_json_valid
         COMMAND sh -c "$<TARGET_FILE:wc98-dbexplorer> \"$WC98_TREE/COMMON\" --json /tmp/wc98_db_gate.json && python3 -m json.tool /tmp/wc98_db_gate.json > /dev/null && grep -c recordOffset /tmp/wc98_db_gate.json > /dev/null && grep -c position2 /tmp/wc98_db_gate.json | grep -q '^0$'")
     set_tests_properties(db_json_valid PROPERTIES ENVIRONMENT "WC98_TREE=${WC98_TREE}")
+    # Phase-10 byte round trip through the CLI lane: decode -> encode must rebuild
+    # FCDB.DBI byte-for-byte and every documented bit field must be symmetric.
+    add_test(NAME db_roundtrip_valid
+        COMMAND sh -c "$<TARGET_FILE:wc98-dbexplorer> \"$WC98_TREE/COMMON\" --roundtrip")
+    set_tests_properties(db_roundtrip_valid PROPERTIES ENVIRONMENT "WC98_TREE=${WC98_TREE}")
+    # Game-data lane (goal phases 3/8/11): the runtime GameData (same loader the FE and the
+    # match boot use) must resolve every roster slot and ship parseable JSON.
+    add_test(NAME game_data_valid
+        COMMAND sh -c "$<TARGET_FILE:wc98-gamecheck> \"$WC98_TREE\" --json /tmp/wc98_game_gate.json && python3 -m json.tool /tmp/wc98_game_gate.json > /dev/null && grep -q '\"unresolved\": 0' /tmp/wc98_game_gate.json")
+    set_tests_properties(game_data_valid PROPERTIES ENVIRONMENT "WC98_TREE=${WC98_TREE}")
+    # Identity gate: the runtime view and the extraction export are the same records -
+    # team names/abbrevs/roster ids must agree index-by-index (no second database).
+    add_test(NAME game_data_identity
+        COMMAND sh -c "$<TARGET_FILE:wc98-dbexplorer> \"$WC98_TREE/COMMON\" --json /tmp/wc98_db_gate.json && $<TARGET_FILE:wc98-gamecheck> \"$WC98_TREE\" --json /tmp/wc98_game_gate.json && python3 ${CMAKE_CURRENT_SOURCE_DIR}/tools/identity_check.py /tmp/wc98_db_gate.json /tmp/wc98_game_gate.json")
+    set_tests_properties(game_data_identity PROPERTIES ENVIRONMENT "WC98_TREE=${WC98_TREE}")
 endif()
 
 # Match simulation (ported from fifa99-native tests/sim.cmake). The F99_SIM_LINKS gate is dropped:

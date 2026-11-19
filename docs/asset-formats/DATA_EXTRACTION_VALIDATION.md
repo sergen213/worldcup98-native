@@ -42,6 +42,8 @@ info World Cup 98 schema: 24 leagues, 56 teams, 1782 players (161 goalkeepers)
   throws on schema mismatch; league member list incl. id-0 empty slot (synthetic gate added).
 * Original-tree gate: 24/56/1782 counts, name-table sizes, roster resolution, kit style
   ranges, shirt sentinel == 720, attribute nibble ranges, all 9 UI banks parse.
+* `db_json_valid` (ctest, tree-gated): `wc98-dbexplorer --json` output must parse with
+  `python3 -m json.tool`, carry `recordOffset`/decimal `raw`, and have no `position2` key.
 * Suite state: 149/151 green; the two failures (`test_sim_scenarios`, `self_test_gameplay`)
   are the in-flight simulation kick-seam lane — unrelated to extraction, not chased.
 

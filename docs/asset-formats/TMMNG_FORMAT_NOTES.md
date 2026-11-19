@@ -1,6 +1,13 @@
 # TMMNG_FORMAT_NOTES — Team Management tactics DB on WC98
 
-## Status: file absent from the CD; engine support present (loader fully decoded)
+## Status: file absent from the CD; engine support present (loader lane decoded)
+
+> Retraction (2026-11-18): a commit message in pass-44forensic claimed an
+> "installer boot" decode (3000–7929 byte window, per-player 27-bit bitstream,
+> `FUN_004d0770` stream reader, 593×417 pitch, 459/459 install records). No
+> artifact supports it anywhere in this repo or the parent analysis tree — the
+> claim is withdrawn. The verified state is exactly what this document records
+> below.
 
 `WorldCup98_Extracted/USER/` contains only `options.sav` — no `tmmng.db`, `custom.db`,
 `cusplyr.db`, `xfer.db`. The engine nevertheless loads all four files if a user creates
@@ -99,5 +106,6 @@ do not copy).
 
 Original formations/positioning on WC98 come from the FCDB (tactics byte, role byte,
 `GEN4TBLS.VIV` G98*.FMT coordinate tables) — recovered and integrated. The user-editable
-tactics file exists as an engine concept (loader fully decoded) with no shipped content
+tactics file exists as an engine concept (loader lane decoded; default-block mapping
+partial, registry internals untraced) with no shipped content
 to recover; recorded as a documented gap, not a fabricated assumption.

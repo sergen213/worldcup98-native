@@ -2710,8 +2710,8 @@ FeDrawStats FeFlow::drawMgmtGrid(render::SpriteBatch& ui) const {
             if (col >= 3) { // match-card / total-card columns: discipline tiles from FCDB aggression [H]
                 tag = aggr >= 12 ? "redc" : aggr >= 9 ? "yell" : "";
                 if (col == 4 && aggr < 9) continue; // totals mirror the match column, no tile under booking
-            } else if (col == 0 && pl->startingSlot == 0) {
-                tag = ""; // not in the starting eleven: selection slot stays blank [H]
+            } else if (col == 0 && idx >= 11) {
+                tag = ""; // outside the starting eleven (first 11 roster slots, lineup model): slot blank
             }
             if (tag.empty()) continue;
             const ScreenArt::Shape sh = const_cast<ScreenArt&>(art_).shape("..\\feflow73\\", "feflow73", std::string(tag), -1);

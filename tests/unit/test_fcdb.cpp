@@ -75,7 +75,7 @@ static void syntheticWc98() {
     le32(b, 501); le32(b, 0); le32(b, 0); le32(b, 0);
     put32(b, 8, std::uint32_t(b.size()));
     le32(b, 1); le32(b, 0); le32(b, 12);
-    le32(b, 7u | 1u << 26); b.push_back(3); b.push_back(0);       // league 7 -> team id 3
+    le32(b, 7u | 2u << 26); b.push_back(3); b.push_back(0); b.push_back(0); b.push_back(0); // league 7 -> team id 3 + id-0 empty member slot
     put32(b, 12, std::uint32_t(b.size()));
     le32(b, 1); le32(b, 68);
     std::size_t team = b.size();
@@ -105,7 +105,8 @@ static void syntheticWc98() {
     b[pl + 17] = 0x31;                  // shirt 16, role 3
     auto db = FcdbDatabase::parse(b, FcdbSchema::WorldCup98);
     CHECK(db.schema == FcdbSchema::WorldCup98);
-    CHECK(db.leagues.size() == 1 && db.leagues[0].id == 7 && db.leagues[0].teamIds == std::vector<std::uint16_t>{3});
+    std::vector<std::uint16_t> padMembers{3, 0}; // id 0 = empty member slot
+    CHECK(db.leagues.size() == 1 && db.leagues[0].id == 7 && db.leagues[0].teamIds == padMembers);
     const auto& t = db.teams[0];
     CHECK(t.id == 5 && t.bank == 7 && t.stadium == 2 && t.tactics == 1 && t.strategy == 3);
     CHECK(t.rosterSize == 1 && t.nationality == 3 && t.roster == std::vector<std::uint16_t>{42}); // rosterSize = filled slots (one synthetic id)
@@ -140,6 +141,17 @@ static void original() {
         for (auto id : t.roster) unresolved += !idx.contains(id);
     }
     CHECK(unresolved == 0);
+    // League member lists are zero-padded (measured: league 217 'All Time' row 6 = id 0):
+    // id 0 never resolves, so the validator and this gate treat it as an empty slot.
+    std::map<std::uint16_t, std::size_t> teamIdx;
+    for (std::size_t i = 0; i < db.teams.size(); ++i) teamIdx[db.teams[i].id] = i;
+    int leagueBad = 0, leaguePad = 0;
+    for (const auto& l : db.leagues)
+        for (auto id : l.teamIds) {
+            if (id == 0) ++leaguePad;
+            else leagueBad += !teamIdx.contains(id);
+        }
+    CHECK(leagueBad == 0 && leaguePad == 1);
     for (const auto& p : db.players) {
         shirtSentinel += p.shirtNumber == 255; // "no number" sentinel (measured 720 players)
         for (auto a : p.attributes) skillOut += a > 99; // 39..99 scaled values (matrix section 5)

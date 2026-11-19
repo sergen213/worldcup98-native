@@ -115,16 +115,23 @@ int validate(const Db& d) {
     }
     int badLeague = 0;
     for (const auto& l : db.leagues)
-        for (auto id : l.teamIds) badLeague += !d.teamIndex.contains(id);
+        for (auto id : l.teamIds)
+            badLeague += id != 0 && !d.teamIndex.contains(id); // id 0 = empty member slot (measured: league 217 zero-padded)
     check(badLeague == 0, std::format("league team references resolve ({} unresolved)", badLeague));
-    int gk = 0, skillOut = 0, badShirt = 0;
+    int gk = 0, skillOut = 0, badShirt = 0, shirtSentinel = 0;
+    const auto gkField = [&](const FcdbPlayer& p) { return wc98 ? p.role : p.position; }; // 1998: role byte 17 >> 4
     for (const auto& p : db.players) {
-        gk += p.position == 0;
+        gk += gkField(p) == 0;
         for (auto a : p.attributes) skillOut += a > 15; // WC98 nibbles decode as n*4+39 (39..99)
-        if (wc98) badShirt += p.shirtNumber > 99;
+        if (wc98) {
+            // WC98 shirt field is 10 bits (0..22 numbered squads); 255 = "no number"
+            // sentinel for reserve-pool players (measured: 720/1782, values > 99 are only 255).
+            shirtSentinel += p.shirtNumber == 255;
+            badShirt += p.shirtNumber != 255 && p.shirtNumber > 99;
+        }
     }
     check(skillOut == 0, std::format("all 17 skill fields are 4-bit nibbles ({} out of range)", skillOut));
-    if (wc98) check(badShirt == 0, std::format("jersey numbers within 0..99 ({} outside)", badShirt));
+    if (wc98) check(badShirt == 0, std::format("jersey numbers within 0..99 + 255 sentinel ({} outside, {} sentinels)", badShirt, shirtSentinel));
     std::printf("info %s schema: %zu leagues, %zu teams, %zu players (%d goalkeepers)\n", wc98 ? "World Cup 98" : "FIFA 99",
                 db.leagues.size(), db.teams.size(), db.players.size(), gk);
     return problems;

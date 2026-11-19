@@ -21,7 +21,7 @@ jobs:
             cxx: clang++
             preset: ci-cxx23
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install tooling
         run: |
           sudo apt-get update
@@ -50,7 +50,7 @@ jobs:
     needs: build
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install tooling
         run: |
           sudo apt-get update
@@ -82,7 +82,7 @@ jobs:
           APPIMAGE_EXTRACT_AND_RUN=1 QT_QPA_PLATFORM=offscreen \
             dist/wc98-native-linux-x86_64-*.AppImage --self-test
       - name: Upload artifact (releases are cut by hand from this)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: wc98-native-appimage-${{ github.sha }}
           path: dist/

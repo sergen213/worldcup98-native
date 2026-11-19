@@ -718,3 +718,39 @@ floor-release is driver-side (`Mixer` owns voice slots) and the exe stop-list
 is mirrored by layer fade-out.
 
 Evidence: `analysis/pass70crowd/NOTES.md`, `/tmp/wc98pass70/p70.txt`..`p70k.txt`.
+
+## Pass-71: crowd layer-record routing decoded
+
+`SNDcrowdstart` `FUN_004e4ba0` (state 1→2 transition): reads the eight signed
+bank-id bytes at card `+0x20 + i` (CROWD `{0,1,2,3,-1,-1,-1,-1}`, TRAFF
+`{0,-1,...}`); enabled slots reserve a voice through the `SNDplaysetdef` lane
+`FUN_004e2d74` (validates the bank against the `BKNL` registry `DAT_00659de8`,
+stride 8, count u16 `+6`, type byte `+4 == 4` selects the alternate reserve lane
+`FUN_0052e8b0`), landing voice ids in the slot table `DAT_005894d0 + i*4`
+(disabled → `-1`), count in `0x5894b8` low byte, curve-byte lanes
+`DAT_005894ed+3..` / `DAT_005894f5+3..` initialised `0xFF`; then `FUN_004e4f48`
+(initial level, input 0..0x7f → `position = level << 16` while state != 3) and
+`SNDcrowdpulse`.
+
+`SNDcrowdpulse` `FUN_004e4cac(index 0..15)` reads the 16-byte layer records at
+card `+0x28`: byte 0 present gate, byte 1 optional bank-slot id (reserves via
+`FUN_004e2d74` when `>= 0`; all CROWD records ship `0xFF` = no extra reserve),
+`u16 @4` = envelope delta and `u16 @6` = ceiling (both read through `u32 >> 16`;
+pass-55's measured 350/450 pair), target clamped at the ceiling, step word
+`u32 @8` (the dump's "position" values {0, 16384, 32768, 43690} = 16.16 increments),
+ramp state reset, layer index byte stored at `DAT_005894a7+3`. The idle machine
+`FUN_004e510c` case 0 pulls its frame divisor from `u32 @12` of the indexed layer
+record (`record + 0x34 + idx*0x10`, `rate * 0x21 >> 16`, clamped `>= 1`) —
+confirming pass-55's "byte-12 rate" claim — while cases 1..3 divide the distance
+by table words at `+0xc`/`+0x18` of a tick-computed pointer.
+
+Blend consumer `FUN_004e5444` exact formula: control word high half `cc =
+(be * ramp + bc * c0hi) >> 9` (`be`/`bc` from byte7 split, `ramp` word
+`0x5894be`, envelope `c0 = 0x5894ac >> 16`) — the pass-55 doc's `be*be` form is
+the post-snap identity where `ramp == be`. Per active slot: murmur gain byte `=
+curveB[cc]` via the fixed-up `+0x148 + i*4` ref, swell gain byte `=
+curveA[cc] * c0 >> 17` via `+0x128 + i*4`; each written to the voice lane
+(`FUN_0052eee0` / `FUN_0052c660`) only when the stored byte changes.
+
+Port unchanged (re-fade seam approximates the change-gated byte writes).
+Evidence: `analysis/pass71crowd/NOTES.md`, `/tmp/wc98pass71/p71.txt`..`p71d.txt`.

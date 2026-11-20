@@ -105,9 +105,9 @@ wrong; per-bank metadata lives in the record itself and in the filename template
 (`P%05d`, `A_T%04d`).
 
 - `AUDIO/PHRS/PHRS.INF` (28 B): u32 LE @0 = 0; u32 @4 = **1,290** (= phrase count ✓);
-  u32 @8 = **83,696** — RESOLVED 2026-11-20 (pass-114) as the **SPCPATCH total-patch-bytes**
-  sizing input: speech pool boot `FUN_0048fd54` loads the file raw into `DAT_0063271c` and
-  sizes its word pool + 8 patch slots from `[handle+8]` = this value
+  u32 @8 = **83,696** — RESOLVED 2026-11-20 (pass-114) as the **SPCPATCH largest-patch-bytes**
+  (per-slot patch capacity) sizing input: speech pool boot `FUN_0048fd54` loads the file raw
+  into `DAT_0063271c` and sizes its word pool + 8 patch slots from `[handle+8]` = this value
   (`((0x146f0+0x14)>>10 + 1)*0x400` per slot; AUDIO_RUNTIME §10). Earlier rejected
   candidates (nested-header sums, segment counts, exe embedding — byte value appears
   nowhere in FIFAWC.EXE LE/BE-scanned, consistent: it comes from the file, not the exe);
@@ -135,7 +135,7 @@ HDR prefix identity, declaredSize quirk (1232+1022 archives), class-letter tag 0
 (chant/team/player/commentary/crowd-midi), voice = phrase%16 announcer rotation,
 0x08/0x0C as queue links, CROWD.PBK raw-payload purpose. Unknown: record 0x06/0x10
 usage, the within-phrase id permutation source (PHRS.INF u32@8 = 83,696 RESOLVED
-pass-114 as SPCPATCH sizing input).
+pass-114 as SPCPATCH slot-capacity sizing input).
 
 1. **DONE (2026-11-03, `formats/src/phrs.cpp` + tolerant `BigArchive::parse(data, tolerant)` in
    `big.cpp`; API doc `docs/asset-formats/SPEECH_PHRASES.md`)** phrase index model: PHRS.PBK TOC ->

@@ -477,8 +477,10 @@ model; the id→sample resolution is the exe's own bank subsystem (§10, pass 62
 Retracted: "scene-10 loader loops slots 0..8 with an undecoded per-slot
 filename". Disassembly (`/tmp/wc98pass60/GhidraWc98Aud20.py`): the slot loop
 `FUN_0048e280` runs exactly 2 iterations (`XOR EDX,EDX; ... CMP EDX,0x8;
-JNZ`) over 2 pointer-table entries `DAT_0057eb44/+8` — initial file bytes are
-non-pointer garbage with no static write site (runtime-patched pool [H).
+JNZ`) over 2 pointer-table entries `DAT_0057eb44` — pass-59 byte scan: `+0`/`+4`
+are the loader name pointers `CROWD.PBK`/`COMOS.PBK` (the earlier "non-pointer
+garbage … runtime-patched pool [H]" note was wrong; `+8..+0x14` are runtime state
+fields — pass-59 byte scan, boot-lane description above).
 The filenames come from the scene dispatch `0x48e7a0..0x48e847`:
 scene `DAT_00640fb4 == 10` loads `TRAFF.BNK` (VA 0x566af0) + `TRAFF.CRD`
 (0x566afc); every other scene loads `CROWD.BNK` (0x566b08) + `CROWD.CRD`
@@ -571,11 +573,12 @@ FIFAWC.EXE**:
   352-byte `SPCEVENT` record block `DAT_006326c4` (`EDX=0x160`), then builds 8 stride-`0x2c`
   patch slots with `+0x28` = cumulative patch offsets (`ebx += (([handle+8]+0x14)>>10 +
   1)*0x400`, pushed via `qbottom` `FUN_004c4800`) — same queue family as the chant pump
-  (§pass-56). `[handle+8]` is the INF **total-patch-bytes** value (file u32@8 =
-  `0x146f0` = 83,696): slot = 81 KiB + 1 KiB header ≈ 83,968 B × 8 slots = 671,744 B pool,
-  self-consistent with the reserve form; a data-pointer reading would yield pointer-derived
+  (§pass-56). `[handle+8]` is the INF **largest-patch-bytes** value (file u32@8 =
+  `0x146f0` = 83,696 — per-slot patch capacity): each of the 8 slots is `81 KiB + 1 KiB`
+  header ≈ 83,968 B, slot regions total 671,744 B, always covered by the reserve form
+  `(81 + FUN_0048e8d0())×8 KiB`; a data-pointer reading would yield pointer-derived
   MB-sized pools (implausible) — pass-114 marks PHRS.INF u32@8 RESOLVED as the SPCPATCH
-  sizing input.
+  slot-capacity sizing input.
 
 Port: no code change — `MatchAudio::trigger` fires GAME00 bank slot numbers directly,
 which is exactly the retail `{bank:1, slot:24}` slot field. Evidence:
@@ -1765,8 +1768,8 @@ record producers, `t12.txt` PHRS callbacks; jump table raw read at VA `0x48f45c`
   format @0x566acc, not this lane) via `0x48f9d0`/`0x439810` into `DAT_0063271c`;
   creates three queues `DAT_006326c8` (free) / `DAT_006326e4` (pending-A) / `DAT_00632700`
   (pending-B); reserves via `0x49f5a0` a word block (`DAT_006326c0`, size
-  `((obj+8)+0x14)>>0xa + FUN_0048e8d0)<<0xd` — `obj+8` = INF total-patch-bytes value
-  `0x146f0` = 83,696, i.e. 81 KiB slots, pass-114) and an 8-record block
+  `((obj+8)+0x14)>>0xa + FUN_0048e8d0)<<0xd` — `obj+8` = INF largest-patch-bytes value
+  `0x146f0` = 83,696 (per-slot patch capacity, 81 KiB slots, pass-114) and an 8-record block
   (`DAT_006326c4`, stride `0x2c`, size param `0x160`); pushes 8 records
   (rec+0x28 = word-block pointer) to the free pool.
 - **Realloc pump `FUN_0048fcc0`** (t3.txt): iterate pending-A (`0x6326e4` qfetch

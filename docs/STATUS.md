@@ -125,9 +125,9 @@ counts in `docs/asset-formats/INVENTORY.md`, `docs/reverse-engineering/EXECUTABL
    big-endian packed records {u32be offset, u32be size, NUL name} at +16 (9 bytes each,
    names empty in PHRS; earlier "LE pairs at 12+8*i" wording was wrong); member sizes ==
    decompressed sizes, no RefPack), INF = {u32@4 count=1290, u32@8 0x146f0 = 83,696 RESOLVED
-   2026-11-20 (pass-114) as the SPCPATCH total-patch-bytes sizing input — speech pool boot
-   `FUN_0048fd54` sizes its 8 word slots as `((0x146f0+0x14)>>10 + 1)*0x400` each
-   (AUDIO_RUNTIME §10), "V8-7-4"}; rate default when tag `0x84` is absent RESOLVED 2026-11-06 — 22,050 Hz confirmed
+   2026-11-20 (pass-114) as the SPCPATCH largest-patch-bytes (slot-capacity) sizing input —
+   speech pool boot `FUN_0048fd54` sizes its 8 word slots as `((0x146f0+0x14)>>10 + 1)*0x400`
+   each (AUDIO_RUNTIME §10), "V8-7-4"}; rate default when tag `0x84` is absent RESOLVED 2026-11-06 — 22,050 Hz confirmed
    from `EACSND.DLL@0xe01` (`mov [0x40aa10],0x5622`, driver global rate var; see AUDIO.md).
 Gain calibration resolved 2026-11-05 (`analysis/pass7/gain*.txt`, `COMMENTARY_WC98.md` §gain):
 EACSND linear vol chain (domain [0,0x7f], 16.16) saturating at 0x7f + byte curve table explains

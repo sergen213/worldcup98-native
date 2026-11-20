@@ -1283,7 +1283,9 @@ EAX=0x48f730 start handler, ECX=0x48f78c presentation lane, pushes 0x48f830 reco
 - Start handler `0x48f730`: rejects while `SNDsentencestatus FUN_004dfc0c == 3` (a sentence
   speaks); oldest-pending scan `FUN_0048f664`; scene-3 word lookup `FUN_0048d070` → word
   entry; **phrase = `[entry+0x0E]`** (the A7 `[item+0E]` residual); `SNDphraseadd
-  FUN_004df968` appends into the 20-slot ring `DAT_0064b070` stride 0xc (cap 18), slot id →
+  FUN_004df968` appends into the 20-slot ring, entries `DAT_0064b068` stride 0xc (cap 18;
+  the u32 `-100` free-marker at entry+8 is what `SNDphraseadd` addresses as `DAT_0064b070`),
+  slot id →
   `[entry+6]`; `SNDflush FUN_004dfb40` starts the engine.
 - Record lane `0x48f830`: percent-count gate `FUN_004906a4(3)` = `pct*0x7f/100` min 1 (not a
   probability); record from free queue `DAT_006326c8` (`qfetch FUN_004c4890`), fields
@@ -1320,8 +1322,10 @@ stop-all sweep, `t3/t6/tick_scan.txt` caller/pointer scans; `GhidraWc98T2..T13.p
 - Consumer chain (`q1.txt`): `FUN_0048d070` = `CALL 0x48d0dc` (EBX PUSH/POP-protected; queue
   slot `DAT_00632428 + EAX*0x1c`, `qfind FUN_004c4ce0` with callback `0x48cf10` and
   EBX = saved `[rec+0xC]`) → `ADD EAX,0x14; MOV EDX,EBX; JMP 0x4c4d50` — selector arrives as
-  EDX of `qfindindex FUN_004c4d50` and is walked by `FUN_004c45d0`
-  (`DEC EDX; while(EAX && EDX!=-1) EAX=[EAX]`) = selector-th queue node (0 → NULL). Match
+  EDX of `qfindindex FUN_004c4d50`, walked by `FUN_004c45d0`
+  (`DEC EDX; while(EAX && EDX!=-1) EAX=[EAX]`) = selector-th successor of the queue head
+  `[obj+8]` — selector 0 = head node itself (qcreate zeroes `[obj+8]`; NULL only if the queue
+  is empty or the chain ends early). Match
   callback `0x48cf10` (`q4.txt`): `ECX = [EDX]; CMP ECX,[node+0xC]` — tag equality by value.
   Net: entry index = `2*table[class] + (classByte>>6)`, class 6 → +2; queue-entry selection,
   no probability scaling.

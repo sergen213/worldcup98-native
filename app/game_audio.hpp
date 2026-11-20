@@ -74,7 +74,8 @@ private:
 // options gate); the envelope drives the curve index. SNDcrowdpulse (FUN_004e4cac) raises
 // the target by a card record's delta, clamped at the record ceiling, ramping at the
 // record step. Target draws mirror the exe tick machine `FUN_004c321c` exactly (pass-113
-// objdump), scaled by the card header word (record byte 8); the seed input is RDTSC at
+// objdump), over the header words: multiplier = u16 at record byte 10 (guard `cmp
+// 0x10000`), base add-back = u16 at record byte 8; the seed input is RDTSC at
 // runtime [H], so the walk start state is uptime-nondeterministic like the chant LCG seed.
 // Tick machine mirror of `FUN_004c321c` (pass-113 objdump lane,
 // `analysis/pass113tick/clk3.txt`): lagged-Fibonacci 5-word walk over `DAT_00585CC8..0x585CB8` driven by the
@@ -116,10 +117,19 @@ private:
 
 class CrowdEnvelope {
 public:
-    // cardByte7 = header weight; rateFrames = idle ramp frames (exe record byte 12 formula);
-    // scale = header word at record byte 8 (exe call-site `mov edx,[rec+6]; sar 16`): the
-    // idle target is `scale + jitter(scale)` with jitter from the tick word [pass-113].
-    void init(std::uint32_t cardByte7, int rateFrames, int scale = 30); // fresh machine (c0 = level 0)
+    // cardByte7 = header weight; rateWord = record 0 rate u32 (state-0 arrival divisor,
+    // exe `[card+0x34 + idx*48] >> 16` lane); g1/g2 = card parameter groups params[0/1]
+    // (pass-113 decode, exe idle pump FUN_004e510c arrival lanes, objdump 0x4e514b..):
+    //   group 1 (CROWD a=30 b=15 c=500 d=200) = UP targets (states 0, 2 arrivals) and
+    //     the state-2 ramp frame draw (c + jitter(d));
+    //   group 2 (CROWD a=150 b=40 c=300 d=100) = DOWN targets (states 1, 3 arrivals) and
+    //     their frame draw (c + jitter(d));
+    //   state-0 arrival divisor = rateWord >> 16 (CROWD 0x40000 -> 4 frames), min 1, from
+    //     the runtime slot-indexed table `[card+0x34 + idx*48]` (idx runtime [H],
+    //     mirrored at idx 0 = record 0). Target jitter = ((tick&0x7fff)-0x4000)*mult>>14,
+    //     clamp 0..0x1ff; frame jitter uses the RAW word (no sar 16), min 1.
+    void init(std::uint32_t cardByte7, int rateWord, const formats::CrdParams& g1,
+              const formats::CrdParams& g2); // fresh machine (c0 = level 0)
     void tick();                        // per-frame idle pump (exact state machine)
     // SNDcrowdpulse record lane: delta/ceiling/step from the card record (CrdRecord).
     // Returns true when the pulse was applied (exe FUN_004e4cac status: success vs -8
@@ -129,19 +139,22 @@ public:
     [[nodiscard]] std::int32_t level() const { return c0_; } // 16.16 envelope level
     [[nodiscard]] int be() const { return be_; }             // blend weights (gates)
     [[nodiscard]] int bc() const { return bc_; }
-    int targetLevel();  // tick-word target: scale + ((tick&0x7fff)-0x4000)*scale>>14, 0..0x1ff
+    int targetLevel();     // group-1 target (states 0/2 arrival), 0..0x1ff
+    int downTargetLevel(); // group-2 target (states 1/3 arrival)
+    int upFrames();        // state-2 frame draw: g1.c + jitter(g1.d), min 1
+    int downFrames();      // state-1/3 frame draw: g2.c + jitter(g2.d), min 1
 private:
-    int rampFrames() { return std::max(1, int(rng_() % std::uint32_t(std::max(2, rateFrames_ * 2)))) + 1; }
+    int targetFrom(int base, int mult); // tick advance + jitter target, 0..0x1ff
+    int framesFrom(int base, int mult); // tick advance + jitter frames, min 1
 
     int be_ = 0, bc_ = 0x200;       // blend weights (exe DAT_005894b8.hi / DAT_005894bc)
     std::int32_t c0_ = 0;           // envelope level, 16.16 (DAT_005894c0)
     std::int32_t c4_ = 0;           // ramp target, 16.16 (DAT_005894c4)
     std::int32_t c8_ = 0;           // ramp step per frame (DAT_005894c8)
     int ab_ = 0;                    // ramp state (DAT_005894ab)
-    int rateFrames_ = 132;          // idle ramp frames, record 0 rate at install (FUN_00510c)
-    int scale_ = 30;                // exe idle scale word (record byte 8, sar-16 operand)
+    int upFrames0_ = 4;             // state-0 divisor: [card+0x34+idx*48] >> 16 (idx 0 = record rate)
+    formats::CrdParams g1_{}, g2_{}; // card parameter groups (arrival target/frame words)
     ExeTickAcc tickAcc_;            // idle tick machine (FUN_004c321c mirror)
-    std::mt19937 rng_{0x1998u};     // ramp-frame stand-in [H] (exe reads runtime frame slots)
 };
 
 // Tournament presentation announcement lane (pass-76 decode, pass-77 port mirror).

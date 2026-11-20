@@ -115,14 +115,12 @@ MatchAudio::MatchAudio(const std::filesystem::path& tree) : tree_(tree) {
             crowdCurve_ = card.tables[4];
             crowdCurveValid_ = true;
         }
-        // Reaction machine (pass-55): weights from header byte 7 (measured CROWD 70 ->
-        // be 358/bc 154), idle ramp frames from record 0 byte 12 (exe rate * 0x21 >> 16).
+        // Reaction machine (pass-55/113): weights from header byte 7 (measured CROWD 70 ->
+        // be 358/bc 154); group words and the state-0 divisor come from the card itself.
         crowdRecords_ = card.records;
         {
-            const int rate = crowdRecords_.empty()
-                ? 132
-                : std::max(1, int((std::int64_t(crowdRecords_[0].rate()) * 0x21) >> 16));
-            crowdEnvelope_.init(card.byte7, rate, int(card.params[0].a)); // scale 30 measured
+            const int rateWord = crowdRecords_.empty() ? 0x40000 : int(crowdRecords_[0].rate());
+            crowdEnvelope_.init(card.byte7, rateWord, card.params[0], card.params[1]);
         }
         for (std::size_t i = 0; i < slots.size(); ++i) {
             CrowdLayer layer;
@@ -155,7 +153,8 @@ MatchAudio::MatchAudio(const std::filesystem::path& tree) : tree_(tree) {
         // Traffic card (pass-55): header byte 7 = 4 -> weights be 20/bc 480; the card ships
         // no reaction records (all 0x00 -> SNDcrowdpulse refuses it, measured dump).
         trafficRecords_ = traf.records;
-        trafficEnvelope_.init(traf.byte7, 132, int(traf.params[0].a)); // no records: idle rate default 132 frames [H]; scale 2 measured
+        trafficEnvelope_.init(traf.byte7, traf.records.empty() ? 0 : int(traf.records[0].rate()),
+                              traf.params[0], traf.params[1]); // TRAFF record 0 rate 0 -> divisor min 1
     } catch (const std::exception&) { // no card: gain falls back to the bed curve
     }
 }
@@ -175,36 +174,59 @@ void MatchAudio::crowdNotifier(int channel) {
 // walk), pulse FUN_004e4cac, blend consumer FUN_005444. The exe shares ONE machine between
 // the CROWD and TRAFF cards (single 16.16 level, slot curve pointers per card); the port
 // runs the bed and hum envelopes independently, each from its own card header byte 7 [H].
-void CrowdEnvelope::init(std::uint32_t cardByte7, int rateFrames, int scale) {
-    // FUN_004e4ba0 install: weights from header byte 7 (be = byte7<<9/100, bc = 0x200 - be).
+void CrowdEnvelope::init(std::uint32_t cardByte7, int rateWord,
+                         const formats::CrdParams& g1, const formats::CrdParams& g2) {
     be_ = int((cardByte7 << 9) / 100);
     bc_ = 0x200 - be_;
     c0_ = 0;
     c4_ = 0;
     c8_ = 0;
     ab_ = 0;
-    // Idle ramp frames, exe `*(int*)(recordArea + 0xc + cardIdx*0x10) * 0x21 >> 0x10`
-    // (record byte 12 u32, CROWD record 0 measured 0x40000 -> 132 frames at 60 fps).
-    rateFrames_ = std::max(1, rateFrames);
-    scale_ = scale; // exe idle scale word: header dword +6 sar 16 (CROWD 30, TRAFF 2)
+    // State-0 arrival divisor (0x4e51a1..0x4e51b8): dword `[card+0x34 + idx*48] >> 16`,
+    // min 1; idx from the runtime card/slot word byte [0x5894a7..0x5894aa] [H] — mirrored
+    // at idx 0, whose entry is the record 0 rate field (CROWD 0x40000 -> 4 frames).
+    upFrames0_ = std::max(1, rateWord >> 16);
+    g1_ = g1; // UP targets + state-2 frames (CROWD 30/15/500/200)
+    g2_ = g2; // DOWN targets + state-1/3 frames (CROWD 150/40/300/100)
     tickAcc_ = ExeTickAcc{};
 }
 
-int CrowdEnvelope::targetLevel() {
-    // FUN_0052f3e0 + call-site epilogue (pass-113 objdump): advance the tick machine,
-    // jitter = ((cb8 & 0x7fff) - 0x4000) * scale >> 14, target = scale + jitter clamped
-    // [0, 0x1ff] (exe `add eax,edx; cmp 0x1ff` -> DAT_005894c4).
+int CrowdEnvelope::targetFrom(int base, int mult) {
+    // FUN_0052f3e0 (pass-113 objdump): `push edx; mov eax,edx` copies the caller's EAX
+    // (multiplier word) into EDX before the walk call, so the multiplier is the tick-word
+    // product and `pop edx` restores the caller's EDX load for the epilogue add-back
+    // (`add eax,edx; mov edx,0x5894c4; cmp 0x1ff`). Entry guard: multiplier > 0x10000 ->
+    // 0x10000; negative -> xor (zero jitter, [H] junk lane unreachable for retail cards).
     tickAcc_.step();
-    const std::int32_t jitter = (std::int32_t(tickAcc_.word15()) - 0x4000) * scale_ >> 14;
-    int t = scale_ + jitter;
+    std::int32_t m = mult;
+    if (m > 0x10000) m = 0x10000;
+    const std::int32_t jitter = (std::int32_t(tickAcc_.word15()) - 0x4000) * m >> 14;
+    int t = base + jitter;
     if (t < 0) t = 0;
     if (t > 0x1ff) t = 0x1ff;
     return t;
 }
 
+int CrowdEnvelope::framesFrom(int base, int mult) {
+    // Ramp frame draw (0x4e527a/0x4e5336/0x4e53f0): the multiplier is the RAW card word
+    // (no sar 16 at these sites; the 0x10000 guard covers it), result = base + jitter,
+    // clamped to min 1 (`cmp $0x1; jge; mov $0x1`).
+    tickAcc_.step();
+    std::int32_t m = mult;
+    if (m > 0x10000) m = 0x10000;
+    int f = base + ((std::int32_t(tickAcc_.word15()) - 0x4000) * m >> 14);
+    if (f < 1) f = 1;
+    return f;
+}
+
+int CrowdEnvelope::targetLevel() { return targetFrom(int(g1_.a), int(g1_.b)); }
+int CrowdEnvelope::downTargetLevel() { return targetFrom(int(g2_.a), int(g2_.b)); }
+int CrowdEnvelope::upFrames() { return framesFrom(int(g1_.c), int(g1_.d)); }
+int CrowdEnvelope::downFrames() { return framesFrom(int(g2_.c), int(g2_.d)); }
+
 void CrowdEnvelope::tick() {
     switch (ab_) {
-    case 0: // ramp toward target (up); on arrival draw a new target
+    case 0: // ramp toward target (up); on arrival draw a group-1 target + table divisor
         c0_ += c8_;
         if (c4_ <= c0_) {
             c0_ = c4_;
@@ -212,39 +234,39 @@ void CrowdEnvelope::tick() {
             // exe: distance = target below current ? (c0 - target*0x10000) : 0x10000 (rise by 1.0)
             const std::int64_t dist = t < c0_ ? std::int64_t(c0_ - t) : 0x10000;
             c4_ = std::int32_t(t);
-            std::int64_t step = dist / rateFrames_; // exe frames = rate * 0x21 >> 16
-            if (step < 1) step = 1;
+            std::int64_t step = dist / upFrames0_; // exe divisor lane 0x4e51a1 (idiv)
+            if (step < 1) step = 1;               // exe `test eax,eax; jge; mov eax,1` clamp
             c8_ = std::int32_t(step);
             ab_ = 1;
         }
         break;
-    case 1: // ramp down toward target; on arrival draw target + frame count, switch to ramp up
+    case 1: // ramp down toward target; on arrival draw group-2 target + frame count
         c0_ -= c8_;
         if (c0_ <= c4_) {
             c0_ = c4_;
-            c4_ = std::int32_t(std::int64_t(targetLevel()) << 16);
-            const int frames = rampFrames(); // exe reads a runtime frame slot (+0x18) [H]
+            c4_ = std::int32_t(std::int64_t(downTargetLevel()) << 16);
+            const int frames = downFrames(); // g2.c + jitter(g2.d), min 1 (0x4e527a)
             c8_ = std::int32_t((std::int64_t(c4_) - c0_) / frames); // signed: ramp direction
             ab_ = 2;
         }
         break;
-    case 2: // ramp (c8 may be negative -> walks down); arrival draws + switches to 3
+    case 2: // ramp up toward group-1 target; arrival draws group-1 target + frame count
         c0_ += c8_;
         if (c4_ <= c0_) {
             c0_ = c4_;
             c4_ = std::int32_t(std::int64_t(targetLevel()) << 16);
-            const int frames = rampFrames(); // exe frame slot (+0xc) [H]
+            const int frames = upFrames(); // g1.c + jitter(g1.d), min 1 (0x4e5336)
             // exe case 2 arrival: c8 = (c0 - target) / frames -> positive walk down in case 3
             c8_ = std::int32_t((std::int64_t(c0_) - std::int64_t(c4_)) / frames);
             ab_ = 3;
         }
         break;
-    default: // 3: ramp down toward target; arrival draws + switches back to 2
+    default: // 3: ramp down toward group-2 target; arrival draws + switches back to 2
         c0_ -= c8_;
         if (c0_ <= c4_) {
             c0_ = c4_;
-            c4_ = std::int32_t(std::int64_t(targetLevel()) << 16);
-            const int frames = rampFrames();
+            c4_ = std::int32_t(std::int64_t(downTargetLevel()) << 16);
+            const int frames = downFrames(); // g2.c + jitter(g2.d), min 1 (0x4e53f0)
             c8_ = std::int32_t((std::int64_t(c4_) - c0_) / frames); // exe: signed, up in case 2
             ab_ = 2;
         }

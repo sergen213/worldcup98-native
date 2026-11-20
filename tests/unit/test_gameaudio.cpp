@@ -575,7 +575,8 @@ int main() {
     // TRAFF weights byte 7 = 4 -> be 20/bc 492.
     {
         app::CrowdEnvelope env;
-        env.init(0x46, 132);
+        env.init(0x46, 0x40000, formats::CrdParams{30, 15, 500, 200},
+                 formats::CrdParams{150, 40, 300, 100});
         CHECK(env.be() == 358 && env.bc() == 154);
         CHECK(env.blendIndex() == 250); // fresh machine: level 0
         for (int i = 0; i < 4000; ++i) env.tick(); // long idle walk (~67 s at 60 fps)
@@ -597,7 +598,7 @@ int main() {
         const formats::CrdRecord rec = card.records[0];
         CHECK(rec.step() == 0x38000 && rec.rate() == 0x40000); // rate * 0x21 >> 16 == 132 frames
         app::CrowdEnvelope pe;
-        pe.init(0x46, 132);
+        pe.init(card.byte7, int(card.records[0].rate()), card.params[0], card.params[1]);
         CHECK(pe.pulse(rec));                                   // fresh level 0 < ceiling: applied
         for (int i = 0; i < 100; ++i) pe.tick();                // 100 x step 0x38000 = 350<<16
         CHECK(pe.level() == 350 << 16);                         // exact pulse arrival (0 + delta)
@@ -608,32 +609,51 @@ int main() {
         CHECK(pe.level() == 450 << 16);                         // ceiling clamp (values[1] = 0x1c2)
         CHECK(!pe.pulse(rec));                                  // at ceiling: exe status -8 refusal
         app::CrowdEnvelope trafEnv;
-        trafEnv.init(0x04, 132);
+        trafEnv.init(0x04, 0, formats::CrdParams{2, 1, 200, 100},
+                     formats::CrdParams{4, 1, 200, 100});
         CHECK(trafEnv.be() == 20 && trafEnv.bc() == 492);       // TRAFF byte 7 = 4
     }
 
     // (h) pass-113 tick machine mirror (FUN_004c321c objdump lane): the seed-0 constants
     // are the running sums of the FUN_004c3282 seed constants K1..K6; step() reproduces
     // the lagged-Fibonacci walk (`cc8 += inc; cc_i += cc_{i-1}+carry; cb8 := cbc; inc++`),
-    // consumed by FUN_0052f3e0 as `((cb8 & 0x7fff) - 0x4000) * scale >> 14` with the
-    // call sites adding the scale word back and clamping [0, 0x1ff]. CROWD scale word =
-    // header dword +6 sar 16 = u16 at record byte 8 (measured 30), TRAFF = 2.
+    // consumed by FUN_0052f3e0 as `((cb8 & 0x7fff) - 0x4000) * multiplier >> 14`; the
+    // callee `push edx; mov eax,edx; ...; pop edx` pair makes the caller's EAX load
+    // ([rec+8] >> 16) the multiplier and restores the caller's EDX load ([rec+6] >> 16)
+    // for the epilogue `add eax,edx` base add-back, clamping upper 0x1ff. CROWD words =
+    // header u16 at record bytes 8/10 (measured base 30, multiplier 15), TRAFF 2/1.
     {
         app::ExeTickAcc tick;
         tick.step();
         CHECK(tick.word15() == 17302);
         tick.step();
         CHECK(tick.word15() == 22024);
-        app::CrowdEnvelope env;
-        env.init(0x46, 132, 30);
-        CHECK(env.targetLevel() == 31); // 30 + ((17302 - 0x4000) * 30 >> 14)
-        CHECK(env.targetLevel() == 40); // 30 + ((22024 - 0x4000) * 30 >> 14)
         const auto crowdBytes = readFile(tree / "AUDIO" / "CRWD" / "CROWD.CRD");
         const formats::Crd card = formats::Crd::parse(std::span<const std::uint8_t>(crowdBytes));
-        CHECK(card.params[0].a == 30); // CROWD idle scale word
+        app::CrowdEnvelope env;
+        env.init(card.byte7, int(card.records[0].rate()), card.params[0], card.params[1]);
+        CHECK(env.targetLevel() == 30); // 30 + ((17302 - 0x4000) * 15 >> 14) = 30 + 0
+        CHECK(env.targetLevel() == 35); // 30 + ((22024 - 0x4000) * 15 >> 14) = 30 + 5
+        // pass-113 arrival lanes: group-2 DOWN target/frame draws and the group-1
+        // state-2 frame draw use the same tick walk (fresh machines, one draw each).
+        app::CrowdEnvelope envD;
+        envD.init(card.byte7, int(card.records[0].rate()), card.params[0], card.params[1]);
+        CHECK(envD.downTargetLevel() == 152); // 150 + ((17302 - 0x4000) * 40 >> 14) = 150 + 2
+        app::CrowdEnvelope envF;
+        envF.init(card.byte7, int(card.records[0].rate()), card.params[0], card.params[1]);
+        envF.downTargetLevel(); // consume tick word 1 for frame-draw ordering
+        CHECK(envF.downFrames() == 334);      // 300 + jitter(100) at word 2 = 300 + 34
+        app::CrowdEnvelope envU;
+        envU.init(card.byte7, int(card.records[0].rate()), card.params[0], card.params[1]);
+        for (int i = 0; i < 3; ++i) envU.downTargetLevel(); // words 1..3
+        CHECK(envU.upFrames() == 594);        // 500 + jitter(200) at word 4 = 500 + 94
+        CHECK(card.records[0].rate() == 0x40000); // state-0 divisor: >> 16 -> 4 frames
+        CHECK(card.params[0].a == 30); // CROWD idle base word (header dword +6 sar 16)
+        CHECK(card.params[0].b == 15); // CROWD idle multiplier (header dword +8 sar 16)
         const auto trafBytes = readFile(tree / "AUDIO" / "CRWD" / "TRAFF.CRD");
         const formats::Crd traf = formats::Crd::parse(std::span<const std::uint8_t>(trafBytes));
-        CHECK(traf.params[0].a == 2); // TRAFF idle scale word
+        CHECK(traf.params[0].a == 2);  // TRAFF idle base word
+        CHECK(traf.params[0].b == 1);  // TRAFF idle multiplier
     }
 
     std::printf("test_gameaudio: OK\n");

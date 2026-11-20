@@ -10,8 +10,9 @@
 namespace wc98::formats {
 
 struct CrdParams {           // two 12-byte groups at 0x08 and 0x14
-    // a = idle scale word (pass-113): the exe idle-pump operand `mov edx,[rec+6]; sar 16`
-    // (u16 at 0x08 / 0x14), target = scale + ((tick&0x7fff)-0x4000)*scale>>14 clamped.
+    // a/b = idle envelope words (pass-113): exe call-site pair `mov edx,[rec+6]; mov
+    // eax,[rec+8]; sar 16` — a (u16 at 0x08) is the target base add-back, b (u16 at 0x0A)
+    // the jitter multiplier: target = a + ((tick&0x7fff)-0x4000)*b>>14, clamp 0..0x1ff.
     std::uint16_t a = 0, b = 0;
     std::uint32_t c = 0, d = 0;
 };
@@ -33,7 +34,13 @@ struct Crd {
     std::uint8_t byte7 = 0;                // envelope blend weight (pass-55): SNDcrowdload
                                            // computes be = (byte7 << 9) / 100, bc = 0x200 - be
                                            // (CROWD 0x46=70 -> 358/154; TRAFF 0x04 -> 20/492)
-    std::array<CrdParams, 2> params;
+    std::array<CrdParams, 2> params;     // idle envelope parameter groups (pass-113 decode,
+                                         // pump FUN_004e510c arrival lanes): group 0 drives
+                                         // the UP targets (a + jitter(b), 0..0x1ff) and the
+                                         // state-2 frame draw (c + jitter(d), min 1); group 1
+                                         // drives the DOWN targets and their frame draw.
+                                         // CROWD: (30,15,500,200) and (150,40,300,100);
+                                         // TRAFF: (2,1,200,100) and (4,1,200,100).
     std::array<std::uint8_t, 8> bankSlots{}; // .BNK sound slots used, 0xFF = unused
     std::vector<CrdRecord> records;        // non-empty records of the 16 at 0x28
     std::array<std::uint32_t, 16> tableRefs{}; // u32s at 0x128, relative to each slot address

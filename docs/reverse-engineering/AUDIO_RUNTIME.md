@@ -185,10 +185,13 @@ shares one 16.16 level across the CROWD/TRAFF cards. Install `FUN_004e4ba0` deri
 weights from the card header byte 7 (`be = byte7 << 9 / 100`, `bc = 0x200 - be`; CROWD 70 ->
 358/154, TRAFF 4 -> 20/492). The idle pump `FUN_004e510c` walks the level through alternating
 ramp states (`DAT_005894ab` 0 up/1 down/2 up/3 down, then 2<->3 forever), drawing a new
-target on every ramp arrival (`(walkTick & 0x7fff) - 0x4000` × card scale word
-`>> 14` + scale, clamp `[0,0x1ff]`, `FUN_0052f3e0` + `FUN_004c321c` walk, pass-56/113 —
-not the request LCG, not a clock) and dividing the distance by a card-record ramp rate
-(`rate * 0x21 >> 16`: record 0 -> 132 frames, record 1 -> 198). `SNDcrowdpulse`
+target on every ramp arrival (`(walkTick & 0x7fff) - 0x4000` × card multiplier word
+`>> 14` + base word, clamp `[0,0x1ff]`, `FUN_0052f3e0` + `FUN_004c321c` walk, pass-56/113 —
+not the request LCG, not a clock) and dividing the distance by a per-state frame lane
+(pass-113b, see below). The earlier `rate * 0x21 >> 16` "132/198 idle frames" note was a
+misattribution: that lane is a `recordArea + 0xc + idx*0x10` (record rate field) scaled read
+from the pass-55 dump, not the idle arrival division — the arrival lanes below divide by
+card words directly. `SNDcrowdpulse`
 (`FUN_004e4cac`) reads record delta/ceiling/step (u16 pair at record bytes 4..7: measured delta
 350, ceiling **450** = 0x01c2 — an earlier gate note said 394, decimal arithmetic error) and
 refuses with status -8 when the level already sits at/above the ceiling, else ramps to
@@ -222,24 +225,25 @@ counter** (`inittimer` `FUN_00496bb0` zeroes it at `0x496be6`, the timer callbac
 classifier `FUN_0048dcd8` site `0x48dd97`, crowd boot `FUN_0048ed9c` site `0x48ee08` —
 uptime-nondeterministic, so `ExeLcg` seeds stay port-side constants [H]. The secondary rotation consumer `FUN_0048e9a0` (gate `DAT_0063268c != 0`) repeats
 qfetchindex+qpush. The idle envelope target draw (pass-55 machine) is NOT the LCG:
-`FUN_0052f3e0` computes `((tick & 0x7fff) - 0x4000) * scale >> 14` — and per pass-113
+`FUN_0052f3e0` computes `((tick & 0x7fff) - 0x4000) * multiplier >> 14` — and per pass-113
 (`analysis/pass113tick/clk3.txt`, objdump lane) the tick word is the `cb8` slot of the
 `FUN_004c321c` lagged-Fibonacci walk (`cc8..cb8` over `DAT_00585CB8..0x585CC8` driven by
-the increment slot `DAT_00585CCC`, carry chain `adc`), NOT a system clock; the caller's
-`mov eax,[rec+8]; sar eax,16` load at the idle site `0x4e5162` is dead code
-(`FUN_004c321c` overwrites EAX). The multiplier is the caller's scale word guarded at
-entry (`cmp $0x10000` → `edx = 0x10000`, `jl` → xor junk; `[rec+6] >> 16` load is
-push/pop-saved dead), and the call-site epilogue `add eax,edx; mov edx,0x5894c4;
-cmp $0x1ff` adds the scale back and clamps upper: `target = scale + jitter`,
-clamp `[0, 0x1ff]`. Scale word provenance = CRD card header dword `+6 sar 16` = u16 at
-card byte 8 (measured CROWD 30, TRAFF 2, gate-checked; variant lanes use record fields
-`+0x12/+0x14` → second params group, CROWD 40, and `+0x18/+0x1c` with min-1 clamp at
-`0x4e53f5`). The walk is seeded by `FUN_004c3282` with the running sums of six constants
+the increment slot `DAT_00585CCC`, carry chain `adc`), NOT a system clock. The callee
+prologue/epilogue `push edx; mov eax,edx; …; pop edx` makes the **caller's EAX load the
+multiplier** and restores the **caller's EDX load as the epilogue add-back**: idle site
+`0x4e5162` loads `mov eax,[rec+8]; sar eax,16` (multiplier, entry guard `cmp $0x10000` →
+clamp, `jl` → xor zero jitter) and `mov edx,[rec+6]; sar edx,16` (base), then the
+epilogue `add eax,edx; mov edx,0x5894c4; cmp $0x1ff` gives
+`target = base + jitter`, clamp upper `0x1ff`. Word provenance = CRD card header u16
+words at bytes 8/10 (measured CROWD base 30, multiplier 15; TRAFF 2/1, gate-checked);
+variant lanes load the same pair from record fields `+0x12/+0x14` (CROWD group 2: base
+150, multiplier 40) and raw `+0x18/+0x1c` dwords with min-1 clamp at `0x4e53f5`. The
+walk is seeded by `FUN_004c3282` with the running sums of six constants
 K1..K6 (`0xf22d0e56, 0x96041893, 0x3df3b646, 0x40dde76d, 0x97327ae1, 0xd1a9fbe7`); the
 runtime seed input is `rdtsc` (`0x47b9f6`, gated by `[0x57f674] != 0`) or an EBX counter
 (`0x42b145`), uptime-nondeterministic [H]. Port `ExeTickAcc` mirrors the walk bit-exact at
-the seed-0 constants and `targetLevel()` reproduces the formula; `CrowdEnvelope`'s
-mt19937 remains only the ramp-frame stand-in [H]. Scene-10 CROWD phrase lane `FUN_0048e6d0` (caller 0x48e83f, once-guard
+the seed-0 constants and `targetLevel()` reproduces the formula (`card.params[0].a`/`.b`);
+`CrowdEnvelope`'s mt19937 stand-in is removed by pass-113b below. Scene-10 CROWD phrase lane `FUN_0048e6d0` (caller 0x48e83f, once-guard
 `DAT_006325b4`): `CMIDI.BNK` (@0x566adc) → `DAT_006325cc`; `FUN_004e3128`/`FUN_004e3724` init
 `DAT_006325d0`; `FUN_0048e280` loads exactly two banks — `CROWD.PBK` → `DAT_006325d4`,
 `COMOS.PBK` → `DAT_006325d8` — through the `AUDIO\CRWD\%s` format (`FUN_0048e190` @0x566acc) +
@@ -264,6 +268,29 @@ not chants). Port: `MatchAudio::ExeLcg` mirrors `FUN_004ce2f3` (`chantRng_` repl
 variant + phrase picks) and `pumpChants` rotates the pool on the 100-frame cadence (even →
 front, odd → back) before lane top-up, matching drain-branch order; gate `test_gameaudio`
 asserts the seed-0 LCG draw sequence.
+
+**Pass-113b — envelope arrival frame lanes [C]** (evidence `analysis/pass113tick/frames.txt`,
+objdump `FUN_004e510c` `0x4e510c..0x4e5410`). The ramp-step division is a per-state lane, not a
+record-rate formula:
+- state 0 (UP) arrival `0x4e514b`: target = group 1 (header bytes 8/10, sar 16); divisor =
+  dword `[CRD buffer (0x64BEF0) + 0x34 + idx*48] sar 16`, min 1 (`0x4e51a1..0x4e51bd`) where
+  `idx` is the top byte of dword `0x5894a7` (runtime slot word [H], mirrored at idx 0 whose
+  entry is the record 0 rate word: CROWD `0x40000` → **4** frames); `step = dist idiv divisor`,
+  step ≤ 0 → 1 (`0x4e51cb`/`0x4e51f9`), `ab_ := 1`.
+- state 1 (DOWN) arrival `0x4e5232`: target = group 2 (`[rec+0x12] sar 16`, `[rec+0x14] sar 16`
+  = header bytes 20/22 → CROWD 150/40, TRAFF 4/1); frame count = `[rec+0x18]` (CROWD 300) +
+  jitter of the RAW dword `[rec+0x1c]` (100, no sar; 0x10000 guard in `FUN_0052f3e0`), min 1
+  (`0x4e526e..0x4e5289`); `step = (target - c0) idiv frames` (`0x4e52a1`), `ab_ := 2`.
+- state 2 arrival `0x4e52ee`: target = group 1 again; frame count = `[rec+0xc]` (500) + jitter
+  of raw `[rec+0x10]` (200), min 1 (`0x4e532d..0x4e5345`); `step = (c0 - target) idiv frames`,
+  `ab_ := 3`.
+- state 3 arrival `0x4e5389`: target = group 2; frame count = `[rec+0x18]` + jitter
+  `[rec+0x1c]` (`0x4e53ed`); `step = (target - c0) idiv frames`, `ab_ := 2`.
+The frame words are the header dwords at bytes 12/16 (group 1 `c`/`d`: CROWD 500/200) and 24/28
+(group 2 `c`/`d`: CROWD 300/100; TRAFF both 200/100), already parsed as `CrdParams::c`/`.d`.
+Port `CrowdEnvelope` mirrors all four lanes (`upFrames0_ = rateWord >> 16` min 1;
+`downTargetLevel`/`downFrames`/`upFrames` tick-order draws), replacing the mt19937 stand-in.
+Gate `test_gameaudio` (h) asserts fresh-machine draws 152 / 334 / 594 and the group-word truth.
 
 ## 7. Voice/speech pumps + boot registry (pass 57, measured 2026-11-19)
 

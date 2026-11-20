@@ -848,30 +848,41 @@ closed. Beat scheduler stays exe-side scheduling semantics (port commentary
 queue models sentence scheduling; gate operand unresolved [H]).
 Evidence: `analysis/pass73gain/NOTES.md`, `/tmp/wc98pass73/a1..a10*.txt`.
 
-## Pass-74: .DCT movie audio claim retracted (A9 closed — movies are silent)
+## Pass-74: .DCT movie audio — claim re-corrected (A9 reopened, Open-recoverable)
 
-The A9 residual claimed `.DCT` video carries its own audio track. Measured
-retraction: `INT_FIFA`/`INT_EASP`/`FL0_*` contain exactly one `SCHl` header +
-all `mTCD` chunks; chunk scan found zero `SCDl`/`SCEl`/audio chunks. The PT
-tags in the `SCHl` header (`82 01 02` channels, `83 01 07` codec, `85` sample
-count) declare audio metadata but no audio payload exists anywhere in the
-file — the fields are leftovers of the PSX `.STR` header template.
+**Correction of this pass's first report:** the initial "movies are silent /
+no audio payload exists" finding was a scan bug — the fourcc pattern tuple
+omitted `SCDl`/`SCEl`/`SCCl`, so the scan reported only `mTCD`. Full
+histogram over **all 29** `.DCT` files (`analysis/pass74dct/hist.txt`):
+every file contains `SCHl` + `SCCl` + `SCEl` + `SCDl×N` interleaved with
+`mTCD` — `INT_FIFA` = 1017 `mTCD` + 1017 `SCDl`; `FL0_*`/`FL1_*` =
+300–303 pairs; `SEQ_*`, `FL2/3` = 375–603 pairs. The `SCHl` PT tags
+(`82 01 02` = 2 channels, `83 01 07` = EA-XA) declare **stereo audio**;
+the port `schl` lane already decodes these streams (test lane counts 29
+`.DCT` files — `test_audio.cpp`).
 
-Exe movie pipeline (`analysis`/`/tmp/wc98pass74/m1..m7.txt`):
-- `FUN_00490ee8` boot: computes viewport from `DAT_00632a14/2c`, reserves two
-  frame buffers (`FUN_0049f5a0` → `DAT_00632a24/30`).
-- `FUN_0049110c` pump: `FUN_0042b4e8/bd04` open, `FUN_004910d8` chunk fetch —
-  accepts only `0x4443546d` ("mTCD") and frees everything else (`FUN_0042d2c0`),
-  `FUN_00490fb8` blits cells, `FUN_00490e64` input poll, `FUN_00491060`
-  release. **No SND playback call anywhere in the pump** — the original movies
-  are silent.
-- `FUN_0049110c` calls the percent lane `FUN_004906a4` once at movie start
-  (scene duck, pass-73 lane); `DAT_006328b0/8b8` handle Esc/skip.
-- The mTCD 8-byte payload preamble is the PSX STR header `{N codes, 0x3800,
-  q, 2}`; bytes past the u16 code-size field continue the MDEC code stream
-  (trailer size scales with per-frame code count: `INT_FIFA` 1692/3848/4648 B
-  for frames 1-3), not an audio rate.
+Exe movie pipeline (`analysis/pass74dct/m1..m10b.txt`):
+- `FUN_00490ee8` boot: viewport from `DAT_00632a14/2c`, two frame buffers
+  (`FUN_0049f5a0` → `DAT_00632a24/30`).
+- `FUN_0049110c` pump: open `FUN_0042b4e8/bd04`, chunk filter `FUN_004910d8`
+  — passes only `0x4443546d` ("mTCD") to the blit lane; **every other chunk
+  is freed** via `FUN_0042d2c0` and the filter returns 0. No SND call on
+  this path, so audio chunks are *not* consumed by the video pump.
+- Audio chunks belong to the SND stream service `iSNDstreamservice`
+  `FUN_004e64ac` (`cmn\sstream.c` `s_cmn_sstream_c_0056b6f4`, error string
+  `iSNDstreamservice --- ERROR PARSING`): reads file via `FUN_0042d194`,
+  dispatches chunks `FUN_004e5e48`; `SCDl` handler `FUN_004e5f90` appends
+  block records to list `DAT_00589508/0c`, counts `DAT_00589520/24`.
+  Its four callers (`FUN_004ea4e0`, `FUN_004e57b0`, `FUN_004e5aa4`,
+  `FUN_004e6834`) are not yet traced to movie playback — **routing of
+  `.DCT` audio during movies remains Open**.
+- Percent-lane duck caller `FUN_004906a4` inside the pump region is
+  conditional (`_DAT_00632a0c > 2`); args unverified — no claim made.
 
-Port already matches the truth: `app/video.cpp` presents video only. A9 row
-rewritten to Closed; `MENU_PARITY.md` intro-movies row "audio track" claim
-corrected to silent.
+Unverified, kept [H]: the trailer-before-preamble / MDEC-continuation theory
+for the bytes past the mTCD u16 code-size field (not re-checked this pass).
+
+Port state: `app/video.cpp` presents video only; `.DCT` audio decodes in the
+`schl` test lane but nothing plays during movies. A9 row reopened;
+`MENU_PARITY.md` intro-movies row corrected to "audio stream present,
+routing open".

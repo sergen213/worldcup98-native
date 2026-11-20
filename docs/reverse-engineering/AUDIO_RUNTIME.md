@@ -1011,7 +1011,8 @@ seam 1:1:
   decoded clip once at the speech percent idx3 gain (`sceneLevels()` → q7 lane), flips
   `consumed` (consume-on-use; second pick returns `false`). No scene currently feeds slots in
   the port — the exe scene→id mapping stays [H], so the API is gate-driven; the pass-79
-  selector/remmap/feed helpers are gate-only, screen-to-handler dispatch stays open.
+  selector/remmap/feed helpers are gate-only, screen-to-handler dispatch stays open
+  (closed by pass-82 — call sites + region attribution, see Pass-82 section).
 
 Gate: `tests/unit/test_gameaudio.cpp` announcer block (path spellings, silent-schedule
 decode-only, consume-on-use counter, neutral special missing lane + re-arm semantics, team
@@ -1072,7 +1073,7 @@ type-2 ids land in `SCHEDULE` numbering `000..217`. Evidence: `analysis/pass78gr
 file inventory, `GhidraWc98Sel1.py`).
 
 Pass-79 (2026-11-19): selector mirror + remmap ported, gate-driven (no scene calls them —
-screen-to-handler dispatch stays [H], see pass-77 residual). Implemented in `app/game_audio
+screen-to-handler dispatch stays [H], see pass-77 residual; closed by pass-82). Implemented in `app/game_audio
 .hpp/cpp` as `Announcer::fillSelector/pickSelector/resetCursor`, `Announcer::remmap`,
 `Announcer::pickNext` and free helpers `feedTeamSelectionAnnouncer` (0x458dc2 team bank +
 0x458df6 selector-0x0 std lane) and `feedBoardAnnouncer` (0x453b07/0x453b15/0x453b2e/
@@ -1098,3 +1099,56 @@ Gate: `test_gameaudio` pass-79 block (remmap lanes, grid/skip list counts + pick
 both feed sites on real assets `G_T0026.PBK`, `G_STD001.SMP`, `G_SCH000/021/102/189.SMP`,
 one-pick-per-call plays counter, drained-queue lane). Evidence: `analysis/pass79sel/NOTES.md`
 (`remmap.txt` = raw table dump + mapping derivation).
+
+Pass-82 (2026-11-20): **screen-to-handler dispatch closed** — the residual
+`[H]` from pass-77/79 ("no scene calls them") is wrong: every announcer board-handler
+owner has exactly one direct `E8` call site in an FE scene-dispatcher region
+(raw scan, AUTO delta `VA = raw + 0x400C00`; evidence `analysis/pass82dispatch/`:
+`an1.txt` handler pseudocode, `an2.txt` fill-loop helpers, `an3.txt` instruction
+dumps + gate helpers).
+
+Call sites and scene attribution (region string/fourcc/state evidence):
+
+| handler owner | call site | dispatcher region evidence |
+|---|---|---|
+| `FUN_00458cf0` | `0x458806` | state-name stores `mov dword[0x57d79c]="stg2"/"stg3"` (`0x458860/0x458878`), caption `BARDIRECTION` (VA 0x56360c), fourcc `back` load `0x4587b1`, `24ef` fourcc `0x458821` — group-stage standings board |
+| `FUN_00453a6c` | `0x453138` | `stg2/stg3` stores `0x45302b/0x453043`, scene string `mult` (VA 0x562e44) + `ow11`, fourcc `eras`/`back` — multiplayer/standings board dispatcher |
+| `FUN_00454338` | `0x4542c9` | caption/asset strings `am75` (VA 0x563078) |
+| `FUN_00454d60` | `0x45463b` | captions `arks`,`am79`,`ow74`,`ow79`,`am89`,`ow20` (VA 0x563090..0x5630f0) |
+| `FUN_0045548c` | `0x455064` | captions `ow37`,`ow56`,`ow06`,`ow91`,`ls%02d` (VA 0x563148..0x5631a8) |
+| `FUN_00455a3c` | `0x45574b` | feature captions `red.bin`,`\spcred.bin`,`Take a Dive`,`Big Heads` (VA 0x5631e4..0x563244) |
+| `FUN_00455f30` | `0x455d5b` | feature captions `Ball`,`…n Model`,`ffn` (VA 0x56326c..0x5632cc) |
+
+Exact scene-name ids for the five caption-board dispatchers stay **[H]** (regions
+carry caption/asset strings, not scene-id stores); the two board handlers above
+carry `stg2/stg3` state names verbatim.
+
+Caller pattern (identical at both board sites, `an3.txt` disasm `0x4587f6..0x458812`,
+`0x453123..0x453144`): `FUN_00489350` announce-open → gate chain →
+`FUN_00489b0c(scene)` returns non-zero ⇒ handler skipped — else handler runs —
+then `FUN_00489af4(scene)` appends the scene id to the announce-list
+`DAT_0062fafc[DAT_0057e374++]`. The `0x458806` site adds `FUN_00485364`
+(gate `[announcer-record+0x431c] == 0`) before the list gate, and the
+`0x453138` site adds `FUN_00489a80` (tick-fraction flag lane, `DAT_0057e5f8/5fc`,
+constants `0x5669a8/9ac/b0`, semantics [H]).
+
+Gate `FUN_004dac90` byte-count `>= 7` (inside both handlers): walks the 17
+six-byte speech-deck records at the `FUN_004cc060` buffer, counts non-empty
+decks — fewer than 7 loaded decks ⇒ no announcement. Phrase selectors verified
+instruction-level (`an3.txt`): `FUN_00458cf0` fills `0x0/0x1/0x2/0x3` per match
+type (jump table `0x458ce0`), then `0x5` win / `0xb` loss / `0x8` draw (mode byte
+`[0x6099c0]==1`, team-status byte `< 2` at `DAT_0060a0a4` record), `0xe` after
+`FUN_00498e90` team-check, `0x7` after both `FUN_004998c0` checks, and
+`0xf/0x10/0x11/0x12` per slot `EDI=0..3` when the draw flag is set;
+`FUN_00453a6c` fills first pass `0x23/0x29/0x26` then commit pass
+`0x33/0x39/0x36` (second grid, base `0x22`) on the record `+4/+6/+7` result-code
+1/2 combinatorics, with `FUN_00489920` remmap at `0x453b2e` (pass-79).
+`FUN_00489974` second arg (`EDX=2`) is not read by the fill loop — the loop only
+consumes `EAX` (selector) + candidate filter `FUN_00489bdc` (class 2/3 skip list
+by sentence id, language mode `DAT_00640fe8 ∈ {1,3}` fallback `FUN_00489bb0` /
+xor-swap, pass-79 grid mirror).
+
+Port: **no code change** — pass-79 `feedTeamSelectionAnnouncer`/`feedBoardAnnouncer`
+already mirror the two board fill sites and stay gate-driven; this pass only
+closes the dispatch residual (the port has no board scene that calls them, which
+matches the exe only in structure, not runtime behavior).

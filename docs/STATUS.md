@@ -142,6 +142,15 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
 
 
 ## Progress snapshot (third-pass UI reconstruction landed, v0.5.0)
+- **Announcer screen dispatch closed (pass-82, 2026-11-20)** — the pass-77/79 residual
+  "screen-to-handler dispatch stays [H]" was wrong: every announcer board-handler owner
+  (`FUN_00453a6c/454338/454d60/45548c/455a3c/455f30/458cf0`) has exactly one direct `E8`
+  call site in an FE scene-dispatcher region, gate chain `0x431c` → `FUN_00489b0c` skip →
+  handler → `FUN_00489af4` announce-list append; board sites carry `stg2/stg3` state names,
+  caption boards carry the feature-caption strings (`Take a Dive`, `Big Heads`, …). No port
+  code change — pass-79 feeds stay gate-driven; mapping + selector combinatorics documented
+  in `docs/reverse-engineering/AUDIO_RUNTIME.md` (Pass-82), evidence
+  `analysis/pass82dispatch/` (`an1..an3.txt`).
 - **Phase-11 audio-lane self-test coverage (pass-81, 2026-11-20)** — three new `--self-test`
   steps: `menu-music-loop` (FE_*.ASF stream start audibly over loopback render, 200-tick
   fade-out seam stops the voice, `enterScene()` restarts), `audio-device-render` (OpenAL-soft

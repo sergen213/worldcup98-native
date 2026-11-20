@@ -301,10 +301,12 @@ public:
     // use — see commentary.cpp / COMMENTARY_WC98.md §pick) and enqueue its segment-id run in TOC
     // order before sentenceStart. Exhausted pool -> null pick -> event stays silent.
     // Live-lane deviation (pass-86, analysis/pass86speech/NOTES.md): the in-play record lane
-    // 0x48f830 does NOT interrupt — while SNDsentencestatus()==3 (a sentence is speaking and the
-    // queue holds phrases) the start attempt fails and the record is recycled to the free queue
-    // DAT_006326c8, i.e. the event phrase is dropped (rejected() counts it). Idle path keeps the
-    // presentation seam's stop-then-start semantics.
+    // 0x48f830 does NOT interrupt — while SNDsentencestatus()==3 (exe predicate: DAT_0064b15a
+    // flag) the start attempt fails and the record is recycled to the free queue DAT_006326c8,
+    // i.e. the event phrase is dropped (rejected() counts it). Port sentence-active model =
+    // speaking && queue holds phrases (drained ⇒ accept, as retail accepts after a sentence
+    // ends); the class-arm dispatch of 0x48f47c is not ported (col-4 sequential-pool deviation).
+    // Idle path keeps the presentation seam's stop-then-start semantics.
     void trigger(const sim::SimEvent& e);
     // Speech master gain (SNDspeechinit vol + SNDspeechautovol scene ramp seam): the original
     // ramps the speech stream volume to the scene level on sentence start and back toward 0 at

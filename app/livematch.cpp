@@ -1704,7 +1704,7 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
             const int pct = audio::sceneLevels().level(audio::kSceneSpeech);
             if (pct != speechPctApplied) { speechPctApplied = pct; commentary.setScenePercent(pct); }
             const std::uint32_t before = commentary.sentencesStarted();
-            for (; evPos < w.events.size(); ++evPos) commentary.trigger(w.events[evPos]);
+            for (; evPos < w.events.size(); ++evPos) commentary.triggerLive(w.events[evPos]);
             if (commentary.sentencesStarted() > before)
                 std::cout << "live: commentary " << sim::eventName(w.events[evPos - 1].type)
                           << " -> phrase " << commentary.lastPhrase() << '\n';

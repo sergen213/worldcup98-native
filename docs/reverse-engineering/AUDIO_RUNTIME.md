@@ -1018,3 +1018,14 @@ decode-only, consume-on-use counter, neutral special missing lane + re-arm seman
 bank phrase decode + play). Evidence: `analysis/pass77pbp/probe.cpp` (refpack no-op,
 `frames=11024 avg=0 same=1`), `analysis/pass77pbp/probe2.cpp` (`nonzero=0 max=0`),
 `analysis/pass77pbp/NOTES.md`, `analysis/pass76pbp/disasm.txt`.
+
+Pass-77b (same day) closed the id side: rel32 scan (`call` operand = next VA + s32, raw VA
+= off+0x400C00) enumerates all 21 `CALL 0x4894ac` fill sites; each window shows the Watcom
+setup — type-1 sites take the team-id accessor `FUN_00485240` (`FUN_00485210()!=0 ?
+DAT_0062fab0 : DAT_0062fab4`) or its pair store `FUN_0048525c` (writes `{DAT_0062f468,
+DAT_0062f46c}` home/away-ordered); type-3 sites take `FUN_00489920` (40-entry u16-pair
+remmap table `DAT_0057e3fe`, default id `0xa1`) or the standing-list selector pair
+`FUN_00489974(EAX=selector 0x13..0x1b,0x26,0x36)` + `FUN_004899dc` (list `DAT_0062fbf8[]`,
+count `DAT_0062fd98 ≤ 0x28`, cursor `DAT_0062fd9c` or tick-fraction index, `-1` sentinel);
+scene handler owners `FUN_00453a6c/454338/454d60/45548c/455a3c/455f30/458cf0` fill then arm
+`FUN_004894c4`. Evidence: `analysis/pass77pbp/ann1.txt`, `ann11.txt`.

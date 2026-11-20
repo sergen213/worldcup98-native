@@ -1,7 +1,13 @@
 // EA .DCT movie playback: SCHl/mTCD frames -> SRE luma decode -> RGBA texture
 // upload per frame through the Vulkan renderer (docs/asset-formats/VIDEO.md).
+// Movie audio: the .DCT SCHl stream (SCDl blocks) plays through the Mixer;
+// the exe movie pump runs the A/V-sync loop only when the parsed block count
+// is > 2 (SNDstreaminit FUN_004ea4e0 return gated by `2 < _DAT_00632a0c`,
+// release FUN_004e57b0 `SNDstreamfree`; analysis/pass75movie/,
+// docs/reverse-engineering/AUDIO_RUNTIME.md pass-75).
 #include "video.hpp"
 
+#include "wc98/audio/mixer.hpp"
 #include "wc98/file.hpp"
 #include "wc98/formats/dct.hpp"
 #include "wc98/platform/window.hpp"
@@ -13,6 +19,7 @@
 #include <atomic>
 #include <cstdio>
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace wc98::app {
@@ -43,6 +50,19 @@ int runVideoPlay(const std::string& path, int gate, unsigned width, unsigned hei
         std::printf("skip: dct open failed: %s\n", e.what());
         return gate ? 2 : 1;
     }
+
+    // Movie audio (pass-75): the exe movie pump starts the SND stream service on the
+    // same .DCT file after the first frame fetch + viewport setup (`SNDstreaminit`
+    // FUN_004ea4e0 -> parse loop FUN_004e64ac -> SCDl blocks); it runs the
+    // A/V-synced presentation loop only when the parsed block count is > 2
+    // (`2 < _DAT_00632a0c`) and releases the stream at the end (`SNDstreamfree`
+    // FUN_004e57b0). Mirror: gate on > 2 SCDl blocks, start after the renderer
+    // exists. Frame pacing stays wall-clock (SDL_Delay) - the exe paces video on
+    // the audio frame counter `DAT_0058951c`; that sync is a port deviation.
+    std::unique_ptr<audio::Mixer> movieAudio;
+    audio::SoundId movieSound = 0;
+    std::size_t movieAudioBlocks = 0;
+    std::size_t movieAudioFrames = 0; // header.numSamples per channel
 
     std::unique_ptr<render::Renderer> renderer;
     std::unique_ptr<platform::Window> window;
@@ -76,6 +96,24 @@ int runVideoPlay(const std::string& path, int gate, unsigned width, unsigned hei
     render::Camera cam;
     cam.eye = {0, 0, 10};
     cam.verticalFovDeg = 45;
+    { // stream start (post-setup, exe ordering mirror): gate on > 2 SCDl blocks
+        auto shared = std::make_shared<std::vector<std::uint8_t>>(bytes); // mixer keeps the file alive
+        try {
+            for (const auto& s : formats::scanSchl({bytes.data(), bytes.size()}))
+                if (s.dataBlocks.size() > 2) {
+                    movieAudioBlocks = s.dataBlocks.size();
+                    movieAudioFrames = s.header.numSamples;
+                    movieAudio = std::make_unique<audio::Mixer>(
+                        gate ? std::optional<std::uint32_t>{s.header.sampleRate} : std::nullopt);
+                    movieSound = movieAudio->stream(shared, s);
+                    break;
+                }
+        } catch (const std::exception& e) {
+            std::printf("movie audio: disabled (%s)\n", e.what());
+            movieSound = 0;
+            movieAudio.reset();
+        }
+    }
     int done = 0;
     double fps = 0;
     for (const auto& h : frames) {
@@ -106,9 +144,28 @@ int runVideoPlay(const std::string& path, int gate, unsigned width, unsigned hei
         }
     }
 done_presenting:
+    std::size_t movieRenderedFrames = 0;
+    int moviePeak = 0;
+    if (movieAudio) {
+        if (gate) { // loopback lane: drain the stream through the mixer pump, measure it
+            std::vector<std::int16_t> buf(2048 * 2);
+            while (movieAudio->playing(movieSound) && movieRenderedFrames < movieAudioFrames) {
+                movieAudio->render({buf.data(), buf.size()});
+                movieRenderedFrames += buf.size() / 2;
+                for (const std::int16_t v : buf) {
+                    const int a = v < 0 ? -v : v;
+                    if (a > moviePeak) moviePeak = a;
+                }
+                if (movieRenderedFrames > movieAudioFrames) movieRenderedFrames = movieAudioFrames;
+            }
+        }
+        movieAudio->stop(movieSound);
+        movieAudio.reset(); // SNDstreamfree mirror
+    }
     renderer.reset(); // drain validation messages
-    std::printf("VIDEO frames=%d size=%dx%d fps=%.1f\n", done, frames.front().width, frames.front().height,
-                done ? fps / done : 0.0);
+    std::printf("VIDEO frames=%d size=%dx%d fps=%.1f movie-audio-blocks=%zu movie-audio-rendered=%zu peak=%d\n",
+                done, frames.front().width, frames.front().height,
+                done ? fps / done : 0.0, movieAudioBlocks, movieRenderedFrames, moviePeak);
     if (*messages) { std::printf("%u validation message(s)\n", messages->load()); return gate ? 3 : 3; }
     return 0;
 }

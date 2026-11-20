@@ -190,7 +190,7 @@ if(DEFINED WC98_TREE)
     # .DCT movie playback (docs/asset-formats/VIDEO.md): headless decode + Vulkan texture upload
     # of every INT_FIFA.DCT frame; frames=0 output fails the gate.
     add_test(NAME video_play COMMAND wc98-video-play --gate ${WC98_TREE}/VIDEO/INT_FIFA.DCT)
-    set_tests_properties(video_play PROPERTIES SKIP_RETURN_CODE 2 PASS_REGULAR_EXPRESSION "VIDEO frames=[1-9]")
+    set_tests_properties(video_play PROPERTIES SKIP_RETURN_CODE 2 PASS_REGULAR_EXPRESSION "VIDEO frames=[1-9][0-9]* .*movie-audio-rendered=[1-9][0-9]* peak=[1-9][0-9]*")
     # M4/M9 FE flow: windowed shell renders FEFLOW05 real art (presentation compositor),
     # captures per-frame PNGs, Enter reaches exhibition + tournament entry points.
     # Skip code 2 = no display / headless CI, like match_demo_frames.

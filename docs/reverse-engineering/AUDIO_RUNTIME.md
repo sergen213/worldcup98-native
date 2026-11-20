@@ -886,3 +886,44 @@ Port state: `app/video.cpp` presents video only; `.DCT` audio decodes in the
 `schl` test lane but nothing plays during movies. A9 row reopened;
 `MENU_PARITY.md` intro-movies row corrected to "audio stream present,
 routing open".
+
+## Pass-75: movie audio routing decoded — A9 closed, port wired
+
+Movie pump `FUN_0049110c` (`m12.txt`) calls `SNDstreaminit` `FUN_004ea4e0`
+(`cmn\ssinit.c`; strings `SNDstreaminit --- AUDIO_STREAMER`, `STREAMBUFSIZE`):
+call site disasm (`analysis/pass75movie/callsite_disasm.txt`): `0x4911c5`
+`mov $0xc8,%ebx` (EBX=200), `0x4911ca` `mov $0xf,%edx` (request count 15),
+`0x4911cf` `xor %ecx,%ecx`, `0x4911d1` `mov %ebp,%eax`, `0x4911f1` `push %ecx`
+(stack arg 0), `0x4911f8` `mov $0x40000,%ecx` (256 KiB), `0x4911fd`
+`call 0x4ea4e0`; then `0x491202` stores the return into `_DAT_00632a0c` and
+`0x491207` `cmp $0x2,%eax; jle 0x49133c` — the A/V-synced presentation loop
+runs **only when the parsed block count > 2**; the skipped path is the plain
+video drain loop. Ghidra watcom mapping of the body: `param_1` = ECX
+(0x40000 — passes the `param_1 < 0x401` `STREAMBUFSIZE` check), `param_2` =
+EDX = 15 (count, stored `DAT_0058959c`, parse loop runs until
+`DAT_00589598 >= param_2` or the tick deadline `DAT_006597b4`), `param_3` =
+stack push (0 → `DAT_00589586`), `in_EAX` → `DAT_00589504`; EBX = 200 stays
+callee-saved across the service calls, consumed downstream [H]. SCDl blocks
+append via `FUN_004e5f90` to the list `DAT_00589508/0c`.
+
+Sync lane: audio progress is `SNDstreamframes` `FUN_004ea6a0` →
+`DAT_0058951c`; the pump presents when `audioFrames - presented < 2`, keeps
+`_DAT_00632a08` as the high-water counter, and force-exits at
+`DAT_0057f690 * 2` elapsed (Esc/skip). Release: `FUN_004e57b0`
+(`SNDstreamfree`, cleanup handler installed by `FUN_004e6834` into
+`DAT_006597dc`, frees stream + block list `FUN_004e5f10`). Decode consumer
+callback `LAB_004e622c` (`DAT_00589694`) runs SND-server-side [H].
+
+Port mirror (`app/video.cpp`, pass-75): start the SCHl stream through the Mixer
+after the renderer exists (exe post-setup ordering), gated on `dataBlocks > 2`
+(exe `2 < _DAT_00632a0c`), stop + mixer destruct at movie end. **Deviation:**
+frame pacing is wall-clock `SDL_Delay(frameDelayMs)`, not audio-counter driven
+(the exe paces on `SNDstreamframes` `DAT_0058951c`). Gate mode uses a loopback
+mixer and drains the stream through `render()`, measuring it:
+`VIDEO frames=1017 ... movie-audio-rendered=1494277 peak=31605` (frames clamped
+to `header.numSamples`, peak = max |sample| mixed — matches the independent
+decoder probe `analysis/pass75movie/audioprobe.txt`: 2,988,554 stereo samples
+@ 22050 Hz, RMS 6903, peak 31605). `video_play` PASS regex requires
+`movie-audio-rendered` and `peak` non-zero. `wc98-video-play` now links
+`wc98_audio`. A9 row Closed (pacing deviation noted); evidence
+`analysis/pass75movie/`, `/tmp/wc98pass74/m11..m13.txt`, callsite disasm.

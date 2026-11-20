@@ -472,7 +472,13 @@ i.e. the pre-venue-assigned row; venue index global `DAT_005716b8`, table capaci
 else 0) → `0x8/0x10/0x20`; scene bucket C (`DAT_0064250C`: 6→1, {8,9}→2, else 0) → `0x40/0x80/`
 `0x100` (bucket C==2 fills the u16 high byte). Predicate: bit 0 unconditional; `flags & 0x200`
 records require `ctxId == DAT_006424FC = (uint)DAT_0059B2E6` (one value → at most one ctx pair of
-records 16..21 joins); else the masked word must keep all triples non-zero (`&0x6`, `&0x38`,
+records 16..21 joins); `DAT_006424FC` is a zero-extended u16 boot copy (`66 a1` at `0x409d4a`) of
+a u16 field at per-record base `0x59b2e6` (team id, [H] name): `FUN_0040F404` tests
+`short [0x59b2e6 + k*0x40]` against `0x35d`/`0x35e` = **861/862** (legend teams 861..876) and
+maps hits to `{3,2}` slot writes; `FUN_004110EC` reads the field absolute (`xor esi,esi` →
+`mov ax,[0x59b2e6]`) and compares against `861`; `DAT_00642500 ← 0x59b70e` = same field at
+base+`0x428`. Producer unrecovered: zero absolute stores or refs into `0x59b1c0..0x59b400`
+(pass-112ctx); fill is a pointer-relative team-setup lane; else the masked word must keep all triples non-zero (`&0x6`, `&0x38`,
 `&0x1c0`). Gate `test_sci` boot-mode block pins per-scene register sets (scene 10 = 6 with the ctx
 global unmatched, 7 with a matched ctx value; scene 6 = 5/6; scene 8 = 4/5; scene 9 = 4). Membership
 is fully deterministic from (scene, venue flag, ctx value) — the aux slots are all `0xffff` after

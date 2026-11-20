@@ -1203,9 +1203,40 @@ Port mirror: `app::Announcer::isMember/selectedTeamId/storePair` + feed setters
 `setMembership`/`setTeamIds`/`setPairIds` (`app/game_audio.hpp/cpp`, pass-83 block after
 `remmap`); gate `tests/unit/test_gameaudio.cpp` pass-83 block pins empty-list miss,
 hit/miss id selection, and the (f468,f46c)/(f46c,f468) store ordering. Feed helpers
-stay gate-driven (dispatch closed pass-82; needle provenance at the fill sites [H]).
+stay gate-driven (dispatch closed pass-82; needle provenance at the fill sites closed
+by pass-84, Pass-84 section).
 
 Evidence: `analysis/pass83accessors/` (`ac1.txt` accessor decompiles, `ac2.txt` 21-site
 disassembly windows, `ac3.txt` `FUN_00485210`/`FUN_00489bdc`/`FUN_004973b0` decompiles +
 DAT write-reference attribution for `0x62f468/62f46c/62fab0/62fab4/62fd98/62fbf8`),
 Ghidra scripts `GhidraWc98Ac1..Ac3.py`.
+
+## Pass-84: fill-site needle provenance closed (measured 2026-11-20)
+
+Retracts the pass-83 residual "needle provenance at the fill sites [H]" - every `EBX`
+id feeding the 21 `FUN_004894ac` (`EAX`=slot, `EDX`=type, `EBX`=id) sites now traces to
+a source:
+
+- Raw accessor bytes (file scan, no pseudocode): `FUN_00485210` = `PUSH ECX; PUSH EDX;
+  MOV ECX,EAX; MOV EDX,[DAT_0062facc]; TEST/SHL EDX,2; loop CMP ECX,[EAX+0x62f790] ->
+  JE found / CMP EAX,EDX; JL loop`; needle = `EAX`, ECX/EDX scratch with PUSH/POP
+  restore. `FUN_00485240` = `MOV EAX,[DAT_0062fab0]; CALL FUN_00485210; TEST EAX,EAX;
+  JZ -> RET [DAT_0062fab4]; hit RET [DAT_0062fab0]` (needle is the stored id, not a
+  caller arg). `FUN_0048525c` = `PUSH ECX; MOV ECX,EAX; CALL FUN_00485240; CMP EAX,
+  [DAT_0062fab0]; JNE swap; *ECX=[0x62f468]; *EDX=[0x62f46c]; POP ECX; RET` - the
+  compare tests the **selection result**, and ECX is PUSH/POP-preserved across the call.
+- `0x453b07`: `CALL 0x48525c; MOV EBX,ECX` - id = handler's packed-team-pair `ECX`
+  upper word (`SAR ECX,0x10` at `0x453ab6`), preserved through the pair store.
+- Constants: `0x453b15` id 0 (slot 2 t2), `0x45615f` id 1, `0x455a04` lane fixed triple
+  slot `0xd`/type `0xa`/id `0xb` feeding the `0x485090` gate (not a fill).
+- `0x453b2e`: `MOVSX EAX,SI; CALL FUN_00489920; MOV EBX,EAX` - remmap of loop var.
+- Deck lane `0x458dc2`: `MOV EBX,ESI` (deck gate `CALL 0x4dac90`, `CMP AL,7`).
+- Selector lanes `0x454379/0x454dde/0x455a7d/0x455a98/0x455aba/0x455f71/0x455f8c/
+  0x455fae/0x458ded/0x4591f6`: `MOV EBX,EAX` = `FUN_00489974->FUN_004899dc` or
+  `FUN_00489920` return.
+- `0x458dd7-0x458dd0`: jump table `[EAX*4+0x458ce0]` selects the branch fill lanes.
+
+No remaining [H] needle provenance; no port change needed (id sources are already
+mirrored pass-83/79). Evidence: `analysis/pass84needle/` (`n1.txt` - all 36 direct
+call refs to `FUN_00485210`, containing-function decompiles, -90-byte disassembly
+windows at all 21 fill sites; `GhidraWc98N1.py`).

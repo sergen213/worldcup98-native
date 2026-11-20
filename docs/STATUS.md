@@ -152,7 +152,14 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
   class branch keys on selector index {2,3}; `DAT_00640fe8 ∈ {1,3}` specials. Port
   mirror `Announcer::isMember/selectedTeamId/storePair` + feed setters, gate in
   `test_gameaudio` pass-83 block. Evidence `analysis/pass83accessors/` (`ac1..ac3.txt`);
-  fill-site needle provenance stays [H].
+  fill-site needle provenance closed by pass-84 (Pass-84 section).
+- **Fill-site needle provenance closed (pass-84, 2026-11-20)** — all 21 `FUN_004894ac`
+  fill-site `EBX` ids traced: `0x453b07` id = handler packed-pair `ECX` upper word
+  (`FUN_0048525c` PUSH/POP-preserved ECX across the call; raw bytes `PUSH ECX; MOV
+  ECX,EAX; CALL 0x485240; CMP EAX,[DAT_0062fab0]` compare the *selection result*),
+  constants {0,1,11}, `MOVSX SI -> FUN_00489920` remmap lane, deck-loop `ESI` id, and
+  selector/pick `MOV EBX,EAX` lanes; `0x458dd0` jump table `[EAX*4+0x458ce0]` branch
+  fills. No port change; evidence `analysis/pass84needle/` (`n1.txt`).
 - **Announcer screen dispatch closed (pass-82, 2026-11-20)** — the pass-77/79 residual
   "screen-to-handler dispatch stays [H]" was wrong: every announcer board-handler owner
   (`FUN_00453a6c/454338/454d60/45548c/455a3c/455f30/458cf0`) has exactly one direct `E8`

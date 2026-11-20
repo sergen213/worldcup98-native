@@ -466,10 +466,12 @@ copied as a name string at `0x419f5c` — **venue 0 = `pari___x.big`**, name slo
 `0x55aa48 + venue*0x10`, 14 rows `{pakptr, 1, 0, lane, 0x23f0, 0x2d50, 0, flag}` for
 `{pari, stet, stde, lens, lyon, mars, mont, toul, bord, nant, prac, semi, fina, clas}`. The
 earlier pass-111 base (13 rows from `0x571514`, venue 0 = `stet`, pari = pre-venue row) was
-off-by-one; the flag column is `{pari:1,stet:1,stde:0,lens:1,lyon:1,mars:0,mont:1,toul:1,
-bord:1,nant:1,prac:1,semi:1,fina:0,clas:1}` and the lane column `{pari..bord:1, nant:0, prac:1,
-semi:1, fina:0, clas:0}` — same numbers as the old `{stet:1,stde:1,lens:0,…}` listing, venue
-labels shifted by one. When the venue global keeps its default `0xffffffff` (-1), `FUN_0041a098`
+off-by-one; the flag column `{pari:1,stet:1,stde:0,lens:1,lyon:1,mars:0,mont:1,toul:1,
+bord:1,nant:1,prac:1,semi:0,fina:0,clas:1}` and the lane column `{pari..nant:1, prac:0,
+semi:1, fina:1, clas:0}` (raw-verified byte-by-byte 2026-11-20, `test_mdl fogLaneChecks`
+pins both the lane column and the fog palette tables; the earlier `{…,semi:1,fina:0,…}`
+flag tail and `{nant:0,prac:1,…,fina:0,…}` lane tail were pass-116 misreads — the lane
+column values were taken one row late for venues 9..12). When the venue global keeps its default `0xffffffff` (-1), `FUN_0041a098`
 reads the default row at `0x5714d8` (pakptr sentinel `0xffffffff`, flag 0); `pari` is venue 0,
 not a pre-venue row. All `venue<<5` consumers are same-row (replaces pass-115ctx prev-row
 mapping): `0x41a020/0x41a0a0` row `+0x1c` flag; `0x41a680 cmp $0,[0x571504+venue<<5]` = row
@@ -477,7 +479,13 @@ mapping): `0x41a020/0x41a0a0` row `+0x1c` flag; `0x41a680 cmp $0,[0x571504+venue
 `DAT_00571710` (`0x409af8/0x40de38`), calls `0x41da7c` (ebx=1, edx=`0x571718`) and registers
 handler `0x41be20` via `0x4bf1d0`; `0x41a3c0 cmp $0,[0x571500+venue<<5]` = row `+0x08`
 (all-zero in the image) skips the fly-around block; `0x41a0b2/0x41a0c4` read row `+0x10/+0x14`
-(`0x23f0/0x2d50`) into caller cells. Flag/lane semantics stay [H]):
+(`0x23f0/0x2d50`) into caller cells. Lane semantics CLOSED (pass-117fog): row `+0x0c` is the
+fog enable for the fly-around scene — installed fog slot `DAT_00571710` whose handler
+`0x41be20` writes coefficients `0xb333` (0.7<<16) and near/far `+0x1c/+0x20` (consumed by
+`FUN_0041b4ac`), with the palette tables `DAT_00571e48/0x571e6c/0x571e90` (12 x RGB) selected
+by `idx = mask ? 0xb : ([0x5c65b0] ? 10 : ([0x5c65b8] ? pair idx + 5 : pair idx))`; raster
+blend application unrecovered [H]. Port mirror `formats::parseVenueFogLane` + `test_mdl`
+`fogLaneChecks`. Flag semantics remains [H]:
 `venueFlag == 0 → bit 0x2, == 1 → bit 0x4`, any other value sets no venue bit (strict
 `==0/==1` branches in the decompile; the table rows hold only 0/1): scene bucket B (`DAT_00642508`: selector {0,11}→2, 9→1,
 else 0) → `0x8/0x10/0x20`; scene bucket C (`DAT_0064250C`: 6→1, {8,9}→2, else 0) → `0x40/0x80/`

@@ -1,6 +1,9 @@
 // WC98-specific decode (pass-105), no fifa99-native lineage.
 #include "wc98/formats/venue.hpp"
 #include "wc98/formats/refpack.hpp"
+#include "wc98/reader.hpp"
+
+#include <format>
 
 namespace wc98::formats {
 
@@ -31,6 +34,40 @@ std::span<const VenueEntry> venueTable() {
 
 FshFile parseVenuePak(std::span<const std::uint8_t> pak) {
     return FshFile::parse(refpack::decompressIfNeeded(pak));
+}
+
+namespace {
+// DGROUP image range of the retail FIFAWC.EXE: VA 0x55A000 at file raw 0x158600
+// (VA = raw + 0x401A00), same binding as the SCI registry parse (sci.cpp).
+constexpr std::uint32_t kDgroupVa = 0x55a000u;
+constexpr std::uint32_t kDgroupRaw = 0x158600u;
+constexpr std::uint32_t kFlyaroundTableVa = 0x5714f8u; // 14 rows, stride 0x20
+constexpr std::size_t kPaletteEntries = 12;
+} // namespace
+
+VenueFogLane parseVenueFogLane(std::span<const std::uint8_t> exeBytes) {
+    const auto raw = [&](std::uint32_t va) {
+        return static_cast<std::size_t>(va - kDgroupVa + kDgroupRaw);
+    };
+    const auto at = [&](std::uint32_t va, std::size_t n) {
+        if (raw(va) + n > exeBytes.size())
+            throw FormatError(std::format("venue fog lane: VA {0:x} outside image", va));
+        return exeBytes.data() + raw(va);
+    };
+    const auto rgb = [&](std::uint32_t va, std::size_t idx) {
+        const std::uint8_t* p = at(va + static_cast<std::uint32_t>(idx * 3), 3);
+        return VenueRgb{p[0], p[1], p[2]};
+    };
+
+    VenueFogLane lane;
+    for (std::size_t i = 0; i < lane.enable.size(); ++i)
+        lane.enable[i] = at(kFlyaroundTableVa + i * 0x20 + 0x0c, 1)[0];
+    for (std::size_t i = 0; i < kPaletteEntries; ++i) {
+        lane.fogColors[i] = rgb(0x571e48u, i);
+        lane.whiteColors[i] = rgb(0x571e6cu, i);
+        lane.pitchColors[i] = rgb(0x571e90u, i);
+    }
+    return lane;
 }
 
 } // namespace wc98::formats

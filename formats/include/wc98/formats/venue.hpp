@@ -24,6 +24,7 @@
 // See analysis/pass105venue/NOTES.md and analysis/pass106venue/NOTES.md (render lane).
 #include "wc98/formats/fsh.hpp"
 
+#include <array>
 #include <cstdint>
 #include <span>
 #include <string_view>
@@ -44,5 +45,31 @@ std::span<const VenueEntry> venueTable();
 // Decompresses a venue .PAK (RefPack header 0x10FB) and parses the SHPI container it
 // holds; throws formats::FormatError on malformed input.
 FshFile parseVenuePak(std::span<const std::uint8_t> pak);
+
+// Venue fog lane (pass-117fog): the fly-around venue table (DGROUP VA 0x5714f8, 14 rows
+// stride 0x20) row +0x0c fog-enable byte — the gate at 0x41a680 installs the fog slot
+// `DAT_00571710` (coefficients written by handler 0x41be20 as 0xb333 = 0.7<<16 fixed-point,
+// near/far +0x1c/+0x20 consumed by FUN_0041b4ac) unless row+0x0c == 0 or the boot mask
+// byte [0x60cc06] & DAT_0057d2bc is set — plus the stride-3 RGB palette tables at
+// DAT_00571e48 (sky/fog colours), DAT_00571e6c (white group) and DAT_00571e90 (pitch
+// greens), selected by `idx = mask ? 0xb : ([0x5c65b0] ? 10 : ([0x5c65b8] ? venue-pair
+// idx + 5 : venue-pair idx)) (boot venue-pair index DAT_005716c0 from FUN_00422634, value
+// semantics [H]) and copied to raster globals 0x5c65bc..0x5c65c4. The coefficient blend
+// application inside the raster core is not statically recovered [H]; this is the data
+// lane only — no pixel-behaviour claim. Notes analysis/pass117fog/NOTES.md.
+struct VenueRgb {
+    std::uint8_t r = 0;
+    std::uint8_t g = 0;
+    std::uint8_t b = 0;
+};
+
+struct VenueFogLane {
+    std::array<std::uint8_t, 14> enable{}; // fly-around row +0x0c per venue (1 = fog slot installed)
+    std::array<VenueRgb, 12> fogColors{};  // DAT_00571e48 sky/fog colour entries
+    std::array<VenueRgb, 12> whiteColors{}; // DAT_00571e6c white group
+    std::array<VenueRgb, 12> pitchColors{}; // DAT_00571e90 pitch greens
+};
+
+VenueFogLane parseVenueFogLane(std::span<const std::uint8_t> exeBytes);
 
 } // namespace wc98::formats

@@ -188,12 +188,52 @@ void venueChecks() {
     CHECK(callbacks == 1); // only lpolybf carries the scene-handler callback (FUN_0047b9a4)
     CHECK(texturesNamedInPak == 12); // every venue pak covers at least one MDL texture tag
 }
+
+// pass-117fog: venue fog lane data mirror — fly-around venue table (DGROUP VA 0x5714f8,
+// 14 rows stride 0x20) row +0x0c fog-enable byte and the stride-3 RGB palette tables at
+// DAT_00571e48/0x571e6c/0x571e90 (raw-verified 2026-11-20). No pixel-behaviour claim:
+// the coefficient blend application in the raster core is unrecovered [H].
+void fogLaneChecks() {
+    const auto exe = wc98::readFile(treeDirOrSkip() / "FIFAWC.EXE");
+    const auto lane = wc98::formats::parseVenueFogLane(std::span<const std::uint8_t>{exe});
+
+    // Fog-enable column (row +0x0c), byte truth: venues 0..9 (pari..nant) enabled,
+    // prac 10 disabled, semi 11/fina 12 enabled, clas 13 disabled.
+    const std::uint8_t kEnable[14] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 0};
+    for (std::size_t i = 0; i < 14; ++i)
+        CHECK(lane.enable[i] == kEnable[i]);
+
+    // Cross-check every palette byte against the shipped image (VA = raw + 0x401A00).
+    const auto rgbAt = [&exe](std::uint32_t va, std::size_t idx) {
+        const std::size_t off = static_cast<std::size_t>(va - 0x401a00u) + idx * 3;
+        return std::array<std::uint8_t, 3>{exe[off], exe[off + 1], exe[off + 2]};
+    };
+    for (std::size_t i = 0; i < 12; ++i) {
+        const auto fog = std::array<std::uint8_t, 3>{lane.fogColors[i].r, lane.fogColors[i].g, lane.fogColors[i].b};
+        const auto white = std::array<std::uint8_t, 3>{lane.whiteColors[i].r, lane.whiteColors[i].g, lane.whiteColors[i].b};
+        const auto pitch = std::array<std::uint8_t, 3>{lane.pitchColors[i].r, lane.pitchColors[i].g, lane.pitchColors[i].b};
+        CHECK(fog == rgbAt(0x571e48u, i));
+        CHECK(white == rgbAt(0x571e6cu, i));
+        CHECK(pitch == rgbAt(0x571e90u, i));
+    }
+
+    // Pinned representative entries (decoded values, not just byte equality).
+    CHECK(lane.fogColors[0].r == 0x80 && lane.fogColors[0].g == 0xb8 && lane.fogColors[0].b == 0xf1);
+    CHECK(lane.fogColors[4].r == 0xa1 && lane.fogColors[4].g == 0xa8 && lane.fogColors[4].b == 0xb7);
+    CHECK(lane.fogColors[11].r == 0 && lane.fogColors[11].g == 0 && lane.fogColors[11].b == 0);
+    CHECK(lane.whiteColors[0].r == 0xff && lane.whiteColors[10].r == 0 && lane.whiteColors[10].g == 0);
+    CHECK(lane.whiteColors[11].r == 0xb5 && lane.whiteColors[11].g == 0x26 && lane.whiteColors[11].b == 0x00);
+    CHECK(lane.pitchColors[0].r == 0x4c && lane.pitchColors[0].g == 0x72 && lane.pitchColors[0].b == 0x31);
+    CHECK(lane.pitchColors[10].r == 0x9c && lane.pitchColors[10].g == 0x6b && lane.pitchColors[10].b == 0x10);
+    CHECK(lane.pitchColors[11].r == 0x64 && lane.pitchColors[11].g == 0x64 && lane.pitchColors[11].b == 0x64);
+}
 } // namespace
 
 int main() {
     syntheticChecks();
     treeChecks();
     venueChecks();
+    fogLaneChecks();
     std::printf("test_mdl: ok\n");
     return 0;
 }

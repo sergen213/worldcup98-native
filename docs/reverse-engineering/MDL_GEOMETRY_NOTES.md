@@ -67,7 +67,21 @@ callback is **invoked**, not stored: `FUN_00484424` calls it when `idx < 0xc && 
 `FUN_00483978` (unload) calls it before resetting `+0x10..0x18`. There is no keyframe
 table — animation is the global accumulator + per-frame matrix recompose. Evidence
 `analysis/pass106venue/t1.txt` (xrefs), `t2.txt` (disasm 0x484170+), `t3.txt` (18
-renderer fns); `analysis/pass106venue/NOTES.md`. Port render lane still open: nothing in app/
-consumes `venueTable` (FE screens are still 2D LAY composites), the decoded semantics
-above are its spec, nothing invented.
+renderer fns); `analysis/pass106venue/NOTES.md`.
+Render lane CLOSED (pass-108): `presentation/{include/wc98/presentation/,src/}venue.{hpp,cpp}`
+mirrors the loader material lane (FUN_00483418: packed-RGB or named-texture records, venue
+.PAK first then companion `FE/<TAG>.FSH`, both tables loaded), the matrix compose
+(`venueMatrix` = translate*euler(turns*2pi)*scale, `LAB_004840d0` stack order, euler multiply
+order [H]), the accumulator (`VenueFrame::advance`, 0.003/0.03 doubles), and the
+flat+textured rasterizer semantics through the GPU mesh pipeline. File uv is [0,1]
+(lensf probe: range 0..1) — the exe extent multiply belongs to its texel-space software
+sampler; the GPU sampler keeps normalized uv. App lane: `FeFlow::enableVenue(slot)` wires the
+venue draws into the feflow35 board frame (`--fe-venue N`), gate `fe_venue_wc35` proves the
+load; the venue is not yet visible on the board — the port composites it under the LAY back's
+opaque full-screen collage and the exe draw order/viewport vs the LAY back (FUN_00482d7c vs
+the scene blit) is [H], visibility OPEN; the exe venue index provenance is the schedule record
+word +0xa high half (0x4587e8) and the port model has no fixture schedule feed, so the slot is
+port-side [H]. Gates `render_demo_venue_lensf`/`render_demo_venue_brdxf`
+(bitmap + frame-variance floors) prove the render lane with textured captures;
+`analysis/pass108venue/NOTES.md`.
 In-game player/stadium geometry is a different container (INGAME .BIG dialects — not this format).

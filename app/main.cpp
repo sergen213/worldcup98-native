@@ -119,6 +119,7 @@ int run(int argc, char** argv) {
     int feLeagueCfg = 0; // --fe-league-cfg N: open the league config family screen N (72/74/75/76/78/79/80)
     bool feLeaguePopup = false; // --fe-league-popup: FEFLOW75 + Enter -> FEFLOW76 aggression popup (retail 8005 edge)
     int feWcCfg = 0; // --fe-wc-cfg N: open the world-cup family screen N (18/23/24/35)
+    int feVenue = -1; // --fe-venue N: pass-108 venue fly-in backdrop on the board scene (slot 0..11)
     int feCheatsMask = -1; // --fe-cheats N: open the feflow95 cheats screen with cheat row i ON for bit i (MENU_PARITY.md §8)
     int feHistoryYear = -1; // --fe-history N: open feflow90 (world-cup history board) at year row N (pass 13)
     int feNavHistory = -1;  // --fe-nav-history N: open feflow90, move year cursor to N, Enter -> feflow91 chain
@@ -182,6 +183,7 @@ int run(int argc, char** argv) {
         else if (a == "--fe-league-cfg") { feMode = true, smokeFrames = 1, feLeagueCfg = std::stoi(next()); } // league config grid/popup capture gate
         else if (a == "--fe-league-popup") { feMode = true, smokeFrames = 1, feLeaguePopup = true; } // Enter-edge popup gate (pass-38League)
         else if (a == "--fe-wc-cfg") { feMode = true, smokeFrames = 1, feWcCfg = std::stoi(next()); } // world-cup family screen capture gate
+        else if (a == "--fe-venue") { feMode = true, feVenue = std::stoi(next()); } // pass-108 venue fly-in slot gate
         else if (a == "--fe-cheats") { feMode = true, smokeFrames = 1, feCheatsMask = std::stoi(next()); } // feflow95 checkbox-screen capture gate; N = row bitmask ON at open
         else if (a == "--fe-history") { feMode = true, smokeFrames = 1, feHistoryYear = std::stoi(next()); } // feflow90 capture gate; N = year row index at open
         else if (a == "--fe-nav-history") { feMode = true, smokeFrames = 1, feNavHistory = std::stoi(next()); } // nav chain: feflow90 -> Enter 'fe91' -> feflow91 capture
@@ -312,6 +314,10 @@ int run(int argc, char** argv) {
 
     std::unique_ptr<app::FeFlow> fe;
     if (feMode) fe = std::make_unique<app::FeFlow>(*renderer, tree, lang);
+    if (fe && feVenue >= 0) { // pass-108 venue fly-in slot (board backdrop); gate asserts loaded
+        fe->enableVenue(feVenue);
+        if (!fe->venueLoaded()) { std::cerr << "fe-venue: slot " << feVenue << " failed to load\n"; return 1; }
+    }
     if (!feScreenName.empty()) { // arbitrary-screen capture lane (app/fe_flow.cpp): bad member name -> exit 2
         std::string err;
         if (!fe->loadCaptureScreen(feScreenName, err)) { std::cerr << "fe-screen " + feScreenName << ": " << err << '\n'; return 2; }
@@ -524,12 +530,18 @@ int run(int argc, char** argv) {
         }
         render::SpriteBatch ui;
         render::Frame frame; // empty scene by default: the shell only proves the presentation path.
+        std::vector<render::DrawItem> venueDraws; // pass-108 board backdrop (exe FUN_00482d7c lane)
         if (fe) {
             const auto st = fe->drawCurrent(ui);
             totalShapes += presented == 0 ? st.shapes : 0; // first-frame stats are gate evidence
             totalTexts += presented == 0 ? st.texts : 0;
             frame.ui = &ui;
             totalCursors += presented == 0 ? st.cursors : 0;
+            if (fe->venueActive()) {
+                venueDraws = fe->venueDraws();
+                frame.draws = std::span(venueDraws);
+                frame.camera = fe->venueCamera();
+            }
         }
         menuMusic.update(); // FUN_0048eb98 rotation + seam ramps ride the FE frame loop
         auto launchSelected = [&] { // Enter/confirm: Tournament entry opens team-select; confirm launches with the pick.

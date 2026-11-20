@@ -26,6 +26,7 @@
 #include "wc98/formats/fsh.hpp"
 #include "wc98/formats/layout.hpp"
 #include "wc98/presentation/fe_screen.hpp"
+#include "wc98/presentation/venue.hpp"
 #include "wc98/formats/png.hpp"
 #include "wc98/formats/refpack.hpp"
 #include "wc98/file.hpp"
@@ -90,11 +91,19 @@ int main(int argc, char** argv) {
     std::string laySpec, treeArg, fshSpec, lang = "eng";
     const std::string outPath = argc > 1 ? argv[1] : "wc98-render-demo.png";
     int minShapes = 0;
+    int venueIndex = -1;
+    int minTris = 0;
+    int venueMinBitmaps = 0;
+    double venueMinVariance = 0.0;
     bool layText = false;
     for (int i = 2; i < argc; ++i) {
         const std::string a = argv[i];
         if (a == "--lay" && i + 1 < argc) laySpec = argv[++i];
         else if (a == "--fsh" && i + 1 < argc) fshSpec = argv[++i];
+        else if (a == "--venue" && i + 1 < argc) venueIndex = std::atoi(argv[++i]);
+        else if (a == "--min-tris" && i + 1 < argc) minTris = std::atoi(argv[++i]);
+        else if (a == "--venue-min-bitmaps" && i + 1 < argc) venueMinBitmaps = std::atoi(argv[++i]);
+        else if (a == "--venue-min-variance" && i + 1 < argc) venueMinVariance = std::atof(argv[++i]);
         else if (a == "--tree" && i + 1 < argc) treeArg = argv[++i];
         else if (a == "--lay-text") layText = true;
         else if (a == "--min-shapes" && i + 1 < argc) minShapes = std::atoi(argv[++i]);
@@ -123,6 +132,8 @@ int main(int argc, char** argv) {
         std::vector<DrawItem> draws;
         SpriteBatch ui;
         glm::vec4 clearColor{0, 0, 0.2f, 1};
+        Camera cam;
+        cam.eye = {0, 0, 10};
 
         // Aspect-fit blit of one decoded FSH bitmap over the frame (--fsh and legacy tree modes).
         auto blit = [&](const formats::FshBitmap& b, std::string_view label) {
@@ -203,7 +214,44 @@ int main(int argc, char** argv) {
                 std::cerr << "only " << st.shapes << " shapes resolved, expected at least " << minShapes << '\n';
                 return 1;
             }
-        } else if (!treeArg.empty()) { // real-asset mode: the largest FE flow bitmap from the user's tree
+        } else
+        if (venueIndex >= 0) { // pass-108 venue fly-in: FE/<TAG>.MDL + FE/PACK/<TAG>.PAK + fe/<tag>.fsh
+            if (root.empty()) { std::cerr << "--venue: needs --tree <dir>\n"; return 2; }
+            presentation::VenueFiles files;
+            if (!presentation::loadVenueFromTree(root, std::size_t(venueIndex), files)) {
+                std::cerr << "--venue: no venue files under " << root << '\n';
+                return 2; // gate skip when the tree is absent
+            }
+            const auto built = presentation::buildVenueMeshes(files.mdl, files.pak, files.fsh);
+            if (!built.valid || built.triangles == 0) {
+                std::cerr << "--venue " << venueIndex << ": no triangles parsed\n";
+                return 1;
+            }
+            auto asset = presentation::uploadVenue(*r, built, files, "venue:" + std::to_string(venueIndex));
+            presentation::VenueFrame vf;
+            vf.asset = std::move(asset);
+            const auto items = vf.drawItems(); // static transform (mode 0), FUN_00483fd8 compose lane
+            draws.insert(draws.end(), items.begin(), items.end());
+            cam = vf.framedCamera();
+            unsigned textured = 0;
+            for (const auto& m : built.materials)
+                if (!m.tag.empty()) ++textured;
+            std::cout << "venue " << venueIndex << ": parts=" << built.parts.size() << " tris=" << built.triangles
+                      << " materials=" << built.materials.size() << " textured=" << textured
+                      << " bitmaps=" << built.resolvedBitmaps
+                      << " bbox=(" << built.bboxMin[0] << ',' << built.bboxMin[1] << ',' << built.bboxMin[2]
+                      << ")..(" << built.bboxMax[0] << ',' << built.bboxMax[1] << ',' << built.bboxMax[2] << ")\n";
+            if (int(built.triangles) < minTris) {
+                std::cerr << "only " << built.triangles << " triangles, expected at least " << minTris << '\n';
+                return 1;
+            }
+            if (int(built.resolvedBitmaps) < venueMinBitmaps) {
+                std::cerr << "only " << built.resolvedBitmaps << " bitmaps resolved, expected at least "
+                          << venueMinBitmaps << '\n';
+                return 1;
+            }
+        } else
+        if (!treeArg.empty()) { // real-asset mode: the largest FE flow bitmap from the user's tree
             const auto fshPath = wc98::findCaseInsensitive(root, "FE/FEFLOW02/FEFLOW02.FSH");
             if (fshPath.empty()) { std::cerr << "FEFLOW02.FSH not found under " << root << '\n'; return 2; }
             const formats::FshFile fsh = formats::FshFile::parse(wc98::readFile(fshPath));
@@ -221,7 +269,7 @@ int main(int argc, char** argv) {
         }
 
         Frame frame{
-            .camera = {.eye = {0, 0, 10}},
+            .camera = cam,
             .draws = std::span(draws),
             .ui = &ui,
             .clearColor = clearColor,
@@ -234,6 +282,25 @@ int main(int argc, char** argv) {
         if (img.width != 640 || img.height != 480) {
             std::cerr << "unexpected image size " << img.width << "x" << img.height << '\n';
             return 1;
+        }
+
+        if (venueIndex >= 0 && venueMinVariance > 0.0) {
+            // Luma variance of the presented frame: a flat (untextured, misframed) frame scores
+            // near zero. Gate floors catch texture/uv/framing regressions, not just parse errors.
+            double sum = 0.0, sum2 = 0.0;
+            const double n = double(img.rgba.size()) / 4.0;
+            for (std::size_t p = 0; p + 3 < img.rgba.size(); p += 4) {
+                const double l = (0.299 * img.rgba[p] + 0.587 * img.rgba[p + 1] + 0.114 * img.rgba[p + 2]) / 255.0;
+                sum += l;
+                sum2 += l * l;
+            }
+            const double mean = sum / n;
+            const double var = sum2 / n - mean * mean;
+            std::cout << "venue " << venueIndex << ": frame variance=" << var << " mean=" << mean << '\n';
+            if (var < venueMinVariance) {
+                std::cerr << "frame variance " << var << " below floor " << venueMinVariance << '\n';
+                return 1;
+            }
         }
 
         std::vector<std::uint8_t> png = formats::encodePng(img.width, img.height, img.rgba);

@@ -1936,6 +1936,47 @@ std::string FeFlow::wc13Caption(std::string_view name) const {
     return o && text_ ? text_->label(*o) : std::string{};
 }
 
+// pass-108 venue fly-in lane: exe feflow35 prologue (0x4587e8) provenance is the schedule record
+// word +0xa high half (pass-105); the port model carries no schedule feed, so the slot is a
+// port-side [H] selection set from the app (--fe-venue). Load mirrors the exe wrapper lane:
+// mdl + pak + companion fsh (presentation::loadVenueFromTree), render mirrors FUN_00482d7c
+// semantics through the GPU mesh pipeline (presentation::venue.cpp).
+void FeFlow::enableVenue(int slot) {
+    venue_.reset();
+    if (slot < 0 || slot >= static_cast<int>(formats::venueTable().size())) {
+        std::printf("fe: venue slot %d out of range\n", slot);
+        return;
+    }
+    presentation::VenueFiles files;
+    if (!presentation::loadVenueFromTree(tree_, static_cast<std::size_t>(slot), files)) {
+        std::printf("fe: venue slot %d: no venue files under %s\n", slot, tree_.string().c_str());
+        return; // tree absent -> lane stays off; board renders as before
+    }
+    try {
+        auto built = presentation::buildVenueMeshes(files.mdl, files.pak, files.fsh);
+        if (!built.valid || built.triangles == 0) {
+            std::printf("fe: venue slot %d: no triangles parsed\n", slot);
+            return;
+        }
+        venue_ = std::make_unique<presentation::VenueFrame>();
+        venue_->asset = presentation::uploadVenue(r_, built, files, "fevenue:" + std::to_string(slot));
+        std::printf("fe: venue slot %d: parts=%u tris=%u bitmaps=%u\n", slot,
+                    unsigned(built.parts.size()), built.triangles, unsigned(built.resolvedBitmaps));
+    } catch (const std::exception& e) {
+        venue_.reset(); // malformed venue art -> lane off, board unaffected
+        std::printf("fe: venue slot %d failed: %s\n", slot, e.what());
+    }
+}
+
+std::vector<render::DrawItem> FeFlow::venueDraws() const {
+    if (!venue_) return {};
+    return venue_->drawItems(); // static transform (mode 0); FUN_00483fd8 compose lane
+}
+
+render::Camera FeFlow::venueCamera() const {
+    return venue_ ? venue_->framedCamera() : render::Camera{};
+}
+
 FeDrawStats FeFlow::drawCfg87(render::SpriteBatch& ui) const {
     presentation::FeUiState uist;
     uist.animMs = animTicks_ * 16u; // aflag.fsh flag animation (ticksperframe default 15)

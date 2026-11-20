@@ -11,6 +11,7 @@
 #include "wc98/formats/layout.hpp"
 #include "wc98/presentation/fe_screen.hpp"
 #include "wc98/presentation/ig_optns.hpp"
+#include "wc98/presentation/venue.hpp" // pass-108 venue fly-in lane (VenueFrame)
 #include "wc98/sim/data.hpp"
 #include "team_select.hpp"
 
@@ -257,6 +258,21 @@ public:
     [[nodiscard]] int wc13Dev(int i) const { return wc13Dev_[std::size_t(i & 3)]; } // device slot (contr frame 1 + slot)
     void setWc13Dev(int i, int v) { wc13Dev_[std::size_t(i & 3)] = v & 7; }
     [[nodiscard]] std::string wc13Caption(std::string_view name) const; // FC-remap caption (gate evidence)
+    // ---- pass-108 venue fly-in lane (tournament board backdrop) --------------------------------
+    // The exe feflow35 prologue (0x4587e8) reads the schedule record word +0xa (high half = venue
+    // index, pass-105 provenance), loads venue art through the wrapper lane (FUN_0044a72c /
+    // FUN_0044bf20 / FUN_004561d4 -> FUN_00483418), sets the scene arg (FUN_004833f8, non-zero
+    // gate) and the renderer (FUN_00482d7c) rasterizes the loaded shapes every frame. The draw
+    // order/viewport relation versus the scene's LAY back is not recovered [H] — the port
+    // composites the venue under the board UI, so it is loaded+wired but not visible on the
+    // full-collage board. The port's presentation model has no fixture schedule data
+    // (fe_flow.cpp:3271), so the slot is port-side [H]: slot 0..11 from formats::venueTable(),
+    // -1 = lane off.
+    void enableVenue(int slot); // loads MDL + pak + companion fsh; false result via venueLoaded()
+    [[nodiscard]] bool venueLoaded() const { return venue_ != nullptr; }
+    [[nodiscard]] bool venueActive() const { return venue_ != nullptr && (wc13View_ || wcCfg_ == 35); }
+    std::vector<render::DrawItem> venueDraws() const; // composed venueMatrix items (static mode)
+    render::Camera venueCamera() const;               // framedCamera mirror
     // ---- FEFLOW43 management grid + feflow41 LOAD / feflow42 SAVE lists (MENU_PARITY.md rows 29/30) --
     // FEFLOW43.LAY (analysis/pass13 sweep dump): the full team-management grid — back collage, bt00..bt07
     // formation/kick-takers/strategy/positioning/aggression/custom/line-up/bias edit buttons + canc/save/
@@ -466,6 +482,7 @@ public:
     presentation::FeDrawStats drawTeams(render::SpriteBatch& ui) const; // team-select frame (flat panel + FFN rows)
     render::Renderer& r_;            // keeps FeText rebuildable at runtime (setLanguage)
     std::filesystem::path tree_;
+    std::unique_ptr<presentation::VenueFrame> venue_; // pass-108 board backdrop (null = lane off)
     presentation::ScreenArt art_; // texture handles cached per FSH member
     std::string lastError_; // set when LAYOUTS.BIG@FEFLOW05.LAY cannot be loaded
     formats::ScreenLayout screen_;     // main-menu layout (FEFLOW05)

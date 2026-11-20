@@ -177,6 +177,12 @@ if(DEFINED WC98_TREE)
     # M4 slice 2: FE main-menu layout composited from original .LAY + FSH art (>=8 shapes).
     add_test(NAME render_demo_lay COMMAND wc98-render-demo /tmp/wc98port-out/lay_gate.png --lay ${WC98_TREE}/FE/PACK/LAYOUTS/LAYOUTS.BIG@FEFLOW05.LAY --tree ${WC98_TREE} --min-shapes 8)
     set_tests_properties(render_demo_lay PROPERTIES SKIP_RETURN_CODE 2)
+    # pass-108 venue fly-in lane: real venues through the GPU mesh pipeline (mdl + pak + companion
+    # fsh); bitmap/variance floors catch uv, texture-binding and framing regressions, not parses.
+    add_test(NAME render_demo_venue_lensf COMMAND wc98-render-demo /tmp/wc98port-out/venue_lensf.png --venue 3 --tree ${WC98_TREE} --min-tris 400 --venue-min-bitmaps 8 --venue-min-variance 0.01)
+    set_tests_properties(render_demo_venue_lensf PROPERTIES SKIP_RETURN_CODE 2)
+    add_test(NAME render_demo_venue_brdxf COMMAND wc98-render-demo /tmp/wc98port-out/venue_brdxf.png --venue 8 --tree ${WC98_TREE} --min-tris 200 --venue-min-bitmaps 4 --venue-min-variance 0.005)
+    set_tests_properties(render_demo_venue_brdxf PROPERTIES SKIP_RETURN_CODE 2)
     # M4 slice 3: original trophy model (GEOM draw-lists) rendered textured through Vulkan.
     add_test(NAME model_view_wcupf COMMAND wc98-model-view /tmp/wc98port-out/mdl_gate.png ${WC98_TREE}/FE/WCUPF.MDL)
     set_tests_properties(model_view_wcupf PROPERTIES SKIP_RETURN_CODE 2)
@@ -205,6 +211,11 @@ if(DEFINED WC98_TREE)
     add_test(NAME fe_flow_setup50 COMMAND wc98-native --fe-smoke 3 --fe-setup 3 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/setup50)
     set_tests_properties(fe_flow_setup50 PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}"
         FAIL_REGULAR_EXPRESSION "FEFLOW50: shapes=0 |FEFLOW50: texts=0 ")
+    # pass-108 app lane: venue fly-in backdrop behind the feflow35 tournament board (--fe-venue
+    # opens the board + loads venue art; the printed stats line proves the load, tris>=1 the meshes).
+    add_test(NAME fe_venue_wc35 COMMAND wc98-native --fe-wc-cfg 35 --fe-venue 3 --fe-smoke 2 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/fevenue)
+    set_tests_properties(fe_venue_wc35 PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}"
+        PASS_REGULAR_EXPRESSION "fe: venue slot 3: parts=[1-9][0-9]* tris=[1-9][0-9]* bitmaps=[1-9]")
     add_test(NAME fe_nav_practise COMMAND wc98-native --fe-smoke 1 --fe-nav practise --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/fe)
     set_tests_properties(fe_nav_practise PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}")
     add_test(NAME fe_nav_tournament COMMAND wc98-native --fe-smoke 2 --fe-nav tournament --fe-pick 35 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/fe)

@@ -141,7 +141,9 @@ public:
     bool pumpPending(); // builder-tail scan: load every pending slot, returns any-loaded
     // Builder pick lane FUN_0048d0dc -> FUN_0048d1f8: activates the first built,
     // unconsumed entry (one announcement per call, never stacked), returns whether one
-    // played. Null-mixer drivers stay headless-safe (counted, silent).
+    // played. Silent entries (missing file or malformed clip) consume like any queue
+    // entry and skip the scan, so slots behind them keep playing. Null-mixer drivers
+    // stay headless-safe (counted, silent).
     bool pickNext();
 
     // pass-79 selector mirror (FUN_00489974 fill + FUN_004899dc pick). The selector ->

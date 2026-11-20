@@ -378,6 +378,21 @@ int main() {
         CHECK(!sel.pickNext());
     }
 
+    // pass-79b silent-pick lane: a missing-file entry ahead of a playable one must not
+    // stall the pick scan - the exe pick lane removes the queue entry regardless of clip,
+    // so the silent slot is consumed and the next playable slot plays.
+    {
+        app::Announcer sil(tree);
+        audio::sceneLevels().setLevel(audio::kSceneSpeech, 80);
+        sil.setSlot(0, 2, 220); // G_SCH220 absent from the shipped 000..217 numbering
+        sil.setSlot(1, 3, 1);   // G_STD001 playable speech sample
+        sil.pumpPending();
+        CHECK(sil.missing() == 1);
+        CHECK(sil.pickNext()); // skips the silent slot, plays the std lane
+        CHECK(sil.plays() == 1);
+        CHECK(!sil.pickNext()); // drained: silent slot consumed, not stalled
+    }
+
     // Speech master-gain ramp mirror (pass-73): SNDspeechinit (FUN_004df820) stores
     // cur = vol<<16 with delta 0; SNDspeechautovol (FUN_004df8a4) sets delta =
     // (target<<16 - cur)/frames (frames clamped >=1); the state-cb pump (installed at

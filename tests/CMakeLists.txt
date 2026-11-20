@@ -224,6 +224,12 @@ if(DEFINED WC98_TREE)
     # report. Exit code is the verdict: 0 all-pass, 1 any failure, 2 tree skip.
     add_test(NAME self_test_gameplay COMMAND wc98-native --self-test /tmp/wc98port-out/selftest.json --tree ${WC98_TREE})
     set_tests_properties(self_test_gameplay PROPERTIES SKIP_RETURN_CODE 2 TIMEOUT 300 ENVIRONMENT "WC98_TREE=${WC98_TREE};QT_QPA_PLATFORM=offscreen")
+    # Phase-11 structured-result schema (goal doc PHASE 11): every step must carry subsystem,
+    # expected event, actual event, selected asset, playback timestamp, measured result,
+    # tolerance, pass/fail and diagnostic. Shape-only gate; step verdicts stay with the test above.
+    add_test(NAME selftest_json_schema COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/scripts/selftest_json_schema.sh
+            $<TARGET_FILE:wc98-native> ${WC98_TREE})
+    set_tests_properties(selftest_json_schema PROPERTIES SKIP_RETURN_CODE 2 TIMEOUT 600 ENVIRONMENT "WC98_TREE=${WC98_TREE};QT_QPA_PLATFORM=offscreen")
     # Authentic team-select fidelity (FEFLOW11.LAY pick grid, LAY_COMPOSITOR_NOTES.md): render the
     # screen via --fe-team; the shell asserts shapes/texts/cursors > 0 and this gate fails on zero counts.
     add_test(NAME fe_render_tournament COMMAND wc98-native --fe-smoke 2 --fe-team --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/feteam)

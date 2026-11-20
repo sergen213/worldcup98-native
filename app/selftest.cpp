@@ -55,20 +55,59 @@ namespace config = wc98::config;
 namespace audio = wc98::audio;
 namespace fs = std::filesystem;
 
+// StepRes result fields are optional at step sites (NSDMI defaults + writeJson fallbacks);
+// GCC -Werror would flag every partial initializer, so this file opts out of that warning.
+#pragma GCC diagnostic ignored "-Wmissing-field-initializers"
+
+// Phase-11 structured result per goal step: every step carries subsystem, expected event,
+// selected asset, playback timestamp, measured result (detail) and tolerance; the JSON v2
+// emitter writes all of them. Fields left null are defaulted in writeJson from the step name.
 struct StepRes {
     const char* name;
     bool passed = false;
-    std::string detail;
+    std::string detail;              // measured result + diagnostic
+    const char* subsystem = nullptr; // audio | gameplay | presentation
+    const char* expected = nullptr;  // expected event description
+    std::string actual;              // actual event summary (defaults to detail)
+    const char* asset = nullptr;     // selected audio/asset path when applicable
+    long long timestampMs = -1;      // playback timestamp of the exercised seam
+    const char* tolerance = nullptr; // allowed tolerance for the measurement
 };
+
+const char* subsystemOf(const std::string& name) {
+    if (name.starts_with("fe-")) return "presentation";
+    if (name.starts_with("match-audio") || name.starts_with("match-crowd")) return "audio";
+    return "gameplay";
+}
+
+// JSON field escaping: backslashes (asset paths use the exe AUDIO\\CRWD spelling) and quotes
+// would otherwise produce invalid escapes; control characters are flattened to spaces.
+std::string jesc(std::string_view s) {
+    std::string out;
+    out.reserve(s.size());
+    for (const char c : s) {
+        if (c == '\\' || c == '"') { out.push_back('\\'); out.push_back(c); }
+        else if (c >= ' ') out.push_back(c);
+        else out.push_back(' ');
+    }
+    return out;
+}
 
 void writeJson(const fs::path& p, const std::vector<StepRes>& steps) {
     std::ofstream f(p);
     if (!f) return;
-    f << "{\n  \"version\": 1,\n  \"steps\": [\n";
+    f << "{\n  \"version\": 2,\n  \"steps\": [\n";
     for (std::size_t i = 0; i < steps.size(); ++i) {
         const StepRes& s = steps[i];
-        f << "    {\"step\": \"" << s.name << "\", \"passed\": " << (s.passed ? "true" : "false")
-          << ", \"detail\": \"" << s.detail << "\"}" << (i + 1 < steps.size() ? "," : "") << "\n";
+        f << "    {\"step\": \"" << jesc(s.name) << "\", \"subsystem\": \""
+          << (s.subsystem ? s.subsystem : subsystemOf(s.name)) << "\", \"expectedEvent\": \""
+          << jesc(s.expected ? s.expected : s.name) << "\", \"actualEvent\": \""
+          << jesc(s.actual.empty() ? s.detail : s.actual) << "\", \"selectedAsset\": \""
+          << jesc(s.asset ? s.asset : "") << "\", \"playbackTimestampMs\": " << s.timestampMs
+          << ", \"measuredResult\": \"" << jesc(s.detail) << "\", \"tolerance\": \""
+          << jesc(s.tolerance ? s.tolerance : "exact counters; ids ±0") << "\", \"passed\": "
+          << (s.passed ? "true" : "false") << ", \"diagnostic\": \"" << jesc(s.detail) << "\"}"
+          << (i + 1 < steps.size() ? "," : "") << "\n";
     }
     f << "  ]\n}\n";
 }
@@ -1363,7 +1402,8 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
     // config chain (FEFLOW09) and Esc returns to the hub. No display/Vulkan in the environment ->
     // documented skip (passed=true, detail names the reason), matching the headless-CI pattern.
     {
-        StepRes st{"fe-nav", false, ""};
+        StepRes st{.name = "fe-nav", .expected = "forward enters FE screen, Esc pops back",
+                   .tolerance = "exact screen ids ±0"};
         try {
             platform::Window win("WC98-selftest-fe", 640, 480, false);
             render::VulkanConfig vcfg;
@@ -1411,7 +1451,8 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
         // Esc pops the parent chain; FEFLOW21 ring-0 frwd -> FEFLOW20; FEFLOW20 ring-1 simu opens
         // the FEFLOW86 prompt and its confirm closes without an app exit; a return edge (20->19->20)
         // pops the stack so the chain stays bounded. No shell -> documented skip (fe-nav pattern).
-        StepRes st{"fe-wc-nav", false, ""};
+        StepRes st{.name = "fe-wc-nav", .expected = "WC-config family forward/back edges enter and pop",
+                   .tolerance = "exact screen ids ±0"};
         try {
             platform::Window win("WC98-selftest-wc", 640, 480, false);
             render::VulkanConfig vcfg;
@@ -1496,7 +1537,8 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
         // ev 8005), the popup's Enter ('alok') and Esc ('cancel') pop the scene back to FEFLOW74
         // (not to the feflow75 strategy page), the grid row cursor survives the popup, and Esc on
         // the grid closes to the FEFLOW73 league list. No shell -> documented skip (fe-nav pattern).
-        StepRes st{"fe-league-nav", false, ""};
+        StepRes st{.name = "fe-league-nav", .expected = "league navigation edges enter, pop and re-enter",
+                   .tolerance = "exact screen ids ±0"};
         try {
             platform::Window win("WC98-selftest-lgnav", 640, 480, false);
             render::VulkanConfig vcfg;
@@ -1544,7 +1586,8 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
         // DAT_0057e84a maps 13 widget ids (remap lane -> Spd..Cre); ab00/ab01 = ±1 with wrap
         // (decrement below 0 wraps to 12). Default 12 renders 'Cre', replacing the LAY
         // template 'Pos' that read as a clipped label before the overlay existed.
-        StepRes st{"fe-lg79-attr", false, ""};
+        StepRes st{.name = "fe-lg79-attr", .expected = "league 79 attribute screen renders player rows",
+                   .tolerance = "row/label counts ±0"};
         try {
             platform::Window win("WC98-selftest-lg79attr", 640, 480, false);
             render::VulkanConfig vcfg;
@@ -1585,7 +1628,8 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
         // FEFLOW16 lineups board [C] analysis/pass12/edges_table.txt:22 (feflow08 helper
         // FUN_0043ce4c site 0x43cf27 pushes NAME:feflow16 0x562020). Assert open, screenName,
         // Esc pop-back to the map, and Enter = kickoff (Exhibition entry, left-side pool team).
-        StepRes st{"fe-lineups", false, ""};
+        StepRes st{.name = "fe-lineups", .expected = "lineup screen renders rows and toggles slots",
+                   .tolerance = "slot ids ±0"};
         try {
             platform::Window win("WC98-selftest-l16", 640, 480, false);
             render::VulkanConfig vcfg;
@@ -1628,7 +1672,8 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
         // cursor-state reset; 'fwrd' 0x66777264 = writers + scene pop; 'back' = Esc pop.
         // Port: commitOptions -> audioDirty_ + live setMasterGain; defOptions -> row cursor 0;
         // forwardOptions -> commit + optsView_ pop.
-        StepRes st{"fe-options", false, ""};
+        StepRes st{.name = "fe-options", .expected = "option toggles + language switch restores eng bank",
+                   .tolerance = "exact option indices ±0"};
         try {
             platform::Window win("WC98-selftest-opts", 640, 480, false);
             render::VulkanConfig vcfg;
@@ -1728,7 +1773,10 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
         // running crowd loop) and Commentary (phrase pick + segment decode) through a loopback
         // mixer. Duplicate protection = the driver cursor seam (livematch sfxPos); here one
         // single pass over w.events must give counts exactly matching the observed event types.
-        StepRes st{"match-audio-events", false, ""};
+        StepRes st{.name = "match-audio-events",
+                   .expected = "KickOff/PeriodEnd -> whistle++, Shot -> kick++, Goal -> goal++ once per event; crowd loop running",
+                   .asset = "AUDIO\\CRWD\\CROWD.CRD bed + whistle/kick/goal clips over Mixer loopback",
+                   .tolerance = "counter growth exact (whistle+2 kick+1 goal+1), duplicate protection ±0"};
         try {
             audio::Mixer mx{std::optional<std::uint32_t>{44100u}}; // loopback: no hardware device
             app::MatchAudio ma(tree);
@@ -1776,6 +1824,9 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
             for (int t = 0; t < 400; ++t) c.pump();
             const bool cmt = !bank || (c.sentencesStarted() >= 1 && c.decodedSegments() >= 1);
             st.passed = crowd && counts && canonOk && lane && cmt;
+            st.actual = fmt("whistle={} kick={} goal={} sentences={} decoded={}", ma.whistles(),
+                            ma.kicks(), ma.goals(), c.sentencesStarted(), c.decodedSegments());
+            st.timestampMs = static_cast<long long>(w.time.totalFrames) * 20; // 50 Hz sim tick -> ms
             st.detail = fmt("match-audio-events: events={} crowd={} whistle {}/{} kick {}/{} "
                             "goal {}/{} canon={} laneQ7={} bank={} sentences={} decoded={}",
                             nEv, int(crowd), ma.whistles(), nWhistleEv + 2, ma.kicks(), nShotEv + 1,
@@ -1797,7 +1848,10 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
         // (FUN_0048dfc4 `iVar1 < 0x71`; names = exe table @0x57eb5c + CD CGENER lane), the
         // A_T/G_T%04d announcer banks for both teams (FUN_0048fa08/FUN_0048953c), and the
         // P%05d.PBK player banks for both squads (FUN_0048fb10) for the FCDB ids the match uses.
-        StepRes st{"match-audio-lanes", false, ""};
+        StepRes st{.name = "match-audio-lanes",
+                   .expected = "boot installs percent notifier, CROWD.CRD bed, anthem, chant/announcer/player pools",
+                   .asset = "AUDIO\\CRWD\\CROWD.CRD, ANTH%04d, CHNT pool, A_T/G_T%04d banks, P%05d.PBK",
+                   .tolerance = "pool counts exact (113 chant slots, squad player banks)"};
         try {
             audio::Mixer mx{std::optional<std::uint32_t>{44100u}}; // loopback: no hardware device
             const auto game = sim::loadGameData(tree);
@@ -1850,7 +1904,10 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
         // envelope level up to the pulse target, clamped at the record ceiling.
         // TRAFF.CRD ships no records: pulse is refused by the enable-byte gate (measured
         // all-zero record area).
-        StepRes st{"match-crowd-envelope", false, ""};
+        StepRes st{.name = "match-crowd-envelope",
+                   .expected = "SNDcrowdpulse ramps envelope level to card record ceiling",
+                   .asset = "AUDIO\\CRWD\\CROWD.CRD card record 0",
+                   .tolerance = "16.16 ramp step exact; ceiling clamp ±0"};
         try {
             audio::Mixer mx{std::optional<std::uint32_t>{44100u}}; // loopback: no hardware device
             app::MatchAudio ma(tree);
@@ -1889,7 +1946,8 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
         // fe08 (forward feflow83, mouse-only), fe06/quit (exit family). Port: openCfg87 over the
         // open feflow33 board (enter on 33 = 'fe87' wedge), slot cursor ring + device cycling,
         // Esc pops to 33 without tearing the board down.
-        StepRes st{"fe-cfg87", false, ""};
+        StepRes st{.name = "fe-cfg87", .expected = "FEFLOW87 config screen enters and pops",
+                   .tolerance = "exact screen ids ±0"};
         try {
             platform::Window win("WC98-selftest-cfg87", 640, 480, false);
             render::VulkanConfig vcfg;
@@ -1952,7 +2010,8 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
         // FEFLOW20 'frwd' -> feflow13 (SITE 0x452dc7 pushes NAME:feflow13) via the Enter ring;
         // Esc = event branch 0x44e4ba pushes NAME:feflow06 — closes the World Cup family straight to
         // the hub (NOT a stack pop like FEFLOW87 -> 33); Enter carries no token edge on the board.
-        StepRes st{"fe-wc13", false, ""};
+        StepRes st{.name = "fe-wc13", .expected = "FEFLOW13 tournament wheel screen enters and renders",
+                   .tolerance = "exact screen ids ±0"};
         try {
             platform::Window win("WC98-selftest-wc13", 640, 480, false);
             render::VulkanConfig vcfg;
@@ -2016,7 +2075,9 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
         // offset==own (start own+1), offset>own (NO shift - the pre-pass pool-minus-own
         // map shifted this window by one), a crossing window whose tail reaches the last
         // pool row, and the DAT_0060a064 clear-branch boundary.
-        StepRes st{"records-window", false, ""};
+        StepRes st{.name = "records-window", .subsystem = "presentation",
+                   .expected = "records row-window grammar own/lt/gt/eq/tail",
+                   .tolerance = "exact index picks ±0"};
         const int last = 39; // poolSize-1 (DAT_0060a064 = DAT_0060a06c-1, dec7:51)
         auto row = [last](int off, int own, int r) { return recordsRowIndex(off, own, last, r); };
         bool ok = true;
@@ -2071,9 +2132,11 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
             g.absPrevZ = sh16(0x9F8);
             const sim::ArbiterResult a = sim::SetPiece_arbitrate(g, band, box, 0, false, 5);
             const sim::MachineOutcome p = sim::SetPiece_place(1, g, band, box, 5, {sh16(5), 0, sh16(0x9F8)});
-            StepRes st{"setpiece-corner", a.selector == 1 && rowsOk && p.reaim &&
+            StepRes st{.name = "setpiece-corner", .passed = a.selector == 1 && rowsOk && p.reaim &&
                                           p.target.x == sh16(5) - sh16(band.postThickness / 2 + band.goalHalfWidth) &&
-                                          p.target.z == sh16(0x9F8 - (band.halfLength - (band.postThickness >> 1))), ""};
+                                          p.target.z == sh16(0x9F8 - (band.halfLength - (band.postThickness >> 1))),
+                       .expected = "corner restart: selector 1, post-adjacent placement rows + reaim",
+                       .tolerance = "16.16 placement exact ±0"};
             st.detail = fmt("corner: sel={} target=({:#x},{},{:#x}) hl/hw={}/{}", a.selector,
                             unsigned(p.target.x), unsigned(p.target.y), unsigned(p.target.z), band.halfLength, band.halfWidth);
             steps.push_back(std::move(st));
@@ -2091,10 +2154,12 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
             rec.pos.z = sh16(1);                                  // z sign row -> -halfLength side
             const sim::MachineOutcome p = sim::SetPiece_place(2, rec, band, box, 5,
                                                               {sh16(0x300), sh16(0xA0), sh16(0x9F8)});
-            StepRes st{"setpiece-throwin", a.selector == 2 &&
+            StepRes st{.name = "setpiece-throwin", .passed = a.selector == 2 &&
                                            p.target.x == sh16(0x300) &&
                                            p.target.y == sh16(0xA0 - (band.barThickness / 2 + band.goalHeight - 5)) &&
-                                           p.target.z == sh16(0x9F8 - (band.halfLength - (band.postThickness >> 1))), ""};
+                                           p.target.z == sh16(0x9F8 - (band.halfLength - (band.postThickness >> 1))),
+                       .expected = "throw-in restart: selector 2, case-2 y/z rows exact",
+                       .tolerance = "16.16 placement exact ±0"};
             st.detail = fmt("throwin: sel={} target=({:#x},{:#x},{:#x})", a.selector,
                             unsigned(p.target.x), unsigned(p.target.y), unsigned(p.target.z));
             steps.push_back(std::move(st));
@@ -2102,8 +2167,10 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
         {   // Goal kick: case-10 goalFar lane (DAT_00648f94) exact rounded z + state/flags.
             const sim::MachineOutcome p = sim::SetPiece_place(10, sim::SetPieceRec{}, band, box, 5,
                                                               {sh16(7), sh16(2), sh16(1)});
-            StepRes st{"setpiece-goalkick", p.rounded.z == (box.goalFar >> 16) && p.state == 2 &&
-                                            p.subState == 8 && (p.flagsE & 0x180) == 0x180, ""};
+            StepRes st{.name = "setpiece-goalkick", .passed = p.rounded.z == (box.goalFar >> 16) && p.state == 2 &&
+                                            p.subState == 8 && (p.flagsE & 0x180) == 0x180,
+                       .expected = "goal kick: case-10 goalFar lane exact rounded z + state/flags",
+                       .tolerance = "goalFar rounding exact ±0"};
             st.detail = fmt("goalkick: goalFar={:#x} rounded=({},{},{}) sub={}", unsigned(box.goalFar),
                             p.rounded.x, p.rounded.y, p.rounded.z, p.subState);
             steps.push_back(std::move(st));
@@ -2120,9 +2187,11 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
             m.vz = sh16(1);                                       // off = fx(vz,0x78000) = +0x78000
             const sim::MachineOutcome p = sim::SetPiece_place(9, m, band, box, 5,
                                                               {sh16(4), 0, sh16(band.halfLength)});
-            StepRes st{"setpiece-penalty", a.selector == 9 &&
+            StepRes st{.name = "setpiece-penalty", .passed = a.selector == 9 &&
                                            p.target.z == sh16(band.halfLength) + sim::fx(sh16(1), 0x78000) &&
-                                           p.rounded.z == band.halfLength + (0x78000 >> 16), ""};
+                                           p.rounded.z == band.halfLength + (0x78000 >> 16),
+                       .expected = "penalty: selector 9, spot at halfLength + 0x78000 fixed-point",
+                       .tolerance = "spot offset exact ±0"};
             st.detail = fmt("penalty: sel={} target.z={:#x} rounded=({},{},{})", a.selector,
                             unsigned(p.target.z), p.rounded.x, p.rounded.y, p.rounded.z);
             steps.push_back(std::move(st));
@@ -2156,8 +2225,10 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
             const auto corner = replica(2);                   // corner rt -> machine sel 1 lane
             const bool cornerOk = corner.first == 1 && corner.second != sim::Vec3{0x7FFF, 0, 0};
             const auto throwin = replica(1);                  // then throw-in rt -> machine sel 2
-            StepRes st{"setpiece-live", cornerOk && throwin.first == 2 &&
-                                        throwin.second != sim::Vec3{0x7FFF, 0, 0}, ""};
+            StepRes st{.name = "setpiece-live", .passed = cornerOk && throwin.first == 2 &&
+                                        throwin.second != sim::Vec3{0x7FFF, 0, 0},
+                       .expected = "live cutover: setpiece grammar fed from LIVE ball state (corner + throw)",
+                       .tolerance = "restart kind exact ±0"};
             st.detail = fmt("live: cornerKind={} r=({},{},{}) throwKind={}", corner.first,
                             corner.second.x, corner.second.y, corner.second.z, throwin.first);
             steps.push_back(std::move(st));
@@ -2170,7 +2241,8 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
         // 0x49F03C (writes the requested line-up slot), apply 0x49F140 (bench entries leave
         // the confirmed line-up pending, +0x22++), and the State186 carry-out 0x49F684:
         // pending--, substitutions-left--, squad rebind, Substitution event (a=off, b=on).
-        StepRes st{"substitution", false, ""};
+        StepRes st{.name = "substitution", .expected = "substitution lane: pending--, subsLeft--, squad rebind, Substitution event",
+                   .tolerance = "event a/b ids exact ±0"};
         int outPid = -1, outSq = -1, bench = 0xff;
         for (int k = 1; k < w.teams[0].playerCount && outPid < 0; ++k) {
             const int q = w.teams[0].players[k];
@@ -2212,7 +2284,8 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
         // (whistle 2 = full-time pair, presentation phase 0xf) then the time-up dispatch
         // (Match_onEvent case 9: whistle seq 2, period-end seq 9). seq9PeriodEnd emits
         // PeriodEnd, switches to the presentation phase, and CutScene_play marks the scene.
-        StepRes st{"match-complete", false, ""};
+        StepRes st{.name = "match-complete", .expected = "full-time: phase 0xf/0x10/0x11 + cut scene + endWhistle=2",
+                   .tolerance = "endWhistle seq exact; phase set ±0"};
         sim::Match_requestPeriodEnd(w, 2, 0xf, 2);
         sim::Match_dispatchEvent(w, 9, 0);
         w.events.clear();

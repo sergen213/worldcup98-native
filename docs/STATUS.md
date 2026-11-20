@@ -142,6 +142,18 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
 
 
 ## Progress snapshot (third-pass UI reconstruction landed, v0.5.0)
+- **Phase-11 structured self-test results (pass-80, 2026-11-20)** — the `--self-test` report is
+  JSON v2: every step carries `subsystem` (audio/gameplay/presentation), `expectedEvent`,
+  `actualEvent`, `selectedAsset`, `playbackTimestampMs`, `measuredResult`, `tolerance`, `passed`
+  and `diagnostic` (goal doc PHASE 11 field list). Shape-only gate `selftest_json_schema`
+  (`tests/scripts/selftest_json_schema.sh`) parses the report and pins the schema without
+  asserting step verdicts; audio steps declare their assets (`AUDIO\CRWD\CROWD.CRD` bed, CHNT
+  pool, card record 0, `A_T/G_T%04d`, `P%05d.PBK`) and the event-seam timestamp (sim frames × 20 ms);
+  emitted strings are backslash/quote-escaped (`jesc`).
+- **Announcer silent-pick lane (pass-79b, 2026-11-20)** — a missing-file or malformed entry
+  consumes its queue slot like any exe pick (`FUN_0048d0dc` removes the entry regardless of
+  clip), so `pickNext` skips it and playable slots behind it keep playing instead of stalling;
+  gate block in `test_gameaudio` (absent `G_SCH220` ahead of `G_STD001`).
 - **Chant pump + classification wired (pass-53, 2026-11-19)** — the exe chant lane runs
   continuously in the match scene: pump `FUN_0048da50` (per-frame tick host `FUN_004906f8`,
   100-frame load cadence, per-lane voice top-up under capacity caps, loader `FUN_0048d53c`

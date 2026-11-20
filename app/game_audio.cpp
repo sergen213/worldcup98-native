@@ -965,7 +965,12 @@ bool Announcer::pumpPending() {
 bool Announcer::pickNext() {
     for (int slot = 0; slot < kRingSlots; ++slot) { // pick lane, class-queue order [H]
         auto& s = slots_[std::size_t(slot)];
-        if (s.loaded && !s.consumed) return activate(slot); // one entry per call
+        if (!s.loaded || s.consumed) continue;
+        if (s.clip.samples.empty()) { // silent entry: the exe pick lane qremoves the
+            s.consumed = true;        // queue entry regardless of clip, so it cannot
+            continue;                 // stall the scan ahead of playable slots
+        }
+        return activate(slot); // one entry per call
     }
     return false; // queue drained: qfind-null lane
 }

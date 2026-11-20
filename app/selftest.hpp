@@ -3,7 +3,8 @@
 // playable match through the exhibition bootstrap (MatchBoot + SimRunner), drives controller 0
 // with scripted pad words, and measures core operations from the simulation's internal state
 // (World: players/ball/match/clock), never from presentation. Writes the structured JSON report
-// {version, steps:[{step,passed,detail}]} to FILE and exits 0 when every step passed, 1 on any
+// {version: 2, steps:[{step,subsystem,expectedEvent,actualEvent,selectedAsset,playbackTimestampMs,
+// measuredResult,tolerance,passed,diagnostic}]} to FILE and exits 0 when every step passed, 1 on any
 // failure, 2 when the game tree is unavailable (gate skip pattern).
 
 #include <filesystem>

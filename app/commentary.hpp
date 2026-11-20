@@ -323,7 +323,8 @@ public:
     // Class byte producer (retracts the pass-88 "no statically reachable writer" claim; the
     // pass-89 "alignment stays OPEN" residual is decoded pass-90, analysis/pass90reg/NOTES.md):
     // record driver 0x48f3e0 calls FUN_0048ffe8, which runs a TWO-LEVEL sound-registry find
-    // (0x4a4a00 then 0x4a4a30, slot pool DAT_006419e0) on the registry base = the TYPE.PBK
+    // (0x4a4a00 then 0x4a4a30; out slot DAT_006419e0 receives lookup #1's member offset,
+    // `004a4a08` write, read back `004a4a1e`) on the registry base = the TYPE.PBK
     // load block (FUN_00490250 -> DAT_00632734; locatebig type-2 lane = raw BIGF TOC, records
     // at base+0x10 {u32be off, u32be size, NUL name}, slot shift CL = 0x20-8*4 = 0 -> FULL off,
     // r6.txt 0x4a46d0/0x4a46f3).
@@ -335,10 +336,12 @@ public:
     // (phrases 139..1017, the pass-86 PHRS preload-arm 0x48f354 lane) and {0x40} on segment #0
     // of 251 phrases >= 1035 ((byte&0x3f)==0 -> gate skips selection, engine callback); all
     // other records (untagged, miss, count=0 nests) stamp 0. NO tag is in {2,4,6}, so the
-    // selector arms (jump table 0x48f2bc) are dead code in retail WC98; untagged records take
-    // the engine-callback lane and the live seam's head pick mirrors that. Class-7 records
-    // route to the PHRS preload arm instead - the port seam does not yet distinguish them
-    // (open alignment).
+    // selector arms (jump table 0x48f2bc) are dead code in retail WC98. Untagged records take
+    // the engine-callback lane 0x49001c (gate DAT_00632724): it runs a SECOND registry find
+    // (0x48ff64 = 0x4a4820/0x4a4a00, writes 2*found-index into the driver out slot) and does
+    // NOT qfindindex - so the port's sequential head pick stays a deviation [H], not proven
+    // retail behaviour. Class-7 records route to the PHRS preload arm instead - the port seam
+    // does not distinguish them either (open alignment).
     static constexpr std::size_t kNoEntry = static_cast<std::size_t>(-1); // selector arm did not pick
     static constexpr std::size_t entryIndexForClass(std::uint8_t classByte) {
         static constexpr std::uint8_t kExeTable[8] = {0, 0, 0, 0, 0, 0, 1, 0}; // DAT_0057eb54 raw 0x17d154

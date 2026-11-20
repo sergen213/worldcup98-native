@@ -56,9 +56,11 @@ Worked anchors (file + byte offset of the 20-byte record):
 All 1,022 are top-level members of **one file**, `PHRS/TYPE.PBK` (76,480 B). It is a
 header-only twin of `PHRS/PHRS.PBK` (92,811,196 B):
 
-- Identical outer TOC shape: count 1290, headerSize 11,628; every member name empty in
-  both files (**zero** non-empty names exist in any of the 1,232 PBK TOCs — indexing is
-  purely positional).
+- Identical outer TOC shape: count 1290, headerSize 11,628; every OUTER member name is
+  empty in both files (outer indexing is purely positional). The nested segment TOCs DO
+  carry names: 462 one-byte tags `{0x07: 211, 0x40: 251}` among 4,665 inner records,
+  identical in both files (TYPE[j] is a byte-exact prefix of PHRS[j]) — these are the
+  pass-90 sound-registry class tags (`AUDIO_RUNTIME.md` pass-90, `analysis/pass90reg/census.txt`).
 - **`TYPE.PBK[j] == PHRS.PBK[j][:len(TYPE.PBK[j])]` for all 1,290 j (byte-exact).**
   Each member keeps just the nested BIGF header of its phrase and drops the sample data.
 - Inside a stub, entries are perfectly contiguous (`offset - hdrSize == cumulative

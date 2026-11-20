@@ -118,8 +118,9 @@ void Commentary::trigger(const sim::SimEvent& e) {
     // class byte (driver -> FUN_0048ffe8 -> two-level TYPE.PBK lookup -> inner segment-record
     // name byte 0, analysis/pass90reg/NOTES.md): retail tags are {0x07} (PHRS preload arm) and
     // {0x40} ((byte&0x3f)==0 -> engine callback), never {2,4,6}, so the jump-table selector
-    // arms (0x48f2bc) never run and the engine callback lane picks the queue head — head pick
-    // here mirrors the retail path for untagged records. Class-7 events route to the PHRS
+    // arms (0x48f2bc) never run. The engine-callback lane 0x49001c runs a second registry find
+    // (0x48ff64, writes 2*found-index to the driver slot) — no queue head pick is proven there,
+    // so the sequential head pick here stays a deviation [H]. Class-7 events route to the PHRS
     // preload lane, which this seam does not distinguish yet (open alignment).
     startPick(0);
 }
@@ -138,7 +139,7 @@ void Commentary::triggerLive(const sim::SimEvent& e) {
         ++rejected_; // exhausted ready pool: qfindindex null, record recycles (pass-89)
         return;
     }
-    startPick(0); // head entry: engine-callback lane; retail has no selector-class tags (pass-90)
+    startPick(0); // pool head pick (port deviation [H], cb lane does no qfindindex); no selector-class tags exist (pass-90)
 }
 
 void Commentary::startPick(std::size_t selector) {

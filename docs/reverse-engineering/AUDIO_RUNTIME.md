@@ -1344,16 +1344,18 @@ Evidence: `analysis/pass87beat/` (`q1..q4.txt`, `GhidraWc98Q1..Q4.py`).
   head) and erases the picked entry on activation (qremove `FUN_004c4a70` semantics), short/empty
   chain -> NULL pick silent. The live seam calls it with class byte 0: the event->class
   alignment was OPEN at pass-88 write time; pass-90 below decoded the stamp (nested
-  segment-TOC name byte, tags {0x07, 0x40}, no selector-class tags), so untagged records take
-  the engine-callback head pick — the seam's sequential consumption — while class-7 preload
-  routing stays an open alignment.
+  segment-TOC name byte, tags {0x07, 0x40}, no selector-class tags), so the selector never
+  fires for retail records and the seam's sequential consumption stays a port deviation [H]
+  (pass-90 callback-lane dump below publishes a registry index, not a queue pick), while
+  class-7 preload routing is a second open alignment.
   Gate: `test_commentary` selector-mirror CHECKs (classes 0..5/7 -> head index, class 6 -> +2,
   scene bit 0x42 -> +1) on top of the unchanged sequential + live-lane blocks.
 - Class-byte producer (RETRACTED pass-88 conclusion; re-decoded pass-89,
   scripts `/tmp/wc98pass87/GhidraWc98R{1..5}.py`, outputs `r{1..5}.txt` +
   `analysis/pass89sel/NOTES.md`): `[rec+0x20]` IS statically stamped — record driver `0x48f3e0`
   does `LEA EDX,[EBX+0x20]; CALL 0x48ffe8` (`r1.txt`), and `FUN_0048ffe8` runs the sound-registry
-  find `0x4a4a00` (`CALL 0x4a4820` -> registry find `0x4a45d0` on slot pool `DAT_006419e0`, key =
+  find `0x4a4a00` (`CALL 0x4a4820` -> registry find `0x4a45d0`; out slot `DAT_006419e0`
+  receives the found member offset (`004a4a08` write, `004a4a1e` read-back), key =
   the record driver arg struct word `[EAX]`/`[EAX+4]`) then `0x4a4a30` (copies the found node's
   byte-chain), and stores the first chain byte at `[rec+0x20]` (`r2.txt`/`r3.txt`). The pass-88
   writer scan missed it because `MOV byte ptr [ESI],AL` indexes through a register, not a
@@ -1407,9 +1409,19 @@ outer TOC. `r6.txt` type-2 lane `0x4a46a0..0x4a4715`: off slot `0x4a46d0..0x4a46
   6..7 unused). Untagged / miss / `count=0` nests stamp `0` -> engine callback. **No tag is in
   {2,4,6}**: the jump-table `0x48f2bc` selector arms are dead code in retail WC98 — that part
   of the pass-89 conclusion stands — but the class-7 preload arm is REACHABLE (139 phrases),
-  correcting pass-90's first "all arms dead" claim. The port's head-pick seam mirrors the
-  engine-callback lane (untagged/0x40 records); class-7 routing to the preload lane is an open
-  alignment, and `entryIndexForClass` stays as documentation of the unreachable arm.
+  correcting pass-90's first "all arms dead" claim.
+- Callback-lane dump (`/tmp/wc98pass90/cb2.txt`, forced function `0x49001c`): gate
+  `iRam00632724` (`DAT_00632724`) nonzero -> `func_0x0048ff64` = `0x4a4820`/`0x4a4a00`/
+  `0x4a4820`, then `*out = EBX*2` (2 the found registry index); no `qfindindex`/`qfind` on
+  this path. So the engine-callback lane PUBLISHES a registry-derived index, and the port's
+  sequential head pick is NOT proven retail — it stays deviation [H]; class-7 routing to the
+  preload lane is a second open alignment. `entryIndexForClass` remains documentation of the
+  unreachable selector arm.
+- Cross-file check (`/tmp/wc98pass90/phrs_walk.txt`): walker over `PHRS.PBK` nested TOCs gives
+  the SAME `{0x07: 211, 0x40: 251}` over 4,665 inner records, and `TYPE[j] == PHRS[j][:len]`
+  byte-exact for all 1290 j — the tag census is retail PHRS truth, correcting
+  `SPEECH_INDEXING_NOTES.md` §2's "zero non-empty names in any PBK TOC" (outer TOC names are
+  empty; the NESTED segment TOCs carry the tags).
 - Gate: `test_audio.cpp` pass-90 block — outer `BigArchive::parse(TYPE.PBK, tolerant)` + nested
   `BigArchive::parse` per member: 1290 outer, 0 non-BIGF payloads, 4,665 inner records, name
   histogram `{0x07: 211, 0x40: 251}` (462 names).

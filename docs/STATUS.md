@@ -376,7 +376,8 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
   integrated in the exhibition loop via `app/commentary.{hpp,cpp}` (trigger seam FUN_004893ec model ->
   SpeechQueue -> PHRS segment fetch/decode -> OpenAL Mixer, null-mixer headless; gates
   `test_commentary`). Event->phrase pick chain CLOSED (pass 7c, 2026-11-06): `FUN_0048d0dc` = qfind over
-  the class-keyed ready list (`DAT_00632428 + [slot+0xC]*4`) with slot-tag predicate `FUN_0048cf10`;
+  the class-keyed ready list (`DAT_00632428 + [slot+0xC]*0x1c` — 0x1c-byte queue objects,
+  wrapper arithmetic 0x48d0f2..0x48d105, pass-76 follow-up; earlier `*4` wording wrong) with slot-tag predicate `FUN_0048cf10`;
   activation `FUN_0048d1f8` removes the picked record (consume-on-use), null pick -> silent. Port pool
   consumed in storage order, per-event tag table unmeasured (marked in code); COMMENTARY_WC98 §pick,
   evidence `analysis/pass7/pick*.txt`. FCLG cross-map probed negative (`analysis/pass7/fclg_probe.txt`);

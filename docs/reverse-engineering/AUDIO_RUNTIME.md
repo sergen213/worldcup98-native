@@ -1295,7 +1295,8 @@ EAX=0x48f730 start handler, ECX=0x48f78c presentation lane, pushes 0x48f830 reco
 - Tick sweep `FUN_0048f920` (pump host `FUN_004906f8`): word-status `FUN_004dfa60 == 7`
   (finished) → release word, recycle to `DAT_006326c8`.
 - Weighting: dispatcher arms class `>>6` → scene for `FUN_0048d070` + byte table
-  `DAT_0057eb54[class*2]`; class 7 consults the PHRS preload table `DAT_00641014` stride
+  `DAT_0057eb54[class]` (8 direct-indexed bytes, corrected from the earlier `[class*2]`
+  wording); class 7 consults the PHRS preload table `DAT_00641014` stride
   0xFC entry `+0x34` u16. Boot pool `FUN_0048fb10` registers
   `AUDIO\TEAM\A_T%04d.PBK` (fmt 0x566bac) / `AUDIO\PLRS\P%05d.PBK` (fmt 0x566bc4) word
   banks, node pools stride 0xc (accessor stub 0x48f704).

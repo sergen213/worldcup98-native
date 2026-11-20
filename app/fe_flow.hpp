@@ -267,8 +267,10 @@ public:
     // (mov [eax+0x28], stub against the FUN_0047a3e8 record load: `eras`/`csam`/`pucw`;
     // the EDX after each store is the next lookup), and frame runner FUN_00444b28
     // invokes them through FUN_0046bee0 while iterating the loaded-record
-    // list *DAT_00602518 (flags: +0x18 bit 3 skip, +0x19 bit 0; FUN_004794ac runs after
-    // the loop, body not decompiled). The flags' runtime state on board frames is not
+    // list *DAT_00602518 (flags: +0x18 bit 3 skip, +0x19 bit 0; the frame step opens
+    // with (*DAT_005c6574)() = LAB_004190b4 -> _THRASH_writerect@20 blit/present, and
+    // FUN_004794ac after the loop only clears scene-lookup DATs). Which record paints
+    // the LAY back, and its list position versus the venue records, is not
     // recoverable statically [H]; the port keeps the venue off the composite by default, so it
     // is loaded+wired but not visible on the full-collage board. The port's presentation model
     // has no fixture schedule data

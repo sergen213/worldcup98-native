@@ -847,3 +847,31 @@ gate `test_gameaudio` asserts exact fixed-point division/truncation numbers
 closed. Beat scheduler stays exe-side scheduling semantics (port commentary
 queue models sentence scheduling; gate operand unresolved [H]).
 Evidence: `analysis/pass73gain/NOTES.md`, `/tmp/wc98pass73/a1..a10*.txt`.
+
+## Pass-74: .DCT movie audio claim retracted (A9 closed — movies are silent)
+
+The A9 residual claimed `.DCT` video carries its own audio track. Measured
+retraction: `INT_FIFA`/`INT_EASP`/`FL0_*` contain exactly one `SCHl` header +
+all `mTCD` chunks; chunk scan found zero `SCDl`/`SCEl`/audio chunks. The PT
+tags in the `SCHl` header (`82 01 02` channels, `83 01 07` codec, `85` sample
+count) declare audio metadata but no audio payload exists anywhere in the
+file — the fields are leftovers of the PSX `.STR` header template.
+
+Exe movie pipeline (`analysis`/`/tmp/wc98pass74/m1..m7.txt`):
+- `FUN_00490ee8` boot: computes viewport from `DAT_00632a14/2c`, reserves two
+  frame buffers (`FUN_0049f5a0` → `DAT_00632a24/30`).
+- `FUN_0049110c` pump: `FUN_0042b4e8/bd04` open, `FUN_004910d8` chunk fetch —
+  accepts only `0x4443546d` ("mTCD") and frees everything else (`FUN_0042d2c0`),
+  `FUN_00490fb8` blits cells, `FUN_00490e64` input poll, `FUN_00491060`
+  release. **No SND playback call anywhere in the pump** — the original movies
+  are silent.
+- `FUN_0049110c` calls the percent lane `FUN_004906a4` once at movie start
+  (scene duck, pass-73 lane); `DAT_006328b0/8b8` handle Esc/skip.
+- The mTCD 8-byte payload preamble is the PSX STR header `{N codes, 0x3800,
+  q, 2}`; bytes past the u16 code-size field continue the MDEC code stream
+  (trailer size scales with per-frame code count: `INT_FIFA` 1692/3848/4648 B
+  for frames 1-3), not an audio rate.
+
+Port already matches the truth: `app/video.cpp` presents video only. A9 row
+rewritten to Closed; `MENU_PARITY.md` intro-movies row "audio track" claim
+corrected to silent.

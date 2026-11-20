@@ -151,6 +151,33 @@ int main() {
         CHECK(reg.pool.back().name == "genans03.sci" && reg.pool.back().cls == 0);
         CHECK(std::find_if(reg.pool.begin(), reg.pool.end(),
                            [](const SciPoolEntry& e) { return e.name == "gengol31.sci"; }) == reg.pool.end()); // 87th file unregistered
+        // Pass-111sci boot-mode gate (TASK_HANDLERS_WC98.md §10): driver FUN_004a7120 registers
+        // records under the mode word built by FUN_00409CAC from venue flag + scene buckets; the
+        // 0x200 lane matches record ctxId against the single boot ctx global. Counts pinned from
+        // the exe record table per (scene, venue flag, ctx value).
+        auto count = [&](std::uint32_t vf, int b, int c, std::uint32_t cv) {
+            const std::uint32_t m = exeScriptModeMask(vf, b, c);
+            int n = 0;
+            for (const auto& r : reg.records)
+                if (exeScriptGate(r.flags, r.ctxId, m, cv)) ++n;
+            return n;
+        };
+        const std::uint32_t none = 0xffffffffu;
+        CHECK(count(0, exeSceneBuckets(10).first, exeSceneBuckets(10).second, none) == 6);
+        CHECK(count(1, exeSceneBuckets(10).first, exeSceneBuckets(10).second, 0x30) == 7);
+        CHECK(count(0, exeSceneBuckets(6).first, exeSceneBuckets(6).second, none) == 5);
+        CHECK(count(0, exeSceneBuckets(6).first, exeSceneBuckets(6).second, 0x82) == 6);
+        CHECK(count(0, exeSceneBuckets(8).first, exeSceneBuckets(8).second, none) == 4);
+        CHECK(count(0, exeSceneBuckets(8).first, exeSceneBuckets(8).second, 0x2e) == 5);
+        CHECK(count(1, exeSceneBuckets(9).first, exeSceneBuckets(9).second, 0x30) == 4);
+        CHECK(count(0, exeSceneBuckets(0).first, exeSceneBuckets(0).second, 0x2e) == 6);
+        CHECK(count(1, exeSceneBuckets(11).first, exeSceneBuckets(11).second, none) == 6);
+        const bool bucketsOk = exeSceneBuckets(10) == std::pair<int, int>{0, 0} &&
+                               exeSceneBuckets(9) == std::pair<int, int>{1, 2} &&
+                               exeSceneBuckets(0) == std::pair<int, int>{2, 0} &&
+                               exeSceneBuckets(6) == std::pair<int, int>{0, 1};
+        CHECK(bucketsOk);
+        std::fprintf(stderr, "SCI boot-mode gate: scene-10 register sets 6/7\n");
         std::fprintf(stderr, "SCI exe registry gate: 22 records, 86 pool entries\n");
     } else {
         std::fprintf(stderr, "FIFAWC.EXE absent: skipping exe registry gate\n");

@@ -425,13 +425,17 @@ Runtime lane (DGROUP .bss):
 - Registration `FUN_004a7090` (driver `FUN_004a7120` walks the 22-record table via slots): pushes
   `count` consecutive pool entry pointers into the pointer array `DAT_00641EBc` (len `DAT_00641DEe`),
   bumping per-class counters `u16 @0x641E06 + class*2`. If record byte@+0xc != 0 the record goes to
-  a separate module table `DAT_00641E1C + DAT_00641DEA*4` instead — statically never taken (all 22
-  bytes zero); a scene handler could rewrite byte@+0xc at runtime [H].
+  a module table `DAT_00641E1C + DAT_00641DEA*4` instead — statically never taken (all 22
+  bytes zero; CLOSED pass-111sci: zero references to any record +0xc/+0x10 in the image and slot
+  `0x580D44` read only at driver site 0x4a7175, so no rewrite lane exists — the branch is
+  unreachable).
 - Selection builder `FUN_004a7330` (per class 0..10): registered count vs aux skip word
   `u16 @0x641DF0 + class*2` (`0xffff` = unconditional); scan start = `FUN_004c321c() % totalEntries`
   (64-bit tick counter, pass-56 lane), skip consumption gated on `(tick>>32)&3 == 0`; survivors
   copied as 16-byte entries into the runtime registry `DAT_00641FFC` (len `DAT_00641DEC`). Aux word
-  source is runtime config [H] (statically zeroed .bss).
+  source CLOSED (pass-111sci): `FUN_004a7470` fills all eleven slots with `0xffff` at boot
+  (`FUN_004a7100` in the `FUN_004AB520` boot chain); no other write site — skip consumption never
+  happens (see §10 boot-mode note).
 - Boot loader `FUN_00409BC0` (gate: scene selector `DAT_00640FB4 == 10`, skipped in other scenes):
   `FUN_004a7220` returns (registry ptr, len); for each entry
   `sprintf("common\%s", name@+0)` → loader `FUN_00439810`, handle written to slot
@@ -453,7 +457,22 @@ Runtime lane (DGROUP .bss):
   block pin 22/86, table/pool VAs, record 0/1/16/21 fields, class histogram, first/last names, and
   the unregistered `gengol31.sci`.
 
-Residual [H]: flags bit semantics (bit0 unconditional; bits 0x2..0x200 mode-scene gates — the driver
-applies runtime mode words, no static dispatch found), aux skip table producer, byte@+0xc module
-rewrite sites, and per-scene subset of the 86 loaded on a given boot (tick-dependent). No bytecode
-VM — §9 conclusion unchanged.
+Boot-mode gate CLOSED (pass-111sci): driver `FUN_004a7120` walks the 22 records (u16 gate word)
+and registers each under the mode word built by boot handler `FUN_00409CAC` — venue flag bit
+(`FUN_0041a098` = u32 @ `0x571514 + venue*0x20`, the stadium pak-name table
+`{stet:1, stde:1, lens:0, lyon:1, mars:1, mont:0}`, venue index global `DAT_005716b8`):
+`venueFlag == 0 → bit 0x2, else 0x4`; scene bucket B (`DAT_00642508`: selector {0,11}→2, 9→1,
+else 0) → `0x8/0x10/0x20`; scene bucket C (`DAT_0064250C`: 6→1, {8,9}→2, else 0) → `0x40/0x80/
+0x100` (bucket C==2 fills the u16 high byte). Predicate: bit 0 unconditional; `flags & 0x200`
+records require `ctxId == DAT_006424FC = (uint)DAT_0059B2E6` (one value → at most one ctx pair of
+records 16..21 joins); else the masked word must keep all triples non-zero (`&0x6`, `&0x38`,
+`&0x1c0`). Gate `test_sci` boot-mode block pins per-scene register sets (scene 10 = 6 with the ctx
+global unmatched, 7 with a matched ctx value; scene 6 = 5/6; scene 8 = 4/5; scene 9 = 4). Aux skip
+table producer CLOSED (pass-111sci): `FUN_004a7470` fills the 11 class slots `0x641DF0..0x641E04`
+with `0xffff` (unconditional), called from `FUN_004a7100` in the boot chain (`FUN_004AB520` site
+0x4ab541) — no other write site, so the tick-gated skip consumption of `FUN_004A7330` never
+consumes. Byte@+0xc module rewrite CLOSED: zero references to any record `+0xc`/`+0x10` in the
+whole image and table-pointer slot `0x580D44` is read only at driver site 0x4a7175 — no store lane
+exists, so the module-table branch of `FUN_004a7090` is statically unreachable (earlier "a scene
+handler could rewrite byte@+0xc at runtime" claim retracted). Per-scene subset of the 86 loaded on
+a given boot remains tick-dependent [H]. No bytecode VM — §9 conclusion unchanged.

@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <span>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace wc98::formats {
@@ -83,10 +84,12 @@ struct SciPoolEntry {
 // `count` consecutive pool entries starting
 // at `first` into the runtime pointer array, bumping the per-class counter table.
 struct SciScriptRecord {
-    std::uint32_t flags = 0;           // gate mask (bit0 unconditional; bits 0x2..0x200 lanes [H])
+    std::uint32_t flags = 0;           // u16 gate word (bit0 unconditional; 0x200 ctx lane; bucket
+                                       // triples &0x6/0x38/0x1c0 — exeScriptGate, pass-111sci)
     std::uint32_t ctxId = 0;           // 0xffffffff scene lane; {0x30,0x82,0x2e} module records
     std::uint32_t count = 0;           // pool entries registered from `first`
-    std::uint32_t moduleByte = 0;      // byte @+0xc (statically 0 on all 22 records)
+    std::uint32_t moduleByte = 0;      // byte @+0xc (statically 0; zero write sites in the image —
+                                       // the module-table branch of FUN_004a7090 is unreachable)
     std::uint32_t first = 0;           // DGROUP VA of the segment's first pool entry
 };
 
@@ -103,5 +106,37 @@ struct SciScriptRegistry {
 // documented in TASK_HANDLERS_WC98.md §10). Throws FormatError unless the slots and table verify:
 // count slot @0x580D40 == records.size(), segments in range and summing to the pool size.
 SciScriptRegistry parseExeScriptRegistry(std::span<const std::uint8_t> exeBytes);
+
+// Boot-mode registration gate (driver FUN_004a7120 + boot handler FUN_00409CAC, pass-111sci,
+// TASK_HANDLERS_WC98.md §10): mode word = venue-flag bit (`FUN_0041a098` returns the u32 @
+// 0x571514 + venue*0x20 from the stadium pak name table {stet:1, stde:1, lens:0, lyon:1, mars:1,
+// mont:0}; venue index global DAT_005716b8) | scene bucket B | scene bucket C (bucket C==2
+// fills the u16 high byte, bit 0x100).
+inline std::uint32_t exeScriptModeMask(std::uint32_t venueFlag, int bucketB, int bucketC) {
+    std::uint32_t m = (venueFlag == 0) ? 0x2u : 0x4u;
+    if (bucketB == 0) m |= 0x8u; else if (bucketB < 2) m |= 0x10u; else if (bucketB == 2) m |= 0x20u;
+    if (bucketC == 0) m |= 0x40u; else if (bucketC < 2) m |= 0x80u; else if (bucketC == 2) m |= 0x100u;
+    return m;
+}
+
+// Scene selector → buckets (FUN_00409CAC: B = {0,11}→2, 9→1, else 0; C = 6→1, {8,9}→2, else 0).
+inline std::pair<int, int> exeSceneBuckets(int selector) {
+    const int b = (selector == 0 || selector == 11) ? 2 : (selector == 9 ? 1 : 0);
+    const int c = (selector == 6) ? 1 : ((selector == 8 || selector == 9) ? 2 : 0);
+    return {b, c};
+}
+
+// Per-record registration predicate (driver walk, u16 gate word): bit 0 unconditional; bit 0x200
+// lane requires the record ctxId == boot context global `DAT_006424fc = (uint)DAT_0059B2E6` (one
+// value, so at most one ctx pair of records 16..21 can join); else the masked word must have all
+// three bucket triples non-zero (&0x6 venue, &0x38 B, &0x1c0 C).
+inline bool exeScriptGate(std::uint32_t flags, std::uint32_t ctxId, std::uint32_t mask,
+                          std::uint32_t ctxValue) {
+    const std::uint32_t f = flags & 0xffffu;
+    if (f & 1u) return true;
+    if ((f & 0x200u) && ctxId != ctxValue) return false;
+    const std::uint32_t m = f & mask;
+    return (m & 0x6u) != 0 && (m & 0x38u) != 0 && (m & 0x1c0u) != 0;
+}
 
 } // namespace wc98::formats

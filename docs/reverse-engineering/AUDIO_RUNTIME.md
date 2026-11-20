@@ -448,6 +448,38 @@ teardown `0x48e300` via `0x42b070`. Common wiring: `FUN_004e3128` attach on
 consumes `CROWD.BNK/CRD`; `TRAFF.*` is the scene-10 (stadium) variant of the
 same loader, not a new sample source — no port change.
 
+### 97a: scene-10 crowd tick = MIDI sequence drain (pass-97, 2026-11-20)
+Crowd tick `FUN_0048e68c` (`analysis/pass97crowd/cr3.txt` disassembly, `0x48e68c..0x48e6c7`)
+drains MIDI sequence handles, not sound slots: gated `DAT_006325b0 != 0` (scene-enable flag,
+set by `FUN_0048e78c`) and `DAT_006325b4 != 0` (boot done). It runs as the tail of the tick
+host (`JMP 0x48e68c`, §Pass-96 tick host `FUN_004906f8`; no direct `E8` site). Teardown
+`0x48e84c`: `FUN_004e4f80`,
+`FUN_004e4354` (when booted), free the bank through the registry callback `FUN_004e37cc`
+(installed at `DAT_006597d0` by boot init) with `EAX = DAT_006325c8`,
+`FUN_004e4fd8`, `FUN_0048e2b4` (PBK slot handles), `FUN_0048e300` (boot lane), then zero
+`DAT_006325b8/006325b0`.
+Loop: `qfetch(DAT_006325fc, predicate 0x48e168)` until no entry matches; each **matching**
+entry is moved to queue `DAT_006325e0` via `qbottom` (`FUN_004c4800`); non-matching entries
+stay pending in `DAT_006325fc`. The predicate reads the queue entry's MIDI sequence handle at
+`+8` and calls `FUN_004e38b4` (`SNDseqstatus`, `cmn\sseqstat.c`, assert string `SNDseqstatus …
+MIDI MODULE NOT INITIALIZED` @0x56b380): `EAX` = sequence handle (`handle < 0` or
+`handle & 0x1f >= 0x10` → `-8`; server uninitialized `DAT_006597b0 == 0` or `DAT_006597d4 ==
+0` → `-14`), looked up in the 36-byte sequence-record table `DAT_0064b160` (`{+0 handle, +12
+state byte}`), state byte 0..4 through the jump table at `0x4e38a0` mapping to status codes
+`0` (states 0/3), `2` (state 1, and state 2 after a `DAT_0064bee0` bound check), and `3`/`5`/
+`6` (state 4 lane, keyed on record `+0x11`). Predicate match = status `== 2` **or** negative
+(`CMP EAX,2; JZ keep; TEST EAX; JL keep; XOR EAX,EAX`), so codes `0`/`3`/`5`/`6` remain in the
+pending queue and matching handles move to `DAT_006325e0`. What status `2` means (ready vs
+done) is not decoded [H]. This is the CMIDI sequence lane (`CMIDI.BNK` boot lane,
+`DAT_006325cc`): the MIDI-director stream lane stays device-blocked (A5), the port has no
+equivalent lane, so no port change; the crowd bed model (pass-54/59) is untouched by this
+lane.
+Scene-enable dispatch (`0x48e7a0..0x48e847`, pass-61b) confirmed: scene word `DAT_00640fb4 ==
+10` loads `TRAFF.BNK`/`TRAFF.CRD`, other scenes `CROWD.BNK`/`CROWD.CRD`. `E8` scan with the
+correct AUTO anchor (`raw = VA - 0x400c00`, verified `0x48e168` reads `8b 40 08 e8`) finds the
+static caller at `0x409f04` inside init `FUN_00409ef4`, matching §"SFX bank owner"; a naive
+scan with the `+0x401000` delta is off by 4 KiB and misses it.
+
 ## 10. SND bank subsystem — id→sample mapping (pass 62, measured 2026-11-19)
 Retracted (pass-60/61): "the SNDplay-id→slot mapping lives in the SND DLL bank tables
 (unrecovered [H])". `EACSND.DLL`/`EACSNDD.DLL` (tree root) are the **DirectSound driver**

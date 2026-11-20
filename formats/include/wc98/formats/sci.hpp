@@ -108,11 +108,13 @@ struct SciScriptRegistry {
 SciScriptRegistry parseExeScriptRegistry(std::span<const std::uint8_t> exeBytes);
 
 // Boot-mode registration gate (driver FUN_004a7120 + boot handler FUN_00409CAC, pass-111sci,
-// TASK_HANDLERS_WC98.md §10): mode word = venue-flag bit (`FUN_0041a098` returns the u32 @
-// 0x571514 + venue*0x20; the 13-row stadium table `DAT_00571514` pointing at `*___x.big` slots:
-// {stet:1, stde:1, lens:0, lyon:1, mars:1, mont:0, toul:1, bord:1, nant:1, prac:1, semi:1,
-// fina:0, clas:0}; default index -1 reads the record row at 0x5714f4 (`pari___x.big`, flag 0);
-// venue index global DAT_005716b8).
+// TASK_HANDLERS_WC98.md §10): mode word = venue-flag bit (`FUN_0041a098` returns the row-+0x1c
+// word = 0x571514 + venue*0x20 of the venue table based at 0x5714f8, 14 rows `{pakptr,1,0,lane,
+// 0x23f0,0x2d50,0,flag}` pointing at `*___x.big` slots 0x55aa48+venue*0x10, venue 0 =
+// `pari___x.big`: {pari:1,stet:1,stde:0,lens:1,lyon:1,mars:0,mont:1,toul:1,bord:1,nant:1,prac:1,
+// semi:1,fina:0,clas:1} (pass-116ctx re-base; earlier base 0x571514/labels shifted by one);
+// default index -1 reads the row at 0x5714d8 (pakptr sentinel 0xffffffff, flag 0); venue index
+// global DAT_005716b8).
 inline std::uint32_t exeScriptModeMask(std::uint32_t venueFlag, int bucketB, int bucketC) {
     std::uint32_t m = 0u; // pseudocode: flag == 0 -> 0x2, == 1 -> 0x4, other -> no venue bit (table only holds 0/1)
     if (venueFlag == 0u) m |= 0x2u; else if (venueFlag == 1u) m |= 0x4u;

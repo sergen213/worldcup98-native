@@ -459,25 +459,25 @@ Runtime lane (DGROUP .bss):
 
 Boot-mode gate CLOSED (pass-111sci): driver `FUN_004a7120` walks the 22 records (u16 gate word)
 and registers each under the mode word built by boot handler `FUN_00409CAC` — venue flag bit
-(`FUN_0041a098` = u32 @ `0x571514 + venue*0x20`, the stadium-pak table `DAT_00571514`, 13 rows
-pointing at `*___x.big` name slots: `{stet:1, stde:1, lens:0, lyon:1, mars:1, mont:0, toul:1,
-bord:1, nant:1, prac:1, semi:1, fina:0, clas:0}` — proven by exact address equality, row pointer
-+4 == name-slot VA `0x55aa58 + i*0x10`; a record row sits at `0x5714f4..0x571510` immediately
-BEFORE the table base (flag 0, pointer `pari___x.big` @ `0x55aa48`, +0x10 = 1) — read by
-`FUN_0041a098` when the venue index global `DAT_005716b8` keeps its default `0xffffffff` (-1),
-i.e. the pre-venue-assigned row; venue index global `DAT_005716b8`, table capacity 13; row field
-+0x10 is `1` on rows 0..8 and 10/11, `0` on rows 9/12 (re-counted pass-115ctx; the earlier
-"rows 0..8 and 10, 0 on rows 9/12" listing missed row 11 = 1). Under the `venue<<5` index the
-consumers address base offsets `-0x14..-0x4` = previous-row fields +0xc/+0x10/+0x14/+0x18/+0x1c
-(pass-115ctx fixed an off-by-8 mapping): `0x41a680 cmpl $0,[0x571504+venue<<5]` (prev-row +0x10
-lane word) gates a slot-install lane — on nonzero and `(DAT_0057d2bc & word [0x60cc06]) == 0` it
-allocates `DAT_00571710` (`0x409af8/0x40de38`), calls `0x41da7c` (ebx=1, edx=`0x571718`) and
-registers handler `0x41be20` via `0x4bf1d0`; `0x41a3c0 cmpl $0,[0x571500+venue<<5]` (prev-row
-+0xc, all-zero in the image) skips the fly-around block; `0x41a0b2/0x41a0c4` read prev-row
-+0x14/+0x18 (`0x23f0/0x2d50`) into caller cells. Semantics stay [H] (which venue the shifted
-index selects — venue-1 row or a base-shifted row — unrecoverable statically; rows are
-exe-image data, runtime-rewrite of `+0xc/+0x10` not excludable), row layout
-`{flag, pakptr, 1, 0, lane, 0x23f0, 0x2d50, 0}` observed directly from the image):
+(`FUN_0041a098` = u32 @ `0x571514 + venue*0x20` — the row-`+0x1c` word of a venue table based at
+`0x5714f8`; re-based pass-116ctx: `0x419f2c` writes the venue index `ECX` into `DAT_005716b8`
+and `0x419f45/0x419f50` then `esi = venue<<5; esi = [0x5714f8+esi]` = the row-`+0x0` pakptr,
+copied as a name string at `0x419f5c` — **venue 0 = `pari___x.big`**, name slot
+`0x55aa48 + venue*0x10`, 14 rows `{pakptr, 1, 0, lane, 0x23f0, 0x2d50, 0, flag}` for
+`{pari, stet, stde, lens, lyon, mars, mont, toul, bord, nant, prac, semi, fina, clas}`. The
+earlier pass-111 base (13 rows from `0x571514`, venue 0 = `stet`, pari = pre-venue row) was
+off-by-one; the flag column is `{pari:1,stet:1,stde:0,lens:1,lyon:1,mars:0,mont:1,toul:1,
+bord:1,nant:1,prac:1,semi:1,fina:0,clas:1}` and the lane column `{pari..bord:1, nant:0, prac:1,
+semi:1, fina:0, clas:0}` — same numbers as the old `{stet:1,stde:1,lens:0,…}` listing, venue
+labels shifted by one. When the venue global keeps its default `0xffffffff` (-1), `FUN_0041a098`
+reads the default row at `0x5714d8` (pakptr sentinel `0xffffffff`, flag 0); `pari` is venue 0,
+not a pre-venue row. All `venue<<5` consumers are same-row (replaces pass-115ctx prev-row
+mapping): `0x41a020/0x41a0a0` row `+0x1c` flag; `0x41a680 cmp $0,[0x571504+venue<<5]` = row
+`+0x0c` lane gate — nonzero and `(DAT_0057d2bc & word [0x60cc06]) == 0` allocates
+`DAT_00571710` (`0x409af8/0x40de38`), calls `0x41da7c` (ebx=1, edx=`0x571718`) and registers
+handler `0x41be20` via `0x4bf1d0`; `0x41a3c0 cmp $0,[0x571500+venue<<5]` = row `+0x08`
+(all-zero in the image) skips the fly-around block; `0x41a0b2/0x41a0c4` read row `+0x10/+0x14`
+(`0x23f0/0x2d50`) into caller cells. Flag/lane semantics stay [H]):
 `venueFlag == 0 → bit 0x2, == 1 → bit 0x4`, any other value sets no venue bit (strict
 `==0/==1` branches in the decompile; the table rows hold only 0/1): scene bucket B (`DAT_00642508`: selector {0,11}→2, 9→1,
 else 0) → `0x8/0x10/0x20`; scene bucket C (`DAT_0064250C`: 6→1, {8,9}→2, else 0) → `0x40/0x80/`
@@ -490,12 +490,13 @@ and maps hits to `{3,2}` slot writes; `FUN_004110EC` reads the field absolute (`
 `mov ax,[0x59b2e6]`) and compares against `861`; `DAT_00642500 ← 0x59b70e` = same field at
 base+`0x428`. No absolute store to `0x59b2e6`/`0x59b70e` exists (stores at adjacent
 `0x59b27c..0x59b290` in the init lane `0x4029xx` are other fields); producer lane [H]
-(pointer-relative fill, unproven, pass-112ctx; pass-115ctx corroboration: the field's only
-reads are pointer-relative — `mov ax,[0x59b2e6+EBP]` at `0x40f6bc` with `EBP = [esp+0x30]`,
-and `mov dx,[0x59b2e6+ESI]` at `0x411110` with `ESI` stepping by `0x428` until `0x850`; the
-absolute load at `0x414340` (`xor eax,eax; mov edx,1; mov ax,[0x59b2e6]`) feeds `FUN_00414168`
-with EAX = the field (team id, zero-extended) and EDX = 1, and stores the result to
-`DAT_00571180`, the slot-index byte table read at `0x414118`): else the masked word must keep all triples non-zero (`&0x6`, `&0x38`,
+(pointer-relative fill, unproven, pass-112ctx; pass-116ctx: 2 of the 5 reads are
+register-relative — `mov ax,[0x59b2e6+EBP]` at `0x40f6bc` with `EBP = [esp+0x30]`, and
+`mov dx,[0x59b2e6+ESI]` at `0x411110` with `ESI` stepping by `0x428` until `0x850` — while
+`0x409d4a` (copy), `0x41117e` (compare) and `0x414340` are absolute; `0x414340`
+(`xor eax,eax; mov edx,1; mov ax,[0x59b2e6]`) feeds `FUN_00414168` with EAX = the field
+(team id, zero-extended), EDX = 1, and stores the result to `DAT_00571180`, the slot-index
+byte table read at `0x414118`): else the masked word must keep all triples non-zero (`&0x6`, `&0x38`,
 `&0x1c0`). Gate `test_sci` boot-mode block pins per-scene register sets (scene 10 = 6 with the ctx
 global unmatched, 7 with a matched ctx value; scene 6 = 5/6; scene 8 = 4/5; scene 9 = 4). Membership
 is fully deterministic from (scene, venue flag, ctx value) — the aux slots are all `0xffff` after

@@ -1830,45 +1830,114 @@ SFX-table enable `0x48dc84` (DAT_006324b4), loads handler pointers
 0x48e5a0/0x48e550/0x48e4fc/0x48e488 (plus SFX handlers 0x48d7dc/0x48d9d8 and
 stack imm 0x490978/0x490a34) and installs them via `CALL 0x4e7060`
 (`analysis/pass100crowd/NOTES.md`, disassembly `/tmp/wc98pass100/p100*.txt`).
-Handler roles (watcom EAX=arg1, EDX=arg2; arithmetic re-verified byte-by-byte,
-retracting the first-draft `arg*567/100` and "voice lane" wording):
-- `0x48e5a0` start wrapper: stores initial-level arg to DAT_006325bc,
-  `SNDcrowdstart(idx)`, then `SNDcrowdcontrol` through the percent-getter lane
-  (`0x490670` = immediate-RET no-op for non-zero scene; `0x4906d0` scene-0
-  lane), scene percent table DAT_00632774/0x632778 (pass-16 lane).
-- `0x48e550` percent seam: EDX = min(arg, 10) (`CMP EDX,0xa CMOV`);
-  level = **`arg*511/100`** — verified chain: x → 8x+ x=9x → 72x+ x=73x →
-  73x<<3 − 73x = **511x**, IDIV 100. 511 = `0x1ff`, exactly the
-  `SNDcrowdcontrol` ceiling (pass-71 `0x48dc84`).
-- `0x48e488` pulseA: gates DAT_006325b0/5b8/5b4; then `CALL 0x48e100` level
-  gate = **`arg*pct[idx]*127/10000`** percent-scaled level (scene==10 lane
-  `0x4906d0`: `pct[EDX]`, IMUL, ×127, double `/100`; non-10 fallback
-  `0x490670` no-op), skip when result ≤ 0 — a level gate, not a slot count.
-  Card `[0x6325d4]`, slot record base `+0x30`; divisor = BE dword at
-  record+`0x30` (`0x4a49a0` swap, EDX=0); slot index = tick `0x4c321c`
-  `DIV` divisor remainder via getter `0x4a4a00`; then `SNDcrowdpulse(idx,
-  record)` (`0x4e4cac`) and the reaction seam `0x48e3b0(EAX=[record+6],
-  EDX=arg)`.
-- `0x48e4fc` pulseB: gates 5b0/5b4; idx = low word of AX; same `0x48e100`
-  level gate; card `[0x6325d8]` struct: divisor = BE dword at card[0], tick
-  remainder slots via `0x4a4a00`; **no `SNDcrowdpulse`** — seam fires directly
-  with struct dword `+6`, EDX = idx.
-Reaction seam `0x48e3b0`: pool queue DAT_006325e0; when the smidi module
-pointer DAT_006597d4 == 0 it drains via `0x48e650` (the port-relevant lane:
-module never initialized on Linux → seam inert). Otherwise plays through
-**`SNDseqplayPVB` `0x4e462c`** (cmn\smidi.c) — a **MIDI sequence player**, not
-a digitized-voice player (strings `SNDseqplayPVB: PAN/BEND OF`, `MIDI MODULE
-NOT INITIALIZED`): EAX = **sequence id** (validated `0x100..0x6500`, bank =
-`id>>8-1` into the active-bank table DAT_0064b3a4), EDX = PAN (`-1`→64
-center), EBX = VOL (`-1`→127), ECX = BEND (`-1`→64); playback records stride
-`0x24` @ DAT_0064b15c. Success → 16-frame hold entry into queue DAT_006325fc;
-drains `0x48e650`/`0x48e68c` (filter callback `0x48e168`: record state `==2`
-or `<0`) recycle entries back to 5e0. The seam argument is the crowd pulse
-record dword `+6` = `{u16 ceiling | u16 step-low}` (pass-71 record layout):
-with step==0 the value doubles as a valid CMIDI sequence id (measured 350/450
-pair, bank = id>>8-1 = 0) — the crowd reaction lane fires **stadium-jingle
-MIDI sequences through the smidi module**, tying it to the A5 CMIDI lane, not
-to a digitized voice lane. Both PVB call paths pass PAN=-1 → center,
-corroborating the pass-99 A10 closure from the pan side. The sequence-id
-producer into the pulse seam stays [H] (scene-registry pump internal). Port:
-MIDI module unset → inert seam; reaction/chant silence stays 1:1.
+Handler roles (watcom EAX=arg1, EDX=arg2; second revision — the first and
+second drafts each carried wrong claims; everything below re-disassembled
+from bytes with capstone):
+- `0x48e5a0` start wrapper: gates DAT_006325b0 != 0 and 5b8 == 0; stores the
+  initial-level arg to DAT_006325bc; `CALL 0x48e100` (percent lane below);
+  `CALL 0x4e4ba0(scaledLevel, idx)` — smidi crowd start setter; then
+  `XOR EAX,EAX; CALL 0x48e550` (control level 0); sets `DAT_006325b8 = 1`.
+  No `SNDcrowdstart` call here — pass-71's `0x4e4d1c` is the library entry,
+  the wrapper uses the `0x4e4ba0` start setter.
+- `0x48e550` percent seam: gates 5b0 != 0, percent gate `CALL 0x4906a4` with
+  idx = 2 (`pct*0x7f/100`, pass-52) must be > 0, 5b8 != 0; level =
+  **`arg*511/100`** — verified chain: x → 8x+ x=9x → 72x+ x=73x;
+  `73x<<3 − 73x = 511x`; IDIV 100; `CALL 0x4e4d8c` (`SNDcrowdcontrol`,
+  ≤0x1ff clamp — 511 = `0x1ff` matches it). No argument clamp exists — the
+  second draft's `min(arg,10)` CMOV claim is retracted; no `567` either.
+- `0x48e488` pulseA: gates 5b0/5b8/5b4 all non-zero; `CALL 0x48e100` =
+  **percent-scaled level gate, not a slot count**: `0x48e100` calls
+  `0x4906d0` with **EAX = 2 hardcoded** (pct idx2, IMUL, ×127 = SHL7+SUB,
+  then two `IDIV 100` → `arg*pct[2]*127/10000`), then
+  `CMP DAT_00640fb4, 0xa; JNE → CALL 0x490670`; `0x490670` is the RET tail
+  of the handler-deregister function `0x490660` (which calls registry
+  `0x4e7060` with NULL args) — an immediate-RET no-op, so the scaled value
+  is identical for every scene; caller `TEST EAX; JLE` skips when ≤ 0.
+  Card `[0x6325d4]`; slot record = getter `0x4a4a00(card, idx)` + `0x30`;
+  divisor = BE-swap dword at record+`0x30` (`0x4a49a0`, EDX=0); tick
+  `0x4c321c` `DIV` divisor; **remainder** selects the slot via `0x4a4a00`;
+  `SNDcrowdpulse(idx, slotrecord)` `0x4e4cac` (error lane `0x4e4ce2..`
+  returns `-8`/`-14`/`-1`); then seam `0x48e3b0(EAX = slotrecord dword+6,
+  EDX = arg)`.
+- `0x48e4fc` pulseB: gates 5b0/5b4; idx = low word of AX (`XOR ECX,ECX;
+  MOV CX,AX`); same `0x48e100` level gate; card `[0x6325d8]` struct: divisor
+  = BE-swap of card-struct dword @0 (`0x4a49a0` on the handle), tick DIV
+  remainder selects slot via `0x4a4a00`; **no `SNDcrowdpulse`** — seam fires
+  directly with slotrecord dword `+6`, EDX = idx.
+Reaction seam `0x48e3b0`: gate DAT_006325b4; fetch entry from pool queue
+DAT_006325e0 (`0x4c4890`); entry+4 stores the EDX argument; plays through
+**`SNDseqplayPVB` `0x4e462c`** (cmn\smidi.c) — a **MIDI sequence player**,
+not a digitized-voice player: EAX = **sequence id** (validated
+`0x100..0x6500`, bank = `id>>8-1` into the module bank table DAT_0064b3a4),
+EDX = PAN (`-1`→64 center), EBX = VOL (`-1`→127), ECX = BEND (`-1`→64) —
+all three hardcoded `-1` at the seam (`MOV ECX,0xffffffff; MOV EBX,ECX;
+MOV EDX,ECX`). The module gate lives **inside PVB**, not in the seam:
+module flag byte DAT_006597b0 == 0 → `-14` (`0x4e4678`); callback pointer
+DAT_006597d4 == 0 → `MIDI MODULE NOT INITIALIZED` error path; invalid id →
+`-8`. Playback records = stride-`0x24` table DAT_0064b15c (zeroed at
+install with defaults vol `0x7f`, pan/bend `0x40`, `0x4e4242..`).
+Success (ret ≥ 0): handle stored at entry+8; scaled level =
+`id*pct[2]*127/10000` (second `CALL 0x48e100`, EDX = 0x10 ignored by the
+lane); `CALL 0x4e39d0(handle, scaled)` — smidi level setter, same module
+gate + record lookup `0x4e3ba0`; entry `qpush` (`0x4c4800`) into in-flight
+queue DAT_006325fc. Negative return: entry `qpush` back into the free pool
+queue 5e0.
+Drain handlers: tick handler `0x48e650` (gates 5b0/5b4) loops queue 5fc:
+stop each handle `CALL 0x4e48c4(entry+8)` and `qpush` back to 5e0; handler
+`0x48e68c` (gates 5b0/5b4) walks queue 5fc via `0x4c4e70` with filter
+callback `0x48e168` (`CALL 0x4e38b4(entry+8)`: state `==2` or `<0` =
+finished) and recycles finished entries.
+Module writers located (retracts the "circular 1:1" wording): audio boot
+`0x49073e CALL 0x4e95f0` — device open; success path `0x4e9640..0x4e9644`
+`MOV BYTE [DAT_006597b0], 1`; `0x49076a CALL 0x4e9840` (channel config,
+vol `0x7f`, count `0x14`); `0x49076f CALL 0x4e41d4` — module installer,
+gated on the flag byte (`0x4e41d8`): zeroes the bank table `0x64b39c..`,
+the playback-record table `0x64b15c` (16 records), and the `0x64b9dc`
+channel table, then stores callback pointers `[DAT_006597cc] = 0x4e3bd4`,
+`[DAT_006597d4] = 0x4e4328`.
+The seam argument is the stamped **phrase→MIDI sequence id**: scene-10
+boot `0x48e6d0` first loads the `0x566adc` name (CMIDI.BNK, pass-56)
+through `0x48e190` into `DAT_006325cc`, then calls the CRWD device-open
+lane `0x4e3128` with EAX = the address `DAT_006325d0`, EDX = that CMIDI
+bank handle, EBX = 0 (the handle lands in `DAT_006325d0` inside that
+lane, internals [H]); the loader `0x48e280` runs exactly **two**
+iterations (`ADD EDX,4; CMP EDX,8`,
+and `0x48e190` preserves `EDX` via `PUSH/POP EDX`): names from the
+runtime-populated pointer table `DAT_0057eb44/0x57eb48` (no static pointer
+to the string pool exists — that is why the pass-56 name scan came up
+empty) open through `0x48e190` (`AUDIO\CRWD\%s` @0x566acc) into handle
+slots `DAT_006325d4`/`DAT_006325d8` — the CROWD.PBK/COMOS.PBK lane of the
+pass-56 decode, not nine banks. Boot also reserves the
+`count(CROWD.PBK) × 12`-byte `SNDCRD` pool (`0x566ae8`, `CALL 0x49f5a0`
+→ `DAT_006325dc`) and creates the three queues `DAT_006325e0/5fc/618`
+(`CALL 0x4c46a0`). The stamp then runs through the record wrapper
+`0x48e248` (callback = `0x48e1c4`): the stamp loop walks the BE container
+count, and per record (getter `0x4a4a00`) calls
+`SNDphrasemidi 0x4e43c0` with EAX = device handle `[DAT_006325d0]`, EDX =
+`-1`, storing the returned MIDI sequence id at **record+`6`** —
+`0x4e43c0` is MIDI-module-gated (flag `0x6597b0` → `-13` error lane at
+`0x4e4463`). PulseA/B fire the seam with the record dword `+6`, so the
+sequence id fed to PVB is the stamped phrase id, not an envelope ceiling:
+the pass-71 `{ceiling 350/450}` pair belongs to the CROWD.CRD *layer*
+record at card+`0x28` (pass-55 envelope arithmetic) and has nothing to do
+with the seam — the second draft's "stadium-jingle sequence ids" claim is
+retracted. Without the MIDI module the stamp is `-13`, below the PVB id
+floor `0x100` → `-8` → entry recycled: the no-synth lane. Teardown
+`0x48e300`: clears gate `5b4`, runs wrapper callback `0x48e208` over both
+containers — for each record with stamped `[+6] >= 0` it calls
+`SNDseqfreeze 0x4e4568` (same module gate, `-2`/`-14` lanes), then walks
+`EDX = 0,4`: closes each container handle `[EDX+0x6325d4]` (CROWD.PBK
+then COMOS.PBK) via `CALL 0x42b070` when non-NULL and zeroes the same two
+slots (`[EDX]` read at base `+0x6325d4`, store at base `+0x6325d0` with
+the incremented EDX — the two addresses describe the identical slot),
+then closes the device with `CALL 0x4e37cc([DAT_006325d0])` and closes +
+zeroes `DAT_006325cc`; the `DAT_006325dc` pool follows in the release
+lane.
+Both PVB paths
+receive PAN=-1 → center: independent backing for pass-99 A10. Port: no
+MIDI device open → flag byte 0 → stamp `-13` → PVB rejects → seam
+recycles every entry, silent — equal to retail behavior on a machine
+without a synth; retail with a synth renders the CRWD phrase bank as MIDI
+sequences (the device-dependent side remains the A5 blocked lane). The
+per-phrase semantics of the `0x4e43c0` mapper (EDX = `-1` selector) stay
+[H].

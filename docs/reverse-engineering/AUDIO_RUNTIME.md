@@ -1425,3 +1425,38 @@ outer TOC. `r6.txt` type-2 lane `0x4a46a0..0x4a4715`: off slot `0x4a46d0..0x4a46
 - Gate: `test_audio.cpp` pass-90 block — outer `BigArchive::parse(TYPE.PBK, tolerant)` + nested
   `BigArchive::parse` per member: 1290 outer, 0 non-BIGF payloads, 4,665 inner records, name
   histogram `{0x07: 211, 0x40: 251}` (462 names).
+
+## Pass-91: class-7 preload arm decoded (measured 2026-11-20)
+
+Evidence `/tmp/wc98pass91/c7b.txt` (decompile `FUN_0048f2d8` switch + `FUN_0048f290`),
+`c7c.txt`/`c7d.txt` (full instruction dump 0x48f290..0x48f4fe); notes
+`analysis/pass91c7/NOTES.md`.
+
+- Selector/class dispatch `FUN_0048f2d8` (the jump-table `0x48f2bc` consumer):
+  `switch(byte[rec+0x20] & 0x3f)` — cases 2/4/6 run the entry-selector arm `0x48f317`
+  (pass-87/88 chain); **case 7 is the PHRS preload arm `0x48f354`**, cases 0/1/3/5 fall
+  through silent. Return gate: success iff a slot was filled (`*slot != 0`), else the record
+  recycles (dispatch 0).
+- Preload arm (`c7d.txt`): `EAX=1; EBX=0; EDX=0; CALL 0x48f290` → store `[EDI]` (home slot,
+  through the pointer loaded from `DAT_006326b0`); `EBX=1; EDX=1; EAX=1; CALL 0x48f290` →
+  store `[ECX]` (away slot, dispatcher stack `[ESP+0x10]`). Two accessor calls, selectors 0/1.
+- Accessor `FUN_0048f290` = MATCH-RECORD GATE + queue pick: `idx*0xfc` stride into
+  `DAT_00641014` (idx 0 = home record, idx 1 = `DAT_00641014+0xfc` = `DAT_00641110`, the
+  pass-56 home/away pair as ONE stride-0xfc table), read field `+0x34` u16; if 0 → return 0;
+  else `CALL 0x48d070` with `EAX=1` → queue lane `DAT_00632428 + 1*0x1c` (class-1 queue),
+  selector = EBX (0 = head node, 1 = successor), i.e. the pass-87 `qfindindex` chain.
+- Record dispatcher `0x48f47c` (driver, gate `[DAT_006326b0]` NULL → whole dispatch silent):
+  fills the three stack slots through `FUN_0048f2d8`, then `CMP class,7; JA SNDflush` — class
+  7 (and below) runs the 8-arm table `0x48f45c`; the phrase-feed arm
+  `0x48f4ce` = word entry `[rec+0x28]+0xE` phrase → `SNDphraseadd 0x4df968`, handle stored
+  `[word+6]`; then `SNDflush 0x4dfb40`. So class 7 gates on the match-record field, picks
+  the class-1 queue head/successor lane, and the phrase feed stays the word-entry pick.
+- Port mirror `Commentary::triggerLive7(homeId, awayId)` (`app/commentary.hpp/cpp`): busy
+  reject + exhausted-pool lanes shared with `triggerLive`; home gate nonzero → `startPick(0)`;
+  home closed away nonzero → `startPick(1)`; both zero → reject (dispatch-return-0 recycle
+  lane). Deviation [H]: exe fills TWO pick slots (home through the `DAT_006326b0` struct,
+  away on the driver stack) consumed downstream; port seam starts one sentence per call.
+  Live events carry no retail class byte yet [H] — callers with match team ids may route
+  class-7 announcements through the lane.
+- Gate: `test_commentary` pass-91 block — `triggerLive7(0,0)` silent reject; `(0x1234,0)`
+  head pick; after drain `(0,0x1234)` successor pick (different phrase).

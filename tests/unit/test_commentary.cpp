@@ -282,6 +282,23 @@ void original() {
     c.triggerLive(ev(sim::EventType::Goal));    // drained -> idle, start accepted again
     CHECK(c.sentencesStarted() == sentBefore + 2 && c.rejected() == 1);
     c.pump(64);
+    // --- pass-91 class-7 preload lane gate (dispatch arm 0x48f354 + accessor FUN_0048f290,
+    // analysis/pass91c7/NOTES.md): gate = match-record slot field +0x34 u16 (0 = slot closed);
+    // home open -> head pick (selector 0), home closed away open -> successor pick (selector
+    // 1), both closed -> dispatch return 0, record recycled (silent). ---
+    const std::uint32_t rejP91 = c.rejected();
+    const std::uint32_t sentP91 = c.sentencesStarted();
+    const std::uint32_t phrP91 = std::uint32_t(c.lastPhrase());
+    c.triggerLive7(0, 0);                    // both +0x34 gates zero: silent recycle lane
+    CHECK(c.sentencesStarted() == sentP91 && c.rejected() == rejP91 + 1 && c.lastPhrase() == int(phrP91));
+    c.triggerLive7(0x1234, 0);               // home gate open: head pick (selector 0)
+    CHECK(c.sentencesStarted() == sentP91 + 1 && c.lastPhrase() >= 0 && c.queue().queued() > 0);
+    c.pump(64);
+    const std::uint32_t headP91 = std::uint32_t(c.lastPhrase());
+    c.triggerLive7(0, 0x1234);               // away gate only: successor pick (selector 1)
+    CHECK(c.sentencesStarted() == sentP91 + 2 && c.lastPhrase() >= 0 && c.lastPhrase() != int(headP91));
+    c.pump(64);
+    std::printf("pass-91 class-7 preload lane: %u sentences, %u rejects\n", c.sentencesStarted(), c.rejected());
     std::printf("commentary tree gates OK: %u sentences, %u segment decodes, %u live-lane rejects\n",
                 c.sentencesStarted(), c.decodedSegments(), c.rejected());
 }

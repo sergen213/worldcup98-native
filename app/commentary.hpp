@@ -340,8 +340,9 @@ public:
     // the engine-callback lane 0x49001c (gate DAT_00632724): it runs a SECOND registry find
     // (0x48ff64 = 0x4a4820/0x4a4a00, writes 2*found-index into the driver out slot) and does
     // NOT qfindindex - so the port's sequential head pick stays a deviation [H], not proven
-    // retail behaviour. Class-7 records route to the PHRS preload arm instead - the port seam
-    // does not distinguish them either (open alignment).
+    // retail behaviour. Class-7 records route to the PHRS preload arm instead - mirrored
+    // pass-91 as `triggerLive7` (accessor 0x48f290 gate + class-1 queue selector picks);
+    // live events carry no retail class byte yet [H].
     static constexpr std::size_t kNoEntry = static_cast<std::size_t>(-1); // selector arm did not pick
     static constexpr std::size_t entryIndexForClass(std::uint8_t classByte) {
         static constexpr std::uint8_t kExeTable[8] = {0, 0, 0, 0, 0, 0, 1, 0}; // DAT_0057eb54 raw 0x17d154
@@ -412,6 +413,19 @@ public:
     // the phrase queue holds work) the record recycles to the free queue DAT_006326c8: the event
     // phrase is dropped (rejected() counts it), never deferred.
     void triggerLive(const sim::SimEvent& e);
+
+    // Pass-91 class-7 preload lane (dispatch arm 0x48f354 + accessor FUN_0048f290,
+    // analysis/pass91c7/NOTES.md): gate = match-record u16 field +0x34, record slots
+    // idx 0/1 = home DAT_00641014 / away DAT_00641014+0xfc (= DAT_00641110, pass-56 pair).
+    // Gate nonzero -> queue lane DAT_00632428 + 1*0x1c (class-1 queue), selector-idx-th
+    // successor of head (0 = home pick head, 1 = away pick successor; exe EBX 0/1 at the
+    // two accessor CALLs). Both gates zero -> dispatch returns 0: record recycled, event
+    // silent (counted as reject). Exe stores home pick at [struct+0] via the DAT_006326b0
+    // pointer and away pick at a stack slot consumed downstream; the port seam starts one
+    // sentence per call, home pick first (deviation: two-slot fill [H]). Busy-reject guard
+    // shared with triggerLive. Live events carry no retail class byte yet [H] - callers
+    // with match team ids may route class-7 announcements through this lane.
+    void triggerLive7(std::uint16_t homeId, std::uint16_t awayId);
 
 private:
     void onStart(int slot, std::uint16_t id);

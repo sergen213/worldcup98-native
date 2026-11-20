@@ -121,7 +121,7 @@ void Commentary::trigger(const sim::SimEvent& e) {
     // arms (0x48f2bc) never run. The engine-callback lane 0x49001c runs a second registry find
     // (0x48ff64, writes 2*found-index to the driver slot) — no queue head pick is proven there,
     // so the sequential head pick here stays a deviation [H]. Class-7 events route to the PHRS
-    // preload lane, which this seam does not distinguish yet (open alignment).
+    // preload lane, mirrored pass-91 as triggerLive7 (event-side tag wiring open [H]).
     startPick(0);
 }
 
@@ -140,6 +140,32 @@ void Commentary::triggerLive(const sim::SimEvent& e) {
         return;
     }
     startPick(0); // pool head pick (port deviation [H], cb lane does no qfindindex); no selector-class tags exist (pass-90)
+}
+
+// Pass-91 class-7 preload lane (dispatch arm 0x48f354, analysis/pass91c7/NOTES.md):
+// accessor FUN_0048f290 reads the match-record table (home slot DAT_00641014, away slot
+// base+0xfc = DAT_00641110) field +0x34 u16; gate 0 -> accessor returns 0, gate nonzero ->
+// queue lane slot DAT_00632428 + 1*0x1c selector successor pick (EBX 0 home / 1 away). The
+// dispatch returns 0 when both picks are 0 (record recycled, event silent). Busy-reject and
+// exhausted-pool lanes shared with triggerLive.
+void Commentary::triggerLive7(std::uint16_t homeId, std::uint16_t awayId) {
+    if (q_.sentenceStatus() == audio::SpeechQueue::kSentenceSpeaking && q_.queued() > 0) {
+        ++rejected_; // record lane 0x48f830 reject: recycles to free queue, phrase dropped
+        return;
+    }
+    if (candidates_.empty()) {
+        ++rejected_; // exhausted ready pool: null pick, record recycles (pass-89 lane)
+        return;
+    }
+    if (homeId != 0) {
+        startPick(0); // home gate open: selector 0 = head node of the class-1 queue
+        return;
+    }
+    if (awayId != 0) {
+        startPick(1); // away gate open (home closed): selector 1 = successor of head
+        return;
+    }
+    ++rejected_; // both +0x34 gates zero: dispatch return 0, record recycled, event silent
 }
 
 void Commentary::startPick(std::size_t selector) {

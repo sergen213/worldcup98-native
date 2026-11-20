@@ -1417,12 +1417,12 @@ outer TOC. `r6.txt` type-2 lane `0x4a46a0..0x4a4715`: off slot `0x4a46d0..0x4a46
   the full wrapper disasm (`analysis/pass92cbr/e5.txt`) shows only
   `0048ffa4 MOV EAX,[ESP]` / `0048ffa7 MOV EBX,[ESP+0x4]` / `0048ffab ADD EAX,EBX` /
   `0048ffad MOV [EBP],EAX`, i.e. the out slot receives the SUM of the two located-slot
-  values, and no doubling/shl instruction exists in the lane. The conclusion is unchanged:
+  values, and no doubling/shl instruction exists in the dumped callback body. The conclusion is unchanged:
   the engine-callback lane PUBLISHES a registry-derived value, and the port's
   sequential head pick is NOT proven retail — it stays deviation [H]; class-7 routing to the
   preload lane is a second open alignment. `entryIndexForClass` remains documentation of the
   unreachable selector arm.
-- Cross-file check (`/tmp/wc98pass90/phrs_walk.txt`): walker over `PHRS.PBK` nested TOCs gives
+- Cross-file check (`analysis/pass90reg/phrs_walk.txt`): walker over `PHRS.PBK` nested TOCs gives
   the SAME `{0x07: 211, 0x40: 251}` over 4,665 inner records, and `TYPE[j] == PHRS[j][:len]`
   byte-exact for all 1290 j — the tag census is retail PHRS truth, correcting
   `SPEECH_INDEXING_NOTES.md` §2's "zero non-empty names in any PBK TOC" (outer TOC names are
@@ -1466,14 +1466,16 @@ Evidence `/tmp/wc98pass91/c7b.txt` (decompile `FUN_0048f2d8` switch + `FUN_0048f
 - Gate: `test_commentary` pass-91 block — `triggerLive7(0,0)` silent reject; `(0x1234,0)`
   head pick; after drain `(0,0x1234)` successor pick (different phrase).
 
-## Pass-92: engine-callback lane fully decoded (measured 2026-11-20)
+## Pass-92: engine-callback gate + fileio lane decoded; registry slot arithmetic [H] (measured 2026-11-20)
 
 Evidence `analysis/pass92cbr/e1.txt` (callback 0x49001c disasm + registry helpers),
 `e2.txt` (record-lane install sites, sibling callback 0x490094, fileio helpers),
 `e3.txt` (enable/disable cluster 0x4902d6..0x490490), `e4.txt` (loader head +
 path formatter), `e5.txt` (full registry-find wrapper `FUN_0048ff64` disasm — the
-ADD-sum store), `e6.txt` (locatebig writer `FUN_004a45d0` + `0x4a4a00`);
-Ghidra scripts `GhidraWc98E1..E6.py` alongside; notes `analysis/pass92cbr/NOTES.md`.
+ADD-sum store), `e6.txt` (locatebig writer `FUN_004a45d0` + `0x4a4a00`), `e7.txt`
+(fileio op heads `0x4cfb00`/`0x4cfaa0` + name strings `readhandle` 0x56a630 /
+`seekhandle` 0x56a648);
+Ghidra scripts `GhidraWc98E1..E7.py` alongside; notes `analysis/pass92cbr/NOTES.md`.
 
 - Boot loader `FUN_00490250` (gate `FUN_00490674` scene-enabled, once via `DAT_00632724`):
   `DAT_00632728 = FUN_004c3a00` (fileio object slot); loads `PHRS.HDR` (name 0x566c00,
@@ -1494,28 +1496,41 @@ Ghidra scripts `GhidraWc98E1..E6.py` alongside; notes `analysis/pass92cbr/NOTES.
   stack output slots; registry find wrapper `FUN_0048ff64` (Watcom args: `0x48ff6b MOV
   ESI,EAX` struct, `0x48ff6d MOV EBP,EDX` out-low ptr, `0x48ff6f MOV EDI,EBX` out-high ptr,
   `0x48ff7c/0x48ff99 PUSH EDI` stack arg; full disasm `analysis/pass92cbr/e5.txt`) does
-  three `locatebigentry` calls — `0x48ff84 CALL 0x4a4820` base `DAT_00632730` key
-  `[struct+0]`, `0x48ff94 CALL 0x4a4a00` base `DAT_00632734` key `[struct+0]`, `0x48ff9f
-  CALL 0x4a4820` base `DAT_00632734` key `[struct+4]` — then, verbatim e5.txt:
+  three registry lookups: #1 `0x48ff84 CALL 0x4a4820` base `DAT_00632730` key
+  `[struct+0]`, `EDX=0`, writer arg `ECX=ESP` (→ wrapper-local `[ESP]`); #2 `0x48ff94
+  CALL 0x4a4a00` base `DAT_00632734` key `EDX=[struct+0]` — the callee prologue `004a4a01
+  PUSH ECX` + `004a4a0d LEA ECX,[ESP+0x4]` replaces ECX with its own frame slot and calls
+  `locatebigentry` internally (`004a4a15`), so it **writes no wrapper slot**; EAX returns
+  the located member pointer (or NULL). #3 `0x48ff9f CALL 0x4a4820` base `EAX` = **the
+  return of #2 = the located nested member payload**, key `[struct+4]`, `EDX=0`, ECX
+  restored by the callee's `POP ECX` to `&[ESP+4]` — a nested lookup inside the member
+  #2 located, NOT a re-find on `DAT_00632734`. Then, verbatim e5.txt:
   `0048ffa4 MOV EAX,dword ptr [ESP]` / `0048ffa7 MOV EBX,dword ptr [ESP + 0x4]` /
   `0048ffab ADD EAX,EBX` / `0048ffad MOV dword ptr [EBP],EAX` writes **`[out low] =
-  [ESP] + [ESP+4]`, the SUM of the two located-slot values** (the writer `0x4a45d0`
-  success-path bodies are not dumped, so each slot's value semantics are [H]; not-found
-  path zeroes both output pointers at `004a4607 MOV dword ptr [EDI],0x0` /
-  `004a4615 MOV dword ptr [EBP],0x0`). **No doubling/shl instruction exists anywhere in
-  the wrapper or siblings — the pass-90 "2×found-index" wording is retracted as
-  unbacked.** Callback (`e1.txt` verbatim): gate on the high slot `0049004d CMP dword ptr
+  wrapper-local [ESP] + [ESP+4]`, the SUM of the two located-slot values**. The callback's
+  **high** slot is written directly by `locatebigentry`: the wrapper's `0x48ff6f MOV EDI,EBX`
+  (callback `00490042 LEA EBX,[ESP + 0x4]`) is pushed at `0048ff99` and reaches the writer's
+  `[ESP+0x20]` → `004a45d0 004a460d MOV EBP,[ESP+0x20]`; miss path zeroes both pointers at
+  `004a4607 MOV dword ptr [EDI],0x0` / `004a4615 MOV dword ptr [EBP],0x0`; the success-store
+  bodies at `0x4a4627`/`0x4a46a0`/`0x4a4718` are undumped, so each slot's value semantics
+  are [H]. **No doubling/shl instruction exists in any dumped body (wrapper 0x48ff64,
+  callback 0x49001c, sibling 0x490094) — the pass-90 "2×found-index" wording is retracted
+  as unbacked.** Callback (`e1.txt` verbatim): gate on the high slot `0049004d CMP dword ptr
   [ESP + 0x4],0x0` / `00490052 JLE`; then lock pair `FUN_00438f58`/`0x438f80`
   (reentrancy counter `DAT_00577380`, first/last hooks `0x494250`/`0x4b9b50`/`0x4b9b80`)
-  around fileio ops on the `PHRS.PBK` handle `DAT_0063272c`: read `FUN_004cfb00` with
-  offset from the SUM slot (`00490059 MOV EDX,dword ptr [ESP]`, line 0x219 →
-  `FUN_00529a20`, clamp vs file size `DAT_00593ea8`) + pos op `FUN_004cfaa0` (line 0x1d4 →
-  `FUN_005296a0`, `0049006f EDX=[struct+0x10]`), result `00490077 MOV EDX,EAX`, unlock
-  `0x438f80`, verify `0049007e CMP EDX,dword ptr [ESP + 0x4]` — return 1 iff the pos result
-  equals the HIGH slot, else 0 (`00490082 JNZ`).
-  ⇒ **the engine callback fetches the segment record from PHRS.PBK at a registry-derived
-  position (sum-slot value; exact arithmetic [H], 0x4a45d0 success-path bodies undumped),
-  not from any queue** — confirms pass-90b's "does NOT qfindindex"; pool-head
+  around fileio ops on the `PHRS.PBK` handle `DAT_0063272c`: `FUN_004cfb00` =
+  **seekhandle** (win_fileio.c line 0x219, name string 0x56a648 → `FUN_00529a20`, clamp vs
+  file size `DAT_00593ea8`) with offset from the SUM slot (`00490059 MOV EDX,dword ptr
+  [ESP]`), then `FUN_004cfaa0` = **readhandle** (line 0x1d4, name string 0x56a630 →
+  `FUN_005296a0`) with length `EBX` = the HIGH slot (`00490066 MOV EBX,dword ptr [ESP +
+  0x4]`) and buffer `EDX=[struct+0x10]` (`0049006f`); unlock `00490079 CALL 0x438f80`,
+  verify the full read: `00490077 MOV EDX,EAX` (bytes read) / `0049007e CMP EDX,dword ptr
+  [ESP + 0x4]` / `00490082 JNZ 0x00490038` → returns 0 unless bytes-read equals the high
+  slot; `00490084 MOV EAX,0x1`.
+  ⇒ **the engine callback seeks to a registry-derived position (sum-slot value; exact
+  arithmetic [H], 0x4a45d0 success bodies undumped) in PHRS.PBK and reads the
+  high-slot-sized segment record into `[struct+0x10]`, returning success only on the full
+  read** — not from any queue — confirms pass-90b's "does NOT qfindindex"; pool-head
   pick stays port deviation [H].
 - Sibling callback `FUN_00490094` (install site 0x48f7f0, same driver): allocates one of the
   16 `STRASYNCH` slots from queue `DAT_0063273c`, copies struct fields `+0xc/+0x14/+0x18`
@@ -1525,7 +1540,7 @@ Ghidra scripts `GhidraWc98E1..E6.py` alongside; notes `analysis/pass92cbr/NOTES.
   EAX,dword ptr [ESP + 0x8]` (sum slot) / `00490106 MOV EBX,EBP` (high slot value) /
   `00490108 MOV EDX,[ECX+0x10]` / `0049010b MOV ECX,0x48ff10` (thunk) / `00490110 CALL
   0x004d89a0` (play-request maker) → play handle stored `[slot+4]` (`00490115`); no
-  doubling/shl in the lane; empty slot recycled
+  doubling/shl in the dumped body; empty slot recycled
   (`FUN_004c4920` + push back). Sweep lane `0x4901e2`: fileio service on `DAT_00632728`,
   then queue walk (`0x4c4890` fetch, `0x4d8aa0`, invoke `[obj+0x10]`, release `0x4c4800`).
 - Registry bases corrected: lookup #1 = `PHRS.HDR` table (`DAT_00632730`), lookup #2 =

@@ -1799,3 +1799,25 @@ as a gain input — there is no class→gain table anywhere.
 Port: `gainForClass`/`slotGain_` removed; pump applies the raw `cur>>16` master byte
 (`gain_.applied()`) to every live slot; `volume_` stays `kMaxVol` (boot pct(100)), scene
 levels arrive through `setScenePercent`. Evidence `analysis/pass98gain/{NOTES.md,scan.txt,g1.txt,g2.txt}`.
+
+## Pass-99: retail data never enables the DirectSound3 lane — A10 closed (measured 2026-11-20)
+The exe carries a positional-playback lane: `iSNDplatformplay` `FUN_0052d290` reads
+TLV tag `0x92` (driver type; value 3 = DirectSound3 float path, pass-58 map), and the
+platform wrappers are wired — create3dbuf wrapper `0x52d7b4` (host `FUN_0052ecec`) is
+called from the SBANK bank-download lane (`0x4e32cf` inside `FUN_004e31d0`
+`SNDbankaddpat2files` `cmn\sbankbld.c`, `0x4e3619` inside `FUN_004e34e0`
+`iSNDdownloadbank` `cmn\sbank.c`, `0x4e6076` inside `FUN_004e5fe4`), pos3d wrapper
+`0x52daac` (host `FUN_0052f1f0`) from crowd-scene code `0x4e4141`
+(`analysis/pass99a10/NOTES.md`, xref dumps `/tmp/wc98pass99/x4.txt`/`x5.txt`).
+But `play3d` is reachable only when the chain carries `0x92 == 3`, and a strict
+TLV scan mirroring the pass-58 grammar — `(u8 tag, u8 len, BE value)`, `0xFF/0xFE`
+terminate, `0xFC` skip, per-tag strict lengths and value whitelists (`0x92`∈{0,1,2,3},
+`0x82`∈{1,2}, `0x81`∈{8,16}, `0x84`∈8000..48000), anchor tag {0x83,0x85}, ≤12 entries,
+`0xFD`-lane candidates rejected — parses 9954 chains across every retail
+`AUDIO/**` `.BNK/.PBK/.CRD` and 58 chains across every `VIDEO/*.DCT` with **zero
+tag-0x92 occurrences** (the loose `92 01` byte hits inside `FL1_NANT.DCT` entropy
+have no chain anchor within ±512 bytes). All tag-`0x82` channel values in the corpus
+are 2 (stereo), 18 in AUDIO + 29 in VIDEO. Driver type therefore stays the default
+0/2 2D path for every shipped sound: the original never pans, and the port's
+mono→stereo upmix with no panning is 1:1. Raw-byte `0x92` counts (384,672 across
+compressed payloads) are noise; only chain-structured parsing is evidence.

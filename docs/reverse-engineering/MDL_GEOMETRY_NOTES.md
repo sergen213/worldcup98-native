@@ -40,6 +40,18 @@ validation; no count guessing.
   skipped object blocks, not in draw lists; shading there is texture-only (verified visually).
 
 ## Gate
-No ctest gate yet (needs tree + GPU); visual proof PNGs `/tmp/wc98port-out/mdl_{wcupf,brdxf}.png`.
-Next: venue fly-in animation data (`FE/*F` FSH frame series), in-game player/stadium geometry is a
-different container (INGAME .BIG dialects — not this format).
+`test_mdl` gates the geometry census + venue pool (synthetic GEOM checks, 12-model
+census, `venueChecks` pool table). Visual proof PNGs `/tmp/wc98port-out/mdl_{wcupf,brdxf}.png`.
+Venue pool table + material loader **decoded (pass-105)**: the exe venue pool table at DGROUP VA 0x57dec8
+(12 entries x stride 0x5c, slot order pdpf..lpolybf) carries `{pak, mdl, fsh}` path
+triples + a callback slot (only lpolybf = scene-handler frame `FUN_0047b9a4`, case
+dispatcher that reserves a record and loads pak entries) + a
+once-guard handle; loader `FUN_00483418(EAX=idx)` loads the RefPack'd SHPI `.PAK`,
+maps the MDL name records to per-venue material slots (type 0 packed RGB, type 1
+white + case-insensitive pak-name lookup `FUN_004df695`), and applies vertex-colour
+scales; venue index provenance = schedule entry record word +0xa high half
+(`sar eax,0x10` at 0x4587e8). Mirror `formats::venueTable`/`parseVenuePak`, gate
+`test_mdl venueChecks` (12/12 triples, SHPI parse, callback==1, tag coverage 12/12).
+Fly-in **animation wiring remains open**: per-entry f32 transform fields semantics
+[H], nothing in app/ consumes `venueTable` yet. `analysis/pass105venue/NOTES.md`.
+In-game player/stadium geometry is a different container (INGAME .BIG dialects — not this format).

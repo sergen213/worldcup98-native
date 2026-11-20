@@ -1,9 +1,12 @@
 // MDL geometry gate: synthetic magic checks + census over the real FE/*.MDL tree (12 files).
 #include "wc98/formats/mdl.hpp"
+#include "wc98/formats/refpack.hpp"
+#include "wc98/formats/venue.hpp"
 #include <check.hpp>
 #include <wc98/file.hpp>
 
 #include <algorithm>
+#include <cctype>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
@@ -109,11 +112,54 @@ void treeChecks() {
     CHECK(faces == 4886);
     CHECK(names == 478);
 }
+
+// pass-105: exe venue table (VA 0x57dec8, 12 x 0x5c) + RefPack'd SHPI .PAK loader.
+void venueChecks() {
+    const auto dir = treeDirOrSkip() / "FE";
+    const auto table = wc98::formats::venueTable();
+    CHECK(table.size() == 12);
+    unsigned callbacks = 0;
+    unsigned texturesNamedInPak = 0;
+    for (std::size_t i = 0; i < table.size(); ++i) {
+        const auto& v = table[i];
+        // Resolve the exe paths case-insensitively against the extracted tree: the exe
+        // uses lowercase `fe\...` strings; the CD stores FE/PACK + FE upper case.
+         auto stemUpper = std::string(v.mdlPath);
+        for (auto& c : stemUpper) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+        const auto mdlPath = dir / stemUpper.substr(3); // "FE/PDPF.MDL" -> "PDPF.MDL"
+         auto pakUpper = std::string(v.pakPath);
+        for (auto& c : pakUpper) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+        const auto pakPath = dir / "PACK" / pakUpper.substr(8); // "FE/PACK/PDPF.PAK" -> name
+        CHECK(std::filesystem::exists(mdlPath));
+        CHECK(std::filesystem::exists(pakPath));
+        if (v.loadCallback) ++callbacks;
+
+        const auto pak = wc98::readFile(pakPath);
+        CHECK(wc98::formats::refpack::isCompressed(std::span<const std::uint8_t>{pak}));
+        const auto fsh = wc98::formats::parseVenuePak(std::span<const std::uint8_t>{pak});
+        CHECK(!fsh.entries.empty());
+
+        // MDL texture-name records must key shapes in the venue .PAK (loader FUN_00483418
+        // material lane: pak record list drives the per-venue material slots).
+        const auto mdl = wc98::formats::MdlFile::parse(wc98::readFile(mdlPath));
+        bool any = false;
+        for (const auto& t : mdl.textures) {
+            for (const auto& e : fsh.entries) {
+                if (e.tag.rfind(t.name, 0) == 0) { any = true; break; }
+            }
+            if (any) break;
+        }
+        if (any) ++texturesNamedInPak;
+    }
+    CHECK(callbacks == 1); // only lpolybf carries the scene-handler callback (FUN_0047b9a4)
+    CHECK(texturesNamedInPak == 12); // every venue pak covers at least one MDL texture tag
+}
 } // namespace
 
 int main() {
     syntheticChecks();
     treeChecks();
+    venueChecks();
     std::printf("test_mdl: ok\n");
     return 0;
 }

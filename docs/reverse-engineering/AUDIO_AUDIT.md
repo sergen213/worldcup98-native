@@ -76,3 +76,31 @@ chant/announcer/name phrases is not wired until the request-handler trigger mapp
 
 Evidence artifacts: `analysis/pass16audio/NOTES.md`, `/tmp/wc98pass51/{lane_decomp.txt,plrs_fns.txt}`,
 probes `bankprobe.cpp`/`slotprobe2.cpp` (results in NOTES.md).
+
+## 6. Pass-77 Phase-1 addendum — refreshed classification + impact ranking (2026-11-20)
+
+Status of §1 rows after passes 50-76 (registers `AUDIO_DISCREPANCIES.md` A1..A11,
+`AUDIO_RUNTIME.md` pass sections, gates `test_audio`/`test_phrs`/`test_gameaudio`/`test_sqf`/`test_dct`/`video_play`):
+
+| Subsystem | Class now | Change since pass-49 |
+|---|---|---|
+| Speech banks / event->phrase id map | 1 | A1 closed: id map `id>>24` bank + slot (pass-62); event tables pass-60 |
+| Music director lanes (stream SCHl pumps) | 1 | A2 closed pass-72 (stream chain), A9 closed pass-75 (movie routing wired) |
+| Chant layer (CHNT/*.PBK, pumps, rotation, LCG) | 1 | A6 closed: pump + classification + drain rotation + exe LCG mirrored (`MatchAudio::ExeLcg`, pool rotate on cadence) |
+| Crowd bed + reaction machine | 2 | A4 closed (card-bound bed, relevel idx2 fade, pump pass-70); card layering runtime still [P] |
+| Registry/pumps (bank boot, request handlers) | 1 | A3 closed pass-57 |
+| Trigger grammar | 1 | A11 closed pass-58 |
+| Speech gain autovol ramp | 1 | A8: ramp modelled 1:1 (`SpeechGain` exact-division gate); class-letter table still [H] |
+| Commentary pick/preload lane | 3 | pass-76: presentation preload decoded (ring ring-slot {type,id} -> shipped PBK/SMP files); scheduler lane reclassified chant-lane; live-match per-event phrase content still [H] (A7) |
+| Presentation announcer files (AUDIO/TEAM 95 PBK, PBP/SCHEDULE 436 SMP, PBP/STANDING 320 SMP) | 6 | exe lane class-1 decoded (pass-76) but **unported** — no announcer component in port |
+| Name speech (PLRS) | 6 | request-handler trigger mapping blocked (memory: referee/EULZ/.SCI list) |
+| MIDI director | 6 | unchanged (device-blocked A5) |
+| Positional/pan | 6 | unchanged (A10 deviation, original has none on mixer bus) |
+
+Impact ranking (audio half of the §2 list in `GAMEPLAY_AUDIT.md`):
+
+1. Presentation announcer lane port (class-6 gap, assets already mapped by pass-76) — pass-77.
+2. Live-match commentary phrase content (A7 [H], D-32) — needs exe pick/tag table recovery.
+3. Crowd card-layer runtime application + chant request trigger mapping (A4 [P], A3 residual).
+4. MicroTalk gain calibration (A8 class-table [H]).
+5. Name-speech lane mapping (blocked), MIDI (device-blocked).

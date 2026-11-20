@@ -379,7 +379,10 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
   the class-keyed ready list (`DAT_00632428 + [slot+0xC]*0x1c` — 0x1c-byte queue objects,
   wrapper arithmetic 0x48d0f2..0x48d105, pass-76 follow-up; earlier `*4` wording wrong) with slot-tag predicate `FUN_0048cf10`;
   activation `FUN_0048d1f8` removes the picked record (consume-on-use), null pick -> silent. Port pool
-  consumed in storage order, per-event tag table unmeasured (marked in code); COMMENTARY_WC98 §pick,
+  consumed in storage order; pass-76 follow-up: the `FUN_0048d4f4` tagged lane is chant-lane
+  registration (queue `DAT_00632524` consumed by chant pump `FUN_0048da50`), the in-play
+  dispatcher carries no tags — seam stays sequential [H], comment in `app/commentary.cpp`
+  trigger(); COMMENTARY_WC98 §pick,
   evidence `analysis/pass7/pick*.txt`. FCLG cross-map probed negative (`analysis/pass7/fclg_probe.txt`);
   gain calibration + autovol ramp closed 2026-11-05 (`analysis/pass7/gain*.txt`, §gain; `SpeechGain`).
   duck/mix table model + scene-percent seam closed 2026-11-06 (`analysis/pass7/duck*.txt`, §pass 7d; `ChannelMix`).

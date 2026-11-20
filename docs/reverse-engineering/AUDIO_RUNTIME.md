@@ -944,7 +944,8 @@ from 21 tournament-presentation scene sites (0x453b07, 0x453b15, 0x453b2e, 0x453
 0x453c77, 0x45437d, 0x454398, 0x4543bd, 0x454da5, 0x454dc0, 0x454de5, 0x4554c9, 0x455a81,
 0x455a9c, 0x455ac1, 0x455f75, 0x455f90, 0x455fb5, 0x458dc2, 0x458df6, 0x4591fd), each with
 `mov edx,type; mov ebx,id; mov eax,slot` (`type` ∈ {1,2,3}; id from accessor returns
-`FUN_00485240/0x48525c/0x489920/0x489974+0x4899dc` or loop regs; accessor internals [H]).
+`FUN_00485240/0x48525c/0x489920/0x489974+0x4899dc` or loop regs; accessor internals
+decoded by pass-83, see Pass-83 section).
 
 Loader `FUN_0048953c` formats the filename from {type,id}: type 1
 `AUDIO\team\G_T%04d.pbk`/`A_T%04d.pbk` (home/away selector `DAT_0057e5f8`), type 2
@@ -977,10 +978,10 @@ object onto queue `DAT_00632524` — **chant-lane** registration (pass-56: chant
 sites), so it is not a commentary-tag preload; the in-play dispatcher has no tags on its pick
 path. Per-event live-match phrase content mapping stays unresolved **[H]**; port seam stays
 sequential [H]. Evidence: `app/commentary.cpp` trigger(), `COMMENTARY_WC98.md` §pick,
-`AUDIO_DISCREPANCIES.md` A7. A7 stays **Open (partial)** — the live-match pick table, and the
-presentation handler's scene→{slot,type,id} argument extraction (accessor-internal, pass-76)
-remain the unresolved halves. The presentation announcement lane itself is **ported**
-(Pass-77 section below).
+`AUDIO_DISCREPANCIES.md` A7. A7 stays **Open (partial)** — the live-match pick table
+remains an unresolved half; the presentation handler's scene→{slot,type,id} argument
+extraction (accessor-internal, pass-76) was closed by pass-83 (Pass-83 section). The
+presentation announcement lane itself is **ported** (Pass-77 section below).
 
 ## Pass-77: presentation announcer lane mirrored (API + gate ported; scene wiring open, measured 2026-11-19)
 
@@ -1152,3 +1153,59 @@ Port: **no code change** — pass-79 `feedTeamSelectionAnnouncer`/`feedBoardAnno
 already mirror the two board fill sites and stay gate-driven; this pass only
 closes the dispatch residual (the port has no board scene that calls them, which
 matches the exe only in structure, not runtime behavior).
+
+## Pass-83: type-1/2/3 id-source accessors decoded (measured 2026-11-20)
+
+Closes the pass-76 residual half "accessor internals [H]" (presentation fill-site
+`{slot,type,id}` argument extraction). Disassembly windows around all 21 `FUN_004894ac`
+sites (`analysis/pass83accessors/ac2.txt`) give exact provenance per site.
+
+- `FUN_00485210` membership gate: Watcom `EAX` needle scans the u32 list at
+  `DAT_0062f790` for `DAT_0062facc` entries (`needle == [list+i]`), returns 1 on hit,
+  0 on zero-count or miss.
+- `FUN_00485240` id selection: `FUN_00485210() == 0 ? DAT_0062fab4 : DAT_0062fab0`
+  (miss -> away id, hit -> home id). Id writers: `FUN_00484950`, `FUN_00484d1c`,
+  `FUN_004852e0` (tournament registration writes to `0x62fab0/4`).
+- `FUN_0048525c` pair store (`EAX`=dst0, `EDX`=dst4; site `0x453af3`
+  `LEA EDX,[ESP+4]; MOV EAX,ESP`): writes `{DAT_0062f468, DAT_0062f46c}` as
+  (f468, f46c) when `FUN_00485240() == DAT_0062fab0` (hit) and reversed on miss.
+  Writers: `FUN_00485334`, `FUN_00484d1c`. The `mov ebx,ecx` id at `0x453b07` reads a
+  register whose provenance around the call stays [H]; the port keeps the direct team id
+  for that lane.
+- `FUN_00489bdc` predicate class branch keys on `1 < EAX < 3` / `== 3` (selector index
+  2/3 only; every other selector returns keep-1), exclusion compares against the static
+  grid-window base words `DAT_0057e93c..DAT_0057ea28` (+offset), plus `DAT_00640fe8 == 1`
+  -> `FUN_00489bb0` and `== 3` xor-swap on one window id. The port's static `kSkips2/3`
+  sets stay the shipped-grid mirror (pass-78); their effect on the tested selectors is
+  empty-set either way (values fall outside the tested blocks).
+- `FUN_004899dc` pick: `DAT_0057e600 != 0` -> cursor lane over clamped `DAT_0062fd9c`
+  into `DAT_0062fbf8[cursor]`; count 0 -> `-1`; else time index
+  `DAT_0062fbf8[ROUND(tick split)]` via `FUN_004c321c` tick + `FUN_004973b0` (x87
+  `ROUND`, no scaling - the split words feed the FPU stack directly). Port cursor/clamp
+  and `-1` semantics match; time lane not ported (no scene driver).
+- `FUN_00489974` fill loop confirmed: window `start = *(int*)(DAT_0057e938 + EAX*4)`,
+  `end = (&DAT_0057e93c)[EAX]`, append `id + 1` while predicate keeps, count cap `0x28`,
+  early return at `end - 1` and cursor cap boundary.
+
+Site map (handler -> fills, all via `mov edx,type; mov ebx,id; mov eax,slot`):
+`FUN_00453a6c` pair-store -> slot0 t1 (`0x453b07`), slot2 t2 id 0 (`0x453b15`),
+`FUN_00489920(SI)` -> slot3 t2 (`0x453b2e`), fill(`0x26`)+pick -> slot1 t2 (`0x453bd2`),
+fill(`0x36`)+pick -> slot4 t2 (`0x453c77`).
+`FUN_00454338/454d60/455a3c/455f30`: scene gate word `DAT_006099c4/0x609b08/0x609d90/
+0x609ed4` zero -> fill(`0x1b`/`0x18`/`0x19`/`0x1a`)+pick -> slot0 t3, else
+`FUN_00485240` -> slot0 t1; then fill(`0x16`/`0x13`/`0x14`/`0x15`)+pick -> slot1 t3
+(`0x4543bd`/`0x454de5`/`0x455ac1`/`0x455fb5`). `FUN_0045548c`: deck gate `AL < 7` RET,
+fill(`0x17`)+pick -> slot0 t3 (`0x4554c9`). `FUN_00458cf0`: deck gate `>= 7`,
+`setSlot(0, 1, ESI=SI raw)` (`0x458dc2`), jump-table branch fill(selector 0)+pick ->
+slot1 t3 (`0x458df6`), pick lane slot2 t2 (`0x4591fd`, jump-table arm with `EAX` id).
+
+Port mirror: `app::Announcer::isMember/selectedTeamId/storePair` + feed setters
+`setMembership`/`setTeamIds`/`setPairIds` (`app/game_audio.hpp/cpp`, pass-83 block after
+`remmap`); gate `tests/unit/test_gameaudio.cpp` pass-83 block pins empty-list miss,
+hit/miss id selection, and the (f468,f46c)/(f46c,f468) store ordering. Feed helpers
+stay gate-driven (dispatch closed pass-82; needle provenance at the fill sites [H]).
+
+Evidence: `analysis/pass83accessors/` (`ac1.txt` accessor decompiles, `ac2.txt` 21-site
+disassembly windows, `ac3.txt` `FUN_00485210`/`FUN_00489bdc`/`FUN_004973b0` decompiles +
+DAT write-reference attribution for `0x62f468/62f46c/62fab0/62fab4/62fd98/62fbf8`),
+Ghidra scripts `GhidraWc98Ac1..Ac3.py`.

@@ -378,6 +378,27 @@ int main() {
         CHECK(!sel.pickNext());
     }
 
+    // pass-83 pair-store id source: FUN_00485210 membership scan over the DAT_0062f790 list,
+    // FUN_00485240 selection (hit -> fab0, miss -> fab4), FUN_0048525c store ordering
+    // ((f468, f46c) on hit, reversed on miss).
+    {
+        app::Announcer pairAnn(tree);
+        CHECK(!pairAnn.isMember(0x2000));           // empty list (DAT_0062facc == 0)
+        CHECK(pairAnn.selectedTeamId(0x2000) == 0); // miss -> DAT_0062fab4 = 0 default
+        pairAnn.setTeamIds(0x31, 0x32);
+        pairAnn.setPairIds(0x1111, 0x2222);
+        CHECK(pairAnn.selectedTeamId(0x2000) == 0x32); // miss -> away id
+        auto miss = pairAnn.storePair(0x2000);
+        CHECK(miss.first == 0x2222 && miss.second == 0x1111); // miss -> reversed pair
+        pairAnn.setMembership({0x1000, 0x2000, 0x3000});
+        CHECK(pairAnn.isMember(0x2000));
+        CHECK(pairAnn.selectedTeamId(0x2000) == 0x31); // hit -> home id
+        CHECK(!pairAnn.isMember(0x2001));
+        auto hit = pairAnn.storePair(0x2000);
+        CHECK(hit.first == 0x1111 && hit.second == 0x2222); // hit -> (f468, f46c)
+        CHECK(pairAnn.storePair(0x4000).first == 0x2222);   // miss after list grew
+    }
+
     // pass-79b silent-pick lane: a missing-file entry ahead of a playable one must not
     // stall the pick scan - the exe pick lane removes the queue entry regardless of clip,
     // so the silent slot is consumed and the next playable slot plays.

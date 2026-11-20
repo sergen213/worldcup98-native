@@ -142,6 +142,17 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
 
 
 ## Progress snapshot (third-pass UI reconstruction landed, v0.5.0)
+- **Presentation id-source accessors closed (pass-83, 2026-11-20)** — the pass-76 residual
+  "accessor internals [H]" behind the 21 `FUN_004894ac` fill sites is decoded: type-1 id
+  = tournament pair store `FUN_0048525c` (words `DAT_0062f468/f46c`, ordered by the
+  `FUN_00485210` membership scan over `DAT_0062f790` selecting `DAT_0062fab0` hit vs
+  `DAT_0062fab4` miss; registration writers `FUN_00485334/00484d1c/004852e0`), type-2/3
+  ids = remmap `FUN_00489920(SI)` or selector fill+pick (`FUN_00489974` static grid
+  window, `FUN_004899dc` cursor/`-1`, tick-`ROUND` time lane [not ported]). Predicate
+  class branch keys on selector index {2,3}; `DAT_00640fe8 ∈ {1,3}` specials. Port
+  mirror `Announcer::isMember/selectedTeamId/storePair` + feed setters, gate in
+  `test_gameaudio` pass-83 block. Evidence `analysis/pass83accessors/` (`ac1..ac3.txt`);
+  fill-site needle provenance stays [H].
 - **Announcer screen dispatch closed (pass-82, 2026-11-20)** — the pass-77/79 residual
   "screen-to-handler dispatch stays [H]" was wrong: every announcer board-handler owner
   (`FUN_00453a6c/454338/454d60/45548c/455a3c/455f30/458cf0`) has exactly one direct `E8`

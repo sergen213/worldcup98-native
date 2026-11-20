@@ -1006,6 +1006,23 @@ std::uint16_t Announcer::remmap(std::uint16_t team) {
     return 0xa1; // default word
 }
 
+bool Announcer::isMember(std::uint32_t needle) const {
+    for (const auto id : membership_) // exe scan `iVar1 < DAT_0062facc * 4`
+        if (needle == id) return true;
+    return false; // DAT_0062facc == 0 -> not a member (exe zero-count lane)
+}
+
+std::uint16_t Announcer::selectedTeamId(std::uint32_t needle) const {
+    return isMember(needle) ? homeId_ : awayId_; // FUN_00485240: hit fab0, miss fab4
+}
+
+std::pair<std::uint16_t, std::uint16_t> Announcer::storePair(std::uint32_t needle) const {
+    // FUN_0048525c ordering: the pair lands (f468, f46c) when FUN_00485240() == DAT_0062fab0
+    // (membership hit), and reversed on a miss.
+    return isMember(needle) ? std::pair<std::uint16_t, std::uint16_t>{pairFirst_, pairSecond_}
+                            : std::pair<std::uint16_t, std::uint16_t>{pairSecond_, pairFirst_};
+}
+
 bool Announcer::fillSelector(int selector, bool type3) {
     unsigned start = 0, end = 0;
     if (selector >= 0x22) { // second uniform 5-block grid: s -> [5k, 5k+5)
@@ -1057,7 +1074,8 @@ void feedBoardAnnouncer(Announcer& announcer, std::int32_t homeTeam) {
     const std::int32_t id36 = announcer.pickSelector();
     if (homeTeam >= 0) {
         const auto team = static_cast<std::uint16_t>(homeTeam);
-        announcer.setSlot(0, 1, team);                     // 0x453b07 pair-store lane [H]
+        announcer.setSlot(0, 1, team);                     // 0x453b07 pair-store lane (pair order
+                                                           // decoded pass-83; ECX id provenance [H])
         announcer.setSlot(3, 2, Announcer::remmap(team));  // 0x453b2e remmap -> schedule id
     }
     announcer.setSlot(2, 2, 0); // 0x453b15 literal id 0 (silent schedule sample)

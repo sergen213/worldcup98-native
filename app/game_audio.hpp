@@ -14,6 +14,7 @@
 #include <memory>
 #include <random>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace wc98::audio {
@@ -163,6 +164,22 @@ public:
     // G_SCH000..217 numbering); unmatched teams get the default word 0xa1.
     static std::uint16_t remmap(std::uint16_t team);
 
+    // pass-83 type-1 id source (FUN_00485210/0x485240/0x48525c). The exe list/count words
+    // (DAT_0062f790 + DAT_0062facc) and the id/pair words (DAT_0062fab0/fab4,
+    // DAT_0062f468/f46c) are tournament-registration writes (FUN_00485334, FUN_00484d1c,
+    // FUN_004852e0, FUN_00484950); the port keeps them feed-driven. Scan
+    // `needle == DAT_0062f790[i]` over `DAT_0062facc` u32 entries; hit selects
+    // DAT_0062fab0, miss DAT_0062fab4; the pair store orders (f468, f46c) on hit and the
+    // reverse on miss. Fill-site needle provenance stays [H].
+    bool isMember(std::uint32_t needle) const;                // FUN_00485210
+    std::uint16_t selectedTeamId(std::uint32_t needle) const; // FUN_00485240
+    std::pair<std::uint16_t, std::uint16_t> storePair(std::uint32_t needle) const; // FUN_0048525c
+    void setMembership(std::vector<std::uint32_t> ids) { membership_ = std::move(ids); }
+    void setTeamIds(std::uint16_t home, std::uint16_t away) { homeId_ = home; awayId_ = away; }
+    void setPairIds(std::uint16_t first, std::uint16_t second) {
+        pairFirst_ = first; pairSecond_ = second;
+    }
+
     [[nodiscard]] int slotType(int slot) const;
     [[nodiscard]] std::uint16_t slotId(int slot) const;
     [[nodiscard]] bool slotLoaded(int slot) const;
@@ -190,6 +207,11 @@ private:
     std::array<Slot, kRingSlots> slots_{};
     std::vector<std::uint16_t> selList_; // DAT_0062fbf8 selection list scratch
     std::uint32_t cursor_ = 0;           // DAT_0062fd9c pick cursor
+    std::vector<std::uint32_t> membership_; // DAT_0062f790.. list, count DAT_0062facc
+    std::uint16_t homeId_ = 0;            // DAT_0062fab0
+    std::uint16_t awayId_ = 0;            // DAT_0062fab4
+    std::uint16_t pairFirst_ = 0;         // DAT_0062f468
+    std::uint16_t pairSecond_ = 0;        // DAT_0062f46c
     std::uint32_t loads_ = 0;
     std::uint32_t missing_ = 0;
     std::uint32_t decoded_ = 0;

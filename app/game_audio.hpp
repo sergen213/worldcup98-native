@@ -186,7 +186,10 @@ public:
     // outcome 0 + flag false (status 0) — the exe board-entry lane.
     // pass-104 variant arms (0x458f30-0x4591f1, analysis/pass104variant/): record+3 == 2
     // routes the ECX (= pair-order) lane through the FUN_00498e90 membership gate with
-    // FUN_004998c0 EBX=2/1 lookup fallbacks (group+0x16 array key [H]); == 3 routes the
+    // FUN_004998c0 EBX=2/1 lookup fallbacks (pass-107: EAX = DAT_0x62fad0 pool, EDX = EDI
+    // branch value = the what-if team key matched against the group+0x16 u16 array, EBX =
+    // hypothetical outcome selector over the group counter bytes +1/+2/+3, see
+    // exeLiveDecision); == 3 routes the
     // EDI lane gated by the EBP pair-equality predicate (pass-103: group+0xe ==
     // group+0x10 OR DAT 0x606bd4 == 2 - independent of the ECX word order). Selector
     // fill lists per NOTES.md; every fill arm reaches the second pick + 0x4591f1 slot 2.
@@ -194,8 +197,8 @@ public:
         int statusByte = 0;      // record+3: 0/1 plain fills, 2 ECX lane, 3 EDI lane
         int branchIndex = 0;     // EDI for the status 3 lane
         bool teamRegistered = false; // FUN_00498e90 team membership (solid)
-        bool lookup2Hit = false;     // FUN_004998c0 EBX = 2 lookup [H key]
-        bool lookup1Hit = false;     // FUN_004998c0 EBX = 1 lookup [H key]
+        bool lookup2Hit = false;     // FUN_004998c0 EBX = 2 what-if outcome lookup
+        bool lookup1Hit = false;     //   (key = EDX team word vs group+0x16, pass-107)
         bool ebpPairEqual = false;   // EBP predicate 0x458d83-0x458eaa
     };
     void dispatchResult(int outcome, bool matchFlagLane, std::uint32_t needle);
@@ -207,6 +210,37 @@ public:
     // encoded mapping is SI team -> tournament schedule id (values land in the shipped
     // G_SCH000..217 numbering); unmatched teams get the default word 0xa1.
     static std::uint16_t remmap(std::uint16_t team);
+
+    // pass-107 FUN_004998c0 what-if qualification predicate (raw disasm 0x98cc0 =
+    // VA 0x4998c0, frame slots 0x1ac/0x1b0/0x1a8 with an extra `push %ecx` at 0x4998d7
+    // shifting later [ESP+0x1ac]/[ESP+0x1b0] references one slot down): key = EDX
+    // (local_14) - the 16-bit branch value the fail arms pass as EDI (0x459062
+    // `mov %edi,%edx`) - matched against the u16 array at group+0x16 (count group+0;
+    // group pool base = record+0x5cc pointer + 0x248 = record+0x814, stride 0x214).
+    // The 23-entry array at group+0x50 (stride 0x12) is snapshotted onto the stack,
+    // then a what-if pass runs: FUN_004fc170 sets non-key entries' +3 to a
+    // count-derived target and +8 += delta * group+1 (outcome byte record+0x5cf,
+    // switch codes 0x21/0x22/0x24/0x27), FUN_004fba40 adds the BL-selected group
+    // counter byte (+1/+2/+3 for BL 0/1/2) to the key entry's +8 byte, FUN_004fba80
+    // zeroes the +2 bytes and re-ranks via FUN_004fbb10 (descending on +8, then a
+    // tie-break ladder over the group+0x204 rule table, list length group+0x1f5);
+    // the entries are restored afterwards, so the predicate reads the hypothetical
+    // standings, not live ones. Post-rank entries 0/1/2 = ranks 1/2/3: the return is
+    // the key team clinching a top-two spot under hypothesis BL - sole leader ahead
+    // of B (byte +8 compares, unsigned), A/B tied with C behind, or key at 2nd with
+    // B != C. The dispatch fail arms call with EBX = 2 then EBX = 1 - two outcome
+    // hypotheses ("win"/"draw" [H naming]); the return only feeds the selector fill.
+    // Entry+3/+8 naming (played-count/points per FUN_004fc170 writes) stays [H]; no
+    // port-side what-if model - VariantFeed hits stay feed-driven like exe pool reads.
+    static bool exeWhatIfQualifies(std::uint16_t key,
+                                std::uint16_t entryA_team, std::uint8_t entryA_result,
+                                std::uint16_t entryB_team, std::uint8_t entryB_result,
+                                std::uint8_t entryC_result) {
+        if (entryA_team == key && entryA_result != entryB_result) return true;
+        if (entryA_team == key && entryA_result == entryB_result && entryC_result < entryB_result)
+            return true;
+        return entryB_team == key && entryB_result != entryC_result;
+    }
 
     // pass-83 type-1 id source (FUN_00485210/0x485240/0x48525c). The exe list/count words
     // (DAT_0062f790 + DAT_0062facc) and the id/pair words (DAT_0062fab0/fab4,

@@ -1101,7 +1101,9 @@ void Announcer::dispatchResult(int outcome, bool matchFlagLane, std::uint32_t ne
         if (variant.statusByte == 2) {
             // 0x458f30 ECX lane: FUN_00498e90 gate (team membership, record+0x10 array -
             // solid), fail arms 0x459058/0x4590ac/0x459103 with FUN_004998c0 EBX=2/1
-            // lookups (group+0x16 key [H]). ECX==3 arm: EBX=1 hit -> 0x7, miss -> 0x9.
+            // what-if outcome lookups (EDX = EDI branch value vs group+0x16 team array,
+            // snapshot/restore standings predicate - pass-107). ECX==3 arm: EBX=1 hit ->
+            // 0x7, miss -> 0x9.
             if (variant.teamRegistered) sel = 0xe;
             else if (order == 1) sel = variant.lookup2Hit ? 0xd : (variant.lookup1Hit ? 0x4 : 0x6);
             else if (order == 0) sel = variant.lookup2Hit ? 0xd : (variant.lookup1Hit ? 0xa : 0xc);

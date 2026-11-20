@@ -493,6 +493,25 @@ int main() {
         CHECK(skip.slotType(2) == 0 && skip.selCount() == 0);
     }
 
+    // pass-107 FUN_004998c0 what-if qualification predicate (raw 0x98cc0): key = EDX
+    // word (fail arms pass EDI); FUN_004fbb10 re-ranks descending on the +8 byte with a
+    // tie-break ladder, so post-rank entries 0/1/2 = ranks 1/2/3; three unsigned
+    // byte compares pin the exact clause order.
+    {
+        const std::uint16_t key = 0x1234;
+        CHECK(app::Announcer::exeWhatIfQualifies(key, key, 5, 0x7777, 3, 9)); // A != B byte
+        CHECK(app::Announcer::exeWhatIfQualifies(key, key, 3, 0x7777, 3, 2)); // A==B, C<B
+        CHECK(!app::Announcer::exeWhatIfQualifies(key, key, 3, 0x7777, 3, 4)); // C>B, B not key
+        CHECK(!app::Announcer::exeWhatIfQualifies(key, key, 3, 0x7777, 3, 3)); // C==B
+        CHECK(app::Announcer::exeWhatIfQualifies(key, 0x5555, 1, key, 4, 5));  // B team, B != C
+        CHECK(!app::Announcer::exeWhatIfQualifies(key, 0x5555, 1, key, 4, 4)); // B team, B == C
+        CHECK(!app::Announcer::exeWhatIfQualifies(key, 0x5555, 1, 0x6666, 2, 7)); // no key team
+        CHECK(app::Announcer::exeWhatIfQualifies(key, key, 0x80, 0x7777, 0x00, 0x00)); // clause 1, byte differ
+        CHECK(app::Announcer::exeWhatIfQualifies(key, key, 0x80, 0x7777, 0x80, 0x00)); // C<B unsigned (low C)
+        CHECK(!app::Announcer::exeWhatIfQualifies(key, key, 0x80, 0x7777, 0x80, 0x80)); // C==B
+        CHECK(!app::Announcer::exeWhatIfQualifies(key, key, 0x00, 0x7777, 0x00, 0x80)); // C>B unsigned wrap
+    }
+
     // pass-83 pair-store id source: FUN_00485210 membership scan over the DAT_0062f790 list,
     // FUN_00485240 selection (hit -> fab0, miss -> fab4), FUN_0048525c store ordering
     // ((f468, f46c) on hit, reversed on miss).

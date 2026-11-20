@@ -2165,7 +2165,10 @@ to pin the mirrored lanes.
 array `DAT_0057e528` (raw 0x17c650) with fill types 0/1 (records `5, 0xb, 8`,
 selector 8 fills 37) and type 2 (fill 43), output pairs written to the table
 `DAT_0057e604` = VA 0x57f51e (raw 0x17c894). Pick dispatch `0x458c49`-`0x4591ff`
-reads `record + 3` as the status byte and feeds the variant arguments from the
+reads `record + 3` as the status byte (pass-107 `FUN_004fc170` writes a
+count-derived target into the group-entry +3 field — the `== 2`/`== 3` arms
+read consistently as "after matchday 2"/"after matchday 3" [H naming]) and
+feeds the variant arguments from the
 `EAX != 1`/`EAX != 2` lookups `0x458961`/`0x45885f` (Watcom register args lost in
 pseudocode — keys remain [H]), the team-membership check `0x458b5a`
 (`FUN_00498e90`, solid), and the EBP predicate (pass-103). Status `2` runs the
@@ -2186,3 +2189,41 @@ slot-2 ids against the `fillSelector` + `pickSelector` reference fills for all
 
 Evidence: `analysis/pass104variant/NOTES.md`, `/tmp/wc98pass104/*` (140 lines,
 dispatch + FUN_0049988c + table dumps).
+
+## pass-107: FUN_004998c0 what-if qualification predicate (2026-11-20)
+
+`FUN_004998c0(EAX = DAT_0x62fad0 pool, EDX = team word, EBX = outcome
+selector)` is a what-if qualification check, closed by raw disassembly at
+0x4998c0 (frame-slot arithmetic: the `push %ecx` at 0x4998d7 shifts all
+later `[esp+0x1xx]` operands one slot down, so the scan key
+`mov 0x1b0(%esp),%ecx` at 0x499928 reads the old `0x1ac` = EDX slot and the
+selector `mov 0x1b4(%esp),%dl` at 0x499985 reads the old `0x1b0` = BL slot).
+Flow: group scan (count record+0x5cc, base = record+0x5cc pointer + 0x248 =
+record+0x814, stride 0x214) matching EDX against the u16 team array at
+group+0x16; snapshot of the 23-entry array at group+0x50 (stride 0x12 =
+4 dword + word); what-if modification — `FUN_004fc170` sets non-key
+entries' +3 to a count-derived target and adds `delta * group+1` to +8
+(outcome byte record+0x5cf, switch codes 0x21/0x22/0x24/0x27),
+`FUN_004fba40` locates the key entry and adds the BL-selected group counter
+byte (+1/+2/+3 for BL 0/1/2) to entry+8, `FUN_004fba80` zeroes the +2 bytes
+and re-ranks via `FUN_004fbb10` (descending on the +8 byte, then a
+tie-break ladder over the group+0x204 rule table, list length group+0x1f5;
++ config+0x4354 pair lane when group+0xe == group+0x10); predicate on the
+re-ranked entries (entry A = +0x50 team/+8 byte vs entry B = +0x62, entry
+C = +0x7c byte, unsigned): key sole leader ahead of B, A/B tied with C
+behind, or key at 2nd with B != C — i.e. the key team clinches a top-two
+spot under the hypothetical outcome. Snapshot restore afterwards
+(0x4999d6). Return feeds only the selector-fill decision
+(sel 0xd/0x4/0xa/0x6/0x7/0x9, pass-104 arms). Entry-record fields: +0 team
+u16, +2 transient flag (zeroed), +3 played-count-style byte (set to a
+count-derived target), +8 points-style byte the predicate and re-rank
+compare (naming [H]); +4..+0x11 stay [H]. Fail arms pass EDX = EDI
+(`mov %edi,%edx` 0x459062/0x4590b6/0x4590cb); EDI provenance unchanged from
+pass-104.
+
+Port mirror: `Announcer::exeWhatIfQualifies` = the predicate verbatim
+(`test_gameaudio` pass-107 block pins the truth table incl. unsigned
+byte-compare boundaries); the pool-side modification lanes are not modelled
+— VariantFeed hits stay feed-driven. Evidence:
+`analysis/pass107sched/NOTES.md`, `/tmp/wc98pass107/*` (disasm +
+decompile dumps, incl. `s9.txt` = FUN_004fbb10/0x4fbe20 re-rank).

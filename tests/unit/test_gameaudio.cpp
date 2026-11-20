@@ -335,6 +335,49 @@ int main() {
         CHECK(ann.plays() == 3);
     }
 
+    // pass-79 selector mirror + presentation scene feeds (measured grid, skip sets and
+    // remmap table: analysis/pass78grid/grid_dump.txt; AUDIO_RUNTIME.md pass-77b/78).
+    {
+        app::Announcer sel(tree);
+        audio::sceneLevels().setLevel(audio::kSceneSpeech, 80);
+        CHECK(sel.remmap(0x56) == 0xa1);  // team 86 -> schedule 161 (slot 0 -> next word)
+        CHECK(sel.remmap(0x1a) == 0xbd);  // team 26 -> schedule 189
+        CHECK(sel.remmap(0x2c0) == 0xd6); // last scan slot reads the adjacent word
+        CHECK(sel.remmap(0x999) == 0xa1); // unmatched team: default word
+        sel.resetCursor();
+        CHECK(sel.fillSelector(0x26, false)); // grid B [20,25)
+        CHECK(sel.selCount() == 4);           // records 20..24 minus type-2 skip 23
+        CHECK(sel.pickSelector() == 21);
+        CHECK(sel.fillSelector(0x36, false)); // grid B [100,105)
+        CHECK(sel.selCount() == 5);           // no type-2 skip inside the range
+        CHECK(sel.pickSelector() == 102);     // cursor lane continues across fills
+        CHECK(sel.fillSelector(0, true));     // grid A [0,5) standings lane
+        CHECK(sel.selCount() == 5);           // no type-3 skip below record 5
+        CHECK(sel.pickSelector() == 3);       // cursor 2 into the freshly filled list
+        CHECK(!sel.fillSelector(0x1d, false)); // wrap word v[0x1d]: not a selector entry
+        sel.resetCursor();
+        app::feedTeamSelectionAnnouncer(sel, 0x1a); // FUN_00458cf0 lanes 0x458dc2/0x458df6
+        CHECK(sel.slotType(0) == 1 && sel.slotId(0) == 0x1a); // G_T0026.PBK team bank
+        CHECK(sel.slotType(1) == 3 && sel.slotId(1) == 1);    // G_STD001.SMP real speech
+        CHECK(sel.loads() == 2 && sel.missing() == 0);
+        CHECK(sel.plays() == 1); // one announcement per pick call, never stacked
+        CHECK(sel.pickNext());   // slot 1 std lane plays on the next pick
+        CHECK(sel.plays() == 2);
+        CHECK(!sel.pickNext());  // queue drained: qfind-null lane
+        sel.resetCursor(); // exe cursor DAT_0062fd9c is global scratch; reset for the board lane
+        app::feedBoardAnnouncer(sel, 0x1a); // FUN_00453a6c family lanes
+        CHECK(sel.slotType(2) == 2 && sel.slotId(2) == 0);    // 0x453b15 silent schedule 000
+        CHECK(sel.slotType(3) == 2 && sel.slotId(3) == 0xbd); // 0x453b2e remmap -> G_SCH189
+        CHECK(sel.slotType(1) == 2 && sel.slotId(1) == 21);   // 0x453bd2 selector 0x26
+        CHECK(sel.slotType(4) == 2 && sel.slotId(4) == 102);  // 0x453c77 selector 0x36
+        CHECK(sel.slotType(0) == 1 && sel.slotId(0) == 0x1a); // 0x453b07 team lane
+        CHECK(sel.loads() == 7 && sel.missing() == 0);        // all five files shipped
+        CHECK(sel.plays() == 3); // the feed itself picks exactly one entry
+        for (int i = 0; i < 4; ++i) CHECK(sel.pickNext()); // the remaining four announcements
+        CHECK(sel.plays() == 7); // every entry builds a clip (000 counts: zero samples)
+        CHECK(!sel.pickNext());
+    }
+
     // Speech master-gain ramp mirror (pass-73): SNDspeechinit (FUN_004df820) stores
     // cur = vol<<16 with delta 0; SNDspeechautovol (FUN_004df8a4) sets delta =
     // (target<<16 - cur)/frames (frames clamped >=1); the state-cb pump (installed at

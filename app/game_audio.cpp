@@ -962,6 +962,101 @@ bool Announcer::pumpPending() {
     return any;
 }
 
+bool Announcer::pickNext() {
+    for (int slot = 0; slot < kRingSlots; ++slot) { // pick lane, class-queue order [H]
+        auto& s = slots_[std::size_t(slot)];
+        if (s.loaded && !s.consumed) return activate(slot); // one entry per call
+    }
+    return false; // queue drained: qfind-null lane
+}
+
+namespace {
+// FUN_00489bdc skip predicate: hardcoded per-record exclusions (measured constants,
+// analysis/pass78grid/grid_dump.txt; both sets sorted ascending -> binary search).
+constexpr std::uint16_t kSkips2[] = {23, 31, 34, 37, 38, 50, 62, 85, 133};
+constexpr std::uint16_t kSkips3[] = {5, 6, 7, 8, 11, 13, 17, 18, 39, 43, 44, 46, 47, 50, 53, 54,
+                                     95, 96, 97, 98, 120, 121, 122, 125, 127, 130, 131, 132};
+// Raw DAT_0057e3fe pair table (u16 pairs, 40 scan entries + adjacent 0xd6 word). remmap
+// matches pair.second (the SI team id) and returns the *next* slot's first u16 (the exe
+// `*(int*)(base + i + 2) >> 0x10` read), so team -> schedule id pairs are encoded shifted.
+constexpr std::pair<std::uint16_t, std::uint16_t> kRemmapPairs[] = {
+    {0x000, 0x056}, {0x0a1, 0x057}, {0x0a2, 0x058}, {0x0a3, 0x039}, {0x0a4, 0x03b}, {0x0a5, 0x03c},
+    {0x0a6, 0x03d}, {0x0a7, 0x03f}, {0x0a8, 0x040}, {0x0a9, 0x041}, {0x0aa, 0x257}, {0x0ac, 0x043},
+    {0x0ad, 0x045}, {0x0ae, 0x047}, {0x0af, 0x048}, {0x0b0, 0x029}, {0x0b1, 0x036}, {0x0b2, 0x2f8},
+    {0x0b4, 0x02f}, {0x0b5, 0x031}, {0x0b6, 0x034}, {0x0b9, 0x035}, {0x0ba, 0x038}, {0x0bb, 0x01a},
+    {0x0bd, 0x31c}, {0x0be, 0x01d}, {0x0c0, 0x01f}, {0x0c2, 0x020}, {0x0c3, 0x021}, {0x0c4, 0x022},
+    {0x0c5, 0x023}, {0x0c6, 0x024}, {0x0c7, 0x025}, {0x0c8, 0x026}, {0x0c9, 0x027}, {0x0ca, 0x27b},
+    {0x0cc, 0x32f}, {0x0cf, 0x2f0}, {0x0d2, 0x03e}, {0x0d3, 0x2c0}, {0x0d6, 0x056}, // next word
+};
+} // namespace
+
+std::uint16_t Announcer::remmap(std::uint16_t team) {
+    for (std::size_t i = 0; i < 40; ++i) // exe loop bound `iVar1 < 0xa0`
+        if (team == kRemmapPairs[i].second) return kRemmapPairs[i + 1].first;
+    return 0xa1; // default word
+}
+
+bool Announcer::fillSelector(int selector, bool type3) {
+    unsigned start = 0, end = 0;
+    if (selector >= 0x22) { // second uniform 5-block grid: s -> [5k, 5k+5)
+        start = 5u * static_cast<unsigned>(selector - 0x22);
+        end = start + 5u;
+    } else if (selector >= 0 && selector <= 0x1c) { // grid A partition of records 0..160
+        if (selector < 0x13) start = 5u * static_cast<unsigned>(selector);
+        else if (selector <= 0x15) start = 95u + 10u * static_cast<unsigned>(selector - 0x13);
+        else start = 125u + 5u * static_cast<unsigned>(selector - 0x16);
+        const unsigned nxt = static_cast<unsigned>(selector + 1);
+        if (nxt < 0x13) end = 5u * nxt;
+        else if (nxt <= 0x15) end = 95u + 10u * (nxt - 0x13);
+        else if (nxt <= 0x1c) end = 125u + 5u * (nxt - 0x16);
+        else end = 0xa0; // wrap word v[0x1d] = 0xa0 closes the last block
+    } else {
+        return false; // 0x1d..0x21: adjacent data words, not selector entries
+    }
+    selList_.clear();
+    const std::span<const std::uint16_t> skips =
+        type3 ? std::span<const std::uint16_t>{kSkips3} : std::span<const std::uint16_t>{kSkips2};
+    for (unsigned rec = start; rec < end && selList_.size() <= 0x28; ++rec) { // count guard
+        if (std::binary_search(skips.begin(), skips.end(), rec)) continue; // skip = 0
+        selList_.push_back(static_cast<std::uint16_t>(rec + 1)); // DAT_0062fbf8 stores rec+1
+    }
+    return !selList_.empty();
+}
+
+std::int32_t Announcer::pickSelector() {
+    if (selList_.empty()) return -1; // exe -1 sentinel
+    const auto idx = cursor_ >= selList_.size() ? selList_.size() - 1 : cursor_; // clamp [H]
+    ++cursor_;
+    return selList_[idx];
+}
+
+void feedTeamSelectionAnnouncer(Announcer& announcer, std::int32_t team) {
+    if (team < 0) return; // FUN_004dac90() >= 7 gate lane: no pick, nothing filled
+    announcer.setSlot(0, 1, static_cast<std::uint16_t>(team)); // 0x458dc2 SI team bank
+    announcer.fillSelector(0, true);                           // 0x458df6 std lane [0,5)
+    const std::int32_t id = announcer.pickSelector();
+    if (id >= 0) announcer.setSlot(1, 3, static_cast<std::uint16_t>(id));
+    announcer.pumpPending(); // FUN_00489460 builder load + FUN_004894c4 arm
+    announcer.pickNext();    // FUN_0048d0dc pick lane: one announcement, never stacked
+}
+
+void feedBoardAnnouncer(Announcer& announcer, std::int32_t homeTeam) {
+    announcer.fillSelector(0x26, false); // 0x453bd2 schedule lane
+    const std::int32_t id26 = announcer.pickSelector();
+    announcer.fillSelector(0x36, false); // 0x453c77 schedule lane
+    const std::int32_t id36 = announcer.pickSelector();
+    if (homeTeam >= 0) {
+        const auto team = static_cast<std::uint16_t>(homeTeam);
+        announcer.setSlot(0, 1, team);                     // 0x453b07 pair-store lane [H]
+        announcer.setSlot(3, 2, Announcer::remmap(team));  // 0x453b2e remmap -> schedule id
+    }
+    announcer.setSlot(2, 2, 0); // 0x453b15 literal id 0 (silent schedule sample)
+    if (id26 >= 0) announcer.setSlot(1, 2, static_cast<std::uint16_t>(id26));
+    if (id36 >= 0) announcer.setSlot(4, 2, static_cast<std::uint16_t>(id36));
+    announcer.pumpPending();
+    announcer.pickNext(); // one announcement per pick call (FUN_0048d0dc semantics)
+}
+
 int Announcer::slotType(int slot) const {
     if (slot < 0 || slot >= kRingSlots) return 0;
     return slots_[std::size_t(slot)].type;

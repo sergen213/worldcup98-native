@@ -1010,8 +1010,8 @@ seam 1:1:
 - **Activation** `activate(slot)` = builder pick `FUN_0048d0dc` + `FUN_0048d1f8`: plays the
   decoded clip once at the speech percent idx3 gain (`sceneLevels()` → q7 lane), flips
   `consumed` (consume-on-use; second pick returns `false`). No scene currently feeds slots in
-  the port — the exe scene→id mapping stays [H], so the API is gate-driven; wiring into
-  tournament presentation scenes is open work.
+  the port — the exe scene→id mapping stays [H], so the API is gate-driven; the pass-79
+  selector/remmap/feed helpers are gate-only, screen-to-handler dispatch stays open.
 
 Gate: `tests/unit/test_gameaudio.cpp` announcer block (path spellings, silent-schedule
 decode-only, consume-on-use counter, neutral special missing lane + re-arm semantics, team
@@ -1070,3 +1070,31 @@ are stored as `record + 1` (`DAT_0062fbf8` holds 1-based record numbers) at
 type-2 ids land in `SCHEDULE` numbering `000..217`. Evidence: `analysis/pass78grid/`
 (`sel1.txt` pseudocode, `grid_dump.txt` raw grid + skip-constant words, `assets.txt`
 file inventory, `GhidraWc98Sel1.py`).
+
+Pass-79 (2026-11-19): selector mirror + remmap ported, gate-driven (no scene calls them —
+screen-to-handler dispatch stays [H], see pass-77 residual). Implemented in `app/game_audio
+.hpp/cpp` as `Announcer::fillSelector/pickSelector/resetCursor`, `Announcer::remmap`,
+`Announcer::pickNext` and free helpers `feedTeamSelectionAnnouncer` (0x458dc2 team bank +
+0x458df6 selector-0x0 std lane) and `feedBoardAnnouncer` (0x453b07/0x453b15/0x453b2e/
+0x453bd2/0x453c77): each fills the ring, runs the builder load, and plays exactly **one**
+entry per call — the exe pick lane `FUN_0048d0dc` plays one announcement per pick, so the
+feed never stacks activations; further announcements ride later `pickNext()` calls
+(slot-scan order, class-queue order [H]).
+**remmap direction corrected from the raw table** (`FUN_00489920`,
+`analysis/pass77pbp/ann1.txt` pseudocode + raw bytes `analysis/pass79sel/remmap.txt`): the
+scan compares `EAX` against the table's **second** u16 of each u16 pair
+(`*(int*)(base+i) >> 0x10`) and returns the **first** u16 of the *next* slot
+(`*(int*)(base+i+2) >> 0x10`), i.e. the mapping is shifted by one slot: team `0x056` →
+`0xa1`, `0x057` → `0xa2`, … team `0x2c0` → the adjacent word `0xd6`; unmatched teams return
+the default word `0xa1`. Values are tournament schedule ids (the shipped `G_SCH161..214`
+numbering), keys are SI team ids (40 entries, scan bound `iVar1 < 0xa0`). Gate numbers:
+`remmap(0x56)=0xa1`, `remmap(0x1a)=0xbd`, `remmap(0x2c0)=0xd6`, default `0xa1`.
+Grid/skip semantics ported verbatim: grid A 5/10-block partition + wrap word `0xa0`
+(`fillSelector(0x1d)` = adjacent word, no entry), grid B uniform blocks
+(`0x26:[20,25)` minus type-2 skip `23` → ids `{21,22,23,25}`, `0x36:[100,105)` →
+`{101..105}`, `0x0:[0,5)` type-3 → `{1..5}`), survivors store `record+1`, count guard
+`<= 0x28`, cursor global across fills with clamp [H].
+Gate: `test_gameaudio` pass-79 block (remmap lanes, grid/skip list counts + pick sequence,
+both feed sites on real assets `G_T0026.PBK`, `G_STD001.SMP`, `G_SCH000/021/102/189.SMP`,
+one-pick-per-call plays counter, drained-queue lane). Evidence: `analysis/pass79sel/NOTES.md`
+(`remmap.txt` = raw table dump + mapping derivation).

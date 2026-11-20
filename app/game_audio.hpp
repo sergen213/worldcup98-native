@@ -139,6 +139,27 @@ public:
     // slot's decoded announcement once (consume-on-use), at the speech percent idx3 gain.
     bool activate(int slot);
     bool pumpPending(); // builder-tail scan: load every pending slot, returns any-loaded
+    // Builder pick lane FUN_0048d0dc -> FUN_0048d1f8: activates the first built,
+    // unconsumed entry (one announcement per call, never stacked), returns whether one
+    // played. Null-mixer drivers stay headless-safe (counted, silent).
+    bool pickNext();
+
+    // pass-79 selector mirror (FUN_00489974 fill + FUN_004899dc pick). The selector ->
+    // record-range grid is static initialized data at VA 0x57e938 (raw 0x17cf38): grid A
+    // 0x00..0x1c partitions records 0..160 (nineteen 5-blocks, three 10-blocks at 0x13,
+    // seven 5-blocks at 0x16..0x1c, wrap word 0xa0 closes 0x1c), a second uniform 5-block
+    // grid starts at index 0x22 (0x26:[20,25), 0x36:[100,105), 0x0:[0,5)). Skip predicate
+    // FUN_00489bdc excludes hardcoded records; survivors store `record + 1`, the shipped
+    // {G,A}_std/smp numbering. Returns true = non-empty list.
+    bool fillSelector(int selector, bool type3);
+    std::int32_t pickSelector(); // cursor lane (DAT_0062fd9c clamp [H]); -1 on empty list
+    void resetCursor() { cursor_ = 0; }
+    [[nodiscard]] std::uint32_t selCount() const { return static_cast<std::uint32_t>(selList_.size()); }
+    // FUN_00489920: 40-entry u16-pair table @ DAT_0057e3fe. The scan compares against the
+    // table's *second* u16 per pair and returns the *first* u16 of the next slot, so the
+    // encoded mapping is SI team -> tournament schedule id (values land in the shipped
+    // G_SCH000..217 numbering); unmatched teams get the default word 0xa1.
+    static std::uint16_t remmap(std::uint16_t team);
 
     [[nodiscard]] int slotType(int slot) const;
     [[nodiscard]] std::uint16_t slotId(int slot) const;
@@ -165,6 +186,8 @@ private:
     bool away_ = false;
     bool neutralGate_ = false;
     std::array<Slot, kRingSlots> slots_{};
+    std::vector<std::uint16_t> selList_; // DAT_0062fbf8 selection list scratch
+    std::uint32_t cursor_ = 0;           // DAT_0062fd9c pick cursor
     std::uint32_t loads_ = 0;
     std::uint32_t missing_ = 0;
     std::uint32_t decoded_ = 0;
@@ -172,6 +195,19 @@ private:
     std::uint32_t phrasesParsed_ = 0;
     formats::Pcm lastClip_;
 };
+
+// pass-79 presentation fill sites (AUDIO_RUNTIME.md pass-77b table): the SI-team handler
+// FUN_00458cf0 fills slot 0 type 1 with the picked team (0x458dc2, gate >= 7) and slot 1
+// type 3 from selector 0x0 (0x458df6); the standings/matchup handler FUN_00453a6c family
+// fills slot 0 type 1 (0x453b07 pair-store lane [H]), slot 2 type 2 id 0 (0x453b15), slot 3
+// type 2 remmap (0x453b2e), slots 1/4 type 2 selector picks 0x26/0x36 (0x453bd2/0x453c77).
+// Both fill the ring and run the builder load (FUN_00489460), then play exactly ONE entry
+// through the pick lane (one announcement per call, the exe's FUN_0048d0dc per-pick
+// semantics; further announcements ride later pickNext() calls). `team < 0` = no pick yet
+// (exe gate lane). Screen-to-handler dispatch stays [H] - these helpers are gate-driven;
+// no port scene calls them until the dispatch is decoded.
+void feedTeamSelectionAnnouncer(Announcer& announcer, std::int32_t team);
+void feedBoardAnnouncer(Announcer& announcer, std::int32_t homeTeam);
 
 // Live-match audio: CROWD.BNK ambience loop + GAME00.BNK whistle/kick one-shots. Bank decode is
 // best-effort (missing files leave the slots silent). With mixer == nullptr (no OpenAL device)

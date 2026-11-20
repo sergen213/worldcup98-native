@@ -226,9 +226,14 @@ the operands are the **caller register pair**, not the tick counter: every site 
 `FUN_004E510C` loads `mov eax,[0x64bef0]` + `mov edx/eax,[eax+0x6]/[eax+0x8]` (some sites
 `+0x12/+0x14`), both `sar 16`, before the call; `FUN_004c321c` only advances the multi-word
 clock (`DAT_00585cb8..0x585ccc`) inside the function and returns nothing usable. So the
-draw is a fixed-clock product `((clockHi15 − 0x4000) × clockWord16) >> 14` over the runtime
-record at `DAT_0064BEF0` (fill lane statically unrecovered), and
-`CrowdEnvelope`'s mt19937 stays a [H] approximation (mirroring needs runtime clock values). Scene-10 CROWD phrase lane `FUN_0048e6d0` (caller 0x48e83f, once-guard
+draw is a fixed-point product `((cardHi15 − 0x4000) × cardWord16) >> 14` over fields of the
+**loaded CRD card record**: `DAT_0064BEF0` is installed by open handler `FUN_004E4A80`
+(magic `CRDl` `0x6c445243`, version byte `rec[1] == 2`, delta base-fixups at `rec+0x128/0x148`
+gated by flag `rec+5`, volume seed `DAT_005894b8/0x5894bc` from `rec+7`, pump hook
+`DAT_006597c8 = CRWDpump`, callback `DAT_006597e4 = FUN_004e4fd8`) — i.e. `CROWD.CRD` /
+`TRAFF.CRD` card fields, not a system clock (pass-113, `/tmp/wc98pass113/clk2.txt`).
+`CrowdEnvelope`'s mt19937 stays a [H] approximation (retail card values ship as data;
+mirroring needs the decoded fixed-point tempo fields). Scene-10 CROWD phrase lane `FUN_0048e6d0` (caller 0x48e83f, once-guard
 `DAT_006325b4`): `CMIDI.BNK` (@0x566adc) → `DAT_006325cc`; `FUN_004e3128`/`FUN_004e3724` init
 `DAT_006325d0`; `FUN_0048e280` loads exactly two banks — `CROWD.PBK` → `DAT_006325d4`,
 `COMOS.PBK` → `DAT_006325d8` — through the `AUDIO\CRWD\%s` format (`FUN_0048e190` @0x566acc) +

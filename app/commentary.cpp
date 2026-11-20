@@ -125,7 +125,11 @@ void Commentary::trigger(const sim::SimEvent& e) {
     // offset fields, high slot = segment length — analysis/pass93wr/) — no queue head pick
     // is proven there,
     // so the sequential head pick here stays a deviation [H]. Class-7 events route to the PHRS
-    // preload lane, mirrored pass-91 as triggerLive7 (event-side tag wiring open [H]).
+    // preload lane, mirrored pass-91 as triggerLive7. Gate feed decoded pass-94: the
+    // accessor slots hold pointers to the static home/away team-record images stamped
+    // by match setup FUN_004d4950, and the +0x34 gate u16 = the team's FCDB record id
+    // (dword0 & 0x7ff, written by loader FUN_004cc060) — analysis/pass94gate/. Live
+    // events still carry no retail class-7 byte [H].
     startPick(0);
 }
 
@@ -148,7 +152,10 @@ void Commentary::triggerLive(const sim::SimEvent& e) {
 
 // Pass-91 class-7 preload lane (dispatch arm 0x48f354, analysis/pass91c7/NOTES.md):
 // accessor FUN_0048f290 reads the match-record table (home slot DAT_00641014, away slot
-// base+0xfc = DAT_00641110) field +0x34 u16; gate 0 -> accessor returns 0, gate nonzero ->
+// base+0xfc = DAT_00641110) field +0x34 u16 (pass-94: the slots are pointers to the
+// static home/away team-record images stamped by match setup FUN_004d4950; +0x34 = the
+// team's FCDB record id = team record dword0 & 0x7ff, stamped by loader FUN_004cc060);
+// gate 0 -> accessor returns 0, gate nonzero ->
 // queue lane slot DAT_00632428 + 1*0x1c selector successor pick (EBX 0 home / 1 away). The
 // dispatch returns 0 when both picks are 0 (record recycled, event silent). Busy-reject and
 // exhausted-pool lanes shared with triggerLive.

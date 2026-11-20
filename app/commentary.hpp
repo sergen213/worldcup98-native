@@ -427,8 +427,12 @@ public:
     // silent (counted as reject). Exe stores home pick at [struct+0] via the DAT_006326b0
     // pointer and away pick at a stack slot consumed downstream; the port seam starts one
     // sentence per call, home pick first (deviation: two-slot fill [H]). Busy-reject guard
-    // shared with triggerLive. Live events carry no retail class byte yet [H] - callers
-    // with match team ids may route class-7 announcements through this lane.
+    // shared with triggerLive. Gate feed decoded pass-94 (analysis/pass94gate/): these
+    // parameters are the teams' FCDB record ids as stamped into the record images by
+    // loader FUN_004cc060; a lookup miss returns 0 leaving the field unchanged
+    // (0x4cc36c), so the gate reads 0 only when the id field is 0. Live events carry
+    // no retail class byte yet [H] - callers with match team ids may route class-7
+    // announcements through this lane.
     void triggerLive7(std::uint16_t homeId, std::uint16_t awayId);
 
 private:

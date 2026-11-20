@@ -1596,3 +1596,43 @@ reader both kinds; `0x4c8849` = ASCII case-insensitive compare); scripts
 - Port impact: none. The port's in-memory bank decode replaces the runtime seek lane;
   `app/commentary.cpp`/`hpp` callback-lane comments updated to cite the decoded field
   semantics. Deviation notes unchanged.
+
+## Pass-94: class-7 gate feed decoded — FCDB team-record id stamped at match setup (measured 2026-11-20)
+
+Evidence `analysis/pass94gate/` (`t1.txt` raw-dword scan of the `0x641014..0x641200`
+operand sites, `t2.txt`/`t3.txt` producer + loader disasm, `t4.txt` pool-parse gate,
+`t5.txt` loader miss tails).
+
+- **Slot producers.** The stores of `DAT_00641014`/`DAT_00641110` found by the operand
+  scan (`t1.txt` site list; remaining sites, e.g. `0x48b8f0`, `0x4909b1`, are loads)
+  come from one producer, match setup `FUN_004d4950`: it reads the pair ids from
+  scene-record words
+  `+0x10`/`+0x12`, loads both team-record images via `CALL 0x4cc060` into the static
+  buffers `0x63b0b8` (home, `EDI`) and `0x63b170` (away, `EBP`), then stamps
+  `0x4d4ab5 MOV [0x00641014],EDI` / `0x4d4ac7 MOV [0x00641110],EBP`. The pass-91
+  stride-`0xfc` "table" is therefore two **pointer slots** to those static images —
+  not inline records.
+- **Gate field producer.** `FUN_004cc060` (EAX=buffer, EDX=team id, Watcom): the
+  `0x4d2c60` lookup pair resolves the FCDB team record = `[0x64aeb0] + idx*0x44`
+  (68-byte stride = the pass-44 team-record lane `0x18..0x43`), then
+  `AND EAX,0x7ff` + `MOV word [ECX+0x32],AX` + `MOV word [ECX+0x34],AX` (`0x4cc0e2`/
+  `0x4cc0ed`). ⇒ `record+0x32/+0x34` = **team's FCDB record id = dword0 bits 0..10**.
+  The record pool base is parsed by `FUN_004d2220`, whose gate at `0x4d21f0` checks
+  magic `'FCDB'` + version `0x1f5` — measured at `COMMON/FCDB.DBI` header
+  `46 43 44 42 f5 01` ✓. Loader also unpacks team bitfields to `+0x36`/`+0x63..0x69`
+  (presentation kit/GK flags; not this lane).
+- **⇒ class-7 gate semantics (pass-94):** `[home+0x34]`/`[away+0x34]` are the teams'
+  FCDB record ids. Gate 0 is observed when the id field reads 0 (id 0 = empty slot);
+  on a lookup-#2 miss the loader **returns 0 without touching +0x32/+0x34**
+  (`0x4cc36c XOR EDX,EDX; MOV EAX,EDX; RET`, `t5.txt`) — the field keeps its prior
+  contents, so a miss zeroes the gate only if the image was 0 beforehand. Lookup-#1
+  miss continues with index 0 (`0x4cc365 XOR EAX,EAX; JMP 0x004cc096`), resolving the
+  record from entry slot 0. The exe dispatch calls the accessor **twice**, each gated
+  on its own record (`c7d.txt`): the home call (EBX=0) fills the `DAT_006326b0`-struct
+  slot, the away call (EBX=1) its stack slot — two independent picks. The port's
+  `triggerLive7` home-first/away-fallback one-call pick stays the [H] deviation
+  (pass-91 two-slot fill). Boot `FUN_0048fa08` same-team flag
+  `CMP word [home+0x32],[away+0x32]` = FCDB id equality (pass-56 flag confirmed).
+  Remaining pass-91 [H]: live events carry no retail class-7 byte; exe-side class
+  stamping for in-play records stays open.
+- Port impact: none (comments cite the producer chain).

@@ -150,7 +150,8 @@ callback + record helpers). Scripts `ghidra-scripts/GhidraWc98Pick{1,2,3,4}.py`.
   `EAX = [slot+0xC]`, `EDX = slot index (0..5)`, `CALL FUN_0048d0dc`; non-null pick result →
   `CALL FUN_0048d1f8` (activate); the three fields of every scanned slot are cleared unconditionally.
 - **Pick wrapper (disasm 0x48d0dc):** saves EDX (slot index) on the stack; target queue =
-  `DAT_00632428 + ([slot+0xC] << 2)` — a handle array indexed by the event's class word; predicate
+  `DAT_00632428 + class*0x1c` (wrapper 0x48d0f2..0x48d105: `shl eax,2; shl eax,3; sub eax,edx` =
+  `cls*32 - cls*4 = cls*0x1c` — 0x1c-byte queue objects; the earlier `<< 2` wording was wrong); predicate
   callback pointer = **FUN_0048cf10** (`MOV EDX,0x48cf10`).
 - **Predicate FUN_0048cf10 (disasm):** `MOV ECX,[EDX]; CMP ECX,[EAX+0xC]` → true iff the record's
   +0xC tag field equals the ring slot index. qfind walks the class queue from its head (`obj+8`,
@@ -158,7 +159,7 @@ callback + record helpers). Scripts `ghidra-scripts/GhidraWc98Pick{1,2,3,4}.py`.
 - **Activation `FUN_0048d1f8` (disasm):** record's embedded segment subqueue at +0x14: drain loop
   qpop (`FUN_004c4890`) → per-item start thunk `FUN_0048d0c0` → `FUN_004e3330`; then qfree the
   subqueue (`FUN_004c4720`) and **remove the record** from its class list (`FUN_004c4a70` qremove on
-  `DAT_00632428 + [rec+8]*4`). Picked records are consumed on use.
+  `DAT_00632428 + [rec+8]*0x1c`). Picked records are consumed on use.
 - Record fields: +6/+0xA = u16 voice-stream handles (-1 = none; play-status probe `FUN_004d9250`,
   autovol ramp helper at 0x48cf24 = vol 0x10 via `FUN_004e2b30`); +8 = class index into the handle
   array; +0xC = ring-slot tag; +0x14 = segment subqueue.
@@ -172,7 +173,7 @@ callback + record helpers). Scripts `ghidra-scripts/GhidraWc98Pick{1,2,3,4}.py`.
   (`AUDIO\team\G_T%04d.pbk` / `A_T%04d.pbk`, `AUDIO\pbp\schedule\{G,A}_sch%03d.smp`,
   `AUDIO\pbp\standing\{G,A}_std%03d.smp`) and the async completion callback `FUN_0048970c` stores
   the loaded record's class word `[rec+8]` into `[slot+0C]` and pushes records to
-  `DAT_00632428 + class*4` via registrar `FUN_0048d114` (tag `EAX=[rec+0C] = [item+0]`).
+  `DAT_00632428 + class*0x1c` via registrar `FUN_0048d114` (tag `EAX=[rec+0C] = [item+0]`).
   Evidence + site table: `analysis/pass76pbp/NOTES.md`. This tagged lane serves the presentation
   announcement files (`AUDIO/TEAM` 95 PBK, `AUDIO/PBP/SCHEDULE` 436, `AUDIO/PBP/STANDING` 320);
   the **live-match** lane (pass-12 dispatcher) calls `SNDphraseadd` directly with event-record

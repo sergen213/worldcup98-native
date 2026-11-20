@@ -107,11 +107,13 @@ void Commentary::trigger(const sim::SimEvent& e) {
     // the tournament presentation lane — pass 76: ring DAT_0057e380 slots filled by FUN_004894ac
     // {slot,type,id}, loader FUN_0048953c formats AUDIO\team\G_T%04d.pbk /
     // AUDIO\pbp\schedule|standing files, callback FUN_0048970c tags records into DAT_00632428
-    // class queues. The match-time scheduler lane (gate DAT_006324b4, FUN_0048d4f4, pointer-called:
-    // zero direct E8 sites) registers its records through FUN_0048d114 with tag = sentence field
-    // +4; whether those feed the qfind predicate FUN_0048cf10 (tag == ring slot index) is
-    // unresolved [H], so seam slots share the storage-order pool; first-match over a shared list
-    // is then sequential consumption. Evidence: COMMENTARY_WC98.md §pick, analysis/pass76pbp/NOTES.md.
+    // class queues. The FUN_0048d4f4 lane (gate DAT_006324b4, pointer-called: zero direct E8
+    // sites) registers its records through FUN_0048d114 with tag = [obj+4] and pushes the
+    // object onto queue DAT_00632524 — chant-lane registration (pass-56: chant pump
+    // FUN_0048da50 drain branch consumes qlength(DAT_00632524)), not a commentary-tag preload;
+    // the in-play dispatcher tags nothing, so seam slots share the storage-order pool;
+    // first-match over a shared list is then sequential consumption.
+    // Evidence: COMMENTARY_WC98.md §pick, analysis/pass76pbp/NOTES.md.
     if (head_ >= candidates_.size()) return; // qfind null: no commentary for this event
     const std::uint32_t p = candidates_[head_++];
     lastPhrase_ = int(p);

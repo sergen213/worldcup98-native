@@ -929,7 +929,7 @@ decoder probe `analysis/pass75movie/audioprobe.txt`: 2,988,554 stereo samples
 `analysis/pass75movie/` (`m11..m13.txt`, `callsite_disasm.txt`,
 `audioprobe.txt`).
 
-## Pass-76: commentary ring-slot preload lane decoded (A7 narrowed, in-play tagging open)
+## Pass-76: commentary ring-slot preload lane decoded (A7 narrowed; scheduler lane reclassified chant-lane)
 
 A7 said "per-record `+0xC` slot tags preload from an **unmeasured table**" — wrong; the
 preload is file-driven and fully decoded. Authority: FIFAWC.EXE with the corrected AUTO
@@ -957,7 +957,8 @@ load record queued `0x62fda0` with callback `LAB_0048970c`, destination = ring e
 
 Callback `FUN_0048970c`: type 2/3/4 builds the entry inline (`+8`=1 class, `+0C`=`[item+0]`
 tag, self-link, bank block init, per-item handles −1 via `FUN_0048d084`) and pushes to
-`DAT_00632428 + class*4`; type 1 stores `[entry+8]` into ring `[slot+0C]` and registers via
+`DAT_00632428 + class*0x1c` (0x1c-byte queue objects, wrapper arithmetic `shl 2; shl 3; sub` at
+`0x48d0f2..0x48d105`; the `class*4` wording was wrong); type 1 stores `[entry+8]` into ring `[slot+0C]` and registers via
 registrar `FUN_0048d114` (`ECX`=record, `EAX`=tag: `rec+0C=EAX`, class queue push, patch
 count = byte-swapped word at bank `+0x30+8`, patch items → segment sub-queue); sets
 `[slot+8]=1` pending, re-arms next slot while `[slot+0]!=0`; builder tail iterates pending
@@ -969,10 +970,13 @@ Builder/pick `FUN_00489460` (7 callers incl. scene pumps) scans pending slots �
 `FUN_0048d0dc(class=slot+0C, EDX=slot)` predicate `FUN_0048cf10` (`[rec+0C] == slot`) →
 activation `FUN_0048d1f8` (pass-11 semantics unchanged). The tagged lane is tournament
 **presentation** announcement audio. The live-match dispatcher lane (pass-12) calls
-`SNDphraseadd` directly with event-record phrase ids; the match-time scheduler lane (gate
-`DAT_006324b4`, `FUN_0048d4f4`, pointer-called — zero direct `E8` sites) registers its records
-through `FUN_0048d114` with tag = sentence field `+4` and pushes queue `DAT_00632524`; whether
-those records are consumed by the qfind predicate or only by the scheduler's own time-based
-emit (`FUN_0048d6fc`, pass-12) is unresolved **[H]** — port seam stays sequential [H], comment
-updated (`app/commentary.cpp` trigger(), `COMMENTARY_WC98.md` §pick, `AUDIO_DISCREPANCIES.md`
-A7). A7 stays **Open (partial)**.
+`SNDphraseadd` directly with event-record phrase ids. The `FUN_0048d4f4` lane (gate
+`DAT_006324b4`) registers records through `FUN_0048d114` with tag = `[obj+4]` and pushes the
+object onto queue `DAT_00632524` — **chant-lane** registration (pass-56: chant pump
+`FUN_0048da50` drain branch consumes `qlength(DAT_00632524)`; pointer-called, zero direct `E8`
+sites), so it is not a commentary-tag preload; the in-play dispatcher has no tags on its pick
+path. Per-event live-match phrase content mapping stays unresolved **[H]**; port seam stays
+sequential [H]. **Open item: the presentation announcement lane itself is not ported** (no
+announcer component feeds `AUDIO/TEAM`/`AUDIO/PBP` files yet). Evidence:
+`app/commentary.cpp` trigger(), `COMMENTARY_WC98.md` §pick, `AUDIO_DISCREPANCIES.md` A7. A7
+stays **Open (partial)**.

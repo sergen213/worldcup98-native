@@ -41,8 +41,10 @@ gate inventory (`ctest --test-dir build/release -N` → 155 tests). Classes:
    port seam is sequential [H] — wrong selection distribution.
 3. **Animation slice S4** (D-17/D-18/D-19 + contact frames D-20): animation/audio sync requires it.
 4. **AI slice S5** (D-21..D-26): decisions/marking/RNG divergence change match events themselves.
-5. **Presentation announcer lane unported** (AUDIO A7 open item): `AUDIO/TEAM` 95 PBK +
-   `AUDIO/PBP/SCHEDULE|STANDING` 756 SMP never loaded in port (pass-77).
+5. **Presentation announcer scene wiring** — lane ported (pass-77 `app::Announcer`:
+   `AUDIO/TEAM` 95 PBK + `AUDIO/PBP/SCHEDULE|STANDING` 756 SMP load/play mirror, gate in
+   `test_gameaudio`); no tournament presentation scene feeds slots yet (exe scene→id mapping
+   [H], AUDIO_RUNTIME Pass-77).
 6. **Set-piece residuals + tactics application** (D-27 [P]).
 7. **Camera/HUD/FE data lanes** (D-33/D-38, D-76): geometry correctness.
 8. **Blocked lanes** — referee (D-28), replay bodies (D-34), EULZ (D-35): documented, need a

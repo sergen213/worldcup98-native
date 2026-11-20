@@ -92,15 +92,16 @@ Status of §1 rows after passes 50-76 (registers `AUDIO_DISCREPANCIES.md` A1..A1
 | Trigger grammar | 1 | A11 closed pass-58 |
 | Speech gain autovol ramp | 1 | A8: ramp modelled 1:1 (`SpeechGain` exact-division gate); class-letter table still [H] |
 | Commentary pick/preload lane | 3 | pass-76: presentation preload decoded (ring ring-slot {type,id} -> shipped PBK/SMP files); scheduler lane reclassified chant-lane; live-match per-event phrase content still [H] (A7) |
-| Presentation announcer files (AUDIO/TEAM 95 PBK, PBP/SCHEDULE 436 SMP, PBP/STANDING 320 SMP) | 6 | exe lane class-1 decoded (pass-76) but **unported** — no announcer component in port |
+| Presentation announcer files (AUDIO/TEAM 95 PBK, PBP/SCHEDULE 436 SMP, PBP/STANDING 320 SMP) | 3 | exe lane decoded (pass-76) and **ported (pass-77)**: `app::Announcer` ring/loader/activate mirror, gate `test_gameaudio` announcer block; team-bank phrase pick [H] |
 | Name speech (PLRS) | 6 | request-handler trigger mapping blocked (memory: referee/EULZ/.SCI list) |
 | MIDI director | 6 | unchanged (device-blocked A5) |
 | Positional/pan | 6 | unchanged (A10 deviation, original has none on mixer bus) |
 
 Impact ranking (audio half of the §2 list in `GAMEPLAY_AUDIT.md`):
 
-1. Presentation announcer lane port (class-6 gap, assets already mapped by pass-76) — pass-77.
-2. Live-match commentary phrase content (A7 [H], D-32) — needs exe pick/tag table recovery.
+1. Live-match commentary phrase content (A7 [H], D-32) — needs exe pick/tag table recovery.
+2. Presentation announcer scene wiring (lane ported pass-77; exe scene→{slot,type,id}
+   extraction [H]).
 3. Crowd card-layer runtime application + chant request trigger mapping (A4 [P], A3 residual).
 4. MicroTalk gain calibration (A8 class-table [H]).
 5. Name-speech lane mapping (blocked), MIDI (device-blocked).

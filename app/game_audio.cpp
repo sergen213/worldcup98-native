@@ -833,4 +833,148 @@ void MenuMusicDirector::relevel() {
     mixer_->fade(id_, lane_, 50);
 }
 
+// --- Announcer (pass-77 mirror of the presentation announcement lane, FUN_004894ac/
+// FUN_0048953c/LAB_0048970c/FUN_00489460/FUN_0048d1f8) -------------------------------------
+Announcer::Announcer(const std::filesystem::path& tree) : tree_(tree) {}
+
+void Announcer::setSlot(int slot, int type, std::uint16_t id) {
+    if (slot < 0 || slot >= kRingSlots) return; // ring bounds DAT_0057e380 stride 0x10
+    auto& s = slots_[std::size_t(slot)];
+    s.type = type;
+    s.id = id;
+    s.pending = true; // exe stores [slot+8]=0 at fill (pending load); callback sets it built
+    s.loaded = false;
+    s.consumed = false;
+    s.clip = {};
+}
+
+std::filesystem::path Announcer::pathFor(int slot) const {
+    if (slot < 0 || slot >= kRingSlots) return {};
+    const auto& s = slots_[std::size_t(slot)];
+    if (s.type == 0) return {}; // empty ring slot: loader switch has no path
+    // `id == 0x32f && DAT_00640fe8 == 1` neutral special: type rewritten to 4, file
+    // `AUDIO\team\A_FE_USA.SMP` (not shipped -> missing-file lane below).
+    if (s.type == 1 && s.id == kNeutralId && neutralGate_)
+        return tree_ / "AUDIO" / "TEAM" / "A_FE_USA.SMP";
+    const std::string dir = "AUDIO";
+    switch (s.type) {
+    case 1:
+        return tree_ / dir / "TEAM" /
+               std::format("{}T{:04d}.PBK", away_ ? "A_" : "G_", s.id); // selector DAT_0057e5f8
+    case 2:
+        // Exe format strings are lowercase (`AUDIO\pbp\schedule\G_sch%03d.smp` @0x566938);
+        // the shipped ISO stores names uppercased and Windows loads case-insensitively, so
+        // the port uses the tree's real spelling on case-sensitive Linux.
+        return tree_ / dir / "PBP" / "SCHEDULE" /
+               std::format("{}_SCH{:03d}.SMP", away_ ? "A" : "G", s.id);
+    case 3:
+        return tree_ / dir / "PBP" / "STANDING" /
+               std::format("{}_STD{:03d}.SMP", away_ ? "A" : "G", s.id);
+    case 4: // type rewritten by the neutral special; away selector per the switch's case 4
+        return away_ ? tree_ / dir / "TEAM" / "A_FE_USA.SMP" : std::filesystem::path{};
+    default:
+        return {};
+    }
+}
+
+std::filesystem::path Announcer::loadSlot(int slot) {
+    if (slot < 0 || slot >= kRingSlots) return {};
+    auto& st = slots_[std::size_t(slot)];
+    if (st.type == 0 || !st.pending || st.loaded) return {}; // re-arm: [slot+8] already done
+    const auto path = pathFor(slot);
+    if (path.empty()) return {};
+    ++loads_; // loader request counted (FUN_0048953c entry)
+    if (!std::filesystem::exists(path)) { // exe missing-file lane: record queued, entry silent
+        ++missing_;
+        st.pending = false;
+        st.loaded = true; // callback still builds the entry (pending flag set), silent
+        return path;
+    }
+    auto& s = slots_[std::size_t(slot)];
+    try {
+        const auto bytes = readFile(path);
+        const std::span<const std::uint8_t> data{bytes};
+        if (s.type == 1 || s.type == 4) {
+            // Team bank: phrase records (nested BIGF containers, pass-51 catalog lane). The
+            // builder tail adds phrase id `[item+0E]` (pick unmeasured [H]) -> play the first
+            // non-empty phrase decoded through the commentary segment seam.
+            const auto bank = formats::PhraseBank::parse(data);
+            phrasesParsed_ += bank.phraseCount();
+            for (std::uint32_t p = 0; p < bank.phraseCount(); ++p) {
+                if (bank.emptyPhrase(p)) continue;
+                const auto member = formats::refpack::decompressIfNeeded(bank.memberBytes(p));
+                const std::span<const std::uint8_t> m{member};
+                if (formats::BigArchive::isBig(m)) {
+                    const auto nested = formats::BigArchive::parse(m);
+                    formats::Pcm clip;
+                    for (std::uint32_t i = 0; i < bank.recordCount(); ++i) {
+                        const auto& r = bank.record(i);
+                        if (r.phrase != p || r.segment >= nested.entries.size()) continue;
+                        const auto seg = formats::BigArchive::payload(m, nested.entries[r.segment]);
+                        const auto pcm = formats::decodePlayTrack(seg, std::min<std::size_t>(20, seg.size()));
+                        if (pcm.frames() == 0) continue;
+                        if (clip.samples.empty()) clip = pcm;
+                        else if (pcm.sampleRate == clip.sampleRate && pcm.channels == clip.channels)
+                            clip.samples.insert(clip.samples.end(), pcm.samples.begin(), pcm.samples.end());
+                    }
+                    if (!clip.samples.empty()) { s.clip = std::move(clip); break; }
+                } else {
+                    auto pcm = formats::decodePlayTrack(m, std::min<std::size_t>(20, m.size()));
+                    if (pcm.frames() != 0) { s.clip = std::move(pcm); break; }
+                }
+            }
+        } else {
+            // .SMP = single PT v2 play track at file offset 0 (measured: "PT" magic @0).
+            s.clip = formats::decodePlayTrack(data, 0);
+        }
+    } catch (const std::exception&) { // malformed file: entry silent like the exe callback
+    }
+    s.loaded = true; // callback LAB_0048970c: [slot+8] pending flag set + class queue push
+    if (!s.clip.samples.empty()) { ++decoded_; lastClip_ = s.clip; }
+    return path;
+}
+
+bool Announcer::activate(int slot) {
+    if (slot < 0 || slot >= kRingSlots) return false;
+    auto& s = slots_[std::size_t(slot)];
+    if (!s.loaded || s.consumed || s.clip.samples.empty()) return false; // qfind null / silent
+    s.consumed = true; // activation FUN_0048d1f8: qremove, plays exactly once
+    ++plays_;
+    lastClip_ = s.clip;
+    if (!mixer_) return true; // null-mixer drivers stay headless-safe (counted, silent)
+    // Voice pump class = speech autovol lane (idx3, FUN_0048fca0); percent 0 -> silent
+    // request like the percent-gated chant start (FUN_0048d678).
+    const int pct = audio::sceneLevels().level(audio::kSceneSpeech);
+    if (pct < 1) return true;
+    const float gain = std::min(1.0f, float(pct) / 100.0f) * smixLaneGain(audio::kSceneSpeech);
+    mixer_->play(s.clip, gain, /*loop=*/false);
+    return true;
+}
+
+bool Announcer::pumpPending() {
+    bool any = false;
+    for (int slot = 0; slot < kRingSlots; ++slot) { // builder FUN_00489460 scan
+        auto& s = slots_[std::size_t(slot)];
+        if (s.type == 0 || s.loaded || !s.pending) continue; // re-arm test: [slot+8] + [slot+0]
+        loadSlot(slot);
+        any = true;
+    }
+    return any;
+}
+
+int Announcer::slotType(int slot) const {
+    if (slot < 0 || slot >= kRingSlots) return 0;
+    return slots_[std::size_t(slot)].type;
+}
+
+std::uint16_t Announcer::slotId(int slot) const {
+    if (slot < 0 || slot >= kRingSlots) return 0;
+    return slots_[std::size_t(slot)].id;
+}
+
+bool Announcer::slotLoaded(int slot) const {
+    if (slot < 0 || slot >= kRingSlots) return false;
+    return slots_[std::size_t(slot)].loaded;
+}
+
 } // namespace wc98::app

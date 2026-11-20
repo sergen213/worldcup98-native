@@ -281,6 +281,60 @@ int main() {
         CHECK(rng.draw() == 22117);
     }
 
+    // Presentation announcement lane port (pass-77): ring-slot {type,id} -> loader path
+    // mirror of FUN_004894ac/FUN_0048953c: type 2 schedule / type 3 standing with the
+    // DAT_0057e5f8 selector G_ (home) vs A_ (away); SMP files are single PT v2 play tracks
+    // ("PT" magic at file offset 0), team PBKs are phrase banks; the id 0x32f neutral
+    // special rewrites to A_FE_USA.SMP and hits the missing-file lane (file not shipped);
+    // activation is consume-on-use (FUN_0048d1f8 qremove). G_SCH000.SMP is a genuinely
+    // silent asset (its payload is MicroTalk zero-excitation frames repeated over zero
+    // padding, measured: decoded samples all zero) - decode-only asserts there; A_STD001
+    // carries a real speech payload and is the audibility lane.
+    {
+        app::Announcer ann(tree);
+        audio::sceneLevels().setLevel(audio::kSceneSpeech, 80);
+        audio::Mixer m4{kRate};
+        ann.setMixer(&m4);
+        ann.setSlot(0, 2, 0); // home schedule board announcement 0
+        const auto schedPath = ann.loadSlot(0);
+        CHECK(schedPath.filename() == "G_SCH000.SMP");
+        CHECK(ann.slotLoaded(0));
+        CHECK(ann.decoded() == 1);
+        CHECK(ann.lastClip().frames() > 0); // silent asset: frames decode, samples are zero
+        CHECK(ann.activate(0));             // plays once on the speech lane
+        CHECK(!ann.activate(0));            // consume-on-use: second pick is silent
+        CHECK(ann.plays() == 1);
+        ann.setAwaySelector(true);
+        ann.setSlot(1, 3, 1); // away standing board announcement 1 (real speech payload)
+        const auto stdPath = ann.loadSlot(1);
+        CHECK(stdPath.filename() == "A_STD001.SMP");
+        CHECK(ann.slotLoaded(1));
+        CHECK(ann.decoded() == 2);
+        CHECK(ann.lastClip().frames() > 0);
+        CHECK(ann.activate(1));
+        CHECK(ann.plays() == 2);
+        CHECK(peakRms(m4, 0.6) > 1.0); // decoded announcement audible over loopback
+        ann.setNeutralGate(true);
+        ann.setSlot(2, 1, app::Announcer::kNeutralId); // 0x32f special
+        const auto neutral = ann.loadSlot(2);
+        CHECK(neutral.filename() == "A_FE_USA.SMP");
+        CHECK(ann.missing() == 1);
+        CHECK(ann.slotLoaded(2));
+        CHECK(!ann.activate(2)); // silent entry: qfind-null lane, no voice
+        CHECK(ann.plays() == 2);
+        ann.loadSlot(2); // re-arm test: pending flag cleared -> one counted attempt
+        CHECK(ann.loads() == 3);
+        CHECK(ann.missing() == 1);
+        ann.setAwaySelector(false);        // home side: G_T prefix (DAT_0057e5f8 == 0)
+        ann.setSlot(3, 1, 26); // G_T0026.PBK team bank (phrase records, nested BIGF)
+        const auto team = ann.loadSlot(3);
+        CHECK(team.filename() == "G_T0026.PBK");
+        CHECK(ann.slotLoaded(3));
+        CHECK(ann.phrasesParsed() > 0);
+        CHECK(ann.activate(3)); // first non-empty phrase decoded and played
+        CHECK(ann.plays() == 3);
+    }
+
     // Speech master-gain ramp mirror (pass-73): SNDspeechinit (FUN_004df820) stores
     // cur = vol<<16 with delta 0; SNDspeechautovol (FUN_004df8a4) sets delta =
     // (target<<16 - cur)/frames (frames clamped >=1); the state-cb pump (installed at

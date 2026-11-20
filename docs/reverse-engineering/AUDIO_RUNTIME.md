@@ -976,7 +976,44 @@ object onto queue `DAT_00632524` — **chant-lane** registration (pass-56: chant
 `FUN_0048da50` drain branch consumes `qlength(DAT_00632524)`; pointer-called, zero direct `E8`
 sites), so it is not a commentary-tag preload; the in-play dispatcher has no tags on its pick
 path. Per-event live-match phrase content mapping stays unresolved **[H]**; port seam stays
-sequential [H]. **Open item: the presentation announcement lane itself is not ported** (no
-announcer component feeds `AUDIO/TEAM`/`AUDIO/PBP` files yet). Evidence:
-`app/commentary.cpp` trigger(), `COMMENTARY_WC98.md` §pick, `AUDIO_DISCREPANCIES.md` A7. A7
-stays **Open (partial)**.
+sequential [H]. Evidence: `app/commentary.cpp` trigger(), `COMMENTARY_WC98.md` §pick,
+`AUDIO_DISCREPANCIES.md` A7. A7 stays **Open (partial)** — the live-match pick table, and the
+presentation handler's scene→{slot,type,id} argument extraction (accessor-internal, pass-76)
+remain the unresolved halves. The presentation announcement lane itself is **ported**
+(Pass-77 section below).
+
+## Pass-77: presentation announcer lane ported (announcer mirror; pass-76 open item closed, measured 2026-11-19)
+
+`app::Announcer` (`app/game_audio.hpp/cpp`, after the MatchAudio block) mirrors the decoded
+seam 1:1:
+
+- **Slot ring** `setSlot(slot, type, id)` = `FUN_004894ac` (stride 0x10, `[+8]` pending flag
+  stored 0 at fill — port keeps `pending = true` until the loader builds the entry).
+- **Loader** `pathFor`/`loadSlot` = `FUN_0048953c` filename formats
+  (`AUDIO/TEAM/{G,A}_T%04d.PBK`, `AUDIO/PBP/SCHEDULE/{G,A}_SCH%03d.SMP`,
+  `AUDIO/PBP/STANDING/{G,A}_STD%03d.SMP` — shipped ISO names are uppercase, exe strings
+  lowercase, Windows loads case-insensitively, port uses the tree's real spelling) plus the
+  away selector `DAT_0057e5f8` (`setAwaySelector`) and the neutral special
+  (`id == 0x32f` && `neutralGate_` (DAT_00640fe8 == 1) → `A_FE_USA.SMP`, not shipped →
+  missing-file lane: counted `missing()`, entry built, silent).
+- **Decode shapes measured**: `.SMP` files are single PT v2 play tracks — `PT` magic at file
+  offset 0, platform word `0x0002` (version in high byte), u32 header size (0x20), tag stream
+  `0x85` samples / `0x83` codec / `0x88` header-relative data offset — decoded with
+  `formats::decodePlayTrack(data, 0)` (the existing v2 branch already handled this). Team
+  `.PBK` slots are phrase banks with nested BIGF containers; the first non-empty phrase is
+  decoded through the pass-51 segment seam (record `[item+0E]` phrase pick unmeasured **[H]**).
+- **`G_SCH000.SMP` is a silent asset**: its payload is the 11-byte MicroTalk zero-excitation
+  frame `10 04 41 08 21 84 10 42 80 07 06` repeated every 0x30 over zero padding (measured:
+  decoded samples all zero, `frames=11024 nonzero=0`). Decode-only in the gate; audibility is
+  asserted on `A_STD001.SMP` (real speech payload, `peakRms > 1.0` over the loopback mixer).
+  The decoder path is unchanged — the 6,964/6,964 phrase gate already covers it.
+- **Activation** `activate(slot)` = builder pick `FUN_0048d0dc` + `FUN_0048d1f8`: plays the
+  decoded clip once at the speech percent idx3 gain (`sceneLevels()` → q7 lane), flips
+  `consumed` (consume-on-use; second pick returns `false`). No scene currently feeds slots in
+  the port — the exe scene→id mapping stays [H], so the API is gate-driven; wiring into
+  tournament presentation scenes is open work.
+
+Gate: `tests/unit/test_gameaudio.cpp` announcer block (path spellings, silent-schedule
+decode-only, consume-on-use counter, neutral special missing lane + re-arm semantics, team
+bank phrase decode + play). Evidence: `/tmp/wc98pass77/probe.cpp` (refpack + nonzero-sample
+probes), `analysis/pass76pbp/disasm.txt`.

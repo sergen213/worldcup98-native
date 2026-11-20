@@ -100,6 +100,79 @@ private:
     std::mt19937 rng_{0x1998u};
 };
 
+// Tournament presentation announcement lane (pass-76 decode, pass-77 port mirror).
+// Exe authority: ring `DAT_0057e380` = 6 slot records stride 0x10 (+0 type, +4 id, +8
+// load-pending flag, +0C lane class); slot filler `FUN_004894ac` (EAX=slot, EDX=type,
+// EBX=id, store `shl eax,4`) is called from 21 tournament-presentation scene sites; the
+// request handler `FUN_0048953c` formats the filename from {type,id}:
+//   type 1 -> `AUDIO\team\G_T%04d.pbk` / `A_T%04d.pbk` (selector `DAT_0057e5f8`: 0 -> G_/
+//             home variant, != 0 -> A_/away variant), plus the neutral-English special
+//             `id == 0x32f` && `DAT_00640fe8 == 1` -> `AUDIO\team\A_FE_USA.SMP` with type
+//             rewritten to 4 (file not shipped on the CD -> missing-file lane);
+//   type 2 -> `AUDIO\pbp\schedule\{G,A}_sch%03d.smp` (id = slot+4), 436 shipped files;
+//   type 3 -> `AUDIO\pbp\standing\{G,A}_std%03d.smp` (id = slot+4), 320 shipped files.
+// The async callback `LAB_0048970c` builds the entry (types 2/3/4 inline: pending flag set,
+// class tag push into the 0x1c-byte queue objects at `DAT_00632428 + class*0x1c`; type 1 via
+// registrar `FUN_0048d114` with the bank patch loop), the builder `FUN_00489460` scans
+// pending slots, qfind-picks by tag and activation `FUN_0048d1f8` plays the phrase
+// (consume-on-use). SMP files are single PT v2 play tracks ("PT" magic at offset 0), decoded
+// with `formats::decodePlayTrack` at offset 0; team PBKs are phrase banks (nested BIGF).
+// Activation plays at the speech percent lane (idx3, FUN_0048fca0 autovol class) [H] — the
+// exe voice pump path is shared with commentary sentences. Scene -> id mapping in the exe
+// presentation handlers stays accessor-internal [H] (pass-76), so no port scene feeds slots
+// yet; the gates drive the API. Evidence: AUDIO_RUNTIME.md pass-76, analysis/pass76pbp/.
+class Announcer {
+public:
+    static constexpr int kRingSlots = 6; // DAT_0057e380
+    static constexpr std::uint16_t kNeutralId = 0x32f; // A_FE_USA.SMP special
+    explicit Announcer(const std::filesystem::path& tree);
+    void setMixer(audio::Mixer* mixer) { mixer_ = mixer; }
+    void setAwaySelector(bool away) { away_ = away; } // DAT_0057e5f8 (0 = G_/home lane)
+    void setNeutralGate(bool on) { neutralGate_ = on; } // DAT_00640fe8 == 1
+
+    void setSlot(int slot, int type, std::uint16_t id); // FUN_004894ac
+    // Loader lane FUN_0048953c for one filled-but-unloaded slot: format path, open, decode.
+    // Missing files keep the exe missing-file lane (counted, entry stays silent).
+    // Returns the file path attempted (empty = slot not fillable).
+    std::filesystem::path loadSlot(int slot);
+    // Builder + pick + activation (FUN_00489460 -> FUN_0048d0dc -> FUN_0048d1f8): plays the
+    // slot's decoded announcement once (consume-on-use), at the speech percent idx3 gain.
+    bool activate(int slot);
+    bool pumpPending(); // builder-tail scan: load every pending slot, returns any-loaded
+
+    [[nodiscard]] int slotType(int slot) const;
+    [[nodiscard]] std::uint16_t slotId(int slot) const;
+    [[nodiscard]] bool slotLoaded(int slot) const;
+    [[nodiscard]] std::uint32_t loads() const { return loads_; }   // loader attempts
+    [[nodiscard]] std::uint32_t missing() const { return missing_; } // missing-file lane hits
+    [[nodiscard]] std::uint32_t decoded() const { return decoded_; } // entries with a clip
+    [[nodiscard]] std::uint32_t plays() const { return plays_; }      // activated plays
+    [[nodiscard]] std::uint32_t phrasesParsed() const { return phrasesParsed_; }
+    [[nodiscard]] const formats::Pcm& lastClip() const { return lastClip_; }
+
+private:
+    struct Slot {
+        int type = 0;              // +0 (0 = empty ring slot, exe `[slot+0] != 0` re-arm test)
+        std::uint16_t id = 0;      // +4
+        bool pending = false;      // +8 load-pending after fill (exe stores 0 at fill)
+        bool loaded = false;       // callback built the entry
+        bool consumed = false;     // consume-on-use (FUN_0048d1f8 qremove)
+        formats::Pcm clip;         // decoded announcement (types 2/3 SMP tracks / type 1 phrase)
+    };
+    std::filesystem::path pathFor(int slot) const; // FUN_0048953c format mirror
+    std::filesystem::path tree_;
+    audio::Mixer* mixer_ = nullptr;
+    bool away_ = false;
+    bool neutralGate_ = false;
+    std::array<Slot, kRingSlots> slots_{};
+    std::uint32_t loads_ = 0;
+    std::uint32_t missing_ = 0;
+    std::uint32_t decoded_ = 0;
+    std::uint32_t plays_ = 0;
+    std::uint32_t phrasesParsed_ = 0;
+    formats::Pcm lastClip_;
+};
+
 // Live-match audio: CROWD.BNK ambience loop + GAME00.BNK whistle/kick one-shots. Bank decode is
 // best-effort (missing files leave the slots silent). With mixer == nullptr (no OpenAL device)
 // trigger() still counts events, so drivers stay headless-safe like Commentary's null-mixer path.

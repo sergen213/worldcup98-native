@@ -2899,9 +2899,32 @@ const char* FeFlow::tourneyPresentName(int round) const {
     return (round >= 0 && round < kTourneyRounds && haveTourney_) ? kNames[std::size_t(round)] : "";
 }
 
+std::uint32_t FeFlow::announceDecoded() const { return boardAnnouncer_ ? boardAnnouncer_->decoded() : 0; }
+std::uint32_t FeFlow::announcePlays() const { return boardAnnouncer_ ? boardAnnouncer_->plays() : 0; }
+
+// Registry-resolved board dispatch (pass-101): the exe dispatcher for each feflow board
+// calls the announcer gate chain + handler once on board entry. Port feeds once per
+// screen id; scenes with no announcer site (18/19/27/81/82 and the feflow27 presentation
+// board) stay counted-noops. feflow35 mirrors the team/std fill sites only (0x458dc2/
+// 0x458df6); its match-result jump fills stay unmirrored [H] (AUDIO_RUNTIME Pass-101).
+void FeFlow::dispatchBoardAnnouncer(int scene) {
+    if (scene < 0 || scene >= 36 || boardDispatched_[std::size_t(scene)]) return;
+    boardDispatched_[std::size_t(scene)] = true;
+    if (!boardAnnouncer_) {
+        boardAnnouncer_ = std::make_unique<Announcer>(tree_);
+        boardAnnouncer_->setMixer(mixer_); // speech autovol lane; null mixer = counted, silent
+    }
+    switch (scene) {
+    case 20: feedBoardAnnouncer(*boardAnnouncer_, pick_); break;         // FUN_00453a6c family
+    case 35: feedTeamSelectionAnnouncer(*boardAnnouncer_, pick_); break; // FUN_00458cf0 subset
+    default: feedBoardHandlerAnnouncer(*boardAnnouncer_, scene, pick_); break; // 21/23/24/25/26
+    }
+}
+
 // Composite + dynamic overlay for the boundary after `round` (0 group, 1 R16, 2 QF, 3 final).
 presentation::FeDrawStats FeFlow::drawTourneyPresent(render::SpriteBatch& ui, int round) {
     if (!ensureTourney() || round < 0 || round >= kTourneyRounds) return {};
+    dispatchBoardAnnouncer(round == 0 ? 35 : round == 1 ? 25 : round == 2 ? 26 : 27); // FEFLOW35/25/26/27
     presentation::FeDrawStats st =
         presentation::composite(presScreens_[std::size_t(round)], ui, art_, text_.get());
     const presentation::FeDrawStats ov =
@@ -3070,6 +3093,8 @@ bool FeFlow::openWcCfg(int screenId) {
     wcCfg_ = screenId;
     cfgName_ = "FEFLOW" + std::to_string(screenId);
     wcRow_ = 0;
+    dispatchBoardAnnouncer(screenId); // registry board entry: handler fills (pass-101);
+                                      // scenes without an announcer site stay no-ops
     return true;
 }
 

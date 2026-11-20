@@ -344,18 +344,16 @@ int main() {
         CHECK(sel.remmap(0x1a) == 0xbd);  // team 26 -> schedule 189
         CHECK(sel.remmap(0x2c0) == 0xd6); // last scan slot reads the adjacent word
         CHECK(sel.remmap(0x999) == 0xa1); // unmatched team: default word
-        sel.resetCursor();
         CHECK(sel.fillSelector(0x26, false)); // grid B [20,25)
         CHECK(sel.selCount() == 4);           // records 20..24 minus type-2 skip 23
         CHECK(sel.pickSelector() == 21);
         CHECK(sel.fillSelector(0x36, false)); // grid B [100,105)
         CHECK(sel.selCount() == 5);           // no type-2 skip inside the range
-        CHECK(sel.pickSelector() == 102);     // cursor lane continues across fills
+        CHECK(sel.pickSelector() == 101);     // entry 0: tick-0 index (tick lane [H])
         CHECK(sel.fillSelector(0, true));     // grid A [0,5) standings lane
         CHECK(sel.selCount() == 5);           // no type-3 skip below record 5
-        CHECK(sel.pickSelector() == 3);       // cursor 2 into the freshly filled list
+        CHECK(sel.pickSelector() == 1);       // entry 0 again after a fresh fill
         CHECK(!sel.fillSelector(0x1d, false)); // wrap word v[0x1d]: not a selector entry
-        sel.resetCursor();
         app::feedTeamSelectionAnnouncer(sel, 0x1a); // FUN_00458cf0 lanes 0x458dc2/0x458df6
         CHECK(sel.slotType(0) == 1 && sel.slotId(0) == 0x1a); // G_T0026.PBK team bank
         CHECK(sel.slotType(1) == 3 && sel.slotId(1) == 1);    // G_STD001.SMP real speech
@@ -364,18 +362,40 @@ int main() {
         CHECK(sel.pickNext());   // slot 1 std lane plays on the next pick
         CHECK(sel.plays() == 2);
         CHECK(!sel.pickNext());  // queue drained: qfind-null lane
-        sel.resetCursor(); // exe cursor DAT_0062fd9c is global scratch; reset for the board lane
         app::feedBoardAnnouncer(sel, 0x1a); // FUN_00453a6c family lanes
         CHECK(sel.slotType(2) == 2 && sel.slotId(2) == 0);    // 0x453b15 silent schedule 000
         CHECK(sel.slotType(3) == 2 && sel.slotId(3) == 0xbd); // 0x453b2e remmap -> G_SCH189
         CHECK(sel.slotType(1) == 2 && sel.slotId(1) == 21);   // 0x453bd2 selector 0x26
-        CHECK(sel.slotType(4) == 2 && sel.slotId(4) == 102);  // 0x453c77 selector 0x36
+        CHECK(sel.slotType(4) == 2 && sel.slotId(4) == 101);  // 0x453c77 selector 0x36
         CHECK(sel.slotType(0) == 1 && sel.slotId(0) == 0x1a); // 0x453b07 team lane
         CHECK(sel.loads() == 7 && sel.missing() == 0);        // all five files shipped
         CHECK(sel.plays() == 3); // the feed itself picks exactly one entry
         for (int i = 0; i < 4; ++i) CHECK(sel.pickNext()); // the remaining four announcements
         CHECK(sel.plays() == 7); // every entry builds a clip (000 counts: zero samples)
         CHECK(!sel.pickNext());
+    }
+
+    // pass-101 caption-board dispatch mirror (scene registry attribution, Pass-101 section):
+    // handler fill sites per dispatcher; feflow27 carries no announcer call site.
+    {
+        app::Announcer cap(tree);
+        audio::sceneLevels().setLevel(audio::kSceneSpeech, 80);
+        app::feedBoardHandlerAnnouncer(cap, 27, 0x1a); // feflow27 dispatcher: no handler
+        CHECK(cap.slotType(0) == 0);
+        CHECK(cap.loads() == 0 && cap.plays() == 0);
+        app::feedBoardHandlerAnnouncer(cap, 24, 0x1a); // 0x4554c9 single s0 t3 lane sel 0x17
+        CHECK(cap.slotType(0) == 3 && cap.slotId(0) == 134); // records [130,135) minus skips
+        CHECK(cap.loads() == 1 && cap.missing() == 0);       // G_STD134 shipped
+        app::feedBoardHandlerAnnouncer(cap, 25, 0x1a); // 0x455a81 sel 0x19 + t1 overwrite + sel 0x14
+        CHECK(cap.slotType(0) == 1 && cap.slotId(0) == 0);   // FUN_00485240 miss -> default 0
+        CHECK(cap.slotType(1) == 3);                         // s1 standings lane
+        CHECK(cap.loads() == 3 && cap.missing() == 1);       // G_T0000 absent -> counted miss
+        CHECK(cap.plays() >= 1);                             // std lane builds a clip
+        // Second dispatch without any reset: the exe lane is stateless per pick (cursor
+        // never increments; tick-0 index), so the pick pins to entry 0 again.
+        app::feedBoardHandlerAnnouncer(cap, 24, 0x1a); // second dispatch
+        CHECK(cap.slotType(0) == 3 && cap.slotId(0) == 134);
+        CHECK(cap.loads() == 4 && cap.missing() == 1); // both G_STD lanes shipped
     }
 
     // pass-83 pair-store id source: FUN_00485210 membership scan over the DAT_0062f790 list,

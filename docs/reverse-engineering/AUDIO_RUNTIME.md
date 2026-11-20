@@ -1127,9 +1127,11 @@ Grid/skip semantics ported verbatim: grid A 5/10-block partition + wrap word `0x
 (`fillSelector(0x1d)` = adjacent word, no entry), grid B uniform blocks
 (`0x26:[20,25)` minus type-2 skip `23` → ids `{21,22,23,25}`, `0x36:[100,105)` →
 `{101..105}`, `0x0:[0,5)` type-3 → `{1..5}`), survivors store `record+1`, count guard
-`<= 0x28`, cursor global across fills with clamp [H].
+`<= 0x28`. Pick = entry 0 stand-in (exe tick-fraction lane active: mode flag
+`DAT_0057e600` static dword 0, its only store is the never-invoked setter 0x489ba4;
+cursor lane unreached, pass-101 byte scan).
 Gate: `test_gameaudio` pass-79 block (remmap lanes, grid/skip list counts + pick sequence,
-both feed sites on real assets `G_T0026.PBK`, `G_STD001.SMP`, `G_SCH000/021/102/189.SMP`,
+both feed sites on real assets `G_T0026.PBK`, `G_STD001.SMP`, `G_SCH000/021/101/189.SMP`,
 one-pick-per-call plays counter, drained-queue lane). Evidence: `analysis/pass79sel/NOTES.md`
 (`remmap.txt` = raw table dump + mapping derivation).
 
@@ -1213,8 +1215,12 @@ sites (`analysis/pass83accessors/ac2.txt`) give exact provenance per site.
 - `FUN_004899dc` pick: `DAT_0057e600 != 0` -> cursor lane over clamped `DAT_0062fd9c`
   into `DAT_0062fbf8[cursor]`; count 0 -> `-1`; else time index
   `DAT_0062fbf8[ROUND(tick split)]` via `FUN_004c321c` tick + `FUN_004973b0` (x87
-  `ROUND`, no scaling - the split words feed the FPU stack directly). Port cursor/clamp
-  and `-1` semantics match; time lane not ported (no scene driver).
+  `ROUND`, no scaling - the split words feed the FPU stack directly). Byte scan (pass-101):
+  `DAT_0057e600` (initialized DGROUP, static dword 0) has one read - 0x4899e0 - and one
+  store only inside the setter 0x489ba4 (no E8/E9 caller, no imm32 reference to
+  0x489ba0/4/6) -> retail stays on the tick lane; the cursor lane (clamp store 0x4899fc,
+  cursor never increments) is unreached. Port returns entry 0 as a stand-in, tick lane
+  unmirrored [H]; `-1` sentinel matches.
 - `FUN_00489974` fill loop confirmed: window `start = *(int*)(DAT_0057e938 + EAX*4)`,
   `end = (&DAT_0057e93c)[EAX]`, append `id + 1` while predicate keeps, count cap `0x28`,
   early return at `end - 1` and cursor cap boundary.
@@ -1941,3 +1947,75 @@ without a synth; retail with a synth renders the CRWD phrase bank as MIDI
 sequences (the device-dependent side remains the A5 blocked lane). The
 per-phrase semantics of the `0x4e43c0` mapper (EDX = `-1` selector) stay
 [H].
+
+## Pass-101 (2026-11-20): board-announcer dispatch — scene registry attribution + wiring
+
+**Retraction of this pass's first draft.** The first draft claimed
+`FUN_00453a6c` owned a "multiplayer standings" dispatcher and `FUN_00458cf0`
+the group-standings board only. The scene registry overrides that: the
+`FUN_00446598` registration block (`MOV EAX,feflowNN-name; CALL 0x446598`)
+binds every dispatcher to its registered scene name, and every announcer
+handler call site falls inside a dispatcher registered under a feflowNN
+name. The full block dump with per-scene struct stores (+0x10 dispatcher,
++0x18/+0x1c/+0x14 side fns) and the `E8` handler scan per dispatcher range is
+`analysis/pass101announcer/registry_bind.txt`. The `mult` string sits in the
+feflow20 dispatcher region (World Cup
+config controller board, the `simu`/`frwd`/`feNN` edge hub of pass-20), not
+a multiplayer board.
+
+Corrected handler -> scene -> port-screen mapping (dispatcher/`E8` call
+sites from pass-82; names from `analysis/pass8/tourney_registry_entries.txt`):
+
+| exe handler | dispatcher | call site | registry name | port screen | dispatch |
+|---|---|---|---|---|---|
+| `FUN_00453a6c` | 0x452f34 | 0x453138 | feflow20 | `openWcCfg(20)` | yes, `feedBoardAnnouncer` |
+| `FUN_00454338` | 0x454298 | 0x4542c9 | feflow21 | `openWcCfg(21)` | yes, sel 0x1b + t1 + sel 0x16 |
+| `FUN_00454d60` | 0x4545fc | 0x45463b | feflow23 | `openWcCfg(23)` | yes, sel 0x18 + t1 + sel 0x13 |
+| `FUN_0045548c` | 0x45502c | 0x455064 | feflow24 | `openWcCfg(24)` | yes, single sel 0x17 |
+| `FUN_00455a3c` | 0x45570c | 0x45574b | feflow25 | presentation round 1 | yes, sel 0x19 + t1 + sel 0x14 |
+| `FUN_00455f30` | 0x455d28 | 0x455d5b | feflow26 | presentation round 2 | yes, sel 0x1a + t1 + sel 0x15 |
+| — | 0x456030 | — | feflow27 | presentation round 3 | **no announcer call site** [C absence] |
+| `FUN_00458cf0` | 0x458714 | 0x458806 | feflow35 | presentation round 0 + `openWcCfg(35)` | yes, subset (below) |
+
+Fill-site mirror (`feedBoardHandlerAnnouncer`, `app/game_audio.cpp`): each
+handler fills slot 0 type 3 from selector `sel0`, then a type-1 lane
+(`FUN_00485240` selection; needle provenance closed pass-84 - the needle is
+the stored id from the handler's packed-pair ECX upper word,
+`analysis/pass84needle/n1.txt`), then
+slot 1 type 3 from `sel1` — matching the exe store order where the t1 store
+overwrites the earlier t3 slot-0 fill. feflow24 carries no t1 site. Grid A
+ranges and the type-3 skip set (pass-78 grid) decide the ids, e.g. sel
+0x17 = records [130,135) minus skips {130,131,132} -> pick id 134 (entry 0 stand-in).
+Byte scan closes the pick-cursor residual: `DAT_0057e600` (cursor-lane mode flag,
+initialized DGROUP, static dword 0) is written only by the setter 0x489ba4 (no E8/E9
+caller, no imm32 reference to 0x489ba0/4/6), and `DAT_0062fd9c` stores are just the clamp
+(0x4899fc) plus that setter - retail picks via the tick-fraction index, so dispatch state
+carries no pick cursor and the port is stateless per pick, entry 0 as a stand-in (tick
+lane unmirrored [H]).
+
+**feflow35 partial mirror**: only the fill sites 0x458dc2 (SI team bank)
+and 0x458df6 (std selector 0x0) are mirrored via
+`feedTeamSelectionAnnouncer`; the match-result jump fills (`0x0-0x3/0x5/0xb/
+0x8/0xe/0x7/0xf-0x12`, pass-77b) stay unmirrored — the port has no match
+outcome recorded at board entry on this lane [H].
+
+Wiring (`app/fe_flow.cpp`): `dispatchBoardAnnouncer(scene)` runs once per
+screen — `openWcCfg(screenId)` on entry and `drawTourneyPresent` per round
+(35/25/26/27). First dispatch creates the tree-owned `Announcer`, attaches
+`mixer_` (speech autovol lane; null mixer = counted, silent, like every
+headless announcer driver). `pick_` (set by `--fe-pick`) feeds the team-id
+lane; `-1` keeps the exe gate lane (no fill). Scenes with no announcer site
+(18/19/27/81/82) set the flag and no-op.
+
+Gate semantics (measured, CMake 3.28 scratch project): a multi-value
+`PASS_REGULAR_EXPRESSION` list is OR — one match passes, so the announcer
+assertion lives in `FAIL_REGULAR_EXPRESSION`:
+`FE-ANNOUNCER decoded=0 ` plus `FE-ANNOUNCER decoded=[1-9] plays=0 `.
+`fe_render_present` runs `--fe-present --fe-pick 26` (`AUDIO/TEAM/G_T0026.PBK`
+on the tree). `test_gameaudio` adds the per-handler fill-state asserts
+(scene 27 no-op, 24 single lane id 134, 25 t1-overwrite + std lane).
+
+Evidence: `analysis/pass101announcer/NOTES.md`, registry
+`analysis/pass8/tourney_registry_entries.txt`, windows
+`analysis/pass77pbp/`, grid `analysis/pass78grid/grid_dump.txt`, dispatch
+call sites `analysis/pass82dispatch/`.

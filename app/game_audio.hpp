@@ -155,8 +155,8 @@ public:
     // FUN_00489bdc excludes hardcoded records; survivors store `record + 1`, the shipped
     // {G,A}_std/smp numbering. Returns true = non-empty list.
     bool fillSelector(int selector, bool type3);
-    std::int32_t pickSelector(); // cursor lane (DAT_0062fd9c clamp [H]); -1 on empty list
-    void resetCursor() { cursor_ = 0; }
+    std::int32_t pickSelector(); // entry 0 stand-in (exe tick lane [H], cursor lane unreached);
+                                 // -1 on empty list
     [[nodiscard]] std::uint32_t selCount() const { return static_cast<std::uint32_t>(selList_.size()); }
     // FUN_00489920: 40-entry u16-pair table @ DAT_0057e3fe. The scan compares against the
     // table's *second* u16 per pair and returns the *first* u16 of the next slot, so the
@@ -170,7 +170,8 @@ public:
     // FUN_004852e0, FUN_00484950); the port keeps them feed-driven. Scan
     // `needle == DAT_0062f790[i]` over `DAT_0062facc` u32 entries; hit selects
     // DAT_0062fab0, miss DAT_0062fab4; the pair store orders (f468, f46c) on hit and the
-    // reverse on miss. Fill-site needle provenance stays [H].
+    // reverse on miss. Fill-site needle provenance closed pass-84 (needle = stored id,
+    // packed-pair ECX upper word at 0x453b07).
     bool isMember(std::uint32_t needle) const;                // FUN_00485210
     std::uint16_t selectedTeamId(std::uint32_t needle) const; // FUN_00485240
     std::pair<std::uint16_t, std::uint16_t> storePair(std::uint32_t needle) const; // FUN_0048525c
@@ -206,7 +207,6 @@ private:
     bool neutralGate_ = false;
     std::array<Slot, kRingSlots> slots_{};
     std::vector<std::uint16_t> selList_; // DAT_0062fbf8 selection list scratch
-    std::uint32_t cursor_ = 0;           // DAT_0062fd9c pick cursor
     std::vector<std::uint32_t> membership_; // DAT_0062f790.. list, count DAT_0062facc
     std::uint16_t homeId_ = 0;            // DAT_0062fab0
     std::uint16_t awayId_ = 0;            // DAT_0062fab4
@@ -232,6 +232,14 @@ private:
 // no port scene calls them until the dispatch is decoded.
 void feedTeamSelectionAnnouncer(Announcer& announcer, std::int32_t team);
 void feedBoardAnnouncer(Announcer& announcer, std::int32_t homeTeam);
+
+// pass-101 caption-board dispatch mirror for the board handlers whose scene attribution is
+// resolved by the scene registry (FUN_00446598 registration block): scene = feflowNN,
+// handler FUN_00454338 (21), FUN_00454d60 (23), FUN_0045548c (24), FUN_00455a3c (25),
+// FUN_00455f30 (26). Scenes 20/35 use feedBoardAnnouncer/feedTeamSelectionAnnouncer;
+// feflow27 dispatches no announcer handler (its dispatcher carries no call site).
+// `team` feeds the type-1 slot as FUN_00485240 needle (provenance closed pass-84).
+void feedBoardHandlerAnnouncer(Announcer& announcer, int scene, std::int32_t team);
 
 // Live-match audio: CROWD.BNK ambience loop + GAME00.BNK whistle/kick one-shots. Bank decode is
 // best-effort (missing files leave the slots silent). With mixer == nullptr (no OpenAL device)

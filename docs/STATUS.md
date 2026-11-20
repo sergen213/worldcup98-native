@@ -170,6 +170,18 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
   constants {0,1,11}, `MOVSX SI -> FUN_00489920` remmap lane, deck-loop `ESI` id, and
   selector/pick `MOV EBX,EAX` lanes; `0x458dd0` jump table `[EAX*4+0x458ce0]` branch
   fills. No port change; evidence `analysis/pass84needle/` (`n1.txt`).
+- **Board-announcer dispatch wired (pass-101, 2026-11-20)** — the scene registry
+  (`FUN_00446598` block) resolves each announcer handler to its registered feflowNN
+  scene: feflow20/21/23/24/25/26/35 own dispatchers 0x452f34/454298/4545fc/45502c/
+  45570c/455d28/458714; feflow27 carries no announcer call site. `dispatchBoardAnnouncer`
+  feeds once per screen on `openWcCfg` entry and per presentation round; new
+  `feedBoardHandlerAnnouncer` mirrors the per-handler fill sites (selector + t1 +
+  selector order, t3 skip grid); feflow35 stays a subset mirror (team/std sites only,
+  match-result jump fills unmirrored [H]). Gate `fe_render_present --fe-pick 26`
+  asserts announcer counters through the FAIL list (multi-value PASS regex is OR,
+  measured). Mapping + retraction of pass-101's first-draft attribution in
+  `docs/reverse-engineering/AUDIO_RUNTIME.md` (Pass-101), evidence
+  `analysis/pass101announcer/`.
 - **Announcer screen dispatch closed (pass-82, 2026-11-20)** — the pass-77/79 residual
   "screen-to-handler dispatch stays [H]" was wrong: every announcer board-handler owner
   (`FUN_00453a6c/454338/454d60/45548c/455a3c/455f30/458cf0`) has exactly one direct `E8`

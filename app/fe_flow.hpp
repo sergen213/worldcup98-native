@@ -30,6 +30,7 @@ class SpriteBatch;
 namespace wc98::config { struct Settings; }   // settings.ini model (config/include/wc98/config/settings.hpp)
 namespace wc98::audio { class Mixer; } // audio mixer for live volume updates (audio/include/wc98/audio/mixer.hpp)
 namespace wc98::app { class MenuMusicDirector; } // FE music lane owner (app/game_audio.hpp)
+namespace wc98::app { class Announcer; }         // board-announcer lane owner (app/game_audio.hpp)
 
 namespace wc98::app {
 
@@ -138,6 +139,9 @@ public:
     bool enter(); // Enter/confirm; true = shell launches selected entry (Tournament uses pickedTeam())
     void back();  // Esc: team-select/setup -> main menu (no-op on the menu)
     [[nodiscard]] int pickedTeam() const { return pick_; } // confirmed FCDB id (-1 = no pick)
+    void scriptPick(int team) { pick_ = team; } // scripted pick for the presentation gate lane
+    [[nodiscard]] std::uint32_t announceDecoded() const; // board-announcer lane counters (pass-101)
+    [[nodiscard]] std::uint32_t announcePlays() const;
     // Gate evidence: UI string bank in use + how many exe font-table faces the tree carries.
     [[nodiscard]] std::string_view language() const { return text_ ? text_->language() : std::string_view{}; }
     [[nodiscard]] std::size_t fontsLoaded() const { return text_ ? text_->facesLoaded() : 0; }
@@ -685,6 +689,17 @@ public:
     std::unique_ptr<TourneyModel> tourney_;  // built on first presentation draw (fixed seeds, no RNG drift)
     bool haveTourney_ = false;               // model + all four presentation layouts present
     std::array<formats::ScreenLayout, kTourneyRounds> presScreens_; // FEFLOW35/25/26/27 composites
+    // pass-101 board-announcer lane: every announcer board handler is owned by a scene
+    // dispatcher registered under a feflowNN name in the scene registry (FUN_00446598
+    // block; analysis/pass8/tourney_registry_entries.txt). The exe dispatcher calls
+    // announce-open, gate chain, then the handler fills slots on board entry; the port
+    // mirrors dispatch per board screen (analysis/pass101announcer/NOTES.md). Scenes:
+    // 20 -> FUN_00453a6c, 21 -> FUN_00454338, 23 -> FUN_00454d60, 24 -> FUN_0045548c,
+    // 25 -> FUN_00455a3c, 26 -> FUN_00455f30, 35 -> FUN_00458cf0; feflow27 carries no
+    // announcer call site. Null mixer => counted, silent like every headless driver.
+    std::unique_ptr<Announcer> boardAnnouncer_;
+    std::array<bool, 36> boardDispatched_{}; // feed once per screen, not per frame
+    void dispatchBoardAnnouncer(int scene);  // registry scene id (feflowNN)
     // ---- Hub (Feflow06.lay) state --------------------------------------------------------
     // Cursor domain = the 13 button objectnames in LAY order (object 6..19). Default cursor is
     // fe07 so the help pane paints its caption (help=1533) at startup -> texts>0 gate evidence.

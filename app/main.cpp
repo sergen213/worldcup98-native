@@ -625,6 +625,7 @@ int run(int argc, char** argv) {
                              // presentation scenes"): one stat line per screen, real bracket data.
         const int rounds = fe->tourneyPresentCount();
         if (!rounds) return 2; // tree lacks LAYOUTS/pool: skip
+        if (fePick >= 0) fe->scriptPick(fePick); // feed the FEFLOW35 board announcer lane (pass-101)
         for (int r = 0; r < rounds; ++r) {
             render::SpriteBatch ui;
             const auto st = fe->drawTourneyPresent(ui, r);
@@ -632,6 +633,8 @@ int run(int argc, char** argv) {
                       << " texts=" << st.texts << " cursors=" << st.cursors << '\n';
             if (st.shapes <= 0 || st.texts <= 0) { std::cerr << "presentation screen drew nothing\n"; return 1; }
         }
+        std::cout << "FE-ANNOUNCER decoded=" << fe->announceDecoded()
+                  << " plays=" << fe->announcePlays() << '\n'; // board-entry dispatch counters
     }
 
     renderer.reset(); // shutdown validation messages must count too.

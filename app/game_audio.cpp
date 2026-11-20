@@ -1052,9 +1052,15 @@ bool Announcer::fillSelector(int selector, bool type3) {
 
 std::int32_t Announcer::pickSelector() {
     if (selList_.empty()) return -1; // exe -1 sentinel
-    const auto idx = cursor_ >= selList_.size() ? selList_.size() - 1 : cursor_; // clamp [H]
-    ++cursor_;
-    return selList_[idx];
+    // Exe pick lanes (byte scan): `DAT_0057e600` (cursor-lane mode flag, initialized
+    // DGROUP, static dword 0) has exactly one read - 0x4899e0 `mov edx,[0x57e600]` - and
+    // one store, inside the setter at 0x489ba4 (`mov [DAT_0062fd9c],EDX; mov
+    // [DAT_0057e600],EAX`): no E8/E9 caller and no imm32 (function-pointer) reference to
+    // 0x489ba0/4/6 anywhere in the file -> retail stays on the tick-fraction lane
+    // `DAT_0062fbf8[ROUND(FUN_004973b0(tick))]`; the cursor lane (clamp store 0x4899fc,
+    // cursor never increments) is unreached. Tick lane unmirrored [H]: the port returns
+    // entry 0 as a stand-in.
+    return selList_[0];
 }
 
 void feedTeamSelectionAnnouncer(Announcer& announcer, std::int32_t team) {
@@ -1075,7 +1081,8 @@ void feedBoardAnnouncer(Announcer& announcer, std::int32_t homeTeam) {
     if (homeTeam >= 0) {
         const auto team = static_cast<std::uint16_t>(homeTeam);
         announcer.setSlot(0, 1, team);                     // 0x453b07 pair-store lane (pair order
-                                                           // decoded pass-83; ECX id provenance [H])
+                                                           // decoded pass-83; ECX id = stored id,
+                                                           // provenance closed pass-84)
         announcer.setSlot(3, 2, Announcer::remmap(team));  // 0x453b2e remmap -> schedule id
     }
     announcer.setSlot(2, 2, 0); // 0x453b15 literal id 0 (silent schedule sample)
@@ -1083,6 +1090,49 @@ void feedBoardAnnouncer(Announcer& announcer, std::int32_t homeTeam) {
     if (id36 >= 0) announcer.setSlot(4, 2, static_cast<std::uint16_t>(id36));
     announcer.pumpPending();
     announcer.pickNext(); // one announcement per pick call (FUN_0048d0dc semantics)
+}
+
+// pass-101 caption-board fill mirror. Scene attribution is resolved by the scene registry
+// (`FUN_00446598` registration block, analysis/pass8/tourney_registry_entries.txt): every
+// announcer handler call site sits inside a dispatcher registered under a feflowNN name VA:
+//   feflow21 disp 0x454298 <- 0x4542c9 -> FUN_00454338
+//   feflow23 disp 0x4545fc <- 0x45463b -> FUN_00454d60
+//   feflow24 disp 0x45502c <- 0x455064 -> FUN_0045548c
+//   feflow25 disp 0x45570c <- 0x45574b -> FUN_00455a3c
+//   feflow26 disp 0x455d28 <- 0x455d5b -> FUN_00455f30
+// Fill sites (pass-77b windows): selector lane + type-1 lane in exe order; the later t1
+// store overwrites the earlier t3 slot-0 fill exactly as the exe ring keeps both stores
+// and the builder consumes the pending entry. The t1 id is the FUN_00485240 selection
+// lane; needle provenance closed pass-84 (`analysis/pass84needle/n1.txt` - the needle is
+// the stored id from the handler's packed-pair ECX upper word), so membership-feed state
+// decides.
+void feedBoardHandlerAnnouncer(Announcer& announcer, int scene, std::int32_t team) {
+    int sel0 = -1, sel1 = -1;
+    bool t1 = true;
+    switch (scene) {
+    case 21: sel0 = 0x1b; sel1 = 0x16; break; // 0x45437d s0 t3, 0x454398 s0 t1, 0x4543bd s1 t3
+    case 23: sel0 = 0x18; sel1 = 0x13; break; // 0x454da5 s0 t3, 0x454dc0 s0 t1, 0x454de5 s1 t3
+    case 24: sel0 = 0x17; t1 = false; break;  // 0x4554c9: single s0 t3 lane, no t1 site
+    case 25: sel0 = 0x19; sel1 = 0x14; break; // 0x455a81 s0 t3, 0x455a9c s0 t1, 0x455ac1 s1 t3
+    case 26: sel0 = 0x1a; sel1 = 0x15; break; // 0x455f75 s0 t3, 0x455f90 s0 t1, 0x455fb5 s1 t3
+    default: return;                          // 20/27/35 and unknown: no handler fill here
+                                             // (20 -> feedBoard, 35 -> feedTeamSelection,
+                                             //  27 -> dispatcher without announcer call site)
+    }
+    if (sel0 >= 0) {
+        announcer.fillSelector(sel0, true); // t3 slot -> standings skip set
+        const std::int32_t id = announcer.pickSelector();
+        if (id >= 0) announcer.setSlot(0, 3, static_cast<std::uint16_t>(id));
+    }
+    if (t1) // FUN_00485240 lane: hit -> home id, miss -> away id (unset -> 0 default)
+        announcer.setSlot(0, 1, announcer.selectedTeamId(static_cast<std::uint32_t>(team)));
+    if (sel1 >= 0) {
+        announcer.fillSelector(sel1, true);
+        const std::int32_t id = announcer.pickSelector();
+        if (id >= 0) announcer.setSlot(1, 3, static_cast<std::uint16_t>(id));
+    }
+    announcer.pumpPending();
+    announcer.pickNext();
 }
 
 int Announcer::slotType(int slot) const {

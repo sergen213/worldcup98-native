@@ -1822,30 +1822,53 @@ are 2 (stereo), 18 in AUDIO + 29 in VIDEO. Driver type therefore stays the defau
 mono→stereo upmix with no panning is 1:1. Raw-byte `0x92` counts (384,672 across
 compressed payloads) are noise; only chain-structured parsing is evidence.
 
-## Pass-100: scene-10 crowd handler set + reaction-voice lane decoded (2026-11-20)
+## Pass-100 (corrected): scene-10 crowd handler set + smidi reaction seam decoded (2026-11-20)
 The four crowd handlers have **zero direct E8 call sites** — they dispatch
 indirectly through the scene-handler registry. Audio boot installer
 `0x4905b3..0x490624` gates on crowd-enable `0x48e6c8` (DAT_006325b0) and
 SFX-table enable `0x48dc84` (DAT_006324b4), loads handler pointers
 0x48e5a0/0x48e550/0x48e4fc/0x48e488 (plus SFX handlers 0x48d7dc/0x48d9d8 and
 stack imm 0x490978/0x490a34) and installs them via `CALL 0x4e7060`
-(`analysis/pass100crowd/NOTES.md`, disassembly `/tmp/wc98pass100/p100{b,f,h}.txt`).
-Handler roles: `0x48e5a0` start wrapper (stores initial-level arg to
-DAT_006325bc, `SNDcrowdstart`, then percent-0 control); `0x48e550` percent
-seam (pct idx2 gate, level = `arg*567/100` via 81*7 + IDIV 100,
-`SNDcrowdcontrol`); `0x48e488` pulseA (slot count via `0x48e100` =
-`(idx*pct[2]*0x7f)/10000` lane `0x4906d0`, card `[0x6325d4]` -> layer records
-`+0x30`, BE field divisor `0x4a49a0`, tick `0x4c321c` DIV,
-`SNDcrowdpulse(idx, record)` then blend seam with `[record+6]`);
-`0x48e4fc` pulseB (same shape on card `[0x6325d8]`, index from AX).
-Blend/reaction-voice seam `0x48e3b0`: fetches a free entry from pool queue
-DAT_006325e0, plays via **`SNDseqplayPVB` `0x4e462c`** (cmn\smidi.c 0x47f —
-EDX=PAN `-1`->64, EBX=VOL `-1`->0x7f, EAX=BEND `-1`->64; id `0x100..0x6500`,
-bank `id>>8-1` active table DAT_0064b3a4, voice record stride 0x24 @
-DAT_0064b15c), resumes with frames 16 (`0x4e39d0`), moves the entry to the
-in-flight queue DAT_006325fc; drain handlers `0x48e650`/`0x48e68c` (filter
-callback `0x48e168`: voice state 2 or <0) move entries back to 5e0. Both
-PVB call sites pass PAN=-1 — the 2D pan byte is always center, corroborating
-the pass-99 A10 closure from the pan side. Sound-id producer into the seam
-stays [H] (scene-registry pump internal, same runtime-pool class as pass-88).
-Port reaction/chant lanes already mirror the shape; no port change.
+(`analysis/pass100crowd/NOTES.md`, disassembly `/tmp/wc98pass100/p100*.txt`).
+Handler roles (watcom EAX=arg1, EDX=arg2; arithmetic re-verified byte-by-byte,
+retracting the first-draft `arg*567/100` and "voice lane" wording):
+- `0x48e5a0` start wrapper: stores initial-level arg to DAT_006325bc,
+  `SNDcrowdstart(idx)`, then `SNDcrowdcontrol` through the percent-getter lane
+  (`0x490670` = immediate-RET no-op for non-zero scene; `0x4906d0` scene-0
+  lane), scene percent table DAT_00632774/0x632778 (pass-16 lane).
+- `0x48e550` percent seam: EDX = min(arg, 10) (`CMP EDX,0xa CMOV`);
+  level = **`arg*511/100`** — verified chain: x → 8x+ x=9x → 72x+ x=73x →
+  73x<<3 − 73x = **511x**, IDIV 100. 511 = `0x1ff`, exactly the
+  `SNDcrowdcontrol` ceiling (pass-71 `0x48dc84`).
+- `0x48e488` pulseA: gates DAT_006325b0/5b8/5b4; then `CALL 0x48e100` level
+  gate = **`arg*pct[idx]*127/10000`** percent-scaled level (scene==10 lane
+  `0x4906d0`: `pct[EDX]`, IMUL, ×127, double `/100`; non-10 fallback
+  `0x490670` no-op), skip when result ≤ 0 — a level gate, not a slot count.
+  Card `[0x6325d4]`, slot record base `+0x30`; divisor = BE dword at
+  record+`0x30` (`0x4a49a0` swap, EDX=0); slot index = tick `0x4c321c`
+  `DIV` divisor remainder via getter `0x4a4a00`; then `SNDcrowdpulse(idx,
+  record)` (`0x4e4cac`) and the reaction seam `0x48e3b0(EAX=[record+6],
+  EDX=arg)`.
+- `0x48e4fc` pulseB: gates 5b0/5b4; idx = low word of AX; same `0x48e100`
+  level gate; card `[0x6325d8]` struct: divisor = BE dword at card[0], tick
+  remainder slots via `0x4a4a00`; **no `SNDcrowdpulse`** — seam fires directly
+  with struct dword `+6`, EDX = idx.
+Reaction seam `0x48e3b0`: pool queue DAT_006325e0; when the smidi module
+pointer DAT_006597d4 == 0 it drains via `0x48e650` (the port-relevant lane:
+module never initialized on Linux → seam inert). Otherwise plays through
+**`SNDseqplayPVB` `0x4e462c`** (cmn\smidi.c) — a **MIDI sequence player**, not
+a digitized-voice player (strings `SNDseqplayPVB: PAN/BEND OF`, `MIDI MODULE
+NOT INITIALIZED`): EAX = **sequence id** (validated `0x100..0x6500`, bank =
+`id>>8-1` into the active-bank table DAT_0064b3a4), EDX = PAN (`-1`→64
+center), EBX = VOL (`-1`→127), ECX = BEND (`-1`→64); playback records stride
+`0x24` @ DAT_0064b15c. Success → 16-frame hold entry into queue DAT_006325fc;
+drains `0x48e650`/`0x48e68c` (filter callback `0x48e168`: record state `==2`
+or `<0`) recycle entries back to 5e0. The seam argument is the crowd pulse
+record dword `+6` = `{u16 ceiling | u16 step-low}` (pass-71 record layout):
+with step==0 the value doubles as a valid CMIDI sequence id (measured 350/450
+pair, bank = id>>8-1 = 0) — the crowd reaction lane fires **stadium-jingle
+MIDI sequences through the smidi module**, tying it to the A5 CMIDI lane, not
+to a digitized voice lane. Both PVB call paths pass PAN=-1 → center,
+corroborating the pass-99 A10 closure from the pan side. The sequence-id
+producer into the pulse seam stays [H] (scene-registry pump internal). Port:
+MIDI module unset → inert seam; reaction/chant silence stays 1:1.

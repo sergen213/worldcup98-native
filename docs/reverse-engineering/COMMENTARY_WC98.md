@@ -165,12 +165,25 @@ callback + record helpers). Scripts `ghidra-scripts/GhidraWc98Pick{1,2,3,4}.py`.
 - Null pick → builder skips enqueue ⇒ **exhausted pool = event silent** (no commentary fallback).
 
 ### Hypothesis / Unknown
-- The record preload that fills the ready queues and sets each record's slot tag (+0xC) is not in
-  the analyzed band; per-event phrase *content* mapping stays **Unknown** (FCLG probe negative above:
-  no sentence cross-map table found).
+- ~~The record preload ... is not in the analyzed band~~ **retracted (pass 76)**: the preload is
+  file-driven and fully decoded — a 6-slot ring `DAT_0057e380` (stride 0x10: `+0` type, `+4` id,
+  `+8` pending, `+0xC` class store) is filled by 21 tournament-presentation sites through slot
+  filler `FUN_004894ac` (`EAX`=slot, `EDX`=type, `EBX`=id); loader `FUN_0048953c` builds the path
+  (`AUDIO\team\G_T%04d.pbk` / `A_T%04d.pbk`, `AUDIO\pbp\schedule\{G,A}_sch%03d.smp`,
+  `AUDIO\pbp\standing\{G,A}_std%03d.smp`) and the async completion callback `FUN_0048970c` stores
+  the loaded record's class word `[rec+8]` into `[slot+0C]` and pushes records to
+  `DAT_00632428 + class*4` via registrar `FUN_0048d114` (tag `EAX=[rec+0C] = [item+0]`).
+  Evidence + site table: `analysis/pass76pbp/NOTES.md`. This tagged lane serves the presentation
+  announcement files (`AUDIO/TEAM` 95 PBK, `AUDIO/PBP/SCHEDULE` 436, `AUDIO/PBP/STANDING` 320);
+  the **live-match** lane (pass-12 dispatcher) calls `SNDphraseadd` directly with event-record
+  phrase ids. The match-time scheduler lane (gate `DAT_006324b4`, `FUN_0048d4f4`, pointer-called —
+  zero direct `E8` sites) also registers records through `FUN_0048d114` with tag = sentence field
+  `+4`; whether those records ever reach the qfind predicate (`FUN_0048cf10`, tag == ring-slot
+  index) is unresolved **[H]** — per-event in-play phrase *content* mapping stays **Unknown**
+  (FCLG probe negative above: no sentence cross-map table found).
 - Port model (`app/commentary.cpp`): shared commentary pool consumed once in storage order
   (head-scan first-match == qfind over a single-tag list), exhausted pool -> silent. Deviation
-  marked in code; per-event tag table = open item.
+  marked in code; per-event tag table = presentation-lane only, in-play seam shares the pool [H].
 
 ### Gate
 `test_commentary`: consumption asserts — picks step 0→2→3→4→5 (empty phrase skipped), the 6th event

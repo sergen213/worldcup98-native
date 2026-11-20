@@ -928,3 +928,51 @@ decoder probe `analysis/pass75movie/audioprobe.txt`: 2,988,554 stereo samples
 `wc98_audio`. A9 row Closed (pacing deviation noted); evidence
 `analysis/pass75movie/` (`m11..m13.txt`, `callsite_disasm.txt`,
 `audioprobe.txt`).
+
+## Pass-76: commentary ring-slot preload lane decoded (A7 narrowed, in-play tagging open)
+
+A7 said "per-record `+0xC` slot tags preload from an **unmeasured table**" — wrong; the
+preload is file-driven and fully decoded. Authority: FIFAWC.EXE with the corrected AUTO
+delta **VA = raw + 0x400C00** (control scan: `E8` → `SNDphraseadd` 0x4df968 hits
+0x48987d/0x48f4df, matching pass-12 §1). Evidence: `analysis/pass76pbp/`
+(`disasm.txt`, `a7*.txt`, `NOTES.md`).
+
+Ring: 6 slots `DAT_0057e380` stride 0x10 — `+0` type byte, `+4` id word, `+8` pending
+flag, `+0C` lane-class store. Slot filler `FUN_004894ac` (Watcom reg args `EAX`=slot,
+`EDX`=type, `EBX`=id; store `shl eax,4; [slot+0]=EDX; [slot+4]=EBX; [slot+8]=0`) is called
+from 21 tournament-presentation scene sites (0x453b07, 0x453b15, 0x453b2e, 0x453bd2,
+0x453c77, 0x45437d, 0x454398, 0x4543bd, 0x454da5, 0x454dc0, 0x454de5, 0x4554c9, 0x455a81,
+0x455a9c, 0x455ac1, 0x455f75, 0x455f90, 0x455fb5, 0x458dc2, 0x458df6, 0x4591fd), each with
+`mov edx,type; mov ebx,id; mov eax,slot` (`type` ∈ {1,2,3}; id from accessor returns
+`FUN_00485240/0x48525c/0x489920/0x489974+0x4899dc` or loop regs; accessor internals [H]).
+
+Loader `FUN_0048953c` formats the filename from {type,id}: type 1
+`AUDIO\team\G_T%04d.pbk`/`A_T%04d.pbk` (home/away selector `DAT_0057e5f8`), type 2
+`AUDIO\pbp\schedule\{G,A}_sch%03d.smp`, type 3
+`AUDIO\pbp\standing\{G,A}_std%03d.smp`, plus the `id==0x32f` special (`A_FE_USA.SMP`, type
+rewritten to 4; file not shipped — missing-file lane). Path join `FUN_004393d4`; async
+load record queued `0x62fda0` with callback `LAB_0048970c`, destination = ring entry
+`DAT_0057e3e8[slot]`, enqueue `FUN_00490144`. Measured CD assets: `AUDIO/TEAM` 95 PBK,
+`AUDIO/PBP/SCHEDULE` 436 SMP, `AUDIO/PBP/STANDING` 320 SMP.
+
+Callback `FUN_0048970c`: type 2/3/4 builds the entry inline (`+8`=1 class, `+0C`=`[item+0]`
+tag, self-link, bank block init, per-item handles −1 via `FUN_0048d084`) and pushes to
+`DAT_00632428 + class*4`; type 1 stores `[entry+8]` into ring `[slot+0C]` and registers via
+registrar `FUN_0048d114` (`ECX`=record, `EAX`=tag: `rec+0C=EAX`, class queue push, patch
+count = byte-swapped word at bank `+0x30+8`, patch items → segment sub-queue); sets
+`[slot+8]=1` pending, re-arms next slot while `[slot+0]!=0`; builder tail iterates pending
+slots, phrase id `[item+0E]` → `FUN_0048d2f0` + `SNDphraseadd` → `item+6`, then
+`FUN_004dfb40` enable + pump `FUN_004906f8`. Scheduler lane `FUN_0048d4f4` (gate
+`DAT_006324b4`): record = `[rec+0C]+0x20`, tag = `[rec+4]`, push queue `DAT_00632524`.
+
+Builder/pick `FUN_00489460` (7 callers incl. scene pumps) scans pending slots → qfind
+`FUN_0048d0dc(class=slot+0C, EDX=slot)` predicate `FUN_0048cf10` (`[rec+0C] == slot`) →
+activation `FUN_0048d1f8` (pass-11 semantics unchanged). The tagged lane is tournament
+**presentation** announcement audio. The live-match dispatcher lane (pass-12) calls
+`SNDphraseadd` directly with event-record phrase ids; the match-time scheduler lane (gate
+`DAT_006324b4`, `FUN_0048d4f4`, pointer-called — zero direct `E8` sites) registers its records
+through `FUN_0048d114` with tag = sentence field `+4` and pushes queue `DAT_00632524`; whether
+those records are consumed by the qfind predicate or only by the scheduler's own time-based
+emit (`FUN_0048d6fc`, pass-12) is unresolved **[H]** — port seam stays sequential [H], comment
+updated (`app/commentary.cpp` trigger(), `COMMENTARY_WC98.md` §pick, `AUDIO_DISCREPANCIES.md`
+A7). A7 stays **Open (partial)**.

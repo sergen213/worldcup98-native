@@ -103,10 +103,15 @@ void Commentary::trigger(const sim::SimEvent& e) {
     // activation path FUN_0048d1f8 removes each picked record from its queue via FUN_004c4a70
     // qremove, so a phrase plays exactly once and an exhausted pool gives a null pick -> the
     // builder skips enqueue (event silent). No rotation/counter exists in the original chain.
-    // Deviation: the exe's per-record slot tags (+0xC, predicate FUN_0048cf10) preload from an
-    // unmeasured table (FCLG probe negative), so seam slots share the storage-order pool;
-    // first-match over a shared list is then sequential consumption. Evidence: COMMENTARY_WC98.md
-    // §pick, analysis/pass7/pick*.txt.
+    // Deviation: the exe's per-record slot tags (+0xC, predicate FUN_0048cf10) are preloaded by
+    // the tournament presentation lane — pass 76: ring DAT_0057e380 slots filled by FUN_004894ac
+    // {slot,type,id}, loader FUN_0048953c formats AUDIO\team\G_T%04d.pbk /
+    // AUDIO\pbp\schedule|standing files, callback FUN_0048970c tags records into DAT_00632428
+    // class queues. The match-time scheduler lane (gate DAT_006324b4, FUN_0048d4f4, pointer-called:
+    // zero direct E8 sites) registers its records through FUN_0048d114 with tag = sentence field
+    // +4; whether those feed the qfind predicate FUN_0048cf10 (tag == ring slot index) is
+    // unresolved [H], so seam slots share the storage-order pool; first-match over a shared list
+    // is then sequential consumption. Evidence: COMMENTARY_WC98.md §pick, analysis/pass76pbp/NOTES.md.
     if (head_ >= candidates_.size()) return; // qfind null: no commentary for this event
     const std::uint32_t p = candidates_[head_++];
     lastPhrase_ = int(p);

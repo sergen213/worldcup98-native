@@ -221,9 +221,14 @@ counter** (`inittimer` `FUN_00496bb0` zeroes it at `0x496be6`, the timer callbac
 classifier `FUN_0048dcd8` site `0x48dd97`, crowd boot `FUN_0048ed9c` site `0x48ee08` —
 uptime-nondeterministic, so `ExeLcg` seeds stay port-side constants [H]. The secondary rotation consumer `FUN_0048e9a0` (gate `DAT_0063268c != 0`) repeats
 qfetchindex+qpush. The idle envelope target draw (pass-55 machine) is NOT the LCG:
-`FUN_0052f3e0` computes `((tick & 0x7fff) - 0x4000) * secondTick >> 14` from the 64-bit tick
-counter `FUN_004c321c` (`DAT_00585cc0/5cc4/5cc8/5ccc`, carry `DAT_00585cbc`), so
-`CrowdEnvelope`'s mt19937 stays a [H] approximation. Scene-10 CROWD phrase lane `FUN_0048e6d0` (caller 0x48e83f, once-guard
+`FUN_0052f3e0` computes `((tick & 0x7fff) - 0x4000) * secondTick >> 14` — and per pass-113
+the operands are the **caller register pair**, not the tick counter: every site in
+`FUN_004E510C` loads `mov eax,[0x64bef0]` + `mov edx/eax,[eax+0x6]/[eax+0x8]` (some sites
+`+0x12/+0x14`), both `sar 16`, before the call; `FUN_004c321c` only advances the multi-word
+clock (`DAT_00585cb8..0x585ccc`) inside the function and returns nothing usable. So the
+draw is a fixed-clock product `((clockHi15 − 0x4000) × clockWord16) >> 14` over the runtime
+record at `DAT_0064BEF0` (fill lane statically unrecovered), and
+`CrowdEnvelope`'s mt19937 stays a [H] approximation (mirroring needs runtime clock values). Scene-10 CROWD phrase lane `FUN_0048e6d0` (caller 0x48e83f, once-guard
 `DAT_006325b4`): `CMIDI.BNK` (@0x566adc) → `DAT_006325cc`; `FUN_004e3128`/`FUN_004e3724` init
 `DAT_006325d0`; `FUN_0048e280` loads exactly two banks — `CROWD.PBK` → `DAT_006325d4`,
 `COMOS.PBK` → `DAT_006325d8` — through the `AUDIO\CRWD\%s` format (`FUN_0048e190` @0x566acc) +

@@ -104,4 +104,35 @@ eax of its **preceding** getproc call — full 34-slot table in
 `writerect@20 = [0x632a54]` with **zero** indirect call sites. Venue visibility
 stays OPEN [H]: the LAY back-composite record identity and its list position
 versus the venue records are not statically recoverable.
+
+Venue fog/camera lane (pass-117fog, 2026-11-20): the venue row-`+0x0c` lane gate is the
+**fog-slot install** in the venue scene builder `FUN_0041a184` (`0x41a680`):
+`if ([0x571504+venue<<5] == 0 || ([0x60cc06] & DAT_0057d2bc) != 0) DAT_00571710 = 0; else
+alloc slot (FUN_00409af8/FUN_0040de38) + FUN_0041da7c(1,0,0) + FUN_0041a134`
+(`FUN_0041a134` = `FUN_0040a150/00415a20/0040aabc`). Fog handle global `DAT_00571710`; fields
+slot`+0/+4/+8` = fixed-point fog coefficients written per frame by handler `0x41be20`
+(Watcom `eax`/`edx`/`ebx`): compares object coords against `(height[0x641314]+0x1f0)<<16` and
+`(width[0x641310]+0x130)<<16` viewport halves and the `0x400000` (64.0) thresholds, writes
+`0xb333` (0.7<<16) coefficients + sign flips (`neg`) keyed on sign of slot fields. Scene frame
+handler `FUN_0041b4ac` consumes near/far slot`+0x1c/+0x20`: `DAT_0059bd84 < slot+0x1c ->
+DAT_0057172c=1`, `slot+0x20 < DAT_0059bd84 -> DAT_00571730=1`, raster mode `DAT_005c65ac`
+{0,1,2} from camera heights vs `slot+0x1c-64/slot+0x20+64` and `_DAT_00571724/0x571728`;
+`if (DAT_00571710 != 0)` adds a `FUN_00415ef8` raster pass call. Fog **color palette**:
+stride-3 RGB tables at `DAT_00571e48` (sky/fog blues: `80b8f1, 6c9fe9, 7189ac, a1a8b7, a1a8b7,
+000a32, 000a32, 1f2843, 6a7280, 6a7280, 000000, 000000`), `DAT_00571e6c` (white×10 then
+`000000`, `b52600`), `DAT_00571e90` (pitch greens `4c7231, 6d7833, 29511d×3, 44662c, 336c2e,
+274d1c`); selected index `idx = mask ? 0xb : ([0x5c65b0] ? 10 : ([0x5c65b8] ? DAT_005716c0+5 :
+DAT_005716c0))`, copied 9 bytes -> raster globals `DAT_005c65bc..0x5c65c4` (green@bc, white@bf,
+blue@c2). `DAT_005716c0` is the venue-pair index written in the boot venue lane (`0x419f3a/
+0x419f56`, from `FUN_00422634` after `ebx`), beside `[0x5c65b4] = venue row+0x08` and flags
+`[0x5c65b0]/[0x5c65b8]` (`0x419fa7/0x41a002`). Per-frame handler `FUN_0041abac` sets object
+type byte (`+8` 2->3/4) and installs the raster callback cells record`+0x24 = &DAT_00571b8c`
+(name-matched) / `&DAT_00571c8c`; `FUN_0041da7c` `"%s"`-`_%s` name-match pass writes the match
+tag to entry`+0x1c` (stride-0x30 records, types 1/2/6). Fly-around extras gated on row`+0x08`
+allocate `DAT_005716f0..0x57170c` + bbox-scaled model slots `DAT_00571734..0x571740` with clip
+bounds `DAT_00571754..0x571760 = ±4*[0x6412d0]/[0x6412cc]/2` — row+0x08 is 0 in the shipped
+image, so that arm is image-dead [H]. Venue visibility conclusion unchanged (pass-109): fog
+lane proves venue objects are drawn with per-venue fog only while `DAT_00571710 != 0`; the LAY
+back order is still unrecovered. Notes `analysis/pass117fog/NOTES.md`.
+
 In-game player/stadium geometry is a different container (INGAME .BIG dialects — not this format).

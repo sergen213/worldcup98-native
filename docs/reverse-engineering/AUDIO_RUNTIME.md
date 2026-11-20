@@ -1019,13 +1019,27 @@ bank phrase decode + play). Evidence: `analysis/pass77pbp/probe.cpp` (refpack no
 `frames=11024 avg=0 same=1`), `analysis/pass77pbp/probe2.cpp` (`nonzero=0 max=0`),
 `analysis/pass77pbp/NOTES.md`, `analysis/pass76pbp/disasm.txt`.
 
-Pass-77b (same day) closed the id side: rel32 scan (`call` operand = next VA + s32, raw VA
-= off+0x400C00) enumerates all 21 `CALL 0x4894ac` fill sites; each window shows the Watcom
-setup — type-1 sites take the team-id accessor `FUN_00485240` (`FUN_00485210()!=0 ?
-DAT_0062fab0 : DAT_0062fab4`) or its pair store `FUN_0048525c` (writes `{DAT_0062f468,
-DAT_0062f46c}` home/away-ordered); type-3 sites take `FUN_00489920` (40-entry u16-pair
-remmap table `DAT_0057e3fe`, default id `0xa1`) or the standing-list selector pair
-`FUN_00489974(EAX=selector 0x13..0x1b,0x26,0x36)` + `FUN_004899dc` (list `DAT_0062fbf8[]`,
-count `DAT_0062fd98 ≤ 0x28`, cursor `DAT_0062fd9c` or tick-fraction index, `-1` sentinel);
-scene handler owners `FUN_00453a6c/454338/454d60/45548c/455a3c/455f30/458cf0` fill then arm
-`FUN_004894c4`. Evidence: `analysis/pass77pbp/ann1.txt`, `ann11.txt`.
+Pass-77b (corrected same day): rel32 scan (`call` operand = next VA + s32, raw VA = off+0x400C00)
+enumerates all 21 `CALL 0x4894ac` fill sites; register windows (`analysis/pass77pbp/ann11.txt`)
+show `EAX`=slot, `EDX`=type, `EBX`=id at **every** site (the pass-76 "18/21" gap was a scan
+false-negative). Per-site (slot, type, id source):
+- 0x453b07 s0 t1 id = `FUN_0048525c` pair-store ECX lane (`{DAT_0062f468, DAT_0062f46c}`
+  home/away-ordered; which side lands in EBX [H])
+- 0x453b15 s2 t2 id = 0
+- 0x453b2e s3 t2 id = `FUN_00489920` remmap table `DAT_0057e3fe` (EAX=SI team, EDX=2, default
+  `0xa1`) — remap feeds **schedule** (type-2) ids, not standings
+- 0x453bd2 s1 t2 selector `0x26`; 0x453c77 s4 t2 selector `0x36`
+- 0x45437d s0 t3 selector `0x1b`; 0x454398 s0 t1 `FUN_00485240`; 0x4543bd s1 t3 selector `0x16`
+- 0x454da5 s0 t3 selector `0x18`; 0x454dc0 s0 t1 `FUN_00485240`; 0x454de5 s1 t3 selector `0x13`
+- 0x4554c9 s0 t3 selector `0x17`
+- 0x455a81 s0 t3 selector `0x19`; 0x455a9c s0 t1 `FUN_00485240`; 0x455ac1 s1 t3 selector `0x14`
+- 0x455f75 s0 t3 selector `0x1a`; 0x455f90 s0 t1 `FUN_00485240`; 0x455fb5 s1 t3 selector `0x15`
+- 0x458dc2 s0 t1 id = `ESI` (SI team id, gate `FUN_004dac90() >= 7`)
+- 0x458df6 s1 t3 selector `0x0`
+- 0x4591fd s2 t3 id = branch constant `0x4`/`0xa` (jump lanes `0x4591d8/0x4591e7`)
+Selector pair: `FUN_00489974(EAX=selector)` fills `DAT_0062fbf8[]` (count `DAT_0062fd98 <= 0x28`)
+from range `&DAT_0057e938/93c[selector]` via `FUN_00489bdc`; `FUN_004899dc` picks cursor
+`DAT_0062fd9c` or tick-fraction ROUND index, `-1` sentinel. **Selector -> list content**
+(which records the ranges index) unresolved [H] — pass-78 needs exactly that. Scene handler
+owners `FUN_00453a6c/454338/454d60/45548c/455a3c/455f30/458cf0` fill then arm `FUN_004894c4`.
+Evidence: `analysis/pass77pbp/ann1.txt`, `ann11.txt`.

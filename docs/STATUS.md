@@ -142,6 +142,16 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
 
 
 ## Progress snapshot (third-pass UI reconstruction landed, v0.5.0)
+- **Presentation announcement flush lane decoded (pass-85, 2026-11-20)** —
+  `FUN_004893ec` pump flush: speech gates `DAT_00632774/006326b0`, pending flag
+  `DAT_0057e378` (only write site raw 0x4893a6, setter `FUN_00489350` = 6-slot id
+  reserve `FUN_00479a92 -> DAT_0057e3e8` + per-slot pending clear), stop-current-sentence
+  loop via `SNDsentencestatus/SNDsentencestop` (`FUN_004dfc0c/004dfb94`,
+  `cmn\s\speech.c`), speech-queue drain `FUN_004901e0`, builder rebuild `FUN_00489460`,
+  reserved-id release via refcount splice `thunk_FUN_0049f750`. All 9 pending-setter and
+  46 flush call sites are presentation handlers - live-match scenes never mark pending,
+  so A7's live-match phrase content mapping stays the open half; no port change.
+  Evidence `analysis/pass85flush/` (`p1..p4.txt`).
 - **Presentation id-source accessors closed (pass-83, 2026-11-20)** — the pass-76 residual
   "accessor internals [H]" behind the 21 `FUN_004894ac` fill sites is decoded: type-1 id
   = tournament pair store `FUN_0048525c` (words `DAT_0062f468/f46c`, ordered by the

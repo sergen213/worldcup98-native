@@ -1240,3 +1240,34 @@ No remaining [H] needle provenance; no port change needed (id sources are alread
 mirrored pass-83/79). Evidence: `analysis/pass84needle/` (`n1.txt` - all 36 direct
 call refs to `FUN_00485210`, containing-function decompiles, -90-byte disassembly
 windows at all 21 fill sites; `GhidraWc98N1.py`).
+
+## Pass-85: presentation announcement flush lane decoded (measured 2026-11-20)
+
+Completes the announcement lifecycle around the 9 pending-setter sites:
+
+- `FUN_00489350` pending setter (callers `0x453123/453a74/4542b9/45462b/455054/
+  0x45573b/0x455d4b/0x4587f6/0x458cf9` - all presentation handlers): if
+  `DAT_0057e378 == 1` RET; else loop 6 slots, `CALL FUN_00479a92` reserves ids into
+  `DAT_0057e3e8+i`, zeroes per-slot pending words `[slot+8]`, sets `DAT_0057e378 = 1`
+  (only absolute write site, raw 0x4893a6).
+- Flush lane `FUN_004893ec` (46 raw-scan call sites, all presentation handlers): gates
+  `FUN_00490674` = `DAT_00632774` speech-enabled, `FUN_0048fd4c` = `DAT_006326b0`
+  speech-init, `DAT_0057e378 != 0`; `while FUN_004dfc0c() == 3 { FUN_004dfb94(); }`
+  stops the playing sentence (`FUN_004dfc0c` = `SNDsentencestatus` `cmn\s\speech.c:951`
+  -> 2 not-started/3 playing, `SPEECH_NOT_INITIALIZED` `0xfffffff2` when
+  `DAT_006597b0 == 0`; `FUN_004dfb94` = `SNDsentencestop` `speech.c:0x34d` ->
+  `FUN_0052bc04/FUN_004e2c60 x2/FUN_004dfe18/FUN_0052bc58`, `DAT_0064b15a = 0`);
+  wait `FUN_0048fd38()` (status-clear poll); `FUN_004901e0()` speech-queue drain
+  (`(*DAT_00558464)(DAT_00632728,...)` + qfetch loop `FUN_004c4890`/`FUN_004d8aa0`/
+  `FUN_004c4800`, `(*DAT_00558528)` end); `FUN_00489460()` builder; release 6 reserved
+  ids (`DAT_0057e3e8..+0x18` -> `thunk_FUN_0049f750`, refcount + flag-bit `+3 & 0x40`
+  linked-list splice); clear `DAT_0057e378/57e37c`.
+- Semantics: a scene handler that wants new announcement ids marks pending; the pump
+  flush stops the current sentence, drains the speech queue, rebuilds slot ids, and
+  releases reserved ids. Live-match scenes never fill pending slots (all 9 pending-setter
+  callers are presentation handlers) - so A7's live-match phrase content mapping remains
+  the open half; no port change (Announcer feed helpers already gate-driven).
+
+Evidence: `analysis/pass85flush/` (`p1.txt` fill/builder refs, `p2_scan.txt` 46 flush
+call sites, `p3_scan.txt` pending-flag write attribution, `p4.txt` pending setter +
+gate helper decompiles; `GhidraWc98P1.py`, `GhidraWc98P4.py`).

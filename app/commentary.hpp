@@ -338,8 +338,10 @@ public:
     // other records (untagged, miss, count=0 nests) stamp 0. NO tag is in {2,4,6}, so the
     // selector arms (jump table 0x48f2bc) are dead code in retail WC98. Untagged records take
     // the engine-callback lane 0x49001c (gate DAT_00632724): it runs a SECOND registry find
-    // (0x48ff64 = 0x4a4820/0x4a4a00, writes 2*found-index into the driver out slot) and does
-    // NOT qfindindex - so the port's sequential head pick stays a deviation [H], not proven
+    // (0x48ff64 = 0x4a4820/0x4a4a00/0x4a4820, writing the SUM of the two located-slot values
+    // into the driver out slot — pass-92 full wrapper disasm analysis/pass92cbr/e5.txt
+    // `0048ffa4`-`0048ffad`, no doubling instruction; pass-90 "2*found-index" retracted) and
+    // does NOT qfindindex - so the port's sequential head pick stays a deviation [H], not proven
     // retail behaviour. Class-7 records route to the PHRS preload arm instead - mirrored
     // pass-91 as `triggerLive7` (accessor 0x48f290 gate + class-1 queue selector picks);
     // live events carry no retail class byte yet [H].

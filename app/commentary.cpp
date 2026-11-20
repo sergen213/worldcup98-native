@@ -119,7 +119,9 @@ void Commentary::trigger(const sim::SimEvent& e) {
     // name byte 0, analysis/pass90reg/NOTES.md): retail tags are {0x07} (PHRS preload arm) and
     // {0x40} ((byte&0x3f)==0 -> engine callback), never {2,4,6}, so the jump-table selector
     // arms (0x48f2bc) never run. The engine-callback lane 0x49001c runs a second registry find
-    // (0x48ff64, writes 2*found-index to the driver slot) — no queue head pick is proven there,
+    // (0x48ff64, writes the SUM of the two located-slot values to the driver slot — pass-92
+    // full wrapper disasm analysis/pass92cbr/e5.txt, no doubling instruction; the pass-90
+    // "2*found-index" wording was unbacked) — no queue head pick is proven there,
     // so the sequential head pick here stays a deviation [H]. Class-7 events route to the PHRS
     // preload lane, mirrored pass-91 as triggerLive7 (event-side tag wiring open [H]).
     startPick(0);

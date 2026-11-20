@@ -122,17 +122,24 @@ pure-JPype runs on the saved wc98 project). Closes STATUS "gain calibration + au
   percent conversion at 0x48fcb2) and 0x491125 = sentence start/stop ramps; the `steps` argument is
   runtime data in the undecomposed band.
 
-### Hypothesis (marked as such in code)
-- Percent-table DAT_00632778 scene defaults are built at init by FUN_004c46a0 from string tables →
-  exact default percentages need runtime measurement; port default = full-open vol 0x7f.
-  - **Disproved pass 7d**: `FUN_004c46a0` decompiles to queue init (`s_qinit`, cmn_queue.c line 173) — no string tables, no percent writes. Scene defaults are written at runtime by scene handlers through setter FUN_0049067c; exact percentages remain Unknown (runtime args).
+### Hypothesis (superseded by pass-98)
+- ~~Percent-table defaults built at init by FUN_004c46a0~~ disproved pass 7d (queue init). Boot
+  table values are the static init `FUN_00490728` = **100 for all six slots** → boot vol
+  `pct(100)` = 0x7f; the pass-7e live snapshot `{80,80,80,80,65,80,1}` is the later options
+  rewrite (setter `FUN_0049067c` at runtime). Port default vol = 0x7f (matches boot).
 - Port ramp tick count `kRampTicks = 5` (original steps argument unmeasured) — ponytail-marked in
   `app/commentary.hpp`.
+- ~~Per-class gain split (`'c' = 0.5f`, `'a' = 0.5f`)~~ **retracted pass-98**: there is no
+  class→gain table. Sole `SNDspeechinit` site `0x48fd85` (boot lane `FUN_0048fd54`,
+  `0x48fd75 MOV EAX,3 → 0x4906a4 → 0x4df820`) seeds pct idx3 only; the pump applies the master
+  byte to the whole voice-group pair; the name-tag byte only feeds dispatch table `0x48f2bc`.
+  Evidence `analysis/pass98gain/{NOTES.md,scan.txt,g1.txt,g2.txt}`.
 
 ### Native mapping
 `SpeechGain` (app/commentary.hpp) mirrors the state cb 16.16 arithmetic; Commentary::pump runs
-queue pump + gain tick + per-voice `setGain(class * master)` each frame, with sentence-start/stop
-ramp edges reproducing the autovol seam sites. Gate: `test_commentary` (`gainModel()` exact-tick
+queue pump + gain tick + per-voice apply of the raw master byte (`gain_.applied()` = `cur>>16`,
+pass-98: no per-class multiplier), with sentence-start/stop ramp edges reproducing the autovol
+seam sites. Gate: `test_commentary` (`gainModel()` exact-tick
 sequence asserts + wiring asserts at fixed timeline positions).
 
 ## Pick predicate + activation chain (pass 7c, 2026-11-06)

@@ -10,6 +10,8 @@
 namespace wc98::formats {
 
 struct CrdParams {           // two 12-byte groups at 0x08 and 0x14
+    // a = idle scale word (pass-113): the exe idle-pump operand `mov edx,[rec+6]; sar 16`
+    // (u16 at 0x08 / 0x14), target = scale + ((tick&0x7fff)-0x4000)*scale>>14 clamped.
     std::uint16_t a = 0, b = 0;
     std::uint32_t c = 0, d = 0;
 };

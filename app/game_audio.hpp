@@ -73,12 +73,53 @@ private:
 // (FUN_004e4d8c) keeps the percent-lane controller level in the low half of cc (pass-49/52
 // options gate); the envelope drives the curve index. SNDcrowdpulse (FUN_004e4cac) raises
 // the target by a card record's delta, clamped at the record ceiling, ramping at the
-// record step. Random target draws are an approximation [H] of the exe 128-bit PRNG
-// (FUN_004c321c state) the way the chant variant draw is modeled.
+// record step. Target draws mirror the exe tick machine `FUN_004c321c` exactly (pass-113
+// objdump), scaled by the card header word (record byte 8); the seed input is RDTSC at
+// runtime [H], so the walk start state is uptime-nondeterministic like the chant LCG seed.
+// Tick machine mirror of `FUN_004c321c` (pass-113 objdump lane,
+// `analysis/pass113tick/clk3.txt`): lagged-Fibonacci 5-word walk over `DAT_00585CC8..0x585CB8` driven by the
+// increment slot `DAT_00585CCC` — each pump call: `cc8 += inc; cc4 += cc8(+carry);
+// cc0 += cc4(+carry); cbc += cc0(+carry); cb8 := cbc` (the `adc cb8` result is
+// overwritten by `mov [cb8],eax`), then `inc++`. The tick word consumed by
+// `FUN_0052f3e0` is `cb8 & 0x7fff`. Seed constants = chained setter `FUN_004c3282`
+// (running sums of K1..K6 below) at seed input 0; the runtime seed input is RDTSC
+// (`0x47b9f6`, gated by `[0x57f674] != 0`) or an ebx-derived counter (`0x42b145`), so
+// the seeded state is uptime-nondeterministic [H] and these constants are the seed-0
+// mirror state. The increment-zero carry cascade (`0xc265b..0xc267b`) is unreachable in
+// a session-length walk [H].
+struct ExeTickAcc {
+    void step() {
+        std::uint64_t s = std::uint64_t(w0_) + inc_;
+        w0_ = std::uint32_t(s);
+        std::uint32_t carry = std::uint32_t(s >> 32);
+        s = std::uint64_t(w1_) + w0_ + carry;
+        w1_ = std::uint32_t(s);
+        carry = std::uint32_t(s >> 32);
+        s = std::uint64_t(w2_) + w1_ + carry;
+        w2_ = std::uint32_t(s);
+        carry = std::uint32_t(s >> 32);
+        s = std::uint64_t(w3_) + w2_ + carry;
+        w3_ = std::uint32_t(s);
+        w4_ = w3_; // mov [cb8],eax
+        ++inc_;
+    }
+    [[nodiscard]] std::uint32_t word15() const { return w4_ & 0x7fffu; }
+
+private:
+    std::uint32_t w0_ = 0x9e353f7du; // cc8 (K1..K5 running sum)
+    std::uint32_t w1_ = 0x0702c49cu; // cc4
+    std::uint32_t w2_ = 0xc624dd2fu; // cc0
+    std::uint32_t w3_ = 0x883126e9u; // cbc
+    std::uint32_t w4_ = 0xf22d0e56u; // cb8 (tick slot)
+    std::uint32_t inc_ = 0x6fdf3b64u; // cccc (K1..K6 running sum)
+};
+
 class CrowdEnvelope {
 public:
-    // cardByte7 = header weight; rateFrames = idle ramp frames (exe record byte 12 formula).
-    void init(std::uint32_t cardByte7, int rateFrames); // fresh machine (c0 = level 0)
+    // cardByte7 = header weight; rateFrames = idle ramp frames (exe record byte 12 formula);
+    // scale = header word at record byte 8 (exe call-site `mov edx,[rec+6]; sar 16`): the
+    // idle target is `scale + jitter(scale)` with jitter from the tick word [pass-113].
+    void init(std::uint32_t cardByte7, int rateFrames, int scale = 30); // fresh machine (c0 = level 0)
     void tick();                        // per-frame idle pump (exact state machine)
     // SNDcrowdpulse record lane: delta/ceiling/step from the card record (CrdRecord).
     // Returns true when the pulse was applied (exe FUN_004e4cac status: success vs -8
@@ -88,8 +129,8 @@ public:
     [[nodiscard]] std::int32_t level() const { return c0_; } // 16.16 envelope level
     [[nodiscard]] int be() const { return be_; }             // blend weights (gates)
     [[nodiscard]] int bc() const { return bc_; }
+    int targetLevel();  // tick-word target: scale + ((tick&0x7fff)-0x4000)*scale>>14, 0..0x1ff
 private:
-    int targetLevel();  // random walk target (clamped 0..0x1ff)
     int rampFrames() { return std::max(1, int(rng_() % std::uint32_t(std::max(2, rateFrames_ * 2)))) + 1; }
 
     int be_ = 0, bc_ = 0x200;       // blend weights (exe DAT_005894b8.hi / DAT_005894bc)
@@ -98,7 +139,9 @@ private:
     std::int32_t c8_ = 0;           // ramp step per frame (DAT_005894c8)
     int ab_ = 0;                    // ramp state (DAT_005894ab)
     int rateFrames_ = 132;          // idle ramp frames, record 0 rate at install (FUN_00510c)
-    std::mt19937 rng_{0x1998u};
+    int scale_ = 30;                // exe idle scale word (record byte 8, sar-16 operand)
+    ExeTickAcc tickAcc_;            // idle tick machine (FUN_004c321c mirror)
+    std::mt19937 rng_{0x1998u};     // ramp-frame stand-in [H] (exe reads runtime frame slots)
 };
 
 // Tournament presentation announcement lane (pass-76 decode, pass-77 port mirror).

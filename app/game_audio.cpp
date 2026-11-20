@@ -122,7 +122,7 @@ MatchAudio::MatchAudio(const std::filesystem::path& tree) : tree_(tree) {
             const int rate = crowdRecords_.empty()
                 ? 132
                 : std::max(1, int((std::int64_t(crowdRecords_[0].rate()) * 0x21) >> 16));
-            crowdEnvelope_.init(card.byte7, rate);
+            crowdEnvelope_.init(card.byte7, rate, int(card.params[0].a)); // scale 30 measured
         }
         for (std::size_t i = 0; i < slots.size(); ++i) {
             CrowdLayer layer;
@@ -155,7 +155,7 @@ MatchAudio::MatchAudio(const std::filesystem::path& tree) : tree_(tree) {
         // Traffic card (pass-55): header byte 7 = 4 -> weights be 20/bc 480; the card ships
         // no reaction records (all 0x00 -> SNDcrowdpulse refuses it, measured dump).
         trafficRecords_ = traf.records;
-        trafficEnvelope_.init(traf.byte7, 132); // no records: idle rate default 132 frames [H]
+        trafficEnvelope_.init(traf.byte7, 132, int(traf.params[0].a)); // no records: idle rate default 132 frames [H]; scale 2 measured
     } catch (const std::exception&) { // no card: gain falls back to the bed curve
     }
 }
@@ -175,7 +175,7 @@ void MatchAudio::crowdNotifier(int channel) {
 // walk), pulse FUN_004e4cac, blend consumer FUN_005444. The exe shares ONE machine between
 // the CROWD and TRAFF cards (single 16.16 level, slot curve pointers per card); the port
 // runs the bed and hum envelopes independently, each from its own card header byte 7 [H].
-void CrowdEnvelope::init(std::uint32_t cardByte7, int rateFrames) {
+void CrowdEnvelope::init(std::uint32_t cardByte7, int rateFrames, int scale) {
     // FUN_004e4ba0 install: weights from header byte 7 (be = byte7<<9/100, bc = 0x200 - be).
     be_ = int((cardByte7 << 9) / 100);
     bc_ = 0x200 - be_;
@@ -186,12 +186,20 @@ void CrowdEnvelope::init(std::uint32_t cardByte7, int rateFrames) {
     // Idle ramp frames, exe `*(int*)(recordArea + 0xc + cardIdx*0x10) * 0x21 >> 0x10`
     // (record byte 12 u32, CROWD record 0 measured 0x40000 -> 132 frames at 60 fps).
     rateFrames_ = std::max(1, rateFrames);
+    scale_ = scale; // exe idle scale word: header dword +6 sar 16 (CROWD 30, TRAFF 2)
+    tickAcc_ = ExeTickAcc{};
 }
 
 int CrowdEnvelope::targetLevel() {
-    // exe draw = (int)(rng64 >> 32) + (int)rng64 clamped [0, 0x1ff] (PRNG FUN_0052f3e0,
-    // 128-bit state approximated like the chant variant draw [H]).
-    return int(rng_() % 0x200u);
+    // FUN_0052f3e0 + call-site epilogue (pass-113 objdump): advance the tick machine,
+    // jitter = ((cb8 & 0x7fff) - 0x4000) * scale >> 14, target = scale + jitter clamped
+    // [0, 0x1ff] (exe `add eax,edx; cmp 0x1ff` -> DAT_005894c4).
+    tickAcc_.step();
+    const std::int32_t jitter = (std::int32_t(tickAcc_.word15()) - 0x4000) * scale_ >> 14;
+    int t = scale_ + jitter;
+    if (t < 0) t = 0;
+    if (t > 0x1ff) t = 0x1ff;
+    return t;
 }
 
 void CrowdEnvelope::tick() {

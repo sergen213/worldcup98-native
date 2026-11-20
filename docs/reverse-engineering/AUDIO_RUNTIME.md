@@ -184,10 +184,11 @@ The event-envelope blend residual from pass-54 is decoded: the `cmn\scrowd.c` re
 shares one 16.16 level across the CROWD/TRAFF cards. Install `FUN_004e4ba0` derives blend
 weights from the card header byte 7 (`be = byte7 << 9 / 100`, `bc = 0x200 - be`; CROWD 70 ->
 358/154, TRAFF 4 -> 20/492). The idle pump `FUN_004e510c` walks the level through alternating
-ramp states (`DAT_005894ab` 0 up/1 down/2 up/3 down, then 2<->3 forever), drawing a random
-target clamped [0,0x1ff] on every ramp arrival (pass-56: the draw is time-based
-`((tick & 0x7fff) - 0x4000) * secondTick >> 14`, `FUN_0052f3e0`, not the request LCG) and
-dividing the distance by a card-record ramp rate (`rate * 0x21 >> 16`: record 0 -> 132 frames, record 1 -> 198). `SNDcrowdpulse`
+ramp states (`DAT_005894ab` 0 up/1 down/2 up/3 down, then 2<->3 forever), drawing a new
+target on every ramp arrival (`(walkTick & 0x7fff) - 0x4000` × card scale word
+`>> 14` + scale, clamp `[0,0x1ff]`, `FUN_0052f3e0` + `FUN_004c321c` walk, pass-56/113 —
+not the request LCG, not a clock) and dividing the distance by a card-record ramp rate
+(`rate * 0x21 >> 16`: record 0 -> 132 frames, record 1 -> 198). `SNDcrowdpulse`
 (`FUN_004e4cac`) reads record delta/ceiling/step (u16 pair at record bytes 4..7: measured delta
 350, ceiling **450** = 0x01c2 — an earlier gate note said 394, decimal arithmetic error) and
 refuses with status -8 when the level already sits at/above the ceiling, else ramps to
@@ -221,19 +222,24 @@ counter** (`inittimer` `FUN_00496bb0` zeroes it at `0x496be6`, the timer callbac
 classifier `FUN_0048dcd8` site `0x48dd97`, crowd boot `FUN_0048ed9c` site `0x48ee08` —
 uptime-nondeterministic, so `ExeLcg` seeds stay port-side constants [H]. The secondary rotation consumer `FUN_0048e9a0` (gate `DAT_0063268c != 0`) repeats
 qfetchindex+qpush. The idle envelope target draw (pass-55 machine) is NOT the LCG:
-`FUN_0052f3e0` computes `((tick & 0x7fff) - 0x4000) * secondTick >> 14` — and per pass-113
-the operands are the **caller register pair**, not the tick counter: every site in
-`FUN_004E510C` loads `mov eax,[0x64bef0]` + `mov edx/eax,[eax+0x6]/[eax+0x8]` (some sites
-`+0x12/+0x14`), both `sar 16`, before the call; `FUN_004c321c` only advances the multi-word
-clock (`DAT_00585cb8..0x585ccc`) inside the function and returns nothing usable. So the
-draw is a fixed-point product `((cardHi15 − 0x4000) × cardWord16) >> 14` over fields of the
-**loaded CRD card record**: `DAT_0064BEF0` is installed by open handler `FUN_004E4A80`
-(magic `CRDl` `0x6c445243`, version byte `rec[1] == 2`, delta base-fixups at `rec+0x128/0x148`
-gated by flag `rec+5`, volume seed `DAT_005894b8/0x5894bc` from `rec+7`, pump hook
-`DAT_006597c8 = CRWDpump`, callback `DAT_006597e4 = FUN_004e4fd8`) — i.e. `CROWD.CRD` /
-`TRAFF.CRD` card fields, not a system clock (pass-113, `/tmp/wc98pass113/clk2.txt`).
-`CrowdEnvelope`'s mt19937 stays a [H] approximation (retail card values ship as data;
-mirroring needs the decoded fixed-point tempo fields). Scene-10 CROWD phrase lane `FUN_0048e6d0` (caller 0x48e83f, once-guard
+`FUN_0052f3e0` computes `((tick & 0x7fff) - 0x4000) * scale >> 14` — and per pass-113
+(`analysis/pass113tick/clk3.txt`, objdump lane) the tick word is the `cb8` slot of the
+`FUN_004c321c` lagged-Fibonacci walk (`cc8..cb8` over `DAT_00585CB8..0x585CC8` driven by
+the increment slot `DAT_00585CCC`, carry chain `adc`), NOT a system clock; the caller's
+`mov eax,[rec+8]; sar eax,16` load at the idle site `0x4e5162` is dead code
+(`FUN_004c321c` overwrites EAX). The multiplier is the caller's scale word guarded at
+entry (`cmp $0x10000` → `edx = 0x10000`, `jl` → xor junk; `[rec+6] >> 16` load is
+push/pop-saved dead), and the call-site epilogue `add eax,edx; mov edx,0x5894c4;
+cmp $0x1ff` adds the scale back and clamps upper: `target = scale + jitter`,
+clamp `[0, 0x1ff]`. Scale word provenance = CRD card header dword `+6 sar 16` = u16 at
+card byte 8 (measured CROWD 30, TRAFF 2, gate-checked; variant lanes use record fields
+`+0x12/+0x14` → second params group, CROWD 40, and `+0x18/+0x1c` with min-1 clamp at
+`0x4e53f5`). The walk is seeded by `FUN_004c3282` with the running sums of six constants
+K1..K6 (`0xf22d0e56, 0x96041893, 0x3df3b646, 0x40dde76d, 0x97327ae1, 0xd1a9fbe7`); the
+runtime seed input is `rdtsc` (`0x47b9f6`, gated by `[0x57f674] != 0`) or an EBX counter
+(`0x42b145`), uptime-nondeterministic [H]. Port `ExeTickAcc` mirrors the walk bit-exact at
+the seed-0 constants and `targetLevel()` reproduces the formula; `CrowdEnvelope`'s
+mt19937 remains only the ramp-frame stand-in [H]. Scene-10 CROWD phrase lane `FUN_0048e6d0` (caller 0x48e83f, once-guard
 `DAT_006325b4`): `CMIDI.BNK` (@0x566adc) → `DAT_006325cc`; `FUN_004e3128`/`FUN_004e3724` init
 `DAT_006325d0`; `FUN_0048e280` loads exactly two banks — `CROWD.PBK` → `DAT_006325d4`,
 `COMOS.PBK` → `DAT_006325d8` — through the `AUDIO\CRWD\%s` format (`FUN_0048e190` @0x566acc) +

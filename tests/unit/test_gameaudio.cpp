@@ -612,6 +612,30 @@ int main() {
         CHECK(trafEnv.be() == 20 && trafEnv.bc() == 492);       // TRAFF byte 7 = 4
     }
 
+    // (h) pass-113 tick machine mirror (FUN_004c321c objdump lane): the seed-0 constants
+    // are the running sums of the FUN_004c3282 seed constants K1..K6; step() reproduces
+    // the lagged-Fibonacci walk (`cc8 += inc; cc_i += cc_{i-1}+carry; cb8 := cbc; inc++`),
+    // consumed by FUN_0052f3e0 as `((cb8 & 0x7fff) - 0x4000) * scale >> 14` with the
+    // call sites adding the scale word back and clamping [0, 0x1ff]. CROWD scale word =
+    // header dword +6 sar 16 = u16 at record byte 8 (measured 30), TRAFF = 2.
+    {
+        app::ExeTickAcc tick;
+        tick.step();
+        CHECK(tick.word15() == 17302);
+        tick.step();
+        CHECK(tick.word15() == 22024);
+        app::CrowdEnvelope env;
+        env.init(0x46, 132, 30);
+        CHECK(env.targetLevel() == 31); // 30 + ((17302 - 0x4000) * 30 >> 14)
+        CHECK(env.targetLevel() == 40); // 30 + ((22024 - 0x4000) * 30 >> 14)
+        const auto crowdBytes = readFile(tree / "AUDIO" / "CRWD" / "CROWD.CRD");
+        const formats::Crd card = formats::Crd::parse(std::span<const std::uint8_t>(crowdBytes));
+        CHECK(card.params[0].a == 30); // CROWD idle scale word
+        const auto trafBytes = readFile(tree / "AUDIO" / "CRWD" / "TRAFF.CRD");
+        const formats::Crd traf = formats::Crd::parse(std::span<const std::uint8_t>(trafBytes));
+        CHECK(traf.params[0].a == 2); // TRAFF idle scale word
+    }
+
     std::printf("test_gameaudio: OK\n");
     return 0;
 }

@@ -1053,16 +1053,20 @@ end = word at `0x57e93c + selector*4` = `v[selector+1]`, so range = `[v[s], v[s+
 their ranges: `0x26:[20,25)`, `0x36:[100,105)`, `0x0:[0,5)`, `0x13:[95,105)`,
 `0x14:[105,115)`, `0x15:[115,125)`, `0x16:[125,130)`, `0x17:[130,135)`,
 `0x18:[135,140)`, `0x19:[140,145)`, `0x1a:[145,150)`, `0x1b:[150,155)`. Word `v[0x1d]`
-(`0xa0->0x29` wrap) is adjacent data, not a selector entry. Record pool identity (which
-fixtures 0..159 are) stays [H]; no shipped fixture table establishes the equivalence.
+(`0xa0->0x29` wrap) is adjacent data, not a selector entry. Pool size 160 is corroborated
+at asset level: shipped `AUDIO/PBP/STANDING` is exactly `A_STD001..160.SMP` +
+`G_STD001..160.SMP` (160+160, measured), so list ids `1..160` number the standings-file
+lane 1:1; what the records mean (which standings slots) stays [H].
 Fill semantics: the loop walks `rec` through `[start, end-1]`; `FUN_00489bdc` is a
 **skip predicate** `(in_EAX=type, ECX=record)` returning 0 = skip — a hardcoded per-record
 exclusion table whose constants are the same grid's words (measured: type-2 skips
 {23, 31, 34, 37, 38, 50, 62, 85, 133}; type-3 skips {5, 6, 7, 8, 11, 13, 17, 18, 39, 43,
 44, 46, 47, 50, 53, 54, 95, 96, 97, 98, 120, 121, 122, 125, 127, 130, 131, 132}; with
 `DAT_00640fe8==1` -> `FUN_00489bb0` override and `==3` one extra skip). Surviving records
-are stored as `record + 1` (`DAT_0062fbf8` holds 1-based record numbers; whether these
-list ids reach the loader's `%03d` filenames is [H]) at `DAT_0062fbf8[count++]` with the
-`0x27`/range-end guards. Evidence: `analysis/pass78grid/sel1.txt` (function pseudocode),
-`analysis/pass78grid/grid_dump.txt` (raw grid + skip-constant words),
-`analysis/pass78grid/GhidraWc98Sel1.py`.
+are stored as `record + 1` (`DAT_0062fbf8` holds 1-based record numbers) at
+`DAT_0062fbf8[count++]` with the `0x27`/range-end guards — those ids land in the loader
+`FUN_0048953c` type-3 filename `{G,A}_std%03d.smp`, whose shipped numbering
+`001..160` (measured gapless, both prefixes) covers the full list range exactly;
+type-2 ids land in `SCHEDULE` numbering `000..217`. Evidence: `analysis/pass78grid/`
+(`sel1.txt` pseudocode, `grid_dump.txt` raw grid + skip-constant words, `assets.txt`
+file inventory, `GhidraWc98Sel1.py`).

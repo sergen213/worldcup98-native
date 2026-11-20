@@ -557,11 +557,25 @@ FIFAWC.EXE**:
   `DAT_00632698 + idx*8` `{+0 handle, +4 stream}`. Ambient set `FUN_0048f068` requires
   `DAT_006326ac` set, `DAT_006326a8` count ≥1, tick ≥ `DAT_0057eb50`; every 0x14 ticks
   `SNDplaysetdef` + percent `DAT_0063269c`, volume `(count*0x7f)/100`.
-- SFXS pool boot `FUN_0048fd54`: once only (`DAT_006326b0`), device check `FUN_004df820`,
-  loads bank handle `DAT_0063271c`, creates 3 queues (`FUN_004c46a0`×3), allocates an
-  8-entry buffer pool (`DAT_006326c0/c4`) sized `((size+0x14)>>10 + 1)*0x400`, `+0x28`
-  link, pushed via `qbottom` (`FUN_004c4800`) — same queue family as the chant pump
-  (§pass-56).
+- SFXS pool boot `FUN_0048fd54`: once only (`DAT_006326b0` — written `1` at `0x48fdc1`,
+  the speech lane-enable gate later read by `FUN_0048fd4c`/`0x48f830`), scene gate
+  `0x490674` + device check `FUN_004df820`, loads the **PHRS.INF** image handle
+  `DAT_0063271c` (`FUN_0048f9d0` = `sprintf(buf, "AUDIO\\PHRS\\%s", "PHRS.INF")`, format
+  @0x566b9c — alternate `"%s%s"` @0x566b94 when `DAT_00632720 != 0`; loader
+  `FUN_00439810`; pass-114 correction — the earlier pass-95 "AUDIO\CRWD\..." label was
+  wrong, that format @0x566acc belongs to the scene-10 CRWD lane, and the pass-62 "SFXS
+  bank handle" label was wrong too; SFXS banks load separately through `0x48eff0` into
+  `DAT_00632698+idx*8`), creates 3 queues (`FUN_004c46a0`×3 at
+  `DAT_006326c8/0x6326e4/0x632700`), reserves via `FUN_0049f5a0` the `SPCPATCH` word pool
+  `DAT_006326c0` sized `(([handle+8] + 0x14) >> 10 + FUN_0048e8d0()) << 13` and a
+  352-byte `SPCEVENT` record block `DAT_006326c4` (`EDX=0x160`), then builds 8 stride-`0x2c`
+  patch slots with `+0x28` = cumulative patch offsets (`ebx += (([handle+8]+0x14)>>10 +
+  1)*0x400`, pushed via `qbottom` `FUN_004c4800`) — same queue family as the chant pump
+  (§pass-56). `[handle+8]` is the INF **total-patch-bytes** value (file u32@8 =
+  `0x146f0` = 83,696): slot = 81 KiB + 1 KiB header ≈ 83,968 B × 8 slots = 671,744 B pool,
+  self-consistent with the reserve form; a data-pointer reading would yield pointer-derived
+  MB-sized pools (implausible) — pass-114 marks PHRS.INF u32@8 RESOLVED as the SPCPATCH
+  sizing input.
 
 Port: no code change — `MatchAudio::trigger` fires GAME00 bank slot numbers directly,
 which is exactly the retail `{bank:1, slot:24}` slot field. Evidence:
@@ -588,8 +602,8 @@ Installed spec-lane callbacks (decompiled, `/tmp/wc98pass63/aud5.txt`/`aud6.txt`
   `FUN_00439750` (retry loop); returns success. This is the `COMMON/AUDSFX.W` /
   `COMMON/AUDSPC.W*` open path (§9) — an exe CRT file open, not a DLL export.
 - `0x48f714` record-query: `DAT_0063271c == 0` → passthrough `param<<32`, else
-  `CONCAT(param, DAT_0063271c + 0xc)` — reads the SFXS bank record field (§10
-  `DAT_0063271c` bank handle) [H for exact field semantics].
+  `CONCAT(param, DAT_0063271c + 0xc)` — `DAT_0063271c` is the raw PHRS.INF buffer
+  (pass-114), so `+0xc` = file offset 12 = the `V8-7-4` tag string pointer (§10).
 
 The DLL direction is the reverse of what pass-60 assumed: exe resolver `FUN_0052c948`
 (`win\sdriver.c`, strings `iSNDloaddll - COULDN'T …` @0x56ddf0..) does
@@ -1745,12 +1759,14 @@ record producers, `t12.txt` PHRS callbacks; jump table raw read at VA `0x48f45c`
   pump `0x48f830`, start `0x48f8bc`, accessor `0x48f78c`} (t7.txt). `FUN_0048f730`
   has no direct `E8` callers - it runs only through the scene dispatch pointer
   site `0x490595` (t4/t7). => game-event seam is dispatcher-mediated [H].
-- **Record pool init `FUN_0048fd54`** (t3.txt): gates scene-enabled `0x490674` and
-  once-flag `DAT_006326b0`; loads the `AUDIO\CRWD\...`-path object via
-  `0x48f9d0`/`0x439810` into `DAT_0063271c`; creates three queues
-  `DAT_006326c8` (free) / `DAT_006326e4` (pending-A) / `DAT_00632700` (pending-B);
-  reserves via `0x49f5a0` a word block (`DAT_006326c0`, size
-  `((obj+8)+0x14)>>0xa + FUN_0048e8d0)<<0xd`) and an 8-record block
+- **Record pool init `FUN_0048fd54`** (t3.txt; path corrected pass-114): gates
+  scene-enabled `0x490674` and once-flag `DAT_006326b0`; loads the **PHRS.INF** object
+  (`AUDIO\PHRS\%s` @0x566b9c — the earlier "AUDIO\CRWD\..." label was the scene-10 CRWD
+  format @0x566acc, not this lane) via `0x48f9d0`/`0x439810` into `DAT_0063271c`;
+  creates three queues `DAT_006326c8` (free) / `DAT_006326e4` (pending-A) / `DAT_00632700`
+  (pending-B); reserves via `0x49f5a0` a word block (`DAT_006326c0`, size
+  `((obj+8)+0x14)>>0xa + FUN_0048e8d0)<<0xd` — `obj+8` = INF total-patch-bytes value
+  `0x146f0` = 83,696, i.e. 81 KiB slots, pass-114) and an 8-record block
   (`DAT_006326c4`, stride `0x2c`, size param `0x160`); pushes 8 records
   (rec+0x28 = word-block pointer) to the free pool.
 - **Realloc pump `FUN_0048fcc0`** (t3.txt): iterate pending-A (`0x6326e4` qfetch

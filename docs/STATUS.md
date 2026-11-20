@@ -120,7 +120,14 @@ counts in `docs/asset-formats/INVENTORY.md`, `docs/reverse-engineering/EXECUTABL
  docs/reverse-engineering/MDL_GEOMETRY_NOTES.md).
 2. Speech/commentary indexing (decoder itself is COMPLETE: 6,964/6,964 `.PBK`
    members decode via PT-tag routing, measured 2026-11-01): PHRS.INF index semantics RESOLVED
-   2026-11-06 — `PHRS.HDR` == byte-exact first 0x2d6c bytes of `PHRS.PBK` (the full BIGF TOC = 1,290 LE {u32 offset,u32 size} pairs at 12+8*i; member sizes == decompressed sizes, no RefPack), INF = {u32@4 count=1290, u32@8 0x146f0 value-unexplained, "V8-7-4"}; rate default when tag `0x84` is absent RESOLVED 2026-11-06 — 22,050 Hz confirmed
+   2026-11-06, layout corrected 2026-11-20 (pass-114, `test_phrs` golden) — `PHRS.HDR` ==
+   byte-exact first 0x2d6c bytes of `PHRS.PBK` (the full BIGF TOC = 16-byte header + 1,290
+   big-endian packed records {u32be offset, u32be size, NUL name} at +16 (9 bytes each,
+   names empty in PHRS; earlier "LE pairs at 12+8*i" wording was wrong); member sizes ==
+   decompressed sizes, no RefPack), INF = {u32@4 count=1290, u32@8 0x146f0 = 83,696 RESOLVED
+   2026-11-20 (pass-114) as the SPCPATCH total-patch-bytes sizing input — speech pool boot
+   `FUN_0048fd54` sizes its 8 word slots as `((0x146f0+0x14)>>10 + 1)*0x400` each
+   (AUDIO_RUNTIME §10), "V8-7-4"}; rate default when tag `0x84` is absent RESOLVED 2026-11-06 — 22,050 Hz confirmed
    from `EACSND.DLL@0xe01` (`mov [0x40aa10],0x5622`, driver global rate var; see AUDIO.md).
 Gain calibration resolved 2026-11-05 (`analysis/pass7/gain*.txt`, `COMMENTARY_WC98.md` §gain):
 EACSND linear vol chain (domain [0,0x7f], 16.16) saturating at 0x7f + byte curve table explains

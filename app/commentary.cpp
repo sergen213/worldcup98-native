@@ -114,7 +114,9 @@ void Commentary::trigger(const sim::SimEvent& e) {
     // the in-play dispatcher tags nothing, so seam slots share the storage-order pool;
     // first-match over a shared list is then sequential consumption.
     // Evidence: COMMENTARY_WC98.md §pick, analysis/pass76pbp/NOTES.md.
-    startPick();
+    // Pass-88: entryIndexForClass(0) = the exe selector formula at class byte 0 (head entry);
+    // event->class alignment is open (runtime-stamped [rec+0x20], see commentary.hpp).
+    startPick(entryIndexForClass(0));
 }
 
 // Pass-86 in-play lane (0x48f830): the start attempt rejects while a sentence speaks
@@ -127,12 +129,15 @@ void Commentary::triggerLive(const sim::SimEvent& e) {
         ++rejected_;
         return;
     }
-    startPick();
+    startPick(entryIndexForClass(0)); // head entry: class alignment open (see commentary.hpp)
 }
 
-void Commentary::startPick() {
-    if (head_ >= candidates_.size()) return; // qfind null: no commentary for this event
-    const std::uint32_t p = candidates_[head_++];
+void Commentary::startPick(std::size_t selector) {
+    // qfindindex semantics: sel-th successor of the ready-list head node; a short (or empty)
+    // chain returns NULL -> the builder skips the enqueue, event stays silent.
+    if (selector >= candidates_.size()) return; // qfind/qfindindex null: no commentary for this event
+    const std::uint32_t p = candidates_[selector];
+    candidates_.erase(candidates_.begin() + selector); // activation qremove FUN_004c4a70
     lastPhrase_ = int(p);
     // Segment run: each phrase owns a contiguous id block (NOTES §1, 1022/1022 confirmed). The
     // within-phrase ordering is UNKNOWN (permutation source unmeasured) — deviation noted: play

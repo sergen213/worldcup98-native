@@ -1335,3 +1335,26 @@ stop-all sweep, `t3/t6/tick_scan.txt` caller/pointer scans; `GhidraWc98T2..T13.p
   `CMP vol,threshold; JG skip` — beat plays only when `vol <= threshold`; all add sites pass
   `EBX = 0` → retail beats fire only under zero group volume.
 Evidence: `analysis/pass87beat/` (`q1..q4.txt`, `GhidraWc98Q1..Q4.py`).
+
+## Pass-88: A7 selector mirrored in the port + class-byte producer dead-end (2026-11-20)
+
+- Port mirror (`app/commentary.hpp/cpp`): `Commentary::entryIndexForClass(classByte)` =
+  `2*DAT_0057eb54[class] + (classByte>>6)` with the measured table bytes `[0,0,0,0,0,0,1,0]`;
+  `startPick(selector)` picks the selector-th successor of the ready-list head node (index 0 =
+  head) and erases the picked entry on activation (qremove `FUN_004c4a70` semantics), short/empty
+  chain -> NULL pick silent. The live seam calls it with class byte 0: the event->class alignment
+  is OPEN, so phrase consumption stays the sequential head list until a class source exists.
+  Gate: `test_commentary` selector-mirror CHECKs (classes 0..5/7 -> head index, class 6 -> +2,
+  scene bit 0x42 -> +1) on top of the unchanged sequential + live-lane blocks.
+- Class-byte producer dead-end (scripts `/tmp/wc98pass87/GhidraWc98Q*.py`, outputs `q*.txt`):
+  the only whole-file byte writes `[reg+0x20]` are `0x4d942d` (SND-server window, function
+  boundaries absent in Ghidra's recovery, xref domain 0x451ef2..0x4694b1 = FE scenes — wrong
+  domain) and `[EAX+0x20]=0x7/0x12/0x13/0x14` inside `FUN_0042bde?..FUN_0042d0bc`-region code
+  (state/save-object values 0x12..0x14 exceed the class-queue index domain 0..7 — not speech
+  records). Record lane `0x48f830` writes payload `+0x4/+0x8/+0x18/+0x1c/+0x24` only; every
+  `DAT_006326c8` free-queue access lives in the handler cluster `0x48f3be..0x48fea6` and pushes
+  recycled records, never constructs stamped ones; boot init (`0x490100..0x490540`: qcreate
+  `0x490304/0x490312`, reserve `0x490328`, INC-EBX push loop `0x49033d`) allocates the pool
+  without writing class bytes. Conclusion: `[rec+0x20]` is stamped by a runtime mechanism not
+  statically reachable in FIFAWC.EXE (same class as the `.SCI` descriptor array) — [H], no retry
+  of static writer scans for this field.

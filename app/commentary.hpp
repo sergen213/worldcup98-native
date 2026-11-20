@@ -305,9 +305,25 @@ public:
     // flag) the start attempt fails and the record is recycled to the free queue DAT_006326c8,
     // i.e. the event phrase is dropped (rejected() counts it). Port sentence-active model =
     // speaking && queue holds phrases (drained ⇒ accept, as retail accepts after a sentence
-    // ends); the class-arm dispatch of 0x48f47c is not ported (col-4 sequential-pool deviation).
+    // ends); the class-arm entry selector of 0x48f317 is ported as entryIndexForClass below —
+    // the phrase source pool stays the shared storage-order list (col-4 deviation: exe class
+    // queues hold per-record tag preload data the port has no source for).
     // Idle path keeps the presentation seam's stop-then-start semantics.
     void trigger(const sim::SimEvent& e);
+    // Pass-88 A7 selector mirror (analysis/pass87beat/NOTES.md): the in-play dispatch arm
+    // 0x48f317 computes the ready-queue entry index `2*DAT_0057eb54[class] + (classByte>>6)`;
+    // table bytes MEASURED [0,0,0,0,0,0,1,0] (raw 0x17d154, 8 bytes — a pointer field follows at
+    // +8, NOT a weights array), so only class 6 shifts the base by +2 and the scene bits are
+    // classByte>>6. qfindindex FUN_004c4d50 returns the index-th successor of the queue head
+    // node (index 0 = head node; FUN_004c45d0 walk hops index times), activation qremoves the
+    // picked node (FUN_004c4a70) so a phrase plays exactly once. Event->class alignment is
+    // OPEN: the record class byte [rec+0x20] has no statically recoverable producer, so the
+    // live seam passes index 0 (head entry) for every event — same behavior as before, and the
+    // class->entry mapping stays exactly as the exe table defines it.
+    static constexpr std::size_t entryIndexForClass(std::uint8_t classByte) {
+        static constexpr std::uint8_t kExeTable[8] = {0, 0, 0, 0, 0, 0, 1, 0}; // DAT_0057eb54 raw 0x17d154
+        return 2u * kExeTable[classByte & 7u] + (classByte >> 6u);
+    }
     // Speech master gain (SNDspeechinit vol + SNDspeechautovol scene ramp seam): the original
     // ramps the speech stream volume to the scene level on sentence start and back toward 0 at
     // scene stop (sites 0x48fcb7 / 0x491125); every tick applies cur>>16 to the live voices.
@@ -375,7 +391,7 @@ public:
 private:
     void onStart(int slot, std::uint16_t id);
     bool onComplete(int slot);
-    void startPick(); // shared pick+enqueue run (pool head consumed, sentence start)
+    void startPick(std::size_t selector); // selector-th successor of pool head picked, qremoved, sentence start
 
     audio::Mixer* mixer_;
     audio::SpeechQueue q_;
@@ -383,8 +399,7 @@ private:
     formats::PhraseBank bank_;
     std::unordered_map<std::uint16_t, std::uint32_t> byId_;  // record u16@0x12 -> record index
     std::vector<std::vector<std::uint16_t>> segIds_;         // phrase ordinal -> segment ids (TOC order)
-    std::vector<std::uint32_t> candidates_;                  // pick pool: non-empty commentary phrases
-    std::size_t head_ = 0;                               // ready-list head: picks consume entries (FUN_004c4a70 qremove)
+    std::vector<std::uint32_t> candidates_;                  // pick pool: non-empty commentary phrases (ready-list model; picked node erased)
     std::array<audio::SoundId, audio::SpeechQueue::kSlots> sounds_{}; // slot -> mixer voice (0 = silent/done)
     std::array<float, audio::SpeechQueue::kSlots> slotGain_{}; // per-slot class gain (Hypothesis)
     ChannelMix mix_;                                           // DAT_0064b9dc model (duck/mix table)

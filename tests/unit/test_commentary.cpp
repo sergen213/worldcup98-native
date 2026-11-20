@@ -143,6 +143,18 @@ void synthetic() {
     c.trigger(ev(sim::EventType::KickOff));
     CHECK(c.sentencesStarted() == 5 && c.queue().queued() == 0 && c.lastPhrase() == 5);
 
+    // --- pass-88 A7 selector mirror (analysis/pass87beat/NOTES.md): measured DAT_0057eb54 bytes
+    // [0,0,0,0,0,0,1,0] shift the ready-queue base index by +2 ONLY for class 6; classes 0..5 and
+    // 7 use the base unchanged, scene bits = classByte>>6. Different class bytes therefore map to
+    // different, predictable entry indices. The live seam passes class byte 0 (head entry) until
+    // the event->class alignment is recovered (runtime [rec+0x20] producer, statically
+    // unrecoverable), so trigger() consumption above is exactly the sequential head-list model. ---
+    CHECK(app::Commentary::entryIndexForClass(0) == 0);
+    CHECK(app::Commentary::entryIndexForClass(5) == 0);
+    CHECK(app::Commentary::entryIndexForClass(6) == 2);
+    CHECK(app::Commentary::entryIndexForClass(7) == 0);
+    CHECK(app::Commentary::entryIndexForClass(0x42) == 1); // scene bit: 0x42 >> 6 == 1
+
     // --- speech master-gain seam (SNDspeechinit / SNDspeechautovol; state cb 0x4dfca0) on a
     // fresh instance: pick consumption is per-instance, so the seam needs live picks. ---
     app::Commentary g;

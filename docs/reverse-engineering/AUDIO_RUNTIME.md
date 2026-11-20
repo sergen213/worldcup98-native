@@ -1604,7 +1604,7 @@ reader both kinds; `0x4c8849` = ASCII case-insensitive compare); scripts
 
 Evidence `analysis/pass94gate/` (`t1.txt` raw-dword scan of the `0x641014..0x641200`
 operand sites, `t2.txt`/`t3.txt` producer + loader disasm, `t4.txt` pool-parse gate,
-`t5.txt` loader miss tails).
+`t5.txt` loader miss tails, `t7.txt` gate-absent + caller scan, `t8.txt` loader-caller function ownership).
 
 - **Slot producers.** The stores of `DAT_00641014`/`DAT_00641110` found by the operand
   scan (`t1.txt` site list; remaining sites, e.g. `0x48b8f0`, `0x4909b1`, are loads)
@@ -1638,11 +1638,14 @@ operand sites, `t2.txt`/`t3.txt` producer + loader disasm, `t4.txt` pool-parse g
   `CMP word [home+0x32],[away+0x32]` = FCDB id equality (pass-56 flag confirmed).
   Remaining pass-91 [H]: live events carry no retail class-7 byte; exe-side class
   stamping for in-play records stays open.
-- **No later gate writers.** Raw-dword scan of the image offsets `0x63b0ba/0x63b0ec`
-  (home +0x32/+0x34) and `0x63b1a2/0x63b1a4` (away +0x32/+0x34): ZERO immediate
-  operand sites (`t6.txt`, store sites confirmed as `0x4d4ab5`/`0x4d4ac7`); the known
-  deref sites (accessor `0048f29d`, boot `FUN_0048fa08`, chant pump record reads) are
-  loads. ⇒ the gate keeps its stamped value for the whole match — the class-7 lane is
-  open for every team whose FCDB id field is nonzero, and the both-zero reject lane is
-  retail-reachable only via the empty-slot id 0 [H].
+- **No later gate writers.** Raw-dword scan of the image gate absolutes — home
+  `0x63b0ea` (+0x32) / `0x63b0ec` (+0x34) and away `0x63b1a2` / `0x63b1a4`: ZERO
+  immediate operand sites (`t7.txt`). The ONLY function referencing the buffer
+  addresses `0x63b0b8`/`0x63b170` is `FUN_004d4950` (body `0x4d4950..0x4d5886`,
+  `t8.txt`), which calls loader `0x4cc060` once per side (`0x4d4a90` home, `0x4d4aab`
+  away, ids from `[ESP+0x100]/[ESP+0x102]`); the ~200 other `E8→0x4cc060` callers
+  listed in `t7.txt` never load these two buffer addresses as an immediate operand
+  (what they pass through non-immediate addressing is not enumerated [H]). ⇒ within
+  the match-setup lane the gate field is written once per team image; later
+  pointer-path writes stay [H].
 - Port impact: none (comments cite the producer chain).

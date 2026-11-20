@@ -295,11 +295,27 @@ form of these packed quads. Loader-side field splitting **is** statically proven
 install consumer `FUN_004a75d0` (§10) rewrites the loaded header's u32 slots @0x10..0x20 into
 section-boundary pointers — `@0x10 = buffer+0x24`, `@0x14 = @0x10 + u16@0x0A*0x10` (the tail-anchor
 ×16 field), `@0x18 = @0x14 + byte@0xE*0xC`, `@0x1C = @0x18 + u16@0x0C*0xC` (`0x16` = 22 tail
-entries), `@0x20 = @0x1C + byte@0xF*8` (trailer count) — and patches each stride-12 tail entry's
-+4/+8 slots with `@0x10 + index*0x10` record pointers stepping by the entry+0 i16 link [P bytes,
-sc4]. The pass-17 "descriptor `id` (gengol00=506) selects which scene record receives the payload"
-claim is RETRACTED — the old `id` column was record `flags` (§3 correction). Producer sites write
-rec+8 from pool init `FUN_004a0810` [P sci7].
+entries), `@0x20 = @0x1C + byte@0xF*8` (trailer count) — and patches the stride-12 tail entries'
+`+4/+8` slots (entries defined from `@0x14`/`@0x18`) with `iVar6 = iVar2*0x10 + param_2[4]`,
+stepping by the entry+0 i16 link [P bytes, sc4]. The boundary pointers **reconcile with the
+`SciFile.parse` spans tree-wide** (all 87 files):
+`@0x14 = tailStart − 4`. In the loader frame the patched entries are defined from `@0x14`
+(`magic & 0xff` of them) and `@0x18` (`u16@0x0C = 22` more): each stride-12 entry = `{i16 link
+@+0, record ptr @+4, ptr @+8}`. The `SciFile.parse` view is +4-shifted (`tailStart = @0x14 + 4`),
+so the observed views' `+0/+4` slots carry the record pointers and the link i16 lands in the
+previous view's `+8` word — on disk `{u32 DGROUP VA, u16[4]}` = `{0,0,count,index}` style. The
+trailer = the last `(magic >> 8) + 1` stride-8 `{VA,val}` pairs at `@0x1C + 4 = EOF − 24` — gate
+`test_sci` (`tail.size() == (magic&0xff) + 0x16`, `trailer.size() == (magic>>8) + 1`, `size ==
+0x24 + anchor*16 + (magic&0xff)*0xC + 0x16*0xC + 4 + trailer*8`, all 87 files). Patch value =
+pointer to record `iVar2` in the loaded buffer: `param_2[4]` is set to `buffer + 9` uints =
+`buffer + 0x24`, the same basis as `@0x10`; the loop-2 write and the trailer `@0x20` patch share
+it. So the on-disk `{u32 DGROUP VA}` tail/trailer slots (`0x582054 … 0x5a1054`, `0x5a30cc/0x5a3150/
+0x5a2054`) are **stale pre-relocation pointer slots** the install overwrites, not VA tables [P
+sc4]. What stays [H]: the meaning of the per-entry index/link values (`iVar2` seeds from the high
+u16 of the `u32@0x06` word (`tagB` {2|6}), steps by the entry+0 i16); the pointers themselves are
+into the loaded buffer. The pass-17 "descriptor `id` (gengol00=506) selects
+which scene record receives the payload" claim is RETRACTED — the old `id` column was record
+`flags` (§3 correction). Producer sites write rec+8 from pool init `FUN_004a0810` [P sci7].
 
 ## 7. Parity delta vs port sim
 
@@ -422,13 +438,17 @@ Runtime lane (DGROUP .bss):
   `DAT_0059CC38 + idx*4`, then install `FUN_004a75d0`: gate = loaded `.SCI` header tag
   `u16@0x04 == 0x35` (`SciFile.tagA` nibble check), bucket nibble from `in_EAX` (falls back to
   header `count@0x00` when `0xffffffff`); install into bucket array
-  `DAT_006426F0 + (nibble-1)*100*4` with fill counter `DAT_006426EC + idx*0x19` capped at 23
-  (`-2` = bucket full sentinel) — the pass-17sci "installs one of slots" lane, now with exact
-  bucket arithmetic. Install also rewrites the loaded header's u32 slots @0x10..0x20 into
+  `DAT_006426F0 + (nibble-1)*100*4` — when the low nibble is 0 the entry appends at the fill
+  counter `DAT_006426EC + (nibble-1)*0x19` (capped at 23, `-2` = bucket-full sentinel), otherwise
+  it overwrites slot 0 directly (`*(DAT_006426F0 + (nibble-1)*100) = file buffer`) — the
+  pass-17sci "installs one of slots" lane, now with exact bucket arithmetic. Install also
+  rewrites the loaded header's u32 slots @0x10..0x20 into
   section-boundary pointers (`@0x10 = buffer+0x24`, `@0x14 = @0x10 + u16@0x0A*0x10`, `@0x18 =
   @0x14 + byte@0xE*0xC`, `@0x1C = @0x18 + u16@0x0C*0xC` with `0x16` = 22 tail entries, `@0x20 =
-  @0x1C + byte@0xF*8`) and patches each stride-12 tail entry's +4/+8 slots with record pointers
-  `@0x10 + index*0x10` stepping by the entry+0 i16 link [P bytes, sc4].
+  @0x1C + byte@0xF*8`) and patches each stride-12 tail entry (entries defined from `@0x14`/`@0x18`)
+  `+4/+8` slots with record pointers `iVar2*0x10 + param_2[4]` (`= @0x10 + index*0x10` basis)
+  stepping by the entry+0 i16 link; loop-2 and the trailer `@0x20` write share the basis [P bytes,
+  sc4]. See §6 for the boundary identity gate (`test_sci`).
 - Gate in port: `formats::parseExeScriptRegistry` (`formats/src/sci.cpp`) + `test_sci` exe registry
   block pin 22/86, table/pool VAs, record 0/1/16/21 fields, class histogram, first/last names, and
   the unregistered `gengol31.sci`.

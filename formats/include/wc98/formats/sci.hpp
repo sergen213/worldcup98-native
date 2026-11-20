@@ -1,6 +1,8 @@
 // Scene payload parser for WC98 COMMON/*.SCI files. Grammar proven from on-disk bytes in
 // docs/reverse-engineering/TASK_HANDLERS_WC98.md §6 (pass-12sci); the runtime consumer of the
-// deserialized quads is FUN_004aaf00 (DAT_0063697c). Loader-side field splitting stays [H].
+// deserialized quads is FUN_004aaf00 (DAT_0063697c). Loader-side field splitting is proven by
+// the install consumer FUN_004a75d0 (§10, sc4); the boundary-identity gate is this file's tree
+// loop in tests/unit/test_sci.cpp.
 #include <wc98/reader.hpp>
 
 #include <array>
@@ -17,14 +19,16 @@ struct SciRecord {
     std::array<std::int16_t, 8> fields;
 };
 
-// Main tail table entry: stride 12 = {u32 DGROUP VA, u16[4]} (per-arena data bases / BSS scene
-// block; observed words = {0, 0, count, index}).
+// Main tail table entry: stride 12 = {u32 slot, u16[4]} (words observed {0,0,count,index}). The
+// on-disk u32 slot is a stale pre-relocation pointer; the install consumer FUN_004a75d0 rewrites
+// the slots with pointers to records in the loaded buffer (TASK_HANDLERS_WC98.md §6, sc4).
 struct SciTailEntry {
     std::uint32_t va = 0;
     std::array<std::uint16_t, 4> words{};
 };
 
-// Trailing packed list entry: stride 8 = {u32 DGROUP VA, u32 value} (BSS relocation base pairs).
+// Trailing packed list entry: stride 8 = {u32 slot, u32 value} (stale pre-relocation pointers,
+// same install-rewrite lane as the tail table; §6).
 struct SciTailPair {
     std::uint32_t va = 0;
     std::uint32_t val = 0;

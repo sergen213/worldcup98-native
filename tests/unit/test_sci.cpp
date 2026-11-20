@@ -55,6 +55,18 @@ int main() {
         }
         CHECK(!f.records.empty());
         CHECK(!f.tail.empty());
+        // sc4 header-rewrite boundary mapping (pass-110sci §6): the install FUN_004a75d0
+        // section-boundary pointers reconcile with these spans for every tree file — loop1
+        // patches (magic & 0xff) stride-12 views at tailStart, loop2 patches tagC more views
+        // from @0x18 = @0x14 + (magic & 0xff) * 0xC, and the stride-8 trailer starts at
+        // @0x1C + 4 = tailStart + tail.size() * 12; the last (magic >> 8) + 1 pair entries
+        // end at EOF. (@0x14 itself = tailStart - 4, the tail-anchor x16 field + 0x24.)
+        const std::size_t lo = f.magic & 0xff;
+        const std::size_t hi = f.magic >> 8;
+        CHECK(f.tail.size() == lo + f.tagC);
+        CHECK(f.trailer.size() == hi + 1);
+        CHECK(bytes.size() == 0x24 + std::size_t{f.offset} * 16 + lo * 0xC +
+                             std::size_t{f.tagC} * 0xC + 4 + f.trailer.size() * 8);
         for (const auto& r : f.records) hist[static_cast<int>(r.fields[0])]++;
     }
 

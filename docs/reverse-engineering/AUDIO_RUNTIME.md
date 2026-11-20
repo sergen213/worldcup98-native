@@ -1298,8 +1298,9 @@ EAX=0x48f730 start handler, ECX=0x48f78c presentation lane, pushes 0x48f830 reco
   (finished) → release word, recycle to `DAT_006326c8`.
 - Weighting: dispatcher arms class `>>6` → scene for `FUN_0048d070` + byte table
   `DAT_0057eb54[class]` (8 direct-indexed bytes, corrected from the earlier `[class*2]`
-  wording); class 7 consults the PHRS preload table `DAT_00641014` stride
-  0xFC entry `+0x34` u16. Boot pool `FUN_0048fb10` registers
+  wording); class 7 consults the PHRS preload slot pair `DAT_00641014`/`DAT_00641110`
+  (stride 0xFC pointer slots, pass-94: each holds a team-record image pointer, gate
+  u16 = field `+0x34` of the pointed-to record). Boot pool `FUN_0048fb10` registers
   `AUDIO\TEAM\A_T%04d.PBK` (fmt 0x566bac) / `AUDIO\PLRS\P%05d.PBK` (fmt 0x566bc4) word
   banks, node pools stride 0xc (accessor stub 0x48f704).
 - `FUN_004906a4` semantics correction: percent→count, not probability gate.
@@ -1446,8 +1447,10 @@ Evidence `/tmp/wc98pass91/c7b.txt` (decompile `FUN_0048f2d8` switch + `FUN_0048f
   through the pointer loaded from `DAT_006326b0`); `EBX=1; EDX=1; EAX=1; CALL 0x48f290` →
   store `[ECX]` (away slot, dispatcher stack `[ESP+0x10]`). Two accessor calls, selectors 0/1.
 - Accessor `FUN_0048f290` = MATCH-RECORD GATE + queue pick: `idx*0xfc` stride into
-  `DAT_00641014` (idx 0 = home record, idx 1 = `DAT_00641014+0xfc` = `DAT_00641110`, the
-  pass-56 home/away pair as ONE stride-0xfc table), read field `+0x34` u16; if 0 → return 0;
+  `DAT_00641014` (idx 0 = home, idx 1 = `DAT_00641014+0xfc` = `DAT_00641110`, the
+  pass-56 home/away pair as ONE stride-0xfc slot array), loads the slot POINTER
+  (`0048f29d MOV EDX,[EAX+0x641014]`) and reads field `+0x34` u16 of the pointed-to
+  team record (images stamped by pass-94 producer); if 0 → return 0;
   else `CALL 0x48d070` with `EAX=1` → queue lane `DAT_00632428 + 1*0x1c` (class-1 queue),
   selector = EBX (0 = head node, 1 = successor), i.e. the pass-87 `qfindindex` chain.
 - Record dispatcher `0x48f47c` (driver, gate `[DAT_006326b0]` NULL → whole dispatch silent):
@@ -1635,4 +1638,11 @@ operand sites, `t2.txt`/`t3.txt` producer + loader disasm, `t4.txt` pool-parse g
   `CMP word [home+0x32],[away+0x32]` = FCDB id equality (pass-56 flag confirmed).
   Remaining pass-91 [H]: live events carry no retail class-7 byte; exe-side class
   stamping for in-play records stays open.
+- **No later gate writers.** Raw-dword scan of the image offsets `0x63b0ba/0x63b0ec`
+  (home +0x32/+0x34) and `0x63b1a2/0x63b1a4` (away +0x32/+0x34): ZERO immediate
+  operand sites (`t6.txt`, store sites confirmed as `0x4d4ab5`/`0x4d4ac7`); the known
+  deref sites (accessor `0048f29d`, boot `FUN_0048fa08`, chant pump record reads) are
+  loads. ⇒ the gate keeps its stamped value for the whole match — the class-7 lane is
+  open for every team whose FCDB id field is nonzero, and the both-zero reject lane is
+  retail-reachable only via the empty-slot id 0 [H].
 - Port impact: none (comments cite the producer chain).

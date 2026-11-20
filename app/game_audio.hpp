@@ -217,6 +217,8 @@ void feedBoardAnnouncer(Announcer& announcer, std::int32_t homeTeam);
 class MatchAudio {
 public:
     explicit MatchAudio(const std::filesystem::path& tree);
+    ~MatchAudio(); // clears the percent-notifier back-pointer (live_) so a later scene-level
+                   // crowd write cannot dispatch into a destroyed instance
     void setMixer(audio::Mixer* mixer) { mixer_ = mixer; }
 
     void startCrowd(); // looped crowd ambience (CROWD.CRD card slots, FUN_0048e78c)

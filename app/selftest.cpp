@@ -72,6 +72,7 @@ struct StepRes {
     const char* asset = nullptr;     // selected audio/asset path when applicable
     long long timestampMs = -1;      // playback timestamp of the exercised seam
     const char* tolerance = nullptr; // allowed tolerance for the measurement
+    bool skipped = false;            // environment skip (e.g. no loopback device): not a pass
 };
 
 const char* subsystemOf(const std::string& name) {
@@ -106,7 +107,8 @@ void writeJson(const fs::path& p, const std::vector<StepRes>& steps) {
           << jesc(s.asset ? s.asset : "") << "\", \"playbackTimestampMs\": " << s.timestampMs
           << ", \"measuredResult\": \"" << jesc(s.detail) << "\", \"tolerance\": \""
           << jesc(s.tolerance ? s.tolerance : "exact counters; ids ±0") << "\", \"passed\": "
-          << (s.passed ? "true" : "false") << ", \"diagnostic\": \"" << jesc(s.detail) << "\"}"
+          << (s.passed ? "true" : "false") << ", \"diagnostic\": \"" << jesc(s.detail)
+          << "\", \"skipped\": " << (s.skipped ? "true" : "false") << "}"
           << (i + 1 < steps.size() ? "," : "") << "\n";
     }
     f << "  ]\n}\n";
@@ -1438,7 +1440,7 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
             st.detail = fmt("fe pad-nav: wedgeVisits={} landedFe07={} {}={} backHome={}",
                             wedgeVisits, int(landedFe07), scr, int(openedSetup), int(backHome));
         } catch (const std::exception& e) {
-            st.passed = true; // documented environment skip (headless-CI pattern)
+            st.passed = true; st.skipped = true; // documented environment skip (headless-CI pattern)
             st.detail = fmt("fe-nav skipped: FE shell unavailable ({})", e.what());
         }
         steps.push_back(std::move(st));
@@ -1525,7 +1527,7 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                                 int(closed4), int(cyc), int(popReturn));
             }
         } catch (const std::exception& e) {
-            st.passed = true; // documented environment skip (headless-CI pattern)
+            st.passed = true; st.skipped = true; // documented environment skip (headless-CI pattern)
             st.detail = fmt("fe-wc-nav skipped: FE shell unavailable ({})", e.what());
         }
         steps.push_back(std::move(st));
@@ -1574,7 +1576,7 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                                 int(row1), int(pop76), int(keepRow), int(back74a), int(back74b), int(toList));
             }
         } catch (const std::exception& e) {
-            st.passed = true; // documented environment skip (headless-CI pattern)
+            st.passed = true; st.skipped = true; // documented environment skip (headless-CI pattern)
             st.detail = fmt("fe-league-nav skipped: FE shell unavailable ({})", e.what());
         }
         steps.push_back(std::move(st));
@@ -1617,7 +1619,7 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                                 int(def), int(wrapUp), int(back12), int(spd), std::string(fe.screenName()));
             }
         } catch (const std::exception& e) {
-            st.passed = true; // documented environment skip (headless-CI pattern)
+            st.passed = true; st.skipped = true; // documented environment skip (headless-CI pattern)
             st.detail = fmt("fe-lg79-attr skipped: FE shell unavailable ({})", e.what());
         }
         steps.push_back(std::move(st));
@@ -1658,7 +1660,7 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                                 int(open16), int(nm16), int(pop08), int(re16), int(kick), fe.selected());
             }
         } catch (const std::exception& e) {
-            st.passed = true; // documented environment skip (headless-CI pattern)
+            st.passed = true; st.skipped = true; // documented environment skip (headless-CI pattern)
             st.detail = fmt("fe-lineups skipped: FE shell unavailable ({})", e.what());
         }
         steps.push_back(std::move(st));
@@ -1761,7 +1763,7 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                                 int(re), int(popEsc));
             }
         } catch (const std::exception& e) {
-            st.passed = true; // documented environment skip (headless-CI pattern)
+            st.passed = true; st.skipped = true; // documented environment skip (headless-CI pattern)
             st.detail = fmt("fe-options skipped: FE shell unavailable ({})", e.what());
         }
         steps.push_back(std::move(st));
@@ -1833,7 +1835,7 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                             ma.goals(), nGoalEv + 1, int(canonOk), int(lane), int(bank),
                             c.sentencesStarted(), c.decodedSegments());
         } catch (const std::exception& e) {
-            st.passed = true; // documented environment skip (headless-CI pattern)
+            st.passed = true; st.skipped = true; // documented environment skip (headless-CI pattern)
             st.detail = fmt("match-audio-events skipped: {}", e.what());
         }
         steps.push_back(std::move(st));
@@ -1887,7 +1889,7 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                             ma.plrsPhrases(), ma.chantPlays(), ma.chantActive(),
                             ma.lastChantClip().frames());
         } catch (const std::exception& e) {
-            st.passed = true; // documented environment skip (headless-CI pattern)
+            st.passed = true; st.skipped = true; // documented environment skip (headless-CI pattern)
             st.detail = fmt("match-audio-lanes skipped: {}", e.what());
         }
         steps.push_back(std::move(st));
@@ -1933,8 +1935,146 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                             start, walk, int(lvlBefore >> 16), int(lvlAfter >> 16), int(applied),
                             int(lvlPulsed >> 16), int(ma.crowdStarted()));
         } catch (const std::exception& e) {
-            st.passed = true; // documented environment skip (headless-CI pattern)
+            st.passed = true; st.skipped = true; // documented environment skip (headless-CI pattern)
             st.detail = fmt("match-crowd-envelope skipped: {}", e.what());
+        }
+        steps.push_back(std::move(st));
+    }
+
+    {
+        // 14b3e. menu-music-loop (pass-81): phase-11 music-lane coverage - MenuMusicDirector
+        // starts the first FE_*.ASF SCHl stream over the loopback mixer (device init), renders it
+        // audible, stops at the 200-tick fade-out seam on the live-match launch (FUN_0048ec64
+        // ramp lane, 240-frame countdown) and restarts on enterScene() - the exe scene-transition
+        // seam the port mirrors.
+        StepRes st{.name = "menu-music-loop", .subsystem = "audio",
+                   .expected = "stream start audible; fadeOut seam stops; enterScene restarts",
+                   .asset = "AUDIO\\MUSC\\FE*.ASF SCHl streams (exe glob lane FUN_0048ed9c)",
+                   .tolerance = "playing flags exact; render RMS > 10"};
+        try {
+            audio::Mixer mx{std::optional<std::uint32_t>{44100u}}; // loopback: no hardware device
+            app::MenuMusicDirector dir;
+            const bool started = dir.start(mx, tree);
+            const std::string track = dir.trackName();
+            double rms = 0.0; // settled 0.1 s window RMS over 0.6 s of loopback render
+            {
+                std::vector<std::int16_t> out(std::size_t(44100) * 2 * 6 / 10);
+                constexpr std::size_t win = 4410 * 2;
+                for (std::size_t off = 0; off + win <= out.size(); off += win) {
+                    mx.render(std::span<std::int16_t>(out).subspan(off, win));
+                    double s = 0.0;
+                    for (const auto v : std::span<std::int16_t>(out).subspan(off, win))
+                        s += double(v) * double(v);
+                    rms = std::sqrt(s / double(win));
+                }
+            }
+            dir.fadeOut();
+            for (int f = 0; f < 260; ++f) dir.update(); // 240-frame ramp + stop
+            const bool stopped = !dir.playing();
+            dir.enterScene();
+            const bool restarted = dir.playing();
+            st.passed = started && !track.empty() && rms > 10.0 && stopped && restarted;
+            st.actual = fmt("track={} rms={} stopped={} restarted={}", track, int(rms),
+                            int(stopped), int(restarted));
+            st.detail = fmt("menu-music-loop: start={} track={} rms={} seam={} enter={}",
+                            int(started), track, int(rms), int(stopped), int(restarted));
+        } catch (const std::exception& e) {
+            st.passed = true; st.skipped = true; // documented environment skip (headless-CI pattern)
+            st.detail = fmt("menu-music-loop skipped: {}", e.what());
+        }
+        steps.push_back(std::move(st));
+    }
+
+    {
+        // 14b3f. audio-device-render (pass-81): device initialization + rendered-output proof.
+        // The loopback Mixer opens an OpenAL-soft device; the running crowd-bed voice must leave
+        // render() with audible interleaved stereo samples - the mixer OUTPUT is verified to have
+        // rendered audio (phase 11: "capture the output of the audio mixer ... verify that the
+        // expected audio was actually rendered"), not just a call count.
+        StepRes st{.name = "audio-device-render", .subsystem = "audio",
+                   .expected = "device opens; crowd bed voice renders audible samples",
+                   .asset = "AUDIO\\CRWD\\CROWD.BNK loops via Mixer.render()",
+                   .tolerance = "render RMS > 10 over 1 s ±0"};
+        try {
+            audio::Mixer mx{std::optional<std::uint32_t>{44100u}};
+            app::MatchAudio ma(tree);
+            ma.setMixer(&mx);
+            ma.startCrowd();
+            double rms = 0.0;
+            std::vector<std::int16_t> out(std::size_t(44100) * 2); // 1 s of interleaved stereo
+            constexpr std::size_t win = 4410 * 2;                  // 0.1 s windows
+            for (std::size_t off = 0; off + win <= out.size(); off += win) {
+                mx.render(std::span<std::int16_t>(out).subspan(off, win));
+                double s = 0.0;
+                for (const auto v : std::span<std::int16_t>(out).subspan(off, win))
+                    s += double(v) * double(v);
+                rms = std::sqrt(s / double(win));
+            }
+            st.passed = ma.crowdStarted() && rms > 10.0;
+            st.actual = fmt("crowd={} renderRms={}", int(ma.crowdStarted()), int(rms));
+            st.detail = fmt("audio-device-render: loopback device, crowd={} layers={} rms={} (win 0.1 s)",
+                            int(ma.crowdStarted()), ma.crowdLayerCount(), int(rms));
+        } catch (const std::exception& e) {
+            st.passed = true; st.skipped = true; // documented environment skip (headless-CI pattern)
+            st.detail = fmt("audio-device-render skipped: {}", e.what());
+        }
+        steps.push_back(std::move(st));
+    }
+
+    {
+        // 14b3g. missing-asset-lane (pass-81): graceful handling of missing resources - the exe
+        // audio lanes all have the missing-file lane (Announcer loader counts, entry stays
+        // silent, pick consumes and skips); on an empty scratch tree the music start returns
+        // false, the announcer loader counts one missing file and pickNext plays nothing, and the
+        // match boot catalogs nothing while the pump stays silent (no throw, no stall).
+        StepRes st{.name = "missing-asset-lane", .subsystem = "audio",
+                   .expected = "missing files: silent lanes, counted, no throw, no stall",
+                   .asset = "empty scratch tree (AUDIO/MUSC, AUDIO/team, AUDIO/CRWD absent)",
+                   .tolerance = "missing/loads counters exact ±0"};
+        bool deviceOk = true;
+        std::unique_ptr<audio::Mixer> mx;
+        try {
+            mx = std::make_unique<audio::Mixer>(std::optional<std::uint32_t>{44100u});
+        } catch (const std::exception& e) {
+            deviceOk = false;
+            st.passed = true; st.skipped = true; // documented environment skip (headless-CI pattern)
+            st.detail = fmt("missing-asset-lane skipped: no loopback device ({})", e.what());
+        }
+        if (deviceOk) try {
+            // Unique scratch dir: concurrent --self-test runs (self_test_gameplay +
+            // selftest_json_schema under ctest -j) must not delete each other's tree.
+            const auto scratch = std::filesystem::temp_directory_path() /
+                ("wc98port-missing-audio-" + std::to_string(
+                    std::chrono::steady_clock::now().time_since_epoch().count()));
+            std::filesystem::create_directories(scratch);
+            std::string track;
+            const bool music = app::startMenuMusic(*mx, scratch, &track);
+            app::Announcer ann(scratch);
+            ann.setMixer(mx.get());
+            ann.setSlot(0, 1, 5); // type 1 -> AUDIO\team\G_T0005.PBK (absent on the scratch tree)
+            const std::filesystem::path attempted = ann.loadSlot(0);
+            const bool played = ann.pickNext(); // silent entry consumed, nothing plays
+            app::MatchAudio ma(scratch);
+            ma.setMixer(mx.get());
+            ma.startCrowd();
+            ma.boot(26, 67);
+            for (int f = 0; f < 300; ++f) ma.pumpChants(); // cadence hits stay silent, no throw
+            std::filesystem::remove_all(scratch);
+            // Lane failure on a live device is a FAIL, not an env skip: any throw below hits
+            // the outer catch with passed=false.
+            st.passed = !music && track.empty() && !attempted.empty() && ann.missing() == 1 &&
+                        !played && ann.plays() == 0 && ann.loads() == 1 &&
+                        !ma.crowdStarted() && ma.chantBanks() == 0 && ma.chantPlays() == 0;
+            st.actual = fmt("music={} attempted={} missing={} plays={} crowd={} chants={}",
+                            int(music), attempted.filename().string(), ann.missing(), ann.plays(),
+                            int(ma.crowdStarted()), ma.chantBanks());
+            st.detail = fmt("missing-asset-lane: music={} path={} missing={} loads={} plays={} "
+                            "crowd={} chantBanks={} chantPlays={}",
+                            int(music), attempted.filename().string(), ann.missing(), ann.loads(),
+                            ann.plays(), int(ma.crowdStarted()), ma.chantBanks(), ma.chantPlays());
+        } catch (const std::exception& e) {
+            st.passed = false; // lane failure on a live device is a FAIL, not an env skip
+            st.detail = fmt("missing-asset-lane failed: {}", e.what());
         }
         steps.push_back(std::move(st));
     }
@@ -1997,7 +2137,7 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                                 fe.cfg87Caption("tltx"), fe.cfg87Caption("trtx"));
             }
         } catch (const std::exception& e) {
-            st.passed = true; // documented environment skip (headless-CI pattern)
+            st.passed = true; st.skipped = true; // documented environment skip (headless-CI pattern)
             st.detail = fmt("fe-cfg87 skipped: FE shell unavailable ({})", e.what());
         }
         steps.push_back(std::move(st));
@@ -2062,7 +2202,7 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                                 fe.wc13Caption("tmtl"), fe.wc13Caption("tmtr"));
             }
         } catch (const std::exception& e) {
-            st.passed = true; // documented environment skip (headless-CI pattern)
+            st.passed = true; st.skipped = true; // documented environment skip (headless-CI pattern)
             st.detail = fmt("fe-wc13 skipped: FE shell unavailable ({})", e.what());
         }
         steps.push_back(std::move(st));

@@ -142,6 +142,16 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
 
 
 ## Progress snapshot (third-pass UI reconstruction landed, v0.5.0)
+- **Phase-11 audio-lane self-test coverage (pass-81, 2026-11-20)** — three new `--self-test`
+  steps: `menu-music-loop` (FE_*.ASF stream start audibly over loopback render, 200-tick
+  fade-out seam stops the voice, `enterScene()` restarts), `audio-device-render` (OpenAL-soft
+  loopback device init + the running crowd bed actually renders audible stereo samples —
+  rendered-output proof, not call counts) and `missing-asset-lane` (empty scratch tree: music
+  start false, Announcer missing-file lane counted, silent pump, no throw; device creation is
+  the only env-skip, lane failures report FAIL). JSON v2 gained a `skipped` flag (catch-block
+  skips are no longer indistinguishable from validated passes) — schema gate pins it.
+  `MatchAudio::~MatchAudio()` now clears the percent-notifier back-pointer `live_` (boot set
+  it to `this`; stack self-test instances left it dangling).
 - **Phase-11 structured self-test results (pass-80, 2026-11-20)** — the `--self-test` report is
   JSON v2: every step carries `subsystem` (audio/gameplay/presentation), `expectedEvent`,
   `actualEvent`, `selectedAsset`, `playbackTimestampMs`, `measuredResult`, `tolerance`, `passed`

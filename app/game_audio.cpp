@@ -160,6 +160,11 @@ MatchAudio::MatchAudio(const std::filesystem::path& tree) : tree_(tree) {
     }
 }
 
+MatchAudio::~MatchAudio() {
+    if (live_ == this) live_ = nullptr; // boot() registered the percent notifier (FUN_0049067c
+                                        // dispatch lane): never leave a dangling back-pointer
+}
+
 void MatchAudio::crowdNotifier(int channel) {
     (void)channel;
     if (live_) live_->relevelCrowd(); // percent write -> lane re-level (FUN_0049067c dispatch)

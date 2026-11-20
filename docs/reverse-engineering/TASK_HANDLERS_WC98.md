@@ -459,20 +459,30 @@ Runtime lane (DGROUP .bss):
 
 Boot-mode gate CLOSED (pass-111sci): driver `FUN_004a7120` walks the 22 records (u16 gate word)
 and registers each under the mode word built by boot handler `FUN_00409CAC` — venue flag bit
-(`FUN_0041a098` = u32 @ `0x571514 + venue*0x20`, the stadium pak-name table
-`{stet:1, stde:1, lens:0, lyon:1, mars:1, mont:0}`, venue index global `DAT_005716b8`):
+(`FUN_0041a098` = u32 @ `0x571514 + venue*0x20`, the stadium-pak table `DAT_00571514`, 13 rows
+pointing at `*___x.big` name slots: `{stet:1, stde:1, lens:0, lyon:1, mars:1, mont:0, toul:1,
+bord:1, nant:1, prac:1, semi:1, fina:0, clas:0}`; venue index global `DAT_005716b8`, index
+capacity 13; row field +0x10 is `1` on rows 0..8 and 10, `0` on rows 9/12 — semantics [H]):
 `venueFlag == 0 → bit 0x2, else 0x4`; scene bucket B (`DAT_00642508`: selector {0,11}→2, 9→1,
-else 0) → `0x8/0x10/0x20`; scene bucket C (`DAT_0064250C`: 6→1, {8,9}→2, else 0) → `0x40/0x80/
-0x100` (bucket C==2 fills the u16 high byte). Predicate: bit 0 unconditional; `flags & 0x200`
+else 0) → `0x8/0x10/0x20`; scene bucket C (`DAT_0064250C`: 6→1, {8,9}→2, else 0) → `0x40/0x80/`
+`0x100` (bucket C==2 fills the u16 high byte). Predicate: bit 0 unconditional; `flags & 0x200`
 records require `ctxId == DAT_006424FC = (uint)DAT_0059B2E6` (one value → at most one ctx pair of
 records 16..21 joins); else the masked word must keep all triples non-zero (`&0x6`, `&0x38`,
 `&0x1c0`). Gate `test_sci` boot-mode block pins per-scene register sets (scene 10 = 6 with the ctx
-global unmatched, 7 with a matched ctx value; scene 6 = 5/6; scene 8 = 4/5; scene 9 = 4). Aux skip
+global unmatched, 7 with a matched ctx value; scene 6 = 5/6; scene 8 = 4/5; scene 9 = 4). Membership
+is fully deterministic from (scene, venue flag, ctx value) — the aux slots are all `0xffff` after
+`FUN_004a7470`, so nothing is skipped; only the scan START (`FUN_004c321c() % totalEntries`) and
+the selection ORDER are tick-dependent [H]. Aux skip
 table producer CLOSED (pass-111sci): `FUN_004a7470` fills the 11 class slots `0x641DF0..0x641E04`
 with `0xffff` (unconditional), called from `FUN_004a7100` in the boot chain (`FUN_004AB520` site
 0x4ab541) — no other write site, so the tick-gated skip consumption of `FUN_004A7330` never
 consumes. Byte@+0xc module rewrite CLOSED: zero references to any record `+0xc`/`+0x10` in the
 whole image and table-pointer slot `0x580D44` is read only at driver site 0x4a7175 — no store lane
 exists, so the module-table branch of `FUN_004a7090` is statically unreachable (earlier "a scene
-handler could rewrite byte@+0xc at runtime" claim retracted). Per-scene subset of the 86 loaded on
-a given boot remains tick-dependent [H]. No bytecode VM — §9 conclusion unchanged.
+handler could rewrite byte@+0xc at runtime" claim retracted). Raw imm32 cross-scan corroborates
+both negatives: the only 4-byte-LE occurrences of `0x641DF0..0x641E04`, the module table
+`0x641E1C` and slot `0x580D44` in the image sit inside `FUN_004a7470`/`FUN_004a7090`/
+`FUN_004a7220`/the driver itself, and the record-table base `0x580A80` appears only as data in the
+registry block. The subset of the 86 pool entries loaded on a given boot equals the registered
+membership (deterministic per scene/venue/ctx); selection ORDER is tick-dependent [H]. No bytecode
+VM — §9 conclusion unchanged.

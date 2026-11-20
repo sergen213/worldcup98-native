@@ -114,9 +114,10 @@ counts in `docs/asset-formats/INVENTORY.md`, `docs/reverse-engineering/EXECUTABL
  sliderbtn 47; cited sites in docs/formats/LAYOUT.md), gaps 13/25-29/38/40/41 = no class (empty name,
  asserted). Remaining FE art pipeline: SQF EULZ sprites BLOCKED (pass-9eulz); MDL gated —
  venue pool table + material loader decoded 2026-11-20 (pass-105): 12-entry table VA
- 0x57dec8, loader FUN_00483418 material lane, gate `test_mdl venueChecks`; fly-in
- animation wiring still open (f32 transform fields [H], not wired in app/)
- (docs/reverse-engineering/MDL_GEOMETRY_NOTES.md).
+ 0x57dec8, loader FUN_00483418 material lane, gate `test_mdl venueChecks`; fly-in transform
+ fields CLOSED 2026-11-20 (pass-106: position +0x28..0x30, euler +0x38..0x40, scale +0x4c, bbox
+ +0x50/0x54) and wired in app (`--fe-venue N`, pass-108/109, ctest `fe_venue_wc35` capture;
+ docs/reverse-engineering/MDL_GEOMETRY_NOTES.md).
 2. Speech/commentary indexing (decoder itself is COMPLETE: 6,964/6,964 `.PBK`
    members decode via PT-tag routing, measured 2026-11-01): PHRS.INF index semantics RESOLVED
    2026-11-06 — `PHRS.HDR` == byte-exact first 0x2d6c bytes of `PHRS.PBK` (the full BIGF TOC = 1,290 LE {u32 offset,u32 size} pairs at 12+8*i; member sizes == decompressed sizes, no RefPack), INF = {u32@4 count=1290, u32@8 0x146f0 value-unexplained, "V8-7-4"}; rate default when tag `0x84` is absent RESOLVED 2026-11-06 — 22,050 Hz confirmed
@@ -130,7 +131,11 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
    Only remaining route: Win9x-era env (DOSBox-X debugger). `test_sqf` pins raw-payload FNV hashes.
    `.MDL` GEOM/SKEL gated (`test_mdl`: 12 FE models / 113 groups / 4,886 faces); `.DCT` EA SRE video RESOLVED
    2026-11-06 (`VIDEO_DCT_NOTES.md`, `docs/asset-formats/VIDEO.md`); inter-cell motion compensation = Hypothesis.
-4. `.SCI` AI-script bytecode (VM unparsed, parity with FIFA 99), GEN4TBLS AT/DF. `AISEQS.TBI`
+4. `.SCI` AI-script bytecode CLOSED 2026-11-20 (pass-110/111sci, commits 90bfdeb..58cde09): no VM
+   (pass-17sci D-29 data model); the exe script registry `FUN_004a7090`/`FUN_004a7120` + boot-mode
+   gate `FUN_00409CAC` decoded and mirrored (`parseExeScriptRegistry` + `test_sci` registry and
+   boot-mode pins); boot loader `FUN_00409BC0` scene-10 lane wired; selection ORDER remains tick-
+   dependent [H]. GEN4TBLS AT/DF. `AISEQS.TBI`
    index refined 2026-11-07: clip pool = stride-24 tagged records `[fourcc pair][seq<<16][TBA keyframe
    offset]`, 417 entries (`AI_SEQS_TBI.md`).
 5. Save/replay/presentation files: see `docs/reverse-engineering/SAVES.md` (options.sav layout,

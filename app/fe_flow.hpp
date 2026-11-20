@@ -262,10 +262,16 @@ public:
     // The exe feflow35 prologue (0x4587e8) reads the schedule record word +0xa (high half = venue
     // index, pass-105 provenance), loads venue art through the wrapper lane (FUN_0044a72c /
     // FUN_0044bf20 / FUN_004561d4 -> FUN_00483418), sets the scene arg (FUN_004833f8, non-zero
-    // gate) and the renderer (FUN_00482d7c) rasterizes the loaded shapes every frame. The draw
-    // order/viewport relation versus the scene's LAY back is not recovered [H] — the port
-    // composites the venue under the board UI, so it is loaded+wired but not visible on the
-    // full-collage board. The port's presentation model has no fixture schedule data
+    // gate) and the renderer (FUN_00482d7c) rasterizes the loaded shapes every frame. Pass-109
+    // proves the dispatch: each wrapper stores a raster stub into resource-record +0x28
+    // (mov [eax+0x28], stub against the FUN_0047a3e8 record load: `eras`/`csam`/`pucw`;
+    // the EDX after each store is the next lookup), and frame runner FUN_00444b28
+    // invokes them through FUN_0046bee0 while iterating the loaded-record
+    // list *DAT_00602518 (flags: +0x18 bit 3 skip, +0x19 bit 0; FUN_004794ac runs after
+    // the loop, body not decompiled). The flags' runtime state on board frames is not
+    // recoverable statically [H]; the port keeps the venue off the composite by default, so it
+    // is loaded+wired but not visible on the full-collage board. The port's presentation model
+    // has no fixture schedule data
     // (fe_flow.cpp:3271), so the slot is port-side [H]: slot 0..11 from formats::venueTable(),
     // -1 = lane off.
     void enableVenue(int slot); // loads MDL + pak + companion fsh; false result via venueLoaded()

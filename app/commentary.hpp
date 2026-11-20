@@ -320,13 +320,25 @@ public:
     // preload table (arm 0x48f354). qfindindex FUN_004c4d50 returns the index-th successor of the
     // queue head node (index 0 = head node; FUN_004c45d0 walk hops index times), activation
     // qremoves the picked node (FUN_004c4a70) so a phrase plays exactly once.
-    // Class byte producer (retracts the pass-88 "no statically reachable writer" claim): record
-    // driver 0x48f3e0 calls FUN_0048ffe8, which runs the sound-registry find 0x4a4a00/0x4a4a30
-    // (slot pool DAT_006419e0, keyed by the record's event words [+0]/[+4]) and stores the first
-    // byte of the found node chain at [rec+0x20]. The registry is populated by a load-time lane
-    // with no statically recoverable event->class constant, so event->class alignment stays OPEN
-    // and the live seam picks the pool head directly (port deviation, documented in
-    // commentary.cpp) — same behaviour as before this pass.
+    // Class byte producer (retracts the pass-88 "no statically reachable writer" claim; the
+    // pass-89 "alignment stays OPEN" residual is decoded pass-90, analysis/pass90reg/NOTES.md):
+    // record driver 0x48f3e0 calls FUN_0048ffe8, which runs a TWO-LEVEL sound-registry find
+    // (0x4a4a00 then 0x4a4a30, slot pool DAT_006419e0) on the registry base = the TYPE.PBK
+    // load block (FUN_00490250 -> DAT_00632734; locatebig type-2 lane = raw BIGF TOC, records
+    // at base+0x10 {u32be off, u32be size, NUL name}, slot shift CL = 0x20-8*4 = 0 -> FULL off,
+    // r6.txt 0x4a46d0/0x4a46f3).
+    // Lookup 1 (key [struct+0], the event phrase id) returns block+off = the member payload -
+    // every TYPE.PBK member is itself a nested BIGF segment TOC (SPEECH_INDEXING_NOTES.md S2) -
+    // and lookup 2 (key [struct+4], the segment index) returns the inner record's NAME pointer;
+    // the driver stores that name byte 0 at [rec+0x20]. Retail name tags (census gate in
+    // test_audio.cpp, 4,665 inner records): exactly {0x07} on 211 segments of 139 phrases
+    // (phrases 139..1017, the pass-86 PHRS preload-arm 0x48f354 lane) and {0x40} on segment #0
+    // of 251 phrases >= 1035 ((byte&0x3f)==0 -> gate skips selection, engine callback); all
+    // other records (untagged, miss, count=0 nests) stamp 0. NO tag is in {2,4,6}, so the
+    // selector arms (jump table 0x48f2bc) are dead code in retail WC98; untagged records take
+    // the engine-callback lane and the live seam's head pick mirrors that. Class-7 records
+    // route to the PHRS preload arm instead - the port seam does not yet distinguish them
+    // (open alignment).
     static constexpr std::size_t kNoEntry = static_cast<std::size_t>(-1); // selector arm did not pick
     static constexpr std::size_t entryIndexForClass(std::uint8_t classByte) {
         static constexpr std::uint8_t kExeTable[8] = {0, 0, 0, 0, 0, 0, 1, 0}; // DAT_0057eb54 raw 0x17d154

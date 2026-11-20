@@ -114,10 +114,13 @@ void Commentary::trigger(const sim::SimEvent& e) {
     // the in-play dispatcher tags nothing, so seam slots share the storage-order pool;
     // first-match over a shared list is then sequential consumption.
     // Evidence: COMMENTARY_WC98.md §pick, analysis/pass76pbp/NOTES.md.
-    // Pass-88/89: selector(0) = ready-queue head entry. The exe selector arm only runs for
-    // classes 2/4/6 (jump table 0x48f2bc) and needs a registry-stamped class byte
-    // (driver -> FUN_0048ffe8, see commentary.hpp), which the port cannot source, so the seam
-    // picks the head directly — the deviation, not the formula, is the port's choice here.
+    // Pass-88/89: selector(0) = ready-queue head entry. Pass-90 decoded the registry-stamped
+    // class byte (driver -> FUN_0048ffe8 -> two-level TYPE.PBK lookup -> inner segment-record
+    // name byte 0, analysis/pass90reg/NOTES.md): retail tags are {0x07} (PHRS preload arm) and
+    // {0x40} ((byte&0x3f)==0 -> engine callback), never {2,4,6}, so the jump-table selector
+    // arms (0x48f2bc) never run and the engine callback lane picks the queue head — head pick
+    // here mirrors the retail path for untagged records. Class-7 events route to the PHRS
+    // preload lane, which this seam does not distinguish yet (open alignment).
     startPick(0);
 }
 
@@ -135,7 +138,7 @@ void Commentary::triggerLive(const sim::SimEvent& e) {
         ++rejected_; // exhausted ready pool: qfindindex null, record recycles (pass-89)
         return;
     }
-    startPick(0); // head entry: selector arm not fed (registry class byte unavailable, see commentary.hpp)
+    startPick(0); // head entry: engine-callback lane; retail has no selector-class tags (pass-90)
 }
 
 void Commentary::startPick(std::size_t selector) {

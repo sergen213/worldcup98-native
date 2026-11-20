@@ -1342,8 +1342,11 @@ Evidence: `analysis/pass87beat/` (`q1..q4.txt`, `GhidraWc98Q1..Q4.py`).
   `2*DAT_0057eb54[class] + (classByte>>6)` with the measured table bytes `[0,0,0,0,0,0,1,0]`;
   `startPick(selector)` picks the selector-th successor of the ready-list head node (index 0 =
   head) and erases the picked entry on activation (qremove `FUN_004c4a70` semantics), short/empty
-  chain -> NULL pick silent. The live seam calls it with class byte 0: the event->class alignment
-  is OPEN, so phrase consumption stays the sequential head list until a class source exists.
+  chain -> NULL pick silent. The live seam calls it with class byte 0: the event->class
+  alignment was OPEN at pass-88 write time; pass-90 below decoded the stamp (nested
+  segment-TOC name byte, tags {0x07, 0x40}, no selector-class tags), so untagged records take
+  the engine-callback head pick — the seam's sequential consumption — while class-7 preload
+  routing stays an open alignment.
   Gate: `test_commentary` selector-mirror CHECKs (classes 0..5/7 -> head index, class 6 -> +2,
   scene bit 0x42 -> +1) on top of the unchanged sequential + live-lane blocks.
 - Class-byte producer (RETRACTED pass-88 conclusion; re-decoded pass-89,
@@ -1355,8 +1358,9 @@ Evidence: `analysis/pass87beat/` (`q1..q4.txt`, `GhidraWc98Q1..Q4.py`).
   byte-chain), and stores the first chain byte at `[rec+0x20]` (`r2.txt`/`r3.txt`). The pass-88
   writer scan missed it because `MOV byte ptr [ESI],AL` indexes through a register, not a
   literal `+0x20` displacement. Registry population is a load-time lane (`0x4a45d0` has the one
-  find-site; entries registered at bank-load) carrying no event->class constant, so
-  event->class alignment stays OPEN [H]. Pass-89 also fixed the selector domain: dispatch jump
+  find-site); pass-89 left event->class alignment OPEN [H] — decoded by pass-90 below (the
+  registry base is `TYPE.PBK`; the stamped byte is the nested segment-record name byte 0).
+  Pass-89 also fixed the selector domain: dispatch jump
   table `0x48f2bc` keys `[rec+0x20]&0x3f` DEC'd — entries `{skip, selector, skip, selector,
   skip, selector, PHRS-arm 0x48f354}`, i.e. classes **2/4/6 only**; classes 0/1/3/5 skip
   selection (engine callback `0x48f442`), class 7 consults the PHRS preload table
@@ -1371,3 +1375,41 @@ Evidence pass-89: `/tmp/wc98pass87/GhidraWc98R{1..5}.py` -> `r{1..5}.txt` (drive
 `FUN_0048ffe8`, registry helpers `0x4a4a00/0x4a4a30/0x4a4820`, pick-loop jump table read at raw
 VA `0x48f2bc`) + `analysis/pass89sel/NOTES.md`; the pass-88 writer-scan evidence
 (`q5..qe.txt`, `analysis/pass88sel/NOTES.md`) stays as the retracted route's record.
+
+## Pass-90 (2026-11-20): registry base proven = `TYPE.PBK`; class byte = nested segment-TOC name byte
+(RETRACTING this pass's first write-up: it read lookup #2's base as `block + off>>16` and
+censused only the OUTER TOC names — the type-2 slot shift is computed, `MOV ECX,4; NEG ECX;
+LEA ECX,[ECX*0x8+0x20]` -> `CL = (-4*8)+0x20 = 0` -> `SHR EAX,CL` keeps the **full u32 value**,
+so lookup #1 returns the member's full offset and lookup #2 walks the member payload, not the
+outer TOC. `r6.txt` type-2 lane `0x4a46a0..0x4a4715`: off slot `0x4a46d0..0x4a46e4`, size slot
+`0x4a46f3..0x4a4708`.)
+- Population (`/tmp/wc98pass87/r8.txt`, `analysis/pass90reg/l1.txt`): boot loader
+  `FUN_00490250` loads `PHRS.HDR` (literal name string `0x566c00`) into `DAT_00632730` and
+  **`TYPE.PBK`** (literal `0x566c0c`, path formatted by `0x48f9d0`, loaded via `0x439810`)
+  into `DAT_00632734` — the base every driver lookup searches. The block reader `FUN_004a44b0`
+  classifies blocks by magic: BE 3-byte `C0FB` -> type-1 lane (`base+0x6`, 24-bit BE fields),
+  BE `BIGF` -> **type-2 lane** (`base+0x10`, `{u32be off, u32be size, NUL name}` = raw BIGF
+  TOC, numeric hit: counter == key, **return pointer = record NAME (`EBX+8`)**, records advance
+  nameLen+9; out slots shifted by `CL = (-typeCount*8) + 0x20` (`MOV ECX,4; NEG; LEA` at
+  `0x4a46d0/0x4a46f3`) = 0 for type 2 -> **FULL off**).
+- Driver pair (`r6.txt`): `0x4a4a00` (lookup #1, key `[struct+0]` = event phrase id) returns
+  `base + off` = the outer member's payload pointer; `0x4a4a30` (lookup #2, key `[struct+4]` =
+  segment index) walks **that payload** and copies the found record's byte-chain into
+  `&[rec+0x20]`, driver stores byte 0. Every TYPE.PBK member payload is itself a nested `BIGF`
+  segment TOC (the PHRS phrase->segment mirror, `SPEECH_INDEXING_NOTES.md` S2), so the class
+  byte = **inner segment-record `#struct+4` NAME byte 0**.
+- Census (`analysis/pass90reg/census.txt`): outer TOC 1,290 records, all payloads nested BIGF
+  (268 with `count=0`); inner records 4,665 (= PHRS segment count, pass-16); inner names are
+  exactly 1 byte, 462 non-empty, histogram `{0x07: 211, 0x40: 251}`. `0x07` names cover 139
+  phrases (range 139..1017, mostly one segment each) -> **PHRS preload arm** `0x48f354`
+  (`DAT_00641014` table lane, pass-86). `0x40` names are segment `#0` of 251 phrases (range
+  1035..1289) -> gate `TEST byte,0x3f` == 0 -> **engine callback** (selector skipped, bits
+  6..7 unused). Untagged / miss / `count=0` nests stamp `0` -> engine callback. **No tag is in
+  {2,4,6}**: the jump-table `0x48f2bc` selector arms are dead code in retail WC98 — that part
+  of the pass-89 conclusion stands — but the class-7 preload arm is REACHABLE (139 phrases),
+  correcting pass-90's first "all arms dead" claim. The port's head-pick seam mirrors the
+  engine-callback lane (untagged/0x40 records); class-7 routing to the preload lane is an open
+  alignment, and `entryIndexForClass` stays as documentation of the unreachable arm.
+- Gate: `test_audio.cpp` pass-90 block — outer `BigArchive::parse(TYPE.PBK, tolerant)` + nested
+  `BigArchive::parse` per member: 1290 outer, 0 non-BIGF payloads, 4,665 inner records, name
+  histogram `{0x07: 211, 0x40: 251}` (462 names).

@@ -338,6 +338,43 @@ static void original() {
     CHECK(pbkMt == 6851 && pbkXa == 113 && pbkOther == 1044);  // other: TYPE.PBK = header-only mirror of PHRS.PBK (1,022 stubs + 268 empty) + CROWD raw + COMOS MIDx — docs/reverse-engineering/SPEECH_INDEXING_NOTES.md
     CHECK(pbkSamples == 508302490);
 
+    // Pass-90 class-byte census (analysis/pass90reg/NOTES.md): the exe sound registry is the
+    // TYPE.PBK load block (FUN_00490250 -> DAT_00632734). Driver 0x48f3e0 -> FUN_0048ffe8 does
+    // lookup #1 on the outer TOC (locatebig type-2 lane, records at base+0x10 {u32be off,
+    // u32be size, NUL name}, numeric key [struct+0] = phrase id, out slot = FULL u32 offset
+    // because the type-2 shift is 32-8*4 = 0), then looks up record #[struct+4] in the block
+    // at base+off - every TYPE.PBK member is itself a nested BIGF (the per-phrase segment
+    // TOC mirror, SPEECH_INDEXING_NOTES.md S2) - and stamps the found inner record's NAME
+    // byte 0 at [rec+0x20]. The inner name tags are the per-event classes: exactly {0x07}
+    // (211 segments, 139 phrases, PHRS preload arm) and {0x40} (segment #0 of 251 phrases
+    // >= 1035; gate (byte&0x3f)==0 -> engine callback). No 2/4/6 tags exist -> the selector
+    // arms are dead code in retail. Regression guard for the census:
+    {
+        const auto typeRaw = wc98::readFile(root / "AUDIO" / "PHRS" / "TYPE.PBK");
+        const std::span<const std::uint8_t> ts{typeRaw};
+        const BigArchive outer = BigArchive::parse(ts, /*tolerant=*/true);
+        CHECK(outer.entries.size() == 1290);
+        std::size_t innerRecords = 0, n7 = 0, n40 = 0, emptyInner = 0, innerNames = 0;
+        for (const auto& e : outer.entries) {
+            const auto payload = BigArchive::payload(ts, e);
+            if (BigArchive::isBig(payload)) {
+                const BigArchive inner = BigArchive::parse(payload, /*tolerant=*/true);
+                innerRecords += inner.entries.size();
+                for (const auto& ie : inner.entries)
+                    if (!ie.name.empty()) {
+                        ++innerNames;
+                        if (ie.name.front() == 0x07) ++n7;
+                        else if (ie.name.front() == 0x40) ++n40;
+                    }
+            } else {
+                ++emptyInner; // outer member payload not a locatebig block -> lookup miss
+            }
+        }
+        CHECK(emptyInner == 0); // all 1290 members are nested BIGF segment TOCs
+        CHECK(innerRecords == 4665); // matches the PHRS segment count (pass-16 census)
+        CHECK(innerNames == 462 && n7 == 211 && n40 == 251);
+    }
+
     // SCHl streams: 8 .ASF music + 29 .DCT video (audio head sub-stream decodes; the
     // EA-TREM video payload of .DCT is a documented gap, matrix section 9).
     int asf = 0, dct = 0, streams = 0, okStreams = 0;

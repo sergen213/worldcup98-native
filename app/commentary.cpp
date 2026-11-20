@@ -121,7 +121,9 @@ void Commentary::trigger(const sim::SimEvent& e) {
     // arms (0x48f2bc) never run. The engine-callback lane 0x49001c runs a second registry find
     // (0x48ff64, writes the SUM of the two located-slot values to the driver slot — pass-92
     // full wrapper disasm analysis/pass92cbr/e5.txt, no doubling instruction; the pass-90
-    // "2*found-index" wording was unbacked) — no queue head pick is proven there,
+    // "2*found-index" wording was unbacked; pass-93 decoded the slots: sum of BIGF record
+    // offset fields, high slot = segment length — analysis/pass93wr/) — no queue head pick
+    // is proven there,
     // so the sequential head pick here stays a deviation [H]. Class-7 events route to the PHRS
     // preload lane, mirrored pass-91 as triggerLive7 (event-side tag wiring open [H]).
     startPick(0);

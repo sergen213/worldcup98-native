@@ -1509,11 +1509,13 @@ Ghidra scripts `GhidraWc98E1..E7.py` alongside; notes `analysis/pass92cbr/NOTES.
   `0048ffab ADD EAX,EBX` / `0048ffad MOV dword ptr [EBP],EAX` writes **`[out low] =
   wrapper-local [ESP] + [ESP+4]`, the SUM of the two located-slot values**. The callback's
   **high** slot is written directly by `locatebigentry`: the wrapper's `0x48ff6f MOV EDI,EBX`
-  (callback `00490042 LEA EBX,[ESP + 0x4]`) is pushed at `0048ff99` and reaches the writer's
-  `[ESP+0x20]` → `004a45d0 004a460d MOV EBP,[ESP+0x20]`; miss path zeroes both pointers at
+  (callback `00490042 LEA EBX,[ESP + 0x4]`) reaches the writer as `[ESP+0x20]` on BOTH keyed
+  calls — `0048ff7c PUSH EBX` (before `0048ff7d` reloads EBX with the key) and `0048ff99
+  PUSH EDI` → `004a45d0 004a460d MOV EBP,[ESP+0x20]`; lookup #1 seeds the high slot first,
+  lookup #3 overwrites it. Miss path zeroes both pointers at
   `004a4607 MOV dword ptr [EDI],0x0` / `004a4615 MOV dword ptr [EBP],0x0`; the success-store
-  bodies at `0x4a4627`/`0x4a46a0`/`0x4a4718` are undumped, so each slot's value semantics
-  are [H]. **No doubling/shl instruction exists in any dumped body (wrapper 0x48ff64,
+  bodies are decoded in pass-93 (`0x4a4644`/`0x4a46a0` store lanes — big-endian record
+  offset/length fields, see Pass-93 below). **No doubling/shl instruction exists in any dumped body (wrapper 0x48ff64,
   callback 0x49001c, sibling 0x490094) — the pass-90 "2×found-index" wording is retracted
   as unbacked.** Callback (`e1.txt` verbatim): gate on the high slot `0049004d CMP dword ptr
   [ESP + 0x4],0x0` / `00490052 JLE`; then lock pair `FUN_00438f58`/`0x438f80`
@@ -1527,8 +1529,8 @@ Ghidra scripts `GhidraWc98E1..E7.py` alongside; notes `analysis/pass92cbr/NOTES.
   verify the full read: `00490077 MOV EDX,EAX` (bytes read) / `0049007e CMP EDX,dword ptr
   [ESP + 0x4]` / `00490082 JNZ 0x00490038` → returns 0 unless bytes-read equals the high
   slot; `00490084 MOV EAX,0x1`.
-  ⇒ **the engine callback seeks to a registry-derived position (sum-slot value; exact
-  arithmetic [H], 0x4a45d0 success bodies undumped) in PHRS.PBK and reads the
+  ⇒ **the engine callback seeks to a registry-derived position (sum-slot value; arithmetic
+  decoded pass-93 — two-level big-endian member offsets, see Pass-93) in PHRS.PBK and reads the
   high-slot-sized segment record into `[struct+0x10]`, returning success only on the full
   read** — not from any queue — confirms pass-90b's "does NOT qfindindex"; pool-head
   pick stays port deviation [H].
@@ -1545,4 +1547,52 @@ Ghidra scripts `GhidraWc98E1..E7.py` alongside; notes `analysis/pass92cbr/NOTES.
   then queue walk (`0x4c4890` fetch, `0x4d8aa0`, invoke `[obj+0x10]`, release `0x4c4800`).
 - Registry bases corrected: lookup #1 = `PHRS.HDR` table (`DAT_00632730`), lookup #2 =
   `TYPE.PBK` payload (`DAT_00632734`). `PHRS.HDR` header shape observed BIGF with u32
-  offset/name entries (raw dump in notes) [H: exact record decode].
+  offset/name entries — record decode closed pass-93.
+
+## Pass-93: registry slot arithmetic decoded — BIGF record offset/length fields (measured 2026-11-20)
+
+Evidence `analysis/pass93wr/f1.txt` (writer `0x4a45d0` full incl. success stores
+`0x4a4644`/`0x4a46a0`, index-walk `0x4a4798`/`0x4a47ae`, string-scan lane
+`0x4a4718`/`0x4a4728`, size reader `0x4a4580`, classifier `0x4a44b0`, `0x4a4820` full
+incl. `bigfoot.c` error logs 0x13c/0x13e, name variants `0x4a48a0`/`0x4a48c0`/`0x4a48e0`
+not in this lane), `f2.txt` (`0x4a4a00` full — payload-pointer return; `0x4a49a0` count
+reader both kinds; `0x4c8849` = ASCII case-insensitive compare); scripts
+`GhidraWc98F1.py`/`F2.py`.
+
+- `0x4a44b0` classifier on base: u16 BE magic `0xc0fb` → kind 1; u32 BE magic
+  `0x42494746` = "BIGF" → kind 2; NULL → debug-gated log (bigfoot.c:0x30), return 0.
+  `0x4a4580` record size: kind 1 u24 BE at `base+2` + 4; kind 2 u32 BE at `base+0xc`.
+- `0x4a45d0` args (Watcom, callee-clean): EAX=base, EDX=key **string** ptr (name-scan
+  lane `0x4a4718`, case-insensitive via `0x4c8849` + `OR 0x20202020` fast path), EBX =
+  **record index** (saved `[ESP+4]`), ECX = out-A ptr, stack arg = out-B ptr. With
+  `EDX=NULL` (the callback lane — all three wrapper calls pass `XOR EDX,EDX`): index
+  walk from `base+6` (kind 1, stride 6+strlen+7, name at record+6, u24 BE fields at
+  record+0/+3) or `base+0x10` (kind 2, stride 8+strlen+1 = `{BE32 offset, BE32 len,
+  NUL-terminated name}`, fields at record+0/+4, name at record+8); iteration counter in
+  `[ESP+0xc]` (`INC EDI` at `0x4a47c5`), stops when counter == index, miss at payload
+  end (`CMP EBX,end; JC` loop) → zero out-A/B pointers.
+- kind-2 success store `0x4a46ca`+: out-A = **BE32 at record+0** (member offset), out-B =
+  **BE32 at record+4** (member length), return = record+8 (name ptr). kind-1 store
+  `0x4a4652`+: u24 BE record+0 / record+3, return record+6.
+- `0x4a4a00` = payload-pointer locator (lookup #2): index lookup into payload with its
+  own local out-A slot (`004a4a0d LEA ECX,[ESP+0x4]`, stack arg = global `0x6419e0` —
+  the discarded length), success `004a4a1e MOV EAX,[ESP]` (found record+0 offset) +
+  `004a4a21 ADD EAX,ESI` → **return = base + member offset**; miss → NULL. (pass-92's
+  "located member pointer" now fully derived: payload = `TYPE.PBK` payload + HDR-record
+  offset field.)
+- `0x4a49a0` = record count: kind 1 u24 BE at `base+4`; kind 2 **u32 BE at header+8**
+  (`0x4a49da` — measured: both files' header+8 = `0x50a` = 1290, the pass-90 tag census
+  count). Wrapper index bound `0048ffd2 CMP EDX,EAX; JGE` → miss when index >= count.
+- Payload magics measured (runtime lane ⇒ kind 2): `PHRS.HDR` and `TYPE.PBK` both open
+  with `42 49 47 46` (BE "BIGF"); `PHRS.HDR` header+4 `0x1848`, header+8 `0x50a`
+  (= 1290 records); record0 at +0x10 = offset `0x14454`, len `0x171`.
+- ⇒ **callback arithmetic closed**: `[out low] = BE32(PHRS.HDR record[struct+0]+0) +
+  BE32(segment record[struct+4]+0)` (HDR base offset + segment offset inside the nested
+  payload), `[out high] = BE32(segment record[struct+4]+4)` = segment length (lookup #1
+  seeds it with HDR record+4 via the `0048ff7c` out-B ptr; #3 overwrites). Callback seeks
+  `PHRS.PBK` at that sum, reads length bytes into `[struct+0x10]`, returns 1 iff the full
+  length was read. No doubling anywhere — pass-92 [H] closed; pool-head pick remains port
+  deviation [H] (the lane is offset arithmetic, not selection).
+- Port impact: none. The port's in-memory bank decode replaces the runtime seek lane;
+  `app/commentary.cpp`/`hpp` callback-lane comments updated to cite the decoded field
+  semantics. Deviation notes unchanged.

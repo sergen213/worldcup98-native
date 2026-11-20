@@ -35,6 +35,7 @@ struct Mixer::Voice {
     SoundId id = 0;
     ALuint source = 0;
     std::vector<ALuint> buffers;
+    std::vector<std::uint32_t> bufFrames; // frames last queued into each buffer (counter accounting)
     // streaming only
     std::shared_ptr<const std::vector<std::uint8_t>> file;
     std::unique_ptr<formats::SchlDecoder> decoder;
@@ -122,7 +123,7 @@ SoundId Mixer::play(const formats::Pcm& pcm, float gain, bool loop) {
     return voices_.back()->id;
 }
 
-void Mixer::refill(Voice& v, unsigned buffer) {
+void Mixer::refill(Voice& v, std::size_t bufferIndex) {
     // Decode whole SCDl blocks until a chunk is full (or the stream ends / loops).
     while (v.pending.size() < kStreamChunkFrames * v.channels && !v.exhausted) {
         if (!v.decoder->next(v.pending)) {
@@ -137,7 +138,9 @@ void Mixer::refill(Voice& v, unsigned buffer) {
         }
     }
     std::size_t n = std::min(v.pending.size(), kStreamChunkFrames * v.channels);
-    if (!n) return;
+    if (!n) { v.bufFrames[bufferIndex] = 0; return; }
+    ALuint buffer = v.buffers[bufferIndex];
+    v.bufFrames[bufferIndex] = std::uint32_t(n / v.channels);
     alBufferData(buffer, alFormat(v.channels), v.pending.data(), ALsizei(n * 2), ALsizei(v.rate));
     alSourceQueueBuffers(v.source, 1, &buffer);
     v.pending.erase(v.pending.begin(), v.pending.begin() + std::ptrdiff_t(n));
@@ -155,11 +158,12 @@ SoundId Mixer::stream(std::shared_ptr<const std::vector<std::uint8_t>> file, con
     v->loop = loop;
     v->gainCur = gain;
     v->buffers.resize(kStreamBuffers);
+    v->bufFrames.resize(kStreamBuffers, 0);
     alGenBuffers(kStreamBuffers, v->buffers.data());
     alGenSources(1, &v->source);
     alSourcef(v->source, AL_GAIN, gain);
     try {
-        for (ALuint b : v->buffers) refill(*v, b);
+        for (std::size_t i = 0; i < v->buffers.size(); ++i) refill(*v, i);
         alSourcePlay(v->source);
         check("stream");
     } catch (...) {
@@ -189,7 +193,12 @@ void Mixer::pumpLocked() {
                 while (processed-- > 0) {
                     ALuint b = 0;
                     alSourceUnqueueBuffers(v.source, 1, &b);
-                    refill(v, b);
+                    // The device consumed this buffer: charge its queued frame count to the
+                    // audio frame counter (exe DAT_0058951c mirror) before refill overwrites it.
+                    if (const auto idx = std::ranges::find(v.buffers, b); idx != v.buffers.end()) {
+                        playedFrames_ += v.bufFrames[std::size_t(idx - v.buffers.begin())];
+                        refill(v, std::size_t(idx - v.buffers.begin()));
+                    }
                 }
             } catch (const std::exception&) { // corrupted stream member: stop refilling, drain what queued
                 while (alGetError() != AL_NO_ERROR) {}
@@ -264,6 +273,18 @@ void Mixer::fade(SoundId id, float target, int ticks) {
 void Mixer::setMasterGain(float gain) {
     std::lock_guard lk(mu_);
     alListenerf(AL_GAIN, gain);
+}
+
+std::uint64_t Mixer::framesPlayed() const {
+    std::lock_guard lk(mu_);
+    std::uint64_t total = playedFrames_; // fully-consumed buffers charged at unqueue
+    for (const auto& v : voices_)
+        if (v->decoder) { // live position inside the head-of-queue buffer (AL_SOFT offset)
+            ALint off = 0;
+            alGetSourcei(v->source, AL_SAMPLE_OFFSET, &off);
+            if (off > 0) total += static_cast<std::uint64_t>(off);
+        }
+    return total;
 }
 
 void Mixer::render(std::span<std::int16_t> stereo) {

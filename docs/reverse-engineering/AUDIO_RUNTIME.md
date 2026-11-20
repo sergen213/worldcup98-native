@@ -1706,3 +1706,46 @@ record producers, `t12.txt` PHRS callbacks; jump table raw read at VA `0x48f45c`
   reject + exhausted-pool lanes (`triggerLive`/`triggerLive7`), so no port
   change. Pass-91 residual wording: live-event class byte producers now decoded
   (t11.txt); dispatcher-mediated game seam stays [H].
+
+## Pass-96: percent lane registration + played-frames pacing API (measured 2026-11-20)
+
+Dump windows `analysis/pass96beat/t3.txt..t5.txt` (Ghidra disassembly, AUTO lane):
+
+- **Percent slot lane** (`audio\percent.c` region, table `DAT_00632778` stride 4, enable
+  flag `DAT_00632774` read by `FUN_00490674`, 26 consumers):
+  - `FUN_004906a4` getter: `vol = max(pct*127/100, 1)` (documented since pass-73).
+  - `FUN_0049067c` setter: `EDX = idx*4`; stores `EAX` into `DAT_00632778[idx]`, then if
+    callback slot `DAT_004904b0[idx]` is non-NULL calls it (`0x49069a`). The callback table has
+    **no static install sites** (imm sites `0x49068a`/`0x49069c` read-only; runtime-computed)
+    — the exe dispatches percent writes through runtime-registered per-scene callbacks, same
+    pattern as the `.SCI` descriptor array. Setter callers: 16 sites, cluster `0x46b090..0x46b2ed`
+    (OPTIONS/settings installation lane: user audio-level settings write the percent slots) +
+    `0x4512fc` (scene lane) + `0x47a97a`.
+  - `FUN_004906d0` scaled-percent: `((pct*val)*127/100)/100` — the crowd chant-level lane
+    (port `playChantLane` mirrors this, pass-53/59).
+  - `FUN_004906f8` per-frame tick host: counter `0x4bf0b0`, enable gate, then `CALL 0x48f920`
+    (speech queue tick) + `CALL 0x48da50` (chant pump) + `JMP 0x48e68c` (scene-10/crowd tick tail).
+  - **Speech autovol wrapper `0x48fca0`** (single `E8` consumer of `SNDspeechautovol` `0x4df8a4`):
+    gate `DAT_006326b0`, `EAX=3; CALL FUN_004906a4` -> percent slot 3 -> `EAX`=vol, `EDX=0`
+    (frames=0, immediate set). `SNDspeechinit` caller `0x48fd85` sits in the pool-init lane
+    `0x48fd54` (pass-95 bank feeds).
+  - Percent **callbacks** `0x490978`/`0x490a34` are installed by scene registration
+    (`FUN_00490528` tail `PUSH 0x490a34; PUSH 0x490978` -> `CALL 0x4e7060`). `0x490a34` =
+    `SNDplayvariant` lane (`ECX=DAT_006327ac`, `EDX=0x80`, `EAX`, `CALL 0x4e39d0`); `0x490978`
+    is the kit/uniform path lane (team id word `[slot+0x34]`, stride-63 slot array
+    `DAT_0x641014` — the pass-91/94 preload table), not an audio-gain hook.
+- **Port side (A9 pacing closure)**: `Mixer::framesPlayed()`
+  (`audio/include/wc98/audio/mixer.hpp`) is the stream playback position — pumpLocked charges
+  every fully-consumed stream buffer at unqueue with its queued frame count (`Voice::bufFrames`,
+  refill takes a buffer index) and adds the live `AL_SAMPLE_OFFSET` position inside the
+  head-of-queue buffer, so the counter advances continuously, not per processed buffer.
+  `app/video.cpp` paces each video frame on an **absolute schedule** (`videoMs * rate / 1000`,
+  cumulative frame-delay targets, no per-frame drift compounding) and falls back to plain
+  `SDL_Delay(56)` only when no stream voice drives the clock; a stall guard (counter frozen for
+  250 ms) releases waits on device stalls/stream end. Measured timed run (`SDL_VIDEODRIVER=dummy
+  ALSOFT_DRIVERS=null`, silent device): `wall-ms=56980` vs scheduled `video-ms=56952` over 1017
+  frames (~28 ms total drift), counter advanced continuously. Gate mode drains loopback through
+  `render()` and asserts the counter tracks rendered frames within one render slice + one queued
+  buffer (`movie-audio-granularity` violation -> exit 4); prints `movie-audio-rendered=1494277
+  movie-audio-played=1494277` (`video_play` regex pins exact values). A8 residual untouched
+  (MicroTalk class-table calibration still needs an exe float-domain measurement lane).

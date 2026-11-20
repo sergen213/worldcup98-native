@@ -36,13 +36,17 @@ public:
     // argument 0xc8 = 200 ticks at FE scene transitions).
     void fade(SoundId id, float target, int ticks);
     void setMasterGain(float gain);
+    // Audio frames actually consumed by the output device for stream voices (one-shot voices
+    // are not counted). Mirrors the exe audio frame counter `DAT_0058951c`, which the movie
+    // pump uses to pace video frames on the audio clock.
+    [[nodiscard]] std::uint64_t framesPlayed() const;
     // Loopback devices only: refills streams and renders interleaved stereo output.
     void render(std::span<std::int16_t> stereo);
 
 private:
     struct Voice;
     void pumpLocked();
-    void refill(Voice& v, unsigned buffer);
+    void refill(Voice& v, std::size_t bufferIndex);
 
     void* device_ = nullptr;  // ALCdevice*
     void* context_ = nullptr; // ALCcontext*
@@ -51,6 +55,7 @@ private:
     std::vector<std::unique_ptr<Voice>> voices_;
     SoundId nextId_ = 1;
     std::uint64_t tickCount_ = 0; // pump iterations; a fade step fires every 2 (20 ms = 1/50 s tick)
+    std::uint64_t playedFrames_ = 0; // stream frames released by the device (DAT_0058951c mirror)
     std::jthread pump_; // last member: stops before the rest is destroyed
 };
 

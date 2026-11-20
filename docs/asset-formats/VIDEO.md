@@ -81,9 +81,15 @@ frames carry data; frame-0 samples match exactly, e.g. `Y[0][0]=77`).
 ## Playback
 
 `wc98-native --video-play FILE.DCT` (`app/video.cpp`) uploads each decoded
-frame as an RGBA texture through the Vulkan renderer and presents at the
-BE-u16 record delay (56 ms). The gate mode (`wc98-video-play --gate`) runs
-headless and prints the frame stat line.
+frame as an RGBA texture through the Vulkan renderer. Frame advance is paced
+on the audio stream: the `.DCT` `SCHl`/`SCDl` blocks feed the Mixer stream
+voice and the pump waits until the stream frame counter
+(`Mixer::framesPlayed()`, mirroring the exe counter `DAT_0058951c`
+`SNDstreamframes` — pass-75/96, `AUDIO_RUNTIME.md` Pass-96) reaches the
+cumulative frame-delay target. Measured paced run: 1017 frames, scheduled
+`video-ms=56952` vs wall `56980` (~28 ms drift). The gate mode
+(`wc98-video-play --gate`) runs headless, drains the stream through the
+mixer pump and prints the frame stat line.
 
 ## Open / Hypothesis
 
@@ -92,5 +98,8 @@ headless and prints the frame stat line.
   frame; the port renders intra-only approximation, which is visually
   complete for I-frame-heavy intro streams. **Hypothesis** for P-cell
   fidelity in flyovers.
-- The cadence field at +18 (56 ms) is not directly tied to a playback-code
-  constant in the decomp dumps; **Hypothesis**-tagged by value agreement.
+- The cadence field at +18 is consumed by the port as the frame-delay
+  schedule (sum 56952 ms over INT_FIFA) and its value matches the paced-run
+  wall clock; in the exe itself frame advance rides the audio counter, and
+  no read of the +18 field by the presentation code has been located — the
+  field-vs-counter tie stays **Hypothesis**.

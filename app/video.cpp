@@ -17,6 +17,7 @@
 
 
 #include <atomic>
+#include <chrono>
 #include <cstdio>
 #include <memory>
 #include <optional>
@@ -57,12 +58,13 @@ int runVideoPlay(const std::string& path, int gate, unsigned width, unsigned hei
     // A/V-synced presentation loop only when the parsed block count is > 2
     // (`2 < _DAT_00632a0c`) and releases the stream at the end (`SNDstreamfree`
     // FUN_004e57b0). Mirror: gate on > 2 SCDl blocks, start after the renderer
-    // exists. Frame pacing stays wall-clock (SDL_Delay) - the exe paces video on
-    // the audio frame counter `DAT_0058951c`; that sync is a port deviation.
+    // exists. pass-96: frame pacing moved from wall-clock (SDL_Delay) onto the audio frame
+    // counter `Mixer::framesPlayed()`, mirroring the exe counter `DAT_0058951c` that paces video.
     std::unique_ptr<audio::Mixer> movieAudio;
     audio::SoundId movieSound = 0;
     std::size_t movieAudioBlocks = 0;
     std::size_t movieAudioFrames = 0; // header.numSamples per channel
+    unsigned movieAudioRate = 0;      // stream sample rate: video frame pacing clock
 
     std::unique_ptr<render::Renderer> renderer;
     std::unique_ptr<platform::Window> window;
@@ -103,6 +105,7 @@ int runVideoPlay(const std::string& path, int gate, unsigned width, unsigned hei
                 if (s.dataBlocks.size() > 2) {
                     movieAudioBlocks = s.dataBlocks.size();
                     movieAudioFrames = s.header.numSamples;
+                    movieAudioRate = s.header.sampleRate;
                     movieAudio = std::make_unique<audio::Mixer>(
                         gate ? std::optional<std::uint32_t>{s.header.sampleRate} : std::nullopt);
                     movieSound = movieAudio->stream(shared, s);
@@ -116,6 +119,8 @@ int runVideoPlay(const std::string& path, int gate, unsigned width, unsigned hei
     }
     int done = 0;
     double fps = 0;
+    std::uint64_t videoMs = 0; // cumulative frame-delay schedule (audio-clock pacing)
+    const auto wallStart = std::chrono::steady_clock::now();
     for (const auto& h : frames) {
         formats::DctFrame f;
         try {
@@ -137,7 +142,26 @@ int runVideoPlay(const std::string& path, int gate, unsigned width, unsigned hei
         fps += 1000.0 / ms;
         ++done;
         if (!gate) {
-            SDL_Delay(Uint32(ms));
+            // pass-96: pace the video frame on the audio frame counter - the exe movie pump
+            // waits on the stream voice (`DAT_0058951c`), not a wall-clock timer. Absolute
+            // schedule: the video frame N must wait until the mixer has played the audio
+            // frames belonging to the cumulative frame delays; skip the wait when audio is
+            // already ahead. `SDL_Delay` only runs when no stream voice drives the clock.
+            videoMs += static_cast<std::uint64_t>(ms);
+            if (movieAudio && movieAudioRate) {
+                const std::uint64_t target = videoMs * movieAudioRate / 1000u;
+                std::uint64_t last = movieAudio->framesPlayed();
+                int stall = 0;
+                while (movieAudio->framesPlayed() < target) {
+                    SDL_Delay(2);
+                    stall += 2;
+                    const std::uint64_t now = movieAudio->framesPlayed();
+                    if (now != last) { last = now; stall = 0; } // stall guard: counter moving
+                    else if (stall >= 250) break; // device stalled (ended/underrun): proceed
+                }
+            } else {
+                SDL_Delay(Uint32(ms));
+            }
             SDL_Event ev;
             while (SDL_PollEvent(&ev))
                 if (ev.type == SDL_EVENT_QUIT || ev.key.scancode == SDL_SCANCODE_ESCAPE) goto done_presenting;
@@ -145,6 +169,8 @@ int runVideoPlay(const std::string& path, int gate, unsigned width, unsigned hei
     }
 done_presenting:
     std::size_t movieRenderedFrames = 0;
+    std::uint64_t playedCounter = 0; // DAT_0058951c mirror value
+    bool granOk = true;
     int moviePeak = 0;
     if (movieAudio) {
         if (gate) { // loopback lane: drain the stream through the mixer pump, measure it
@@ -152,6 +178,12 @@ done_presenting:
             while (movieAudio->playing(movieSound) && movieRenderedFrames < movieAudioFrames) {
                 movieAudio->render({buf.data(), buf.size()});
                 movieRenderedFrames += buf.size() / 2;
+                // counter granularity gate: the played counter must track the rendered
+                // frames within one render slice + one queued buffer (no 8192-frame steps).
+                if (const std::int64_t d = static_cast<std::int64_t>(movieAudio->framesPlayed()) -
+                                           static_cast<std::int64_t>(movieRenderedFrames);
+                    d < 0 || d > static_cast<std::int64_t>(buf.size() / 2) + 8192)
+                    granOk = false;
                 for (const std::int16_t v : buf) {
                     const int a = v < 0 ? -v : v;
                     if (a > moviePeak) moviePeak = a;
@@ -160,12 +192,17 @@ done_presenting:
             }
         }
         movieAudio->stop(movieSound);
+        playedCounter = movieAudio->framesPlayed(); // DAT_0058951c mirror
         movieAudio.reset(); // SNDstreamfree mirror
     }
     renderer.reset(); // drain validation messages
-    std::printf("VIDEO frames=%d size=%dx%d fps=%.1f movie-audio-blocks=%zu movie-audio-rendered=%zu peak=%d\n",
+    const long long wallMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                 std::chrono::steady_clock::now() - wallStart).count();
+    std::printf("VIDEO frames=%d size=%dx%d fps=%.1f movie-audio-blocks=%zu movie-audio-rendered=%zu movie-audio-played=%llu video-ms=%llu wall-ms=%lld peak=%d\n",
                 done, frames.front().width, frames.front().height,
-                done ? fps / done : 0.0, movieAudioBlocks, movieRenderedFrames, moviePeak);
+                done ? fps / done : 0.0, movieAudioBlocks, movieRenderedFrames,
+                (unsigned long long)playedCounter, (unsigned long long)videoMs, wallMs, moviePeak);
+    if (!granOk) { std::printf("movie-audio-granularity BAD\n"); return 4; }
     if (*messages) { std::printf("%u validation message(s)\n", messages->load()); return gate ? 3 : 3; }
     return 0;
 }

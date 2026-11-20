@@ -84,4 +84,24 @@ word +0xa high half (0x4587e8) and the port model has no fixture schedule feed, 
 port-side [H]. Gates `render_demo_venue_lensf`/`render_demo_venue_brdxf`
 (bitmap + frame-variance floors) prove the render lane with textured captures;
 `analysis/pass108venue/NOTES.md`.
+Dispatch lane (pass-109, corrected): the wrapper lane stores a raster stub into
+the loaded record's `+0x28` (`mov [eax+0x28], stub` against the `FUN_0047a3e8`
+record loads for `eras`/`csam`/`pucw`); frame runner `FUN_00444b28` invokes the
+installed callbacks through `FUN_0046bee0` while walking `*DAT_00602518` head
+->next. Callback gate (aligned disasm 0x444c40/0x444ca1): the `+0x28` call runs
+when `+0x18` mask `0x08` (bit 3) is **CLEAR**; when `DAT_00601890 != 0` it also
+requires `+0x19` bit 0. Frame-step head `(*DAT_005c6574)()` = `LAB_004190b4` is
+a conditional `_THRASH_window@4(2)` call (`DAT_00598020` gate), frame clock
+otherwise — not a blit/present. The frame closes with `_THRASH_pageflip@0`
+(`[0x632a80]` at 0x444c8b, gated `FUN_0043ab8c != 3` / `FUN_00418fa0 != 0`)
+**after** the callback loop, then `_THRASH_clearwindow@0` (0x444c91), so record
+rasters land before the flip. Slot identities are the capstone-verified
+re-pairing of the `FUN_004916b0` GetProcAddress binder (each store takes the
+eax of its **preceding** getproc call — full 34-slot table in
+`analysis/pass109venue/disasm_stub.txt`): `[0x632a78] = window@4` (stub target),
+`[0x632a80] = pageflip@0`, `[0x632a6c] = clip@16`, `[0x632ab0] = clearwindow@0`,
+`[0x632ac0] = about@0` (inithal driver-presence slot, GHIDRA_PASS3 §1.2), and
+`writerect@20 = [0x632a54]` with **zero** indirect call sites. Venue visibility
+stays OPEN [H]: the LAY back-composite record identity and its list position
+versus the venue records are not statically recoverable.
 In-game player/stadium geometry is a different container (INGAME .BIG dialects — not this format).

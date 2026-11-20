@@ -37,9 +37,9 @@ the game-relative `!thrash\` subdirectory (on disk:
 
 | Address | Size | Role |
 |---|---|---|
-| `0x4916b0` | 1027 B | **THRASH binder** — binds the loaded driver: builds `_THRASH_<name>@<n>` import names at `0x4916E3–0x491738`, resolves all 32 exports via `GetProcAddress` into the dispatch table |
-| `0x632a40–0x632ac4` | — | **THRASH dispatch table** (32 slots written by the binder; slot at `DAT_00632ac0` = inithal presence check) |
-| `0x56781c–0x567adc` | — | 32 export-name strings `_THRASH_*@N`, all xrefed from the binder |
+| `0x4916b0` | 1027 B | **THRASH binder** — builds `_THRASH_<name>@<n>` import names at `0x4916E3–0x491738`, resolves all 34 exports via `GetProcAddress` into the dispatch table (each store takes the eax of its **preceding** getproc call, so `slot_n = handle(name_n)`; full 34-slot pairing in `analysis/pass109venue/disasm_stub.txt`) |
+| `0x632a40–0x632ac4` | — | **THRASH dispatch table** (34 slots written by the binder; slot at `DAT_00632ac0` = inithal presence check) |
+| `0x56781c–0x567adc` | — | 34 export-name strings `_THRASH_*@N`, all xrefed from the binder |
 | `0x165e1c–0x1660d0` | — | name-suffix table used by the binder's string builder |
 | `0x567af4` | — | version-mismatch message: driver "WANTS 104. YOUR MODULE IS %d" (interface version handshake) |
 | `0x491b00` | 78 B | Driver-name guard: if the name does not start with `'!'`, runs a non-THRASH init path (`FUN_00493056`); sets one-shot flags `DAT_0057edc0/c4`, then calls the binder |

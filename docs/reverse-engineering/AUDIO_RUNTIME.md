@@ -1821,3 +1821,31 @@ are 2 (stereo), 18 in AUDIO + 29 in VIDEO. Driver type therefore stays the defau
 0/2 2D path for every shipped sound: the original never pans, and the port's
 mono→stereo upmix with no panning is 1:1. Raw-byte `0x92` counts (384,672 across
 compressed payloads) are noise; only chain-structured parsing is evidence.
+
+## Pass-100: scene-10 crowd handler set + reaction-voice lane decoded (2026-11-20)
+The four crowd handlers have **zero direct E8 call sites** — they dispatch
+indirectly through the scene-handler registry. Audio boot installer
+`0x4905b3..0x490624` gates on crowd-enable `0x48e6c8` (DAT_006325b0) and
+SFX-table enable `0x48dc84` (DAT_006324b4), loads handler pointers
+0x48e5a0/0x48e550/0x48e4fc/0x48e488 (plus SFX handlers 0x48d7dc/0x48d9d8 and
+stack imm 0x490978/0x490a34) and installs them via `CALL 0x4e7060`
+(`analysis/pass100crowd/NOTES.md`, disassembly `/tmp/wc98pass100/p100{b,f,h}.txt`).
+Handler roles: `0x48e5a0` start wrapper (stores initial-level arg to
+DAT_006325bc, `SNDcrowdstart`, then percent-0 control); `0x48e550` percent
+seam (pct idx2 gate, level = `arg*567/100` via 81*7 + IDIV 100,
+`SNDcrowdcontrol`); `0x48e488` pulseA (slot count via `0x48e100` =
+`(idx*pct[2]*0x7f)/10000` lane `0x4906d0`, card `[0x6325d4]` -> layer records
+`+0x30`, BE field divisor `0x4a49a0`, tick `0x4c321c` DIV,
+`SNDcrowdpulse(idx, record)` then blend seam with `[record+6]`);
+`0x48e4fc` pulseB (same shape on card `[0x6325d8]`, index from AX).
+Blend/reaction-voice seam `0x48e3b0`: fetches a free entry from pool queue
+DAT_006325e0, plays via **`SNDseqplayPVB` `0x4e462c`** (cmn\smidi.c 0x47f —
+EDX=PAN `-1`->64, EBX=VOL `-1`->0x7f, EAX=BEND `-1`->64; id `0x100..0x6500`,
+bank `id>>8-1` active table DAT_0064b3a4, voice record stride 0x24 @
+DAT_0064b15c), resumes with frames 16 (`0x4e39d0`), moves the entry to the
+in-flight queue DAT_006325fc; drain handlers `0x48e650`/`0x48e68c` (filter
+callback `0x48e168`: voice state 2 or <0) move entries back to 5e0. Both
+PVB call sites pass PAN=-1 — the 2D pan byte is always center, corroborating
+the pass-99 A10 closure from the pan side. Sound-id producer into the seam
+stays [H] (scene-registry pump internal, same runtime-pool class as pass-88).
+Port reaction/chant lanes already mirror the shape; no port change.

@@ -35,9 +35,11 @@ file records **how** each claim is provable and which lanes are dead, so every r
   (DOSBox-X). Evidence: `analysis/pass9/eulz/run13..run15`, `docs/asset-formats/SQF_FOOTIX.md` §3.
 - **Referee positioning:** no gameplay referee tick in the static lanes (`cmn\ref.c` = `eacsnd`,
   `REFKIT` = renderer atlas) — negative pass-14ref; register row 12 stays qualitative.
-- **.SCI opcode VM:** loader chain decoded (pass-14sci, `TASK_HANDLERS_WC98.md` §8 + memory notes);
-  interpreter opcode semantics loop unparsed. Boot-scope `fileopen` probe shows FE boot opens only
-  LAY/FSH/BIG/`modems.cfg`; `.SCI` consumption is match-scope.
+- **.SCI script lane:** **no bytecode VM** (D-29, pass-17sci; registry + selection + boot-loader
+  decode pass-110sci, `TASK_HANDLERS_WC98.md` §9/§10, `parseExeScriptRegistry` + `test_sci` exe
+  gate). Boot loader `FUN_00409bc0` opens `COMMON\*.SCI` under scene gate `DAT_00640FB4 == 10`
+  (`common\%s` lane; the earlier FE-boot `fileopen` probe predates the scene gate); handler-mediated
+  row consumption is match-scope. Residual [H]: per-handler row semantics.
 
 ## 4. Per-subsystem pointer index (each row = where the evidence lives)
 

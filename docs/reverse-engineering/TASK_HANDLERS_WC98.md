@@ -93,10 +93,13 @@ not a separate table. The real structure is 22 stride-0x20 records at VA `0x580A
 `{u32 flags, u32 ctxId, u32 count, u32×5 zeros/byte@0xc, u32 poolVa@+0x1c}` + an 86-entry name pool
 at VA `0x580520` `{char name[12], u16 zero, u16 class@+0xe}`. The old `id` column values are record
 `flags` fields (506 = 0x1fa, 508 = 0x1fc, 970/972 = 0x3ca/0x3cc); `nameptr`/`0xffffffff`/`tag` were
-`poolVa`/`count`/`ctxId` reads offset by one field. The same 15 rows map to registry records 0..14;
-entries 16..21 = genanc/ans 01..03 = the module records (ctxId {0x30, 0x82, 0x2e}):
+`poolVa`/`count`/`ctxId` reads offset by one field. Because the window starts at record 0's `+0x1c`
+slot, **each old row straddles two records**: the printed name is record N's segment name, while the
+`id`/`0xffffffff`/`idx` values belong to record **N+1** (rows 0..14 pair names of records 0..14 with
+flags/ctxId/count of records 1..15; module records 16..21 = genanc/genans 01..03, ctxId
+{0x30, 0x82, 0x2e}). The table keeps the old columns, relabeled by their true field identity:
 
-| module | id | tabB slot | handler |
+| module (rec N segment name) | old `id` = rec N+1 `flags` | old `idx` = rec N+1 `count` | handler |
 |---|---|---|---|
 | gengol00.sci | 506 | 5 | FUN_00517460 (h5) |
 | gen2nc00.sci | 508 | 7 | FUN_00517520 (h7) |
@@ -164,9 +167,10 @@ Scene binding per §3; "module trio" = {advance, mesh-sample, commit+state}. All
 **h0 `FUN_005174a0`, h1 `FUN_005174e0`, h2 `FUN_00517560`, h3 `FUN_005175a0`, h4 `FUN_00517420`,
 h5 `FUN_00517460`, h7 `FUN_00517520`, h9 `FUN_005175e0` — module presentation tick (8 slots, 1 body).**
 Body = {timerB advance `FUN_00517cc0`; pitch-mesh sample `FUN_005166f0`; trio-tail
-`FUN_00516550`}. Every `.SCI` module in the descriptor map installs one of slots
-{1,2,3,4,5,7} = these bodies: goal celebration (gengol→5), win/loss result flow (genwin/genlos→1),
-in-match/attract/localization modules (→2/4), neutral-second + scoreboard-skew (→7/3) [P]. The body
+`FUN_00516550`}. All `.SCI` modules bind to handler-slot bodies {1,2,3,4,5,7} = this family [P
+handler side]; the per-module slot assignments (goal celebration →5, win/loss result flow →1,
+in-match/attract/localization →2/4, neutral-second + scoreboard-skew →7/3) came from the artifact
+`idx` column (§3 correction) and are [H], not bindings. The body
 is scene-agnostic: it advances the camera fade timer, re-samples the ball onto the pitch mesh every
 frame and commits the snapshot; the per-scene identity is data (§6) + rec+0x114 height default (§3).
 
@@ -287,8 +291,14 @@ buffer at `DAT_0063697c`: packed u16 quads stride 8 (`{+0,+2,+4,+6}` via `>>0x10
 (count nibble `[+0x232]&0xf`), a second table at **+0x1c8** (count `([+0x232]>>4)&0xff`), scalars
 **+0x220/222/224** and packed u32 pairs **+0x226/228/22a**, count word **+0x232**. The 16-byte .SCI
 records decompose exactly as four u32 words = eight i16 fields, i.e. the stream is the serialized
-form of these packed quads; loader-side field splitting not statically proven [H]. The descriptor
-`id` (e.g. gengol00=506) selects which scene record receives the payload — producer sites write
+form of these packed quads. Loader-side field splitting **is** statically proven (pass-110sci): the
+install consumer `FUN_004a75d0` (§10) rewrites the loaded header's u32 slots @0x10..0x20 into
+section-boundary pointers — `@0x10 = buffer+0x24`, `@0x14 = @0x10 + u16@0x0A*0x10` (the tail-anchor
+×16 field), `@0x18 = @0x14 + byte@0xE*0xC`, `@0x1C = @0x18 + u16@0x0C*0xC` (`0x16` = 22 tail
+entries), `@0x20 = @0x1C + byte@0xF*8` (trailer count) — and patches each stride-12 tail entry's
++4/+8 slots with `@0x10 + index*0x10` record pointers stepping by the entry+0 i16 link [P bytes,
+sc4]. The pass-17 "descriptor `id` (gengol00=506) selects which scene record receives the payload"
+claim is RETRACTED — the old `id` column was record `flags` (§3 correction). Producer sites write
 rec+8 from pool init `FUN_004a0810` [P sci7].
 
 ## 7. Parity delta vs port sim
@@ -409,10 +419,16 @@ Runtime lane (DGROUP .bss):
 - Boot loader `FUN_00409BC0` (gate: scene selector `DAT_00640FB4 == 10`, skipped in other scenes):
   `FUN_004a7220` returns (registry ptr, len); for each entry
   `sprintf("common\%s", name@+0)` → loader `FUN_00439810`, handle written to slot
-  `DAT_0059CC38 + idx*4`, then install `FUN_004a75d0`: if the loaded record's class nibble == 0x35,
-  install into bucket array `DAT_006426F0 + (nibble-1)*100*4` with fill counter
-  `DAT_006426EC + idx*0x19` capped at 23 (`-2` = bucket full sentinel) — the pass-17sci
-  "installs one of slots" lane, now with exact bucket arithmetic.
+  `DAT_0059CC38 + idx*4`, then install `FUN_004a75d0`: gate = loaded `.SCI` header tag
+  `u16@0x04 == 0x35` (`SciFile.tagA` nibble check), bucket nibble from `in_EAX` (falls back to
+  header `count@0x00` when `0xffffffff`); install into bucket array
+  `DAT_006426F0 + (nibble-1)*100*4` with fill counter `DAT_006426EC + idx*0x19` capped at 23
+  (`-2` = bucket full sentinel) — the pass-17sci "installs one of slots" lane, now with exact
+  bucket arithmetic. Install also rewrites the loaded header's u32 slots @0x10..0x20 into
+  section-boundary pointers (`@0x10 = buffer+0x24`, `@0x14 = @0x10 + u16@0x0A*0x10`, `@0x18 =
+  @0x14 + byte@0xE*0xC`, `@0x1C = @0x18 + u16@0x0C*0xC` with `0x16` = 22 tail entries, `@0x20 =
+  @0x1C + byte@0xF*8`) and patches each stride-12 tail entry's +4/+8 slots with record pointers
+  `@0x10 + index*0x10` stepping by the entry+0 i16 link [P bytes, sc4].
 - Gate in port: `formats::parseExeScriptRegistry` (`formats/src/sci.cpp`) + `test_sci` exe registry
   block pin 22/86, table/pool VAs, record 0/1/16/21 fields, class histogram, first/last names, and
   the unregistered `gengol31.sci`.

@@ -74,8 +74,9 @@ struct SciPoolEntry {
 };
 
 // One record of the static script-record table (DGROUP VA 0x580A80, stride 0x20):
-// {u32 flags, u32 ctxId, u32 count, u32 zero, u32 moduleByte@0xc=0, u32 zero, u32 zero,
-//  u32 poolVa@+0x1c}. Registration FUN_004a7090 pushes `count` consecutive pool entries starting
+// {u32 flags @0x00, u32 ctxId @0x04, u32 count @0x08, u8 moduleByte @0x0c (=0; inside the
+// statically-zero block @0x0c..0x18), u32 poolVa @0x1c}. Registration FUN_004a7090 pushes
+// `count` consecutive pool entries starting
 // at `first` into the runtime pointer array, bumping the per-class counter table.
 struct SciScriptRecord {
     std::uint32_t flags = 0;           // gate mask (bit0 unconditional; bits 0x2..0x200 lanes [H])

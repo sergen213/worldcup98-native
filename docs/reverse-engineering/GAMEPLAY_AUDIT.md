@@ -30,7 +30,7 @@ gate inventory (`ctest --test-dir build/release -N` → 155 tests). Classes:
 | 18 | Replays | 3 | D-34 open — port owns its format; exe `.rep` bodies unverified | `replay_record_play` + `fe_replay57_enter` |
 | 19 | HUD / strips | 3 | D-33 open (15-knob calibration rect) | `test_hud`; font table `DAT_0057d2c0` confirmed |
 | 20 | Tournament / progression | 2 | D-75 history tables recovered (seed `kWcFinals`) | tournament wheel captures verified from DB |
-| 21 | .SCI scripted tasks | 2 (data model) | D-29 resolved data model; residual per-handler row-capture | descriptor array raw 0x17f09c; VM unparsed (blocked) |
+| 21 | .SCI scripted tasks | 2 (data model) | D-29 resolved data model; residual per-handler row-capture | script registry raw `0x17F080` + name pool `0x17EB20` (pass-110sci §10; old descriptor-array read retracted); no VM |
 
 ## 2. Impact ranking (highest first) — correction priorities
 

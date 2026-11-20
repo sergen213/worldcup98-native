@@ -28,12 +28,15 @@ the engine walks entries + 0x18 to fetch keyframe offsets (`FUN_004c3630` reads 
 ## .SCI script files
 
 - 87 files: GEN* situation scripts + CLAINC00..03/CLAINS00..03 (4 language variants; language
-  suffixes match `AUDSPC.W{E,F,G,I,J,S}` speech banks, INVENTORY). Bytecode VM **unparsed**
-  (parity with FIFA 99, REUSABILITY §12) — open item.
-- exe side: a descriptor array at file offset `0x17f09c` (VA `0x580a9c`, stride 32:
-  `{u32 nameptr -> .sci name, u32 id, 0xffffffff, u32 idx, …}`; 86 names `gengolNN.sci…`) carries the
-  script file table. **No static reference to that array VA exists anywhere in the exe** (full-file
-  dword scan) — access is computed at runtime via a global base pointer (DGROUP BSS), not an immediate.
+  suffixes match `AUDSPC.W{E,F,G,I,J,S}` speech banks, INVENTORY). **No bytecode VM exists**
+  (D-29, pass-17sci): payload rows are consumed as data tables by the tabA/tabB handler dispatch.
+- exe side: the old "descriptor array at raw `0x17f09c` (VA `0x580a9c`, stride 32)" is the boot
+  script registry read as a shifted window (retracted pass-110sci). Truth: record table VA
+  `0x580A80` (raw `0x17F080`) 22 stride-`0x20` records `{flags, ctxId, count, poolVa@+0x1c}` + name
+  pool VA `0x580520` 86 entries `{name[12], class u16@+0xe}`; registry slots `0x580D3C/40/44` =
+  pool-end sentinel / record count / table VA (`TASK_HANDLERS_WC98.md` §3/§10, gate `test_sci`).
+  The window VA itself has no static references (full-file dword scan) — access runs through the
+  slots, not an immediate.
 - Resource loader: `FUN_0047a3e8(EDX=FOURCC)` opens resources by 4-char tag (`'titl'` observed at
   call sites 0x44f337/0x44f430 — language-change path, writes `[0x60cbcb] = language byte`, then
   `FUN_0047ab1c` opens `common\%s` from the registry-selected `FC<LANG>.BIN`). This is the same

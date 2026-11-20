@@ -926,4 +926,5 @@ decoder probe `analysis/pass75movie/audioprobe.txt`: 2,988,554 stereo samples
 @ 22050 Hz, RMS 6903, peak 31605). `video_play` PASS regex requires
 `movie-audio-rendered` and `peak` non-zero. `wc98-video-play` now links
 `wc98_audio`. A9 row Closed (pacing deviation noted); evidence
-`analysis/pass75movie/`, `/tmp/wc98pass74/m11..m13.txt`, callsite disasm.
+`analysis/pass75movie/` (`m11..m13.txt`, `callsite_disasm.txt`,
+`audioprobe.txt`).

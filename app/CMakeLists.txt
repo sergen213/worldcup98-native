@@ -1,7 +1,8 @@
 add_executable(wc98-native main.cpp fe_flow.cpp match_demo.cpp livematch.cpp selftest.cpp replay.cpp commentary.cpp game_audio.cpp tournament_demo.cpp saveload.cpp video.cpp)
 
 # .DCT movie player (docs/asset-formats/VIDEO.md): --gate decodes + uploads every frame of
-# VIDEO/*.DCT through the Vulkan renderer, printing "VIDEO frames=N size=WxH fps=F".
+# VIDEO/*.DCT through the Vulkan renderer, printing "VIDEO frames=N size=WxH fps=F
+# movie-audio-blocks=B movie-audio-rendered=R peak=P" (pass-75 movie audio drain).
 add_executable(wc98-video-play video_main.cpp video.cpp)
 target_link_libraries(wc98-video-play PRIVATE wc98_renderer_vk wc98_platform wc98_formats wc98_audio wc98::core)
 target_link_libraries(wc98-native PRIVATE wc98_presentation wc98_renderer_vk wc98_simulation wc98_input wc98_config wc98_platform wc98_formats wc98_audio wc98::tournament wc98::core)

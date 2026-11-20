@@ -2916,7 +2916,10 @@ void FeFlow::dispatchBoardAnnouncer(int scene) {
     }
     switch (scene) {
     case 20: feedBoardAnnouncer(*boardAnnouncer_, pick_); break;         // FUN_00453a6c family
-    case 35: feedTeamSelectionAnnouncer(*boardAnnouncer_, pick_); break; // FUN_00458cf0 subset
+    case 35:                                                            // FUN_00458cf0
+      feedTeamSelectionAnnouncer(*boardAnnouncer_, pick_);               // pass-102 tail
+      // mirror: outcome 0 pool index [H]; flag-lane feed [H] (both writers store 1)
+      break;
     default: feedBoardHandlerAnnouncer(*boardAnnouncer_, scene, pick_); break; // 21/23/24/25/26
     }
 }

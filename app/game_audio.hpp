@@ -157,6 +157,50 @@ public:
     bool fillSelector(int selector, bool type3);
     std::int32_t pickSelector(); // entry 0 stand-in (exe tick lane [H], cursor lane unreached);
                                  // -1 on empty list
+    // pass-102 match-result dispatch (FEFLOW35 handler FUN_00458cf0 lane, objdump of raw
+    // 0x581a0-0x58370): `mov eax,[esp+0x14]; cmp eax,3; ja 0x458dfb; jmp *0x458ce0(,eax,4)`
+    // — 4-entry jump table at VA 0x458ce0 {0x458dd7,0x458eaf,0x458ed9,0x458f00}. The outcome
+    // index comes from FUN_0048503c: a schedule-pool scan (DAT_0062fad8 + 0x5cc count,
+    // + 0x298 entries stride 0x12) returning the matching sub-entry index 0..3, -1 on miss.
+    // Outcome -1 or >3 takes `ja 0x458dfb` — the tail only, skipping the branch fill/pick.
+    // Each branch fills the selector window `outcome` with type flag 2 (EDX=2), picks
+    // (FUN_004899dc), stores the picked id as slot 1 type 3 at the shared tail (0x458df6
+    // FUN_004894ac, EAX=1 EDX=3 EBX=id), then the tail: FUN_00489a64 clears DAT_0x62fd98,
+    // FUN_0048525c writes two stack words from the pair store (needle scan); ecx = 1 when
+    // word0 > word1 (0x458e0b-14), 3 when equal (0x458e19-22), else 0. With the match-type
+    // flag DAT_0x6099c0 == 1 (0x458e27-30; two byte scan store both write 1: FE stub
+    // 0x453a24 (store at 0x453a2c) called from 0x449f17, schedule-pool init store
+    // 0x484a0f; no store of 0, boot reachability [H]) and the record+3 field compare
+    // (0x458e32-43; record+3 == 1
+    // takes the plain fills, == 0 straight to the pick, == 2 variant sel 0xe/0x7 at
+    // 0x458f30, == 3 slot lane 0xf..0x12 at 0x458fec, > 3 straight to the pick),
+    // conditional fills follow: ecx==1 -> sel 5 (0x458e4a), ecx==0 -> sel 0xb (0x458e5d),
+    // ecx==3 -> sel 8 (0x458e71); then the second pick (0x458e80-88): id >= 0 reaches the
+    // 0x4591f1 target — setSlot(2, 3, id) (EAX=2 EDX=3 EBX=id) + builder arm 0x4894c4,
+    // id == -1 falls through to the epilogue. `outcome` is the fixture-slot index:
+    // FUN_0048503c scans the schedule pool (groups at DAT_0x62fad8+0x814 stride 0x214,
+    // entry array +0x50 stride 0x12) for entry+0 u16 == team, first match slot 0..3,
+    // -1 miss. The status byte is record+3 of DAT_0x60a0a4 + group*72 + slot*18
+    // (compact 18-byte mirror of pool group+0x50 records, sync FUN_004588c4, pass-103);
+    // byte 0 skips the conditional fills entirely, so the FE board's pre-match feed is
+    // outcome 0 + flag false (status 0) — the exe board-entry lane.
+    // pass-104 variant arms (0x458f30-0x4591f1, analysis/pass104variant/): record+3 == 2
+    // routes the ECX (= pair-order) lane through the FUN_00498e90 membership gate with
+    // FUN_004998c0 EBX=2/1 lookup fallbacks (group+0x16 array key [H]); == 3 routes the
+    // EDI lane gated by the EBP pair-equality predicate (pass-103: group+0xe ==
+    // group+0x10 OR DAT 0x606bd4 == 2 - independent of the ECX word order). Selector
+    // fill lists per NOTES.md; every fill arm reaches the second pick + 0x4591f1 slot 2.
+    struct VariantFeed {
+        int statusByte = 0;      // record+3: 0/1 plain fills, 2 ECX lane, 3 EDI lane
+        int branchIndex = 0;     // EDI for the status 3 lane
+        bool teamRegistered = false; // FUN_00498e90 team membership (solid)
+        bool lookup2Hit = false;     // FUN_004998c0 EBX = 2 lookup [H key]
+        bool lookup1Hit = false;     // FUN_004998c0 EBX = 1 lookup [H key]
+        bool ebpPairEqual = false;   // EBP predicate 0x458d83-0x458eaa
+    };
+    void dispatchResult(int outcome, bool matchFlagLane, std::uint32_t needle);
+    void dispatchResult(int outcome, bool matchFlagLane, std::uint32_t needle,
+                        const VariantFeed& variant);
     [[nodiscard]] std::uint32_t selCount() const { return static_cast<std::uint32_t>(selList_.size()); }
     // FUN_00489920: 40-entry u16-pair table @ DAT_0057e3fe. The scan compares against the
     // table's *second* u16 per pair and returns the *first* u16 of the next slot, so the
@@ -221,16 +265,17 @@ private:
 };
 
 // pass-79 presentation fill sites (AUDIO_RUNTIME.md pass-77b table): the SI-team handler
-// FUN_00458cf0 fills slot 0 type 1 with the picked team (0x458dc2, gate >= 7) and slot 1
-// type 3 from selector 0x0 (0x458df6); the standings/matchup handler FUN_00453a6c family
-// fills slot 0 type 1 (0x453b07 pair-store lane [H]), slot 2 type 2 id 0 (0x453b15), slot 3
-// type 2 remmap (0x453b2e), slots 1/4 type 2 selector picks 0x26/0x36 (0x453bd2/0x453c77).
-// Both fill the ring and run the builder load (FUN_00489460), then play exactly ONE entry
-// through the pick lane (one announcement per call, the exe's FUN_0048d0dc per-pick
-// semantics; further announcements ride later pickNext() calls). `team < 0` = no pick yet
-// (exe gate lane). Screen-to-handler dispatch stays [H] - these helpers are gate-driven;
-// no port scene calls them until the dispatch is decoded.
-void feedTeamSelectionAnnouncer(Announcer& announcer, std::int32_t team);
+// FUN_00458cf0 fills slot 0 type 1 with the picked team (0x458dc2, gate >= 7), then the
+// pass-102 jump-table tail dispatch (outcome from FUN_0048503c, pair-order + conditional
+// fills, second pick -> slot 2 type 3) fills slot 1 type 3 from selector 0x0 (0x458df6).
+// The handler fills the ring and runs the builder load (FUN_00489460), then plays exactly
+// ONE entry through the pick lane (one announcement per call, the exe's FUN_0048d0dc
+// per-pick semantics; further announcements ride later pickNext() calls). `team < 0` = no
+// pick yet (exe gate lane). Screen-to-handler dispatch closed (pass-82/101): scene 35
+// calls this from `FeFlow::dispatchBoardAnnouncer`; the board handlers ride the
+// pass-101 registry lanes.
+void feedTeamSelectionAnnouncer(Announcer& announcer, std::int32_t team,
+                                int outcome = 0, bool matchFlagLane = false);
 void feedBoardAnnouncer(Announcer& announcer, std::int32_t homeTeam);
 
 // pass-101 caption-board dispatch mirror for the board handlers whose scene attribution is

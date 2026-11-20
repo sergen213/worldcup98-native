@@ -349,18 +349,20 @@ int main() {
         CHECK(sel.pickSelector() == 21);
         CHECK(sel.fillSelector(0x36, false)); // grid B [100,105)
         CHECK(sel.selCount() == 5);           // no type-2 skip inside the range
-        CHECK(sel.pickSelector() == 101);     // entry 0: tick-0 index (tick lane [H])
+        CHECK(sel.pickSelector() == 101);     // entry 0 stand-in (tick lane [H])
         CHECK(sel.fillSelector(0, true));     // grid A [0,5) standings lane
         CHECK(sel.selCount() == 5);           // no type-3 skip below record 5
         CHECK(sel.pickSelector() == 1);       // entry 0 again after a fresh fill
         CHECK(!sel.fillSelector(0x1d, false)); // wrap word v[0x1d]: not a selector entry
-        app::feedTeamSelectionAnnouncer(sel, 0x1a); // FUN_00458cf0 lanes 0x458dc2/0x458df6
+        app::feedTeamSelectionAnnouncer(sel, 0x1a); // FUN_00458cf0: 0x458dc2 team + pass-102 tail
         CHECK(sel.slotType(0) == 1 && sel.slotId(0) == 0x1a); // G_T0026.PBK team bank
-        CHECK(sel.slotType(1) == 3 && sel.slotId(1) == 1);    // G_STD001.SMP real speech
-        CHECK(sel.loads() == 2 && sel.missing() == 0);
+        CHECK(sel.slotType(1) == 3 && sel.slotId(1) == 1);    // branch fill [0,5) -> G_STD001.SMP
+        CHECK(sel.slotType(2) == 3 && sel.slotId(2) == 1);    // second pick -> 0x4591f1 slot 2
+        CHECK(sel.loads() == 3 && sel.missing() == 0);        // slots 1/2 share G_STD001
         CHECK(sel.plays() == 1); // one announcement per pick call, never stacked
-        CHECK(sel.pickNext());   // slot 1 std lane plays on the next pick
-        CHECK(sel.plays() == 2);
+        CHECK(sel.pickNext());   // queued std lanes play on later picks
+        CHECK(sel.pickNext());
+        CHECK(sel.plays() == 3);
         CHECK(!sel.pickNext());  // queue drained: qfind-null lane
         app::feedBoardAnnouncer(sel, 0x1a); // FUN_00453a6c family lanes
         CHECK(sel.slotType(2) == 2 && sel.slotId(2) == 0);    // 0x453b15 silent schedule 000
@@ -368,10 +370,10 @@ int main() {
         CHECK(sel.slotType(1) == 2 && sel.slotId(1) == 21);   // 0x453bd2 selector 0x26
         CHECK(sel.slotType(4) == 2 && sel.slotId(4) == 101);  // 0x453c77 selector 0x36
         CHECK(sel.slotType(0) == 1 && sel.slotId(0) == 0x1a); // 0x453b07 team lane
-        CHECK(sel.loads() == 7 && sel.missing() == 0);        // all five files shipped
-        CHECK(sel.plays() == 3); // the feed itself picks exactly one entry
+        CHECK(sel.loads() == 8 && sel.missing() == 0);        // all five files shipped
+        CHECK(sel.plays() == 4); // the feed itself picks exactly one entry
         for (int i = 0; i < 4; ++i) CHECK(sel.pickNext()); // the remaining four announcements
-        CHECK(sel.plays() == 7); // every entry builds a clip (000 counts: zero samples)
+        CHECK(sel.plays() == 8); // every entry builds a clip (000 counts: zero samples)
         CHECK(!sel.pickNext());
     }
 
@@ -392,10 +394,103 @@ int main() {
         CHECK(cap.loads() == 3 && cap.missing() == 1);       // G_T0000 absent -> counted miss
         CHECK(cap.plays() >= 1);                             // std lane builds a clip
         // Second dispatch without any reset: the exe lane is stateless per pick (cursor
-        // never increments; tick-0 index), so the pick pins to entry 0 again.
+        // never increments; entry 0 stand-in), so the pick pins to entry 0 again.
         app::feedBoardHandlerAnnouncer(cap, 24, 0x1a); // second dispatch
         CHECK(cap.slotType(0) == 3 && cap.slotId(0) == 134);
         CHECK(cap.loads() == 4 && cap.missing() == 1); // both G_STD lanes shipped
+    }
+
+    // pass-102 match-result dispatch mirror (FEFLOW35 handler jump table 0x458ce0,
+    // objdump evidence analysis/pass102result/disasm.txt): outcome index from
+    // FUN_0048503c (schedule-pool scan 0..3, -1 miss); -1/>3 takes ja 0x458dfb
+    // tail-only (no branch fill/pick, no slot-1 write). Branch: selector fill type 2,
+    // pick -> slot 1 type 3; tail pair-order ecx lane over storePair output words,
+    // conditional fills {5, 0xb, 8} only with the DAT_0x6099c0 match-flag lane active;
+    // second pick id >= 0 -> 0x4591f1 target setSlot(2, 3, id).
+    {
+        app::Announcer res(tree);
+        audio::sceneLevels().setLevel(audio::kSceneSpeech, 80);
+        res.dispatchResult(-1, false, 0); // FUN_0048503c miss -> tail only
+        CHECK(res.slotId(1) == 0);        // branch fill/pick skipped
+        CHECK(res.pickSelector() == -1);  // empty selector list, no slot-2 write
+        res.setPairIds(0x0002, 0x0001);
+        res.setMembership({0x1000});      // storePair(0x1000) hit -> (f468, f46c) = (2, 1)
+        res.dispatchResult(0, true, 0x1000); // word0 > word1 -> ecx 1 -> conditional sel 5
+        CHECK(res.slotId(1) == 1);        // branch fill [0,5) entry 0 -> G_STD001
+        CHECK(res.pickSelector() == 26);  // conditional fill sel 5 [25,30)
+        CHECK(res.slotType(2) == 3 && res.slotId(2) == 26); // 0x4591f1 target slot 2
+        res.setPairIds(0x0001, 0x0002);   // hit -> (1, 2) -> ecx 0 -> conditional sel 0xb
+        res.dispatchResult(1, true, 0x1000);
+        CHECK(res.slotId(1) == 6);        // branch fill [5,10) entry 0
+        CHECK(res.pickSelector() == 56);  // conditional fill sel 0xb [55,60)
+        res.setPairIds(0x0003, 0x0003);   // equal -> ecx 3 -> conditional sel 8
+        res.dispatchResult(2, true, 0x1000);
+        CHECK(res.slotId(1) == 11);       // branch fill [10,15) entry 0
+        CHECK(res.slotId(2) == 41);       // conditional fill sel 8 [40,45)
+        res.dispatchResult(3, false, 0x1000); // flag lane off: branch only, no conditional
+        CHECK(res.slotId(1) == 16);       // branch fill [15,20) entry 0
+        CHECK(res.pickSelector() == 16);  // second pick same list
+        res.dispatchResult(4, false, 0);  // >3 -> ja tail only, list unchanged
+        CHECK(res.slotId(1) == 16 && res.pickSelector() == 16);
+        CHECK(res.loads() > 0 && res.missing() == 0); // slot 1/2 G_STD lanes shipped
+    }
+
+    // pass-104 variant arms (record+3 == 2 ECX lane 0x458f30, == 3 EDI lane 0x458ff4,
+    // evidence analysis/pass104variant/NOTES.md): a reference fill pins the expected
+    // selector block; the dispatch's slot-2 id must equal that block's entry 0.
+    {
+        app::Announcer var(tree);
+        audio::sceneLevels().setLevel(audio::kSceneSpeech, 80);
+        var.setPairIds(0x0002, 0x0001); // storePair(0x1000) hit -> (2, 1) -> ecx 1
+        var.setMembership({0x1000});
+        const auto firstId = [&tree](int selector) {
+            app::Announcer ref(tree);
+            if (!ref.fillSelector(selector, false)) return -1;
+            return ref.pickSelector();
+        };
+        const std::int32_t idD = firstId(0xd), id4 = firstId(0x4), id6 = firstId(0x6);
+        CHECK(idD != id4 && idD != id6); // distinct blocks pin the wiring
+        var.dispatchResult(-1, true, 0x1000, app::Announcer::VariantFeed{.statusByte = 2, .lookup2Hit = true}); // EBX=2 -> sel 0xd
+        CHECK(var.slotType(2) == 3 && var.slotId(2) == idD);
+        var.dispatchResult(-1, true, 0x1000, app::Announcer::VariantFeed{.statusByte = 2, .lookup1Hit = true}); // EBX=1 -> sel 0x4
+        CHECK(var.slotId(2) == id4);
+        var.dispatchResult(-1, true, 0x1000, app::Announcer::VariantFeed{.statusByte = 2}); // none -> sel 0x6
+        CHECK(var.slotId(2) == id6);
+        var.dispatchResult(-1, true, 0x1000, app::Announcer::VariantFeed{.statusByte = 2, .teamRegistered = true}); // gate hit -> 0xe
+        CHECK(var.slotId(2) == firstId(0xe));
+        var.setPairIds(0x0001, 0x0002); // hit -> (1, 2) -> ecx 0 lane
+        var.dispatchResult(-1, true, 0x1000, app::Announcer::VariantFeed{.statusByte = 2, .lookup1Hit = true}); // EBX=1 -> sel 0xa
+        CHECK(var.slotId(2) == firstId(0xa));
+        var.dispatchResult(-1, true, 0x1000, app::Announcer::VariantFeed{.statusByte = 2}); // none -> sel 0xc
+        CHECK(var.slotId(2) == firstId(0xc));
+        var.setPairIds(0x0003, 0x0003); // equal -> ecx 3 lane
+        var.dispatchResult(-1, true, 0x1000, app::Announcer::VariantFeed{.statusByte = 2, .lookup1Hit = true}); // EBX=1 hit -> 0x7
+        CHECK(var.slotId(2) == firstId(0x7));
+        var.dispatchResult(-1, true, 0x1000, app::Announcer::VariantFeed{.statusByte = 2}); // EBX=1 miss -> 0x9
+        CHECK(var.slotId(2) == firstId(0x9));
+        var.setPairIds(0x0002, 0x0001); // back to ecx 1 for the EDI lane fail arms
+        var.dispatchResult(-1, true, 0x1000, app::Announcer::VariantFeed{.statusByte = 3}); // EDI 0 fail -> 0x4
+        CHECK(var.slotId(2) == id4);
+        var.dispatchResult(-1, true, 0x1000, app::Announcer::VariantFeed{.statusByte = 3, .teamRegistered = true}); // check hit -> 0x11
+        CHECK(var.slotId(2) == firstId(0x11));
+        var.dispatchResult(-1, true, 0x1000, app::Announcer::VariantFeed{.statusByte = 3, .branchIndex = 1, .teamRegistered = true}); // EDI 1 -> 0x11
+        CHECK(var.slotId(2) == firstId(0x11));
+        var.dispatchResult(-1, true, 0x1000, app::Announcer::VariantFeed{.statusByte = 3, .branchIndex = 2}); // EDI 2 index fill
+        CHECK(var.slotId(2) == firstId(0x11));
+        var.dispatchResult(-1, true, 0x1000, app::Announcer::VariantFeed{.statusByte = 3, .branchIndex = 3}); // EDI 3 -> 0x12
+        CHECK(var.slotId(2) == firstId(0x12));
+        var.setPairIds(0x0003, 0x0003); // ECX == 3 fail arm (EBP predicate stays false)
+        var.dispatchResult(-1, true, 0x1000, app::Announcer::VariantFeed{.statusByte = 3}); // ECX==3 -> 0x1e
+        CHECK(var.slotId(2) == firstId(0x1e));
+        var.dispatchResult(-1, true, 0x1000, app::Announcer::VariantFeed{.statusByte = 3, .branchIndex = 1}); // ECX==3 -> 0x1e (ECX != EDI=1)
+        CHECK(var.slotId(2) == firstId(0x1e));
+        var.dispatchResult(-1, true, 0x1000, app::Announcer::VariantFeed{.statusByte = 3, .ebpPairEqual = true}); // EBP arm -> 0xf
+        CHECK(var.slotId(2) == firstId(0xf));
+        var.dispatchResult(-1, true, 0x1000, app::Announcer::VariantFeed{.statusByte = 3, .branchIndex = 1, .ebpPairEqual = true}); // EBP arm -> 0x10
+        CHECK(var.slotId(2) == firstId(0x10));
+        app::Announcer skip(tree); // EDI > 3: no fill, empty list -> no slot-2 write
+        skip.dispatchResult(-1, true, 0, app::Announcer::VariantFeed{.statusByte = 3, .branchIndex = 4});
+        CHECK(skip.slotType(2) == 0 && skip.selCount() == 0);
     }
 
     // pass-83 pair-store id source: FUN_00485210 membership scan over the DAT_0062f790 list,

@@ -1172,9 +1172,11 @@ six-byte speech-deck records at the `FUN_004cc060` buffer, counts non-empty
 decks — fewer than 7 loaded decks ⇒ no announcement. Phrase selectors verified
 instruction-level (`an3.txt`): `FUN_00458cf0` fills `0x0/0x1/0x2/0x3` per match
 type (jump table `0x458ce0`), then `0x5` win / `0xb` loss / `0x8` draw (mode byte
-`[0x6099c0]==1`, team-status byte `< 2` at `DAT_0060a0a4` record), `0xe` after
-`FUN_00498e90` team-check, `0x7` after both `FUN_004998c0` checks, and
-`0xf/0x10/0x11/0x12` per slot `EDI=0..3` when the draw flag is set;
+`[0x6099c0]==1`, `DAT_0060a0a4` record byte +3 `== 1` at `cmp %dh,%al` — corrected
+pass-102, see §Pass-102: `< 2` was wrong, byte 0 skips the fills and 1 fires them),
+`0xe` after `FUN_00498e90` team-check, `0x7` after both `FUN_004998c0` checks, and
+`0xf/0x10/0x11/0x12` per slot `EDI=0..3` on the record +3 `== 3` variant lane at
+`0x458fec` (corrected pass-102: "draw flag" was wrong);
 `FUN_00453a6c` fills first pass `0x23/0x29/0x26` then commit pass
 `0x33/0x39/0x36` (second grid, base `0x22`) on the record `+4/+6/+7` result-code
 1/2 combinatorics, with `FUN_00489920` remmap at `0x453b2e` (pass-79).
@@ -1993,11 +1995,9 @@ caller, no imm32 reference to 0x489ba0/4/6), and `DAT_0062fd9c` stores are just 
 carries no pick cursor and the port is stateless per pick, entry 0 as a stand-in (tick
 lane unmirrored [H]).
 
-**feflow35 partial mirror**: only the fill sites 0x458dc2 (SI team bank)
-and 0x458df6 (std selector 0x0) are mirrored via
-`feedTeamSelectionAnnouncer`; the match-result jump fills (`0x0-0x3/0x5/0xb/
-0x8/0xe/0x7/0xf-0x12`, pass-77b) stay unmirrored — the port has no match
-outcome recorded at board entry on this lane [H].
+**feflow35 mirror**: the fill sites 0x458dc2 (SI team bank) and the match-result
+jump table are fully mirrored via `feedTeamSelectionAnnouncer` — see Pass-102
+for the jump-table decode; the residual outcome/flag lanes are feed parameters.
 
 Wiring (`app/fe_flow.cpp`): `dispatchBoardAnnouncer(scene)` runs once per
 screen — `openWcCfg(screenId)` on entry and `drawTourneyPresent` per round
@@ -2019,3 +2019,170 @@ Evidence: `analysis/pass101announcer/NOTES.md`, registry
 `analysis/pass8/tourney_registry_entries.txt`, windows
 `analysis/pass77pbp/`, grid `analysis/pass78grid/grid_dump.txt`, dispatch
 call sites `analysis/pass82dispatch/`.
+
+## Pass-102 (2026-11-20): feflow35 match-result jump table decoded — tail mirrored
+
+The `feedTeamSelectionAnnouncer` residual (pass-101 "partial mirror") is closed for
+the jump table, tail and second-pick lanes; the record+3 variant fills at
+0x458f2a/0x458fec stay unmirrored [H].
+The feflow35 handler `FUN_00458cf0` tail, `mov eax,[esp+0x14]; cmp eax,3; ja
+0x458dfb; jmp *0x458ce0(,eax,4)`, is a 4-entry jump table at VA 0x458ce0
+`{0x458dd7,0x458eaf,0x458ed9,0x458f00}` (disasm `analysis/pass102result/disasm.txt`).
+
+**Outcome source.** `call 0x48503c` at 0x458d11 feeds `[esp+0x14]`. `FUN_0048503c`
+scans the schedule pool `DAT_0062fad8`: a byte count at `+0x5cc`, entry array at
+`pool + 0x5cc + 0x298` = `pool + 0x864` = group base `pool + 0x814` + `+0x50`,
+stride `0x12`, 4 per group (group stride `0x214`); returns the matching sub-entry
+index 0..3 of the needle (EAX = `FUN_0048503c(FUN_00485240())` result), `-1` on miss.
+
+**Outcome > 3 (or the `-1` miss as `0xffffffff`, unsigned compare).** `ja 0x458dfb`
+enters the shared tail only — the branch selector fill, pick and slot-1 store are
+skipped; the tail still runs. Earlier wording "outcomes > 3 fall through with no
+selector fill" was incomplete: the tail is executed, not the whole function exit.
+
+**Branch bodies.** Each branch fills its selector window (`b0` sel 0, `b1` sel 1,
+`b2` sel 2 — sel value in EAX, type flag EDX=2), calls the pick `0x4899dc`, then
+`mov %eax,%ebx; mov $1,%eax; mov $1,%edi` and jumps/falls into the shared tail at
+0x458df6: `call 0x4894ac` (EAX=1 slot, EDX=3 type, EBX=picked id).
+
+**Tail.** 0x458dfb `call 0x489a64` — one-shot stub: `DAT_0x62fd98 := 0` (global word
+reset; no port state). 0x458e06 `call 0x48525c` writes two stack words (pair-store
+ordering, pass-83). Order ecx lane 0x458e0b-22: word0 > word1 → ecx = 1; word0 ==
+word1 → ecx = 3; else ecx unchanged (0 lane). Flag lane 0x458e27-30: `mov
+0x6099c0,%dh; cmp $1,%dh; jne 0x458e80` — the flag-inactive path lands **on** the
+second pick, it does not skip it. Flag-writer scan (byte patterns `88 15/88 25`,
+target imm `c0 99 60 00`): exactly two stores, both writing 1 — the FE-territory
+stub at 0x453a24 (`mov $1,%ah; mov %ah,[0x6099c0]; mov $-1,[0x6099bc]`, single E8
+caller 0x449f17) and the schedule-pool-init store 0x484a0f (`mov $1,%dl`, inside
+the `DAT_0x62fad0/0x62fad8` pool-setup block). No store of 0 exists, so once
+either stub runs the lane is active; boot-time reachability of both [H] —
+pass-77b's "static 0, a board entry takes the inactive lane" is retracted.
+With the byte at 1, the record+3 byte (0x458e32-36, record pointer `[esp+10]`,
+prologue-computed — pass-103 below — as `DAT_0x60a0a4 + group*72 + slot*18`) compares
+against dh == 1 (`cmp %dh,%al`); all lanes reach 0x458e80:
+- `== 1`: plain order fills — ecx 1 → sel 5 (0x458e4a), ecx 0 → sel 0xb (0x458e5d),
+  ecx 3 → sel 8 (0x458e71), each EDX=2. `== 0` (mismatch at 0x458e43) → straight to
+  the second pick with no fill.
+- `>= 2` (`jae 0x458f2a`, `ja 0x458fec` splits `> 2`): `== 2` lookup variant —
+  ecx 1/0 call `FUN_00498e90` (EDX = SI team) and, on non-null record, fill sel 0xe
+  EDX=2 (0x458f58/0x458f84); ecx 3 (0x458f90) chains `FUN_00498e90`/`FUN_004998c0`
+  probes setting EBX stage 2/1, then fills sel 0x7 EDX=2 at 0x458fe2 jumping into
+  the shared fill call 0x458e7b.
+- `== 3` (0x458fec): EDI/EBP lane — EDI 0 → sel 0xf (0x459005), EDI 1 → sel 0x10
+  (0x459021), EDI 2 → sel 0x11 with EDX=EDI (0x459032-0x459039), EDI 3 → sel 0x12
+  EDX=2 at 0x45904e jumping into 0x458e7b; `> 3` (`jne 0x458e80` at 0x458fee) →
+  straight to the second pick.
+All variant lanes are match-context feed-dependent [H] (record pointer provenance,
+schedule pool records); the port models the lane as the `matchFlagLane` boolean and
+mirrors only the plain order dispatch.
+
+**Second pick.** 0x458e80 `call 0x4899dc`; `cmp $-1; jne 0x4591f1` — at the target
+`mov %eax,%ebx; mov $2,%eax; mov $3,%edx; call 0x4894ac` = **slot 2 type 3** store
+(not a skip: earlier "append-lane gate [H]" wording was wrong), then `call 0x4894c4`
+(builder arm) and the epilogue. `-1` falls through to the epilogue (empty list).
+
+Port mirror (`app/game_audio.cpp`): `Announcer::dispatchResult(outcome,
+matchFlagLane, needle)` implements the mirrored lanes — branch fill/pick/slot-1
+only for `0 <= outcome <= 3`, then the tail order lane over the `storePair(needle)`
+output words, conditional fills `{5, 0xb, 8}` under the feed flag (a stand-in for
+`DAT_0x6099c0 == 1` and record+3 == 1), and the unconditional second pick writing
+slot 2 (type 3) when `>= 0`. The record+3 variant fills (sel 0xe/0x7 at 0x458f2a,
+sel 0xf-0x12 at 0x458fec) are unmirrored [H] — behind the flag byte and the
+schedule-lookup state, unreachable from any current port feed.
+`feedTeamSelectionAnnouncer(ann, team, outcome = 0, flag = false)` is the single
+handler path: slot 0 type 1 team bank (0x458dc2) + dispatch tail. The FE board has
+no recorded match: outcome 0 pool index is a feed parameter [H] (FUN_0048503c scan
+of the schedule pool for the selected team id); the flag lane's retail state is [H]
+(both writers store 1; boot-time reachability unrecovered).
+
+Gate (`tests/unit/test_gameaudio.cpp` pass-102 block): miss → tail-only (no slot-1
+write, empty-list pick −1, no slot-2 write); hit pair (2,1) → ecx 1 → branch fill
+[0,5) id 1 slot 1 + conditional sel 5 + slot 2 id 26; (1,2) → ecx 0 → sel 0xb;
+(3,3) → ecx 3 → sel 8 slot 2 id 41; flag-off dispatch → branch only, second pick
+same list into slot 2; outcome 4 → tail-only with unchanged list. Scene 35 wiring
+(`app/fe_flow.cpp` case 35) is the single `feedTeamSelectionAnnouncer` call: the
+exe second pick always runs, so slot 2 stores a second std pick; with the port's
+entry-0 stand-in (exe picks via the tick-fraction index) both picks resolve to
+entry 0 of the same list, so the port lane plays G_STD001 twice per pick
+(`loads()==3` is stand-in state, not an exe-pinned clip sequence).
+
+## Pass-103 (2026-11-20): feflow35 prologue schedule lanes decoded
+
+Closes pass-102's `[esp+10]` provenance and EBP residuals. Evidence
+`analysis/pass103sched/` (`fun00484fe4/0048503c/004588c4_sync/fun00458904/
+fun00484f90/fun00484fc4/fun004964d0/ebp_lane/ebp_mismatch.txt`, objdump
+`--adjust-vma=0x400c00`). No port code change — the port's scene-35 feed
+(outcome 0, status-0 path) already models the exe board-entry lane; the decoded
+semantics replace the [H] wording in `app/game_audio.hpp`'s `dispatchResult`
+comment.
+
+**Schedule pool.** Runtime pool `DAT_0x62fad8 := [DAT_0x6079e8]` (boot store
+0x4849f0 lane; `DAT_0x62fad0 := 0x602880`). Group array base = pool + 0x814,
+group stride 0x214, group count = u8 at pool + 0x5cc. Per group record:
+
+- `+0xe`/`+0x10` u16 pair — the prologue's EBP predicate compares them for
+  equality (0x458d87-96).
+- `+0x16` 4 × u16 team-id array — `FUN_00484fe4(EAX=team)` scans the count
+  groups × 4 ids (stride 2) and returns the group index, `-1` miss (0x485206:
+  `mov %esi,%eax`).
+- `+0x50` 4 × 0x12 entry array — the same array serves both lanes:
+  `FUN_0048503c(EAX=team)` compares entry + 0 u16, returns the first matching
+  slot 0..3, `-1` miss; this slot is the jump table `outcome`, a fixture slot
+  index, not a result type. `FUN_00484f90` (sync, below) indexes the same array
+  as the mirror source.
+
+**Compact mirror table `DAT_0x60a0a4`.** 8 groups × 4 slots × 18-byte records
+(`group * 72 + slot * 18`). Boot sync `FUN_004588c4` (feflow35 boot lane,
+called at 0x458887 before the `FUN_00484fc4` pair lookup): outer 8 × inner 4,
+`FUN_00484f90(EAX=group, EDX=slot)` computes the pool source
+`pool + 0x814 + group * 0x214 + 0x50 + slot * 18` (shl 3, add slot → ×9, then
+`add %edx,%edx` → ×18), then `FUN_004964d0` (Watcom overlap-safe copy,
+`EAX=src EDX=dst EBX=0x12`) copies the full 18-byte entry record into the
+table slot. The exe copies verbatim; no field translation.
+
+**Prologue record + predicate.** `[esp+0x10] = DAT_0x60a0a4 + group * 72 +
+outcome * 18` (0x458d1e-59: `FUN_00484fe4` group index × 72, outcome slot × 18,
+both folded by `*8`+`*8`/`*8`+`*2` arithmetic); `record + 3` byte = the status
+lane — byte `== 1` fires the plain conditional fills, byte `== 0` skips
+straight to the second pick, byte `== 2` takes the sel `0xe`/`0x7` variant
+fills (`0x458f30`-`0x458fe7`), byte `== 3` the per-slot `0xf/0x10/0x11/0x12`
+lane (`0x458fec`), byte `> 3` straight to the second pick. Field
+semantics of the 18-byte entry record stay [H] (byte 3 read as status; no
+store site recovered for the +0x50 array). EBP (0x458d83-0x458eaa) =
+`(group+0xe == group+0x10)` OR — mismatch
+lane 0x458e98 — `u8 [DAT_0x62fad0 + 0x4354] == 2` (0x602880 + 0x4354 =
+0x606bd4) sets EBP = 1; neither operand value decoded statically [H].
+`FUN_00484fc4` (0x45888c) = pair lookup: `isMember([DAT_0x62fab0])` else
+fallback `DAT_0x62fab4`, then `FUN_00484fe4` — same selection helpers as the
+pass-83 pair-store mirror; result stored at `DAT_0x57cf04` (0x458891).
+
+Gate: none required (doc + comment refinement only); pass-102 block continues
+to pin the mirrored lanes.
+
+## Pass-104 (2026-11-20): variant dispatch arms mirrored — ECX/EDI feeds + boundary-table fix
+
+`FUN_0049988c` = 40-entry selector-list builder: two-pass scan over the record
+array `DAT_0057e528` (raw 0x17c650) with fill types 0/1 (records `5, 0xb, 8`,
+selector 8 fills 37) and type 2 (fill 43), output pairs written to the table
+`DAT_0057e604` = VA 0x57f51e (raw 0x17c894). Pick dispatch `0x458c49`-`0x4591ff`
+reads `record + 3` as the status byte and feeds the variant arguments from the
+`EAX != 1`/`EAX != 2` lookups `0x458961`/`0x45885f` (Watcom register args lost in
+pseudocode — keys remain [H]), the team-membership check `0x458b5a`
+(`FUN_00498e90`, solid), and the EBP predicate (pass-103). Status `2` runs the
+sel `0xe`/`0x7` + sel-`0x18` ECX lane (`test_ecx` gate); status `3` runs the
+EDI-branch fill lanes via `0x4894ac`/`0x4894c4` and the second-pick epilogue
+`0x4591f1` (`EDI = 3, EAX = 2`); selectors `0x14-0x17` fill the table pair
+slots 2/3 before both dispatch arms (`test_seltable` gate).
+
+`fillSelector` correction: the exe fill routine `FUN_00489974` indexes the
+boundary table at ANY selector (`*(int *)(DAT_0057e938 + selector*4)` + next
+word, no validity guard), so `0x1e` fills `[41,42)` (list {42}), `0x1f`
+`[42,80)`, `0x20` `[80,81)`; `0x1d`/`0x21` are empty ranges. Grid B (`>= 0x22`)
+is the same table continued. Port mirror: `Announcer::dispatchResult` takes a
+`VariantFeed` (status byte + variant predicates) so every decoded arm is
+testable without the [H] lookup keys; `test_gameaudio` `pass-104` block pins
+slot-2 ids against the `fillSelector` + `pickSelector` reference fills for all
+18 dispatch paths.
+
+Evidence: `analysis/pass104variant/NOTES.md`, `/tmp/wc98pass104/*` (140 lines,
+dispatch + FUN_0049988c + table dumps).

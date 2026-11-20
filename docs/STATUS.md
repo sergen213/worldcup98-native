@@ -176,12 +176,41 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
   45570c/455d28/458714; feflow27 carries no announcer call site. `dispatchBoardAnnouncer`
   feeds once per screen on `openWcCfg` entry and per presentation round; new
   `feedBoardHandlerAnnouncer` mirrors the per-handler fill sites (selector + t1 +
-  selector order, t3 skip grid); feflow35 stays a subset mirror (team/std sites only,
-  match-result jump fills unmirrored [H]). Gate `fe_render_present --fe-pick 26`
+  selector order, t3 skip grid). Gate `fe_render_present --fe-pick 26`
   asserts announcer counters through the FAIL list (multi-value PASS regex is OR,
   measured). Mapping + retraction of pass-101's first-draft attribution in
   `docs/reverse-engineering/AUDIO_RUNTIME.md` (Pass-101), evidence
   `analysis/pass101announcer/`.
+- **feflow35 jump table closed (pass-102, 2026-11-20)** — the pass-101 subset is
+  replaced by the `FUN_00458cf0` tail mirror: outcome index from `FUN_0048503c`
+  (schedule-pool scan 0..3, -1 miss), `cmp 3 / ja 0x458dfb` tail-only lane, branch
+  fill(type 2)+pick+slot-1(type 3), tail pair-order lane over `storePair` output,
+  conditional fills {5, 0xb, 8} under the `DAT_0x6099c0` feed flag, and the
+  UNCONDITIONAL second pick at the 0x4591f1 target = slot 2 type 3 (earlier "append
+  gate [H]" wording retracted). Record+3 variant fills (sel 0xe/0x7/0xf-0x12 at
+  0x458f2a/0x458fec) remain match-context [H], unmirrored. Flag-writer byte scan:
+  exactly two stores, both writing 1 (FE stub 0x453a24, store at 0x453a2c, E8 caller 0x449f17,
+  schedule-pool init 0x484a0f); pass-77b's "static 0, board entry inactive lane" is
+  retracted — once either store runs the lane is active (boot reachability [H]).
+  Scene 35 plays a second std pick per dispatch (exe second pick always runs; the
+  port's entry-0 stand-in makes it the same clip as slot 1). Gate
+  `tests/unit/test_gameaudio.cpp` pass-102 block; disasm + flag scan
+  `analysis/pass102result/`.
+- **Prologue schedule lanes closed (pass-103, 2026-11-20)** — pass-102's `[esp+10]`
+  provenance and EBP residuals are decoded: the jump-table record is
+  `DAT_0x60a0a4 + group*72 + slot*18`, a compact mirror of the schedule pool
+  (`DAT_0x62fad8 := [DAT_0x6079e8]`, group base pool+0x814 stride 0x214, group count
+  u8 pool+0x5cc); the boot sync `FUN_004588c4` copies 18 bytes per slot from pool
+  group+0x50 (4 × 0x12 records) via `FUN_00484f90` (source
+  address, slot stride 0x12) + `FUN_004964d0` (overlap-safe copy). `outcome` = fixture
+  slot (`FUN_0048503c`, entry+0 u16 == team over the same group+0x50 4×0x12 array), group index =
+  `FUN_00484fe4` (team ids at group+0x16), record+3 byte = status lane (byte 0 skips
+  conditional fills; only byte == 1 fires the plain fills). EBP = group+0xe == group+0x10
+  OR `cmpb $2,[DAT_0x62fad0+0x4354]` (0x606bd4); `FUN_00484fc4` pair lookup = pass-83
+  `isMember`/fallback helpers, result `DAT_0x57cf04`. Pool record field semantics +
+  0x606bd4 writer remain [H]. No port code change — the scene-35 feed already models
+  the status-0 board-entry lane; `dispatchResult` comment + `AUDIO_RUNTIME.md`
+  Pass-103 carry the layout. Evidence `analysis/pass103sched/`.
 - **Announcer screen dispatch closed (pass-82, 2026-11-20)** — the pass-77/79 residual
   "screen-to-handler dispatch stays [H]" was wrong: every announcer board-handler owner
   (`FUN_00453a6c/454338/454d60/45548c/455a3c/455f30/458cf0`) has exactly one direct `E8`

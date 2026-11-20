@@ -1037,8 +1037,22 @@ bool Announcer::fillSelector(int selector, bool type3) {
         else if (nxt <= 0x15) end = 95u + 10u * (nxt - 0x13);
         else if (nxt <= 0x1c) end = 125u + 5u * (nxt - 0x16);
         else end = 0xa0; // wrap word v[0x1d] = 0xa0 closes the last block
+    } else if (selector >= 0x1d && selector <= 0x21) {
+        // The exe fill routine FUN_00489974 indexes the boundary table at any selector
+        // (`*(int *)(&DAT_0057e938 + EAX*4)` + next word), so the words behind the wrap
+        // word 0xa0 are still selectable. Table values v[0x1d..0x22] dumped from raw
+        // 0x17cfac: {0xa0, 0x29, 0x2a, 0x50, 0x51, 0x0} - 0x1d and 0x21 give empty
+        // ranges (start > end), 0x1e fills [41,42) (record 41 -> id 42), 0x1f
+        // [42,80), 0x20 [80,81).
+        static const unsigned kAdj[6] = {0xa0, 0x29, 0x2a, 0x50, 0x51, 0};
+        start = kAdj[selector - 0x1d];
+        end = kAdj[selector - 0x1d + 1];
+        if (start >= end) { // empty range: exe loop never runs, list stays reset
+            selList_.clear();
+            return false;
+        }
     } else {
-        return false; // 0x1d..0x21: adjacent data words, not selector entries
+        return false;
     }
     selList_.clear();
     const std::span<const std::uint16_t> skips =
@@ -1063,14 +1077,86 @@ std::int32_t Announcer::pickSelector() {
     return selList_[0];
 }
 
-void feedTeamSelectionAnnouncer(Announcer& announcer, std::int32_t team) {
+void Announcer::dispatchResult(int outcome, bool matchFlagLane, std::uint32_t needle) {
+    dispatchResult(outcome, matchFlagLane, needle, VariantFeed{});
+}
+
+void Announcer::dispatchResult(int outcome, bool matchFlagLane, std::uint32_t needle,
+                               const VariantFeed& variant) {
+    // exe dispatch 0x458dcb: `cmp eax,3; ja 0x458dfb` - outcome -1 (FUN_0048503c miss)
+    // or > 3 enters the shared tail at 0x458dfb, skipping only the branch fill/pick/setSlot.
+    if (outcome >= 0 && outcome <= 3) {
+        // Branch bodies 0x458dd7/0x458eaf/0x458ed9/0x458f00: EDX=2 type flag, selector =
+        // outcome (b2 loads EAX=EDX=2 via 0x458ede `mov %edx,%eax`).
+        fillSelector(outcome, false);
+        const std::int32_t id = pickSelector(); // FUN_004899dc at 0x458de3/0x458ebe/0x458ee5/0x458f0f
+        if (id >= 0) setSlot(1, 3, static_cast<std::uint16_t>(id)); // tail 0x458df6 FUN_004894ac
+    }
+    // 0x458dfb FUN_00489a64: DAT_0x62fd98 := 0 (global word reset, no port state).
+    // Order ecx lane (0x458e0b-22) over the FUN_0048525c stack words = storePair output.
+    const auto words = storePair(needle);
+    const int order = words.first > words.second ? 1 : (words.first == words.second ? 3 : 0);
+    int sel = -1; // pass-104 selector under the record+3 dispatch (0x458e32-43)
+    if (matchFlagLane) { // 0x458e27 cmp dh,1 on DAT_0x6099c0
+        if (variant.statusByte == 2) {
+            // 0x458f30 ECX lane: FUN_00498e90 gate (team membership, record+0x10 array -
+            // solid), fail arms 0x459058/0x4590ac/0x459103 with FUN_004998c0 EBX=2/1
+            // lookups (group+0x16 key [H]). ECX==3 arm: EBX=1 hit -> 0x7, miss -> 0x9.
+            if (variant.teamRegistered) sel = 0xe;
+            else if (order == 1) sel = variant.lookup2Hit ? 0xd : (variant.lookup1Hit ? 0x4 : 0x6);
+            else if (order == 0) sel = variant.lookup2Hit ? 0xd : (variant.lookup1Hit ? 0xa : 0xc);
+            else if (order == 3) sel = variant.lookup2Hit ? 0xd : (variant.lookup1Hit ? 0x7 : 0x9);
+        } else if (variant.statusByte == 3) {
+            // 0x458ff4 EDI lane: the EBP pair-equality predicate (pass-103 0x458d83-eaa,
+            // group+0xe == group+0x10 OR DAT 0x606bd4 == 2 - independent of the ECX
+            // word order) gates the direct fills; fail arms 0x459130/0x459191 re-check
+            // FUN_00498e90 then pick ECX: ECX == EDI -> 0x4, ECX == 0 -> 0xa,
+            // ECX == 3 -> 0x1e, otherwise the continue lane (no fill). EDI == 2 fills
+            // sel 0x11 with EDX = branch index (0x459037, value 2 -> type-2 fill lane);
+            // EDI > 3 goes straight to the second pick with no fill.
+            if (variant.branchIndex == 0) {
+                if (variant.ebpPairEqual) sel = 0xf;
+                else if (variant.teamRegistered) sel = 0x11;
+                else if (order == 1) sel = 0x4;
+                else if (order == 0) sel = 0xa;
+                else if (order == 3) sel = 0x1e;
+            } else if (variant.branchIndex == 1) {
+                if (variant.ebpPairEqual) sel = 0x10;
+                else if (variant.teamRegistered) sel = 0x11;
+                else if (order == 1) sel = 0x4; // ECX == EDI
+                else if (order == 0) sel = 0xa;
+                else if (order == 3) sel = 0x1e;
+            } else if (variant.branchIndex == 2) {
+                sel = 0x11;
+            } else if (variant.branchIndex == 3) {
+                sel = 0x12;
+            }
+        } else {
+            // status 1 plain fills (status 0 goes straight to the pick; the port's
+            // pass-102 flag-lane approximation keeps order {5, 0xb, 8}).
+            if (order == 1) sel = 5;            // 0x458e4a
+            else if (order == 0) sel = 0xb;     // 0x458e5d
+            else if (order == 3) sel = 8;       // 0x458e71
+        }
+    }
+    if (sel >= 0) fillSelector(sel, false); // fill target 0x489974 lane
+    const std::int32_t pid = pickSelector(); // 0x458e80 second pick
+    if (pid >= 0) { // 0x458f23 je epilogue; else 0x4591f1 target
+        setSlot(2, 3, static_cast<std::uint16_t>(pid)); // 0x4591f1 EAX=2 EDX=3 EBX=id
+        // call 0x4894c4 builder arm -> port pumpPending()/pickNext() tail lane
+    }
+    pumpPending(); // entry FUN_00489460 builder load + arm
+    pickNext();    // FUN_0048d0dc activation lane: one announcement, never stacked
+}
+
+void feedTeamSelectionAnnouncer(Announcer& announcer, std::int32_t team,
+                                int outcome, bool matchFlagLane) {
     if (team < 0) return; // FUN_004dac90() >= 7 gate lane: no pick, nothing filled
     announcer.setSlot(0, 1, static_cast<std::uint16_t>(team)); // 0x458dc2 SI team bank
-    announcer.fillSelector(0, true);                           // 0x458df6 std lane [0,5)
-    const std::int32_t id = announcer.pickSelector();
-    if (id >= 0) announcer.setSlot(1, 3, static_cast<std::uint16_t>(id));
-    announcer.pumpPending(); // FUN_00489460 builder load + FUN_004894c4 arm
-    announcer.pickNext();    // FUN_0048d0dc pick lane: one announcement, never stacked
+    // pass-102 jump-table tail: outcome index (FUN_0048503c schedule-pool scan, FE
+    // board pool -> 0 for the picked team [H]); needle = picked team id [H] (pass-84
+    // pack-pair provenance lane).
+    announcer.dispatchResult(outcome, matchFlagLane, static_cast<std::uint32_t>(team));
 }
 
 void feedBoardAnnouncer(Announcer& announcer, std::int32_t homeTeam) {

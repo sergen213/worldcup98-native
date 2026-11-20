@@ -38,14 +38,15 @@ constexpr struct {
     return false;
 }
 
-// Class-letter gain table. COMMENTARY_WC98.md gives only the API volume domain — SNDspeechinit
-// vol in [0,0x80) and the autovol ramp (SNDspeechautovol, DAT_00588d6c), "not modelled" per
-// SPEECH_PHRASES.md §2. Chosen constants: mid-domain 0x40 normalized = 0.5f for the PT class
-// letters 'c' (PHRS/PLRS/TEAM MicroTalk) and 'a' (CHNT EA-XA); '?' payloads decode silent and
-// are never played. // Hypothesis: per-class split of that volume is unmeasured.
-[[nodiscard]] float gainForClass(char letter) {
-    return (letter == 'c' || letter == 'a') ? 0.5f : 1.0f;
-}
+// Class-letter gain table: RETRACTED (pass-98). The exe has NO per-class gain. Boot lane
+// FUN_0048fd54 (site 0x48fd75 `MOV EAX,3; CALL 0x4906a4; CALL 0x4df820`) seeds the speech
+// master from percent idx3 only (audio boot FUN_00490728 writes 100 for all slots -> vol 0x7f;
+// the pass-7e live {80,...} snapshot is the later options rewrite), and the state-cb pump
+// 0x4dfca0 applies cur>>16 via SNDvol to every live voice-group pair (DAT_00588d70/588d74);
+// the scene autovol seam FUN_0048fca0 (sites 0x48fcb0/0x48fcb7) re-applies pct idx3 (EDX=0 ->
+// frames clamp 1). The name-tag byte only feeds the selector jump table 0x48f2bc (retail tags
+// {0x07}/{0x40} never hit arms {2,4,6}), never gain. Evidence: analysis/pass98gain/NOTES.md.
+// So every played slot takes the raw master byte, no letter split.
 
 constexpr std::uint32_t kRecordSize = 20; // 20-byte phrase record || payload (NOTES §1)
 
@@ -217,9 +218,7 @@ void Commentary::onStart(int slot, std::uint16_t id) {
         const auto pcm = formats::decodePlayTrack(seg, std::min<std::size_t>(kRecordSize, seg.size()));
         ++decoded_;
         lastFrames_ = std::uint32_t(pcm.frames());
-        const float g = gainForClass(r.classLetter); // Hypothesis per-class level (see above)
-        slotGain_[std::size_t(slot)] = g;
-        if (mixer_ && pcm.frames() > 0) sounds_[std::size_t(slot)] = mixer_->play(pcm, g * gain_.frac());
+        if (mixer_ && pcm.frames() > 0) sounds_[std::size_t(slot)] = mixer_->play(pcm, gain_.frac());
     } catch (const FormatError&) {
         // Malformed segment: silent skip; onComplete reports done.
     }
@@ -228,7 +227,6 @@ void Commentary::onStart(int slot, std::uint16_t id) {
 bool Commentary::onComplete(int slot) {
     const auto sid = sounds_[std::size_t(slot)];
     if (mixer_ && sid != 0) return !mixer_->playing(sid); // play-status probe (FUN_004d9250 analog)
-    slotGain_[std::size_t(slot)] = 0.f;
     return true; // silent decode or no device: complete immediately
 }
 
@@ -249,15 +247,14 @@ void Commentary::pump(int frames) {
         }
         gain_.tick();
         if (!mixer_) continue;
-        const float m = gain_.frac();
         for (std::size_t s = 0; s < audio::SpeechQueue::kSlots; ++s)
-            if (sounds_[s] && slotGain_[s] > 0.f) {
+            if (sounds_[s]) {
                 // SNDvol per-frame apply + channel duck/mix table DAT_0064b9dc (+1 CC7 byte): key-on
                 // formula voiceVol * cc7 / 0x7f, and every CC7 write re-applies SNDvol to all active
                 // voices in MIDI timer cb LAB_004e3bd4 (analysis/pass7/duck3.txt). Default vol 0x7f =
                 // identity. Deviation: port has no MIDI music bus; speech slots occupy the channel
                 // window (COMMENTARY_WC98.md §pass 7d).
-                const int base = int(slotGain_[s] * SpeechGain::kMaxVol * m + 0.5f);
+                const int base = gain_.applied(); // exe applies the raw cur>>16 master byte (pass-98)
                 mixer_->setGain(sounds_[s], float(mix_.scaledFor(int(s), base)) / SpeechGain::kMaxVol);
             }
     }

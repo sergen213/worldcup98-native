@@ -448,10 +448,9 @@ private:
     std::vector<std::vector<std::uint16_t>> segIds_;         // phrase ordinal -> segment ids (TOC order)
     std::vector<std::uint32_t> candidates_;                  // pick pool: non-empty commentary phrases (ready-list model; picked node erased)
     std::array<audio::SoundId, audio::SpeechQueue::kSlots> sounds_{}; // slot -> mixer voice (0 = silent/done)
-    std::array<float, audio::SpeechQueue::kSlots> slotGain_{}; // per-slot class gain (Hypothesis)
     ChannelMix mix_;                                           // DAT_0064b9dc model (duck/mix table)
     SpeechGain gain_;                                          // speech master ramp
-    int volume_ = SpeechGain::kMaxVol;                         // SNDspeechinit vol (percent table FUN_004906a4, values runtime)
+    int volume_ = SpeechGain::kMaxVol;                         // SNDspeechinit vol: audio boot FUN_00490728 initialises DAT_00632778 to 100 for all slots -> pct(100) = 0x7f; scene options rewrite (pass-7e live snapshot {80,...}) arrives via setScenePercent (pass-98)
     std::unordered_map<std::uint32_t, std::vector<std::uint8_t>> phraseCache_; // lazy decompressed phrase members
     int lastPhrase_ = -1;
     std::uint32_t decoded_ = 0, sentences_ = 0, lastFrames_ = 0, rejected_ = 0;

@@ -1779,5 +1779,23 @@ Dump windows `analysis/pass96beat/t3.txt..t5.txt` (Ghidra disassembly, AUTO lane
   frames (~28 ms total drift), counter advanced continuously. Gate mode drains loopback through
   `render()` and asserts the counter tracks rendered frames within one render slice + one queued
   buffer (`movie-audio-granularity` violation -> exit 4); prints `movie-audio-rendered=1494277
-  movie-audio-played=1494277` (`video_play` regex pins exact values). A8 residual untouched
-  (MicroTalk class-table calibration still needs an exe float-domain measurement lane).
+  movie-audio-played=1494277` (`video_play` regex pins exact values). A8 residual CLOSED pass-98
+  (no exe class gain — see Pass-98 below).
+
+## Pass-98: A8 class-letter gain residual closed — no per-class gain exists (measured 2026-11-20)
+Speech master is the ONLY volume applied to played commentary phrases. Boot lane
+`FUN_0048fd54` — the sole direct `SNDspeechinit` `0x4df820` call site in the file (E8 scan over
+the AUTO segment, artifact `analysis/pass98gain/scan.txt`: exactly one hit, `0x48fd85`) — gates
+on percent-enable `CALL 0x490674`, once-guard `DAT_006326b0`, then `0x48fd75 MOV EAX,0x3;
+0x48fd7a CALL 0x4906a4` (`pct[idx3]*0x7f/100`, clamp ≥1) and `0x48fd85 CALL 0x4df820`
+(vol = EAX). Audio boot `FUN_00490728` initialises `DAT_00632778` to 100 for all six scene
+slots (`AUDIO_RUNTIME.md` §boot, line 668), so the boot seed is `pct(100) = 0x7f`; the pass-7e
+live `{80,80,80,80,65,80,1}` snapshot is the later options rewrite. The scene autovol seam
+`FUN_0048fca0` (sites `0x48fcb0` percent→vol, `0x48fcb7` `SNDspeechautovol`, `EDX=0` → frames
+clamp 1) re-applies pct idx3 as the ramp target. Engine callback lane `0x49001c` (pass-92/93
+registry find + PHRS.PBK fileio verify) touches no volume operand, and the class/name-tag byte
+is consumed only by the dispatch jump table `0x48f2bc` (`[rec+0x20]&0x3f`, pass-88/90), never
+as a gain input — there is no class→gain table anywhere.
+Port: `gainForClass`/`slotGain_` removed; pump applies the raw `cur>>16` master byte
+(`gain_.applied()`) to every live slot; `volume_` stays `kMaxVol` (boot pct(100)), scene
+levels arrive through `setScenePercent`. Evidence `analysis/pass98gain/{NOTES.md,scan.txt,g1.txt,g2.txt}`.

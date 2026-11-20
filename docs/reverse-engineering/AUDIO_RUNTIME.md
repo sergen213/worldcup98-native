@@ -1311,3 +1311,23 @@ Evidence: `analysis/pass86speech/` (`t4.txt` driver/callback decompiles, `t9.txt
 disasm 0x48f7a4-0x48fb80, `t10.txt` boot registration 0x490540-0x490600 + `FUN_00490528`,
 `t11.txt`/`t13.txt` cluster helper decompiles, `t12.txt` stub handlers + driver prologue +
 stop-all sweep, `t3/t6/tick_scan.txt` caller/pointer scans; `GhidraWc98T2..T13.py`).
+
+## Pass-87: A7 selector consumer chain + A8 beat gate operand closed (measured 2026-11-20)
+
+- `DAT_0057eb54` is file-backed (raw 0x17d154): 8 bytes `[0,0,0,0,0,0,1,0]` + pointer field
+  0x566c30 at +8 — not a weights array. Dispatch arm `0x48f317`: `BL = table[class]`,
+  selector `EBX = 2*BL + (classByte>>6)`, `EDX = [rec+0xC]` (word pointer), `EAX = 3`.
+- Consumer chain (`q1.txt`): `FUN_0048d070` = `CALL 0x48d0dc` (EBX PUSH/POP-protected; queue
+  slot `DAT_00632428 + EAX*0x1c`, `qfind FUN_004c4ce0` with callback `0x48cf10` and
+  EBX = saved `[rec+0xC]`) → `ADD EAX,0x14; MOV EDX,EBX; JMP 0x4c4d50` — selector arrives as
+  EDX of `qfindindex FUN_004c4d50` and is walked by `FUN_004c45d0`
+  (`DEC EDX; while(EAX && EDX!=-1) EAX=[EAX]`) = selector-th queue node (0 → NULL). Match
+  callback `0x48cf10` (`q4.txt`): `ECX = [EDX]; CMP ECX,[node+0xC]` — tag equality by value.
+  Net: entry index = `2*table[class] + (classByte>>6)`, class 6 → +2; queue-entry selection,
+  no probability scaling.
+- A8 beat gate (`q2.txt`/`q3.txt`): entry `{u16 slot idx, u16 threshold @+2, u32 id @+4,
+  handle @+8}`; fire gate `0x4dfd45`: `SAR entry>>16` (= threshold), `CALL 0x52c780` = getvol
+  of handle `DAT_00588d74` (server table `DAT_006597e8` record volume byte at `rec+0x3b`),
+  `CMP vol,threshold; JG skip` — beat plays only when `vol <= threshold`; all add sites pass
+  `EBX = 0` → retail beats fire only under zero group volume.
+Evidence: `analysis/pass87beat/` (`q1..q4.txt`, `GhidraWc98Q1..Q4.py`).

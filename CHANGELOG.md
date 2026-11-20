@@ -5,6 +5,25 @@ tournament playable natively, per the definition of success in the
 project goals.
 
 
+## [0.5.1] - 2026-11-20 — venue fog lane data mirror (pass-117fog)
+
+### Added
+
+- **Venue fog lane data mirror**: `formats::parseVenueFogLane` reads the fly-around venue table
+  (DGROUP `0x5714f8`, row `+0x0c` fog-enable byte per venue) and the 12-entry stride-3 RGB
+  palette tables `DAT_00571e48` (sky/fog blues), `DAT_00571e6c` (white group), `DAT_00571e90`
+  (pitch greens) from the shipped exe image; gate `test_mdl::fogLaneChecks` pins the enable
+  column and every palette byte against the exe bytes and representative decoded values.
+  Fog lane semantics CLOSED: row `+0x0c` installs the fly-around fog slot (`DAT_00571710`,
+  handler `0x41be20` coefficient `0xb333` = 0.7<<16, near/far `+0x1c/+0x20`); the raster blend
+  application is unrecovered [H] — no pixel behaviour is claimed and no gameplay/UI changes.
+
+### Fixed
+
+- `TASK_HANDLERS_WC98.md`: the pass-116 fog-enable lane column was misread one row late for
+  venues 9..12 — byte truth `{pari..nant:1, prac:0, semi:1, fina:1, clas:0}`; the pass-111 flag
+  tail for `semi` corrected to 0 (raw-verified byte-by-byte).
+
 ## [0.5.0] - 2026-11-18 — third-pass UI reconstruction: pointer mapping through the UI rect, IG bar/header/slider art, credits roll (pass-24..44)
 
 ### Added

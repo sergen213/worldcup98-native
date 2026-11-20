@@ -1336,7 +1336,7 @@ stop-all sweep, `t3/t6/tick_scan.txt` caller/pointer scans; `GhidraWc98T2..T13.p
   `EBX = 0` → retail beats fire only under zero group volume.
 Evidence: `analysis/pass87beat/` (`q1..q4.txt`, `GhidraWc98Q1..Q4.py`).
 
-## Pass-88: A7 selector mirrored in the port + class-byte producer dead-end (2026-11-20)
+## Pass-88: A7 selector mirrored in the port; pass-89 re-decoded the class-byte producer (2026-11-20)
 
 - Port mirror (`app/commentary.hpp/cpp`): `Commentary::entryIndexForClass(classByte)` =
   `2*DAT_0057eb54[class] + (classByte>>6)` with the measured table bytes `[0,0,0,0,0,0,1,0]`;
@@ -1346,15 +1346,28 @@ Evidence: `analysis/pass87beat/` (`q1..q4.txt`, `GhidraWc98Q1..Q4.py`).
   is OPEN, so phrase consumption stays the sequential head list until a class source exists.
   Gate: `test_commentary` selector-mirror CHECKs (classes 0..5/7 -> head index, class 6 -> +2,
   scene bit 0x42 -> +1) on top of the unchanged sequential + live-lane blocks.
-- Class-byte producer dead-end (scripts `/tmp/wc98pass87/GhidraWc98Q*.py`, outputs `q*.txt`):
-  the only whole-file byte writes `[reg+0x20]` are `0x4d942d` (SND-server window, function
-  boundaries absent in Ghidra's recovery, xref domain 0x451ef2..0x4694b1 = FE scenes — wrong
-  domain) and `[EAX+0x20]=0x7/0x12/0x13/0x14` inside `FUN_0042bde?..FUN_0042d0bc`-region code
-  (state/save-object values 0x12..0x14 exceed the class-queue index domain 0..7 — not speech
-  records). Record lane `0x48f830` writes payload `+0x4/+0x8/+0x18/+0x1c/+0x24` only; every
-  `DAT_006326c8` free-queue access lives in the handler cluster `0x48f3be..0x48fea6` and pushes
-  recycled records, never constructs stamped ones; boot init (`0x490100..0x490540`: qcreate
-  `0x490304/0x490312`, reserve `0x490328`, INC-EBX push loop `0x49033d`) allocates the pool
-  without writing class bytes. Conclusion: `[rec+0x20]` is stamped by a runtime mechanism not
-  statically reachable in FIFAWC.EXE (same class as the `.SCI` descriptor array) — [H], no retry
-  of static writer scans for this field.
+- Class-byte producer (RETRACTED pass-88 conclusion; re-decoded pass-89,
+  scripts `/tmp/wc98pass87/GhidraWc98R{1..5}.py`, outputs `r{1..5}.txt` +
+  `analysis/pass89sel/NOTES.md`): `[rec+0x20]` IS statically stamped — record driver `0x48f3e0`
+  does `LEA EDX,[EBX+0x20]; CALL 0x48ffe8` (`r1.txt`), and `FUN_0048ffe8` runs the sound-registry
+  find `0x4a4a00` (`CALL 0x4a4820` -> registry find `0x4a45d0` on slot pool `DAT_006419e0`, key =
+  the record driver arg struct word `[EAX]`/`[EAX+4]`) then `0x4a4a30` (copies the found node's
+  byte-chain), and stores the first chain byte at `[rec+0x20]` (`r2.txt`/`r3.txt`). The pass-88
+  writer scan missed it because `MOV byte ptr [ESI],AL` indexes through a register, not a
+  literal `+0x20` displacement. Registry population is a load-time lane (`0x4a45d0` has the one
+  find-site; entries registered at bank-load) carrying no event->class constant, so
+  event->class alignment stays OPEN [H]. Pass-89 also fixed the selector domain: dispatch jump
+  table `0x48f2bc` keys `[rec+0x20]&0x3f` DEC'd — entries `{skip, selector, skip, selector,
+  skip, selector, PHRS-arm 0x48f354}`, i.e. classes **2/4/6 only**; classes 0/1/3/5 skip
+  selection (engine callback `0x48f442`), class 7 consults the PHRS preload table
+  (`DAT_00641014` lane, pass-86). Port `entryIndexForClass` mirrors the domain with
+  `kNoEntry` sentinel; `trigger()` no longer short-circuits on an empty pool (gate stop+flush
+  runs ahead of the pick, exe `FUN_004893ec` order) and `triggerLive` counts a pool-exhausted
+  record as recycled (`rejected()`, free queue `DAT_006326c8`). Gate: `test_commentary`
+  selector-mirror CHECKs classes {0,1,3,5,7,0x3f} -> `kNoEntry`, {2,4} -> head, {6} -> +2,
+  {0x42} -> +1, {0x46} -> 3, plus pool-exhausted gate block.
+
+Evidence pass-89: `/tmp/wc98pass87/GhidraWc98R{1..5}.py` -> `r{1..5}.txt` (driver body,
+`FUN_0048ffe8`, registry helpers `0x4a4a00/0x4a4a30/0x4a4820`, pick-loop jump table read at raw
+VA `0x48f2bc`) + `analysis/pass89sel/NOTES.md`; the pass-88 writer-scan evidence
+(`q5..qe.txt`, `analysis/pass88sel/NOTES.md`) stays as the retracted route's record.

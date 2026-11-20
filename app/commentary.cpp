@@ -93,7 +93,7 @@ bool Commentary::loadTree(const std::filesystem::path& treeRoot) {
 }
 
 void Commentary::trigger(const sim::SimEvent& e) {
-    if (candidates_.empty() || !fires(e.type)) return; // unmapped events -> silent (contract §2)
+    if (!fires(e.type)) return; // unmapped events -> silent (contract §2)
     // FUN_004893ec gate: flush the queue and stop any in-flight sentence before enqueuing
     // (SNDsentencestop loop + FUN_004901e0 flush, COMMENTARY_WC98.md Trigger gate). The stream-kill
     // fan-out (FUN_004e2c60) is the mixer's job: stop live voices first (SPEECH_PHRASES.md §2).
@@ -114,9 +114,11 @@ void Commentary::trigger(const sim::SimEvent& e) {
     // the in-play dispatcher tags nothing, so seam slots share the storage-order pool;
     // first-match over a shared list is then sequential consumption.
     // Evidence: COMMENTARY_WC98.md §pick, analysis/pass76pbp/NOTES.md.
-    // Pass-88: entryIndexForClass(0) = the exe selector formula at class byte 0 (head entry);
-    // event->class alignment is open (runtime-stamped [rec+0x20], see commentary.hpp).
-    startPick(entryIndexForClass(0));
+    // Pass-88/89: selector(0) = ready-queue head entry. The exe selector arm only runs for
+    // classes 2/4/6 (jump table 0x48f2bc) and needs a registry-stamped class byte
+    // (driver -> FUN_0048ffe8, see commentary.hpp), which the port cannot source, so the seam
+    // picks the head directly — the deviation, not the formula, is the port's choice here.
+    startPick(0);
 }
 
 // Pass-86 in-play lane (0x48f830): the start attempt rejects while a sentence speaks
@@ -124,12 +126,16 @@ void Commentary::trigger(const sim::SimEvent& e) {
 // event phrase is dropped, never deferred. Idle start path shares the presentation pick; the
 // lane issues no stop (nothing interrupts).
 void Commentary::triggerLive(const sim::SimEvent& e) {
-    if (candidates_.empty() || !fires(e.type)) return;
+    if (!fires(e.type)) return; // unmapped events never enter the record lane
     if (q_.sentenceStatus() == audio::SpeechQueue::kSentenceSpeaking && q_.queued() > 0) {
-        ++rejected_;
+        ++rejected_; // reject while speaking: record recycles, phrase dropped
         return;
     }
-    startPick(entryIndexForClass(0)); // head entry: class alignment open (see commentary.hpp)
+    if (candidates_.empty()) {
+        ++rejected_; // exhausted ready pool: qfindindex null, record recycles (pass-89)
+        return;
+    }
+    startPick(0); // head entry: selector arm not fed (registry class byte unavailable, see commentary.hpp)
 }
 
 void Commentary::startPick(std::size_t selector) {

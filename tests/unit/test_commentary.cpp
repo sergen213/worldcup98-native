@@ -143,17 +143,33 @@ void synthetic() {
     c.trigger(ev(sim::EventType::KickOff));
     CHECK(c.sentencesStarted() == 5 && c.queue().queued() == 0 && c.lastPhrase() == 5);
 
-    // --- pass-88 A7 selector mirror (analysis/pass87beat/NOTES.md): measured DAT_0057eb54 bytes
-    // [0,0,0,0,0,0,1,0] shift the ready-queue base index by +2 ONLY for class 6; classes 0..5 and
-    // 7 use the base unchanged, scene bits = classByte>>6. Different class bytes therefore map to
-    // different, predictable entry indices. The live seam passes class byte 0 (head entry) until
-    // the event->class alignment is recovered (runtime [rec+0x20] producer, statically
-    // unrecoverable), so trigger() consumption above is exactly the sequential head-list model. ---
-    CHECK(app::Commentary::entryIndexForClass(0) == 0);
-    CHECK(app::Commentary::entryIndexForClass(5) == 0);
-    CHECK(app::Commentary::entryIndexForClass(6) == 2);
-    CHECK(app::Commentary::entryIndexForClass(7) == 0);
-    CHECK(app::Commentary::entryIndexForClass(0x42) == 1); // scene bit: 0x42 >> 6 == 1
+    // Pool exhausted (pass-89, reviewer gate): the presentation gate stop+flush runs AHEAD of the
+    // pick (exe FUN_004893ec order), so an empty pool no longer short-circuits it; the live lane
+    // recycles the record (rejected(), free queue DAT_006326c8) instead of returning silently.
+    c.trigger(ev(sim::EventType::Goal));
+    CHECK(c.sentencesStarted() == 5 && c.queue().queued() == 0);
+    const std::uint32_t rejBefore = c.rejected();
+    c.triggerLive(ev(sim::EventType::Goal));
+    CHECK(c.sentencesStarted() == 5 && c.rejected() == rejBefore + 1 && c.queue().queued() == 0);
+
+    // --- pass-88 A7 + pass-89 selector mirror (analysis/pass87beat + pass89sel/NOTES.md): the
+    // dispatch jump table 0x48f2bc keys [rec+0x20] & 0x3f (DEC'd), and ONLY classes 2/4/6 run the
+    // entry selector arm 0x48f317; classes 0/1/3/5 skip selection and class 7 takes the PHRS
+    // preload lane, so those map to kNoEntry. Measured DAT_0057eb54 bytes [0,0,0,0,0,0,1,0] shift
+    // the ready-queue base index by +2 only for class 6; scene bits = classByte>>6. The live seam
+    // picks the pool head directly (registry class byte unavailable, see commentary.hpp), so
+    // trigger() consumption above is exactly the sequential head-list model. ---
+    CHECK(app::Commentary::entryIndexForClass(0) == app::Commentary::kNoEntry); // TEST gate 0x48f417 skip
+    CHECK(app::Commentary::entryIndexForClass(1) == app::Commentary::kNoEntry); // jump entry 0x48f2fc
+    CHECK(app::Commentary::entryIndexForClass(2) == 0);                         // selector, table[2]=0
+    CHECK(app::Commentary::entryIndexForClass(3) == app::Commentary::kNoEntry);
+    CHECK(app::Commentary::entryIndexForClass(4) == 0);                         // selector, table[4]=0
+    CHECK(app::Commentary::entryIndexForClass(5) == app::Commentary::kNoEntry);
+    CHECK(app::Commentary::entryIndexForClass(6) == 2);                         // table[6]=1 -> +2
+    CHECK(app::Commentary::entryIndexForClass(7) == app::Commentary::kNoEntry); // PHRS arm 0x48f354
+    CHECK(app::Commentary::entryIndexForClass(0x42) == 1); // class 2 with scene bit: 0x42 >> 6 == 1
+    CHECK(app::Commentary::entryIndexForClass(0x46) == 3); // class 6: 2*1 + 1 scene bit
+    CHECK(app::Commentary::entryIndexForClass(0x3f) == app::Commentary::kNoEntry); // class 63 out of table range
 
     // --- speech master-gain seam (SNDspeechinit / SNDspeechautovol; state cb 0x4dfca0) on a
     // fresh instance: pick consumption is per-instance, so the seam needs live picks. ---

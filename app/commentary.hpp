@@ -310,19 +310,29 @@ public:
     // queues hold per-record tag preload data the port has no source for).
     // Idle path keeps the presentation seam's stop-then-start semantics.
     void trigger(const sim::SimEvent& e);
-    // Pass-88 A7 selector mirror (analysis/pass87beat/NOTES.md): the in-play dispatch arm
-    // 0x48f317 computes the ready-queue entry index `2*DAT_0057eb54[class] + (classByte>>6)`;
-    // table bytes MEASURED [0,0,0,0,0,0,1,0] (raw 0x17d154, 8 bytes — a pointer field follows at
-    // +8, NOT a weights array), so only class 6 shifts the base by +2 and the scene bits are
-    // classByte>>6. qfindindex FUN_004c4d50 returns the index-th successor of the queue head
-    // node (index 0 = head node; FUN_004c45d0 walk hops index times), activation qremoves the
-    // picked node (FUN_004c4a70) so a phrase plays exactly once. Event->class alignment is
-    // OPEN: the record class byte [rec+0x20] has no statically recoverable producer, so the
-    // live seam passes index 0 (head entry) for every event — same behavior as before, and the
-    // class->entry mapping stays exactly as the exe table defines it.
+    // Pass-88 A7 selector mirror (analysis/pass87beat/NOTES.md) + pass-89 class domain
+    // (analysis/pass89sel/NOTES.md): the dispatch jump table 0x48f2bc keys on [rec+0x20] & 0x3f
+    // (DEC'd index, guard 0x48f417/0x48f2e8), and only classes 2/4/6 run the entry selector arm
+    // 0x48f317, which computes `2*DAT_0057eb54[class] + (classByte>>6)`; table bytes MEASURED
+    // [0,0,0,0,0,0,1,0] (raw 0x17d154, 8 bytes — a pointer field follows at +8, NOT a weights
+    // array), so only class 6 shifts the base by +2 and the scene bits are classByte>>6.
+    // Classes 0/1/3/5 skip selection (engine callback lane 0x48f442); class 7 consults the PHRS
+    // preload table (arm 0x48f354). qfindindex FUN_004c4d50 returns the index-th successor of the
+    // queue head node (index 0 = head node; FUN_004c45d0 walk hops index times), activation
+    // qremoves the picked node (FUN_004c4a70) so a phrase plays exactly once.
+    // Class byte producer (retracts the pass-88 "no statically reachable writer" claim): record
+    // driver 0x48f3e0 calls FUN_0048ffe8, which runs the sound-registry find 0x4a4a00/0x4a4a30
+    // (slot pool DAT_006419e0, keyed by the record's event words [+0]/[+4]) and stores the first
+    // byte of the found node chain at [rec+0x20]. The registry is populated by a load-time lane
+    // with no statically recoverable event->class constant, so event->class alignment stays OPEN
+    // and the live seam picks the pool head directly (port deviation, documented in
+    // commentary.cpp) — same behaviour as before this pass.
+    static constexpr std::size_t kNoEntry = static_cast<std::size_t>(-1); // selector arm did not pick
     static constexpr std::size_t entryIndexForClass(std::uint8_t classByte) {
         static constexpr std::uint8_t kExeTable[8] = {0, 0, 0, 0, 0, 0, 1, 0}; // DAT_0057eb54 raw 0x17d154
-        return 2u * kExeTable[classByte & 7u] + (classByte >> 6u);
+        const std::uint8_t cls = classByte & 0x3fu; // dispatcher domain: low 6 bits
+        if (cls != 2u && cls != 4u && cls != 6u) return kNoEntry; // jump table 0x48f2bc: skip / PHRS lane
+        return 2u * kExeTable[cls] + (classByte >> 6u);
     }
     // Speech master gain (SNDspeechinit vol + SNDspeechautovol scene ramp seam): the original
     // ramps the speech stream volume to the scene level on sentence start and back toward 0 at

@@ -461,9 +461,14 @@ Boot-mode gate CLOSED (pass-111sci): driver `FUN_004a7120` walks the 22 records 
 and registers each under the mode word built by boot handler `FUN_00409CAC` — venue flag bit
 (`FUN_0041a098` = u32 @ `0x571514 + venue*0x20`, the stadium-pak table `DAT_00571514`, 13 rows
 pointing at `*___x.big` name slots: `{stet:1, stde:1, lens:0, lyon:1, mars:1, mont:0, toul:1,
-bord:1, nant:1, prac:1, semi:1, fina:0, clas:0}`; venue index global `DAT_005716b8`, index
-capacity 13; row field +0x10 is `1` on rows 0..8 and 10, `0` on rows 9/12 — semantics [H]):
-`venueFlag == 0 → bit 0x2, else 0x4`; scene bucket B (`DAT_00642508`: selector {0,11}→2, 9→1,
+bord:1, nant:1, prac:1, semi:1, fina:0, clas:0}` — proven by exact address equality, row pointer
++4 == name-slot VA `0x55aa58 + i*0x10`; a record row sits at `0x5714f4..0x571510` immediately
+BEFORE the table base (flag 0, pointer `pari___x.big` @ `0x55aa48`, +0x10 = 1) — read by
+`FUN_0041a098` when the venue index global `DAT_005716b8` keeps its default `0xffffffff` (-1),
+i.e. the pre-venue-assigned row; venue index global `DAT_005716b8`, table capacity 13; row field
++0x10 is `1` on rows 0..8 and 10, `0` on rows 9/12 — semantics [H]):
+`venueFlag == 0 → bit 0x2, == 1 → bit 0x4`, any other value sets no venue bit (strict
+`==0/==1` branches in the decompile; the table rows hold only 0/1): scene bucket B (`DAT_00642508`: selector {0,11}→2, 9→1,
 else 0) → `0x8/0x10/0x20`; scene bucket C (`DAT_0064250C`: 6→1, {8,9}→2, else 0) → `0x40/0x80/`
 `0x100` (bucket C==2 fills the u16 high byte). Predicate: bit 0 unconditional; `flags & 0x200`
 records require `ctxId == DAT_006424FC = (uint)DAT_0059B2E6` (one value → at most one ctx pair of

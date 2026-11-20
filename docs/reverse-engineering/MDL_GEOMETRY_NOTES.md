@@ -55,6 +55,19 @@ white + case-insensitive pak-name lookup `FUN_004df695`), and applies vertex-col
 scales; venue index provenance = schedule entry record word +0xa high half
 (`sar eax,0x10` at 0x4587e8). Mirror `formats::venueTable`/`parseVenuePak`, gate
 `test_mdl venueChecks` (12/12 triples, SHPI parse, callback==1, tag coverage 12/12).
-Fly-in **animation wiring remains open**: per-entry f32 transform fields semantics
-[H], nothing in app/ consumes `venueTable` yet. `analysis/pass105venue/NOTES.md`.
+Fly-in **transform semantics decoded (pass-106)**: per-entry fields are the static
+fly-in transform — f32 position `[+0x28..0x30]`, f32 euler rotation `[+0x38..0x40]`
+(consumed by `FUN_0047d2f0` sin/cos matrix build, rad const `_DAT_00566324`), f32 scale
+`[+0x4c]` (`FUN_0047cf1c`), i32 bbox offsets `[+0x50/+0x54]` (written by `FUN_00484404`,
+read by the polygon rasterizer `FUN_00482d7c` bbox fit `DAT_0062f308..32c` + flat/textured
+poly fill, material colour unpacked per gfx mode `DAT_0057fdd4` 15/16 bpp); mode enum
+`[+0x20]` = 0 static, 1/2 animated global-float-delta lane (`DAT_0057e340` while
+`DAT_0057e318==1`), >2 back-face silhouette collector `FUN_00483ae0`. The `+0x0c`
+callback is **invoked**, not stored: `FUN_00484424` calls it when `idx < 0xc && arg > 9`,
+`FUN_00483978` (unload) calls it before resetting `+0x10..0x18`. There is no keyframe
+table — animation is the global accumulator + per-frame matrix recompose. Evidence
+`analysis/pass106venue/t1.txt` (xrefs), `t2.txt` (disasm 0x484170+), `t3.txt` (18
+renderer fns); `analysis/pass106venue/NOTES.md`. Port render lane still open: nothing in app/
+consumes `venueTable` (FE screens are still 2D LAY composites), the decoded semantics
+above are its spec, nothing invented.
 In-game player/stadium geometry is a different container (INGAME .BIG dialects — not this format).

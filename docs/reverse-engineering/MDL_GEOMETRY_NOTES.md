@@ -41,7 +41,10 @@ validation; no count guessing.
 
 ## Gate
 `test_mdl` gates the geometry census + venue pool (synthetic GEOM checks, 12-model
-census, `venueChecks` pool table). Visual proof PNGs `/tmp/wc98port-out/mdl_{wcupf,brdxf}.png`.
+census, `venueChecks` pool table — path pointers and the +0x0c callback column are
+re-read from the shipped `FIFAWC.EXE` bytes at raw 0x17c4c8 and compared against
+`venueTable`, so the mirror is exe-bound, not self-asserting). Visual proof PNGs
+`/tmp/wc98port-out/mdl_{wcupf,brdxf}.png`.
 Venue pool table + material loader **decoded (pass-105)**: the exe venue pool table at DGROUP VA 0x57dec8
 (12 entries x stride 0x5c, slot order pdpf..lpolybf) carries `{pak, mdl, fsh}` path
 triples + a callback slot (only lpolybf = scene-handler frame `FUN_0047b9a4`, case

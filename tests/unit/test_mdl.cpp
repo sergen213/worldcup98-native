@@ -118,6 +118,40 @@ void venueChecks() {
     const auto dir = treeDirOrSkip() / "FE";
     const auto table = wc98::formats::venueTable();
     CHECK(table.size() == 12);
+
+    // Bind the hand-written table to the shipped exe bytes: the DGROUP table at raw
+    // 0x17c4c8 (VA 0x57dec8) holds path pointers into the string pool and a callback
+    // column at +0x0c; kVenues must match it verbatim.
+    const auto exe = wc98::readFile(treeDirOrSkip() / "FIFAWC.EXE");
+    CHECK(exe.size() > 0x17c4c8 + 12 * 0x5c);
+    const auto u32At = [&exe](std::size_t off) {
+        return static_cast<std::uint32_t>(exe[off]) | (static_cast<std::uint32_t>(exe[off + 1]) << 8) |
+               (static_cast<std::uint32_t>(exe[off + 2]) << 16) | (static_cast<std::uint32_t>(exe[off + 3]) << 24);
+    };
+    const auto exeString = [&exe](std::uint32_t va) {
+        const std::size_t off = va - 0x401a00; // DGROUP VA -> file raw
+        std::string s;
+        while (off + s.size() < exe.size() && exe[off + s.size()] != 0)
+            s.push_back(static_cast<char>(exe[off + s.size()]));
+        return s;
+    };
+    unsigned exeCallbacks = 0;
+    for (std::size_t i = 0; i < 12; ++i) {
+        const std::size_t e = 0x17c4c8 + i * 0x5c;
+        CHECK(exeString(u32At(e + 0x00)) == std::string(table[i].pakPath));
+        CHECK(exeString(u32At(e + 0x04)) == std::string(table[i].mdlPath));
+        CHECK(exeString(u32At(e + 0x08)) == std::string(table[i].fshPath));
+        const std::uint32_t cb = u32At(e + 0x0c);
+        if (cb != 0) {
+            ++exeCallbacks;
+            CHECK(cb == 0x47b9a4); // scene-handler frame FUN_0047b9a4
+            CHECK(table[i].loadCallback);
+        } else {
+            CHECK(!table[i].loadCallback);
+        }
+    }
+    CHECK(exeCallbacks == 1); // only lpolybf carries the scene-handler callback
+
     unsigned callbacks = 0;
     unsigned texturesNamedInPak = 0;
     for (std::size_t i = 0; i < table.size(); ++i) {

@@ -1271,3 +1271,42 @@ Completes the announcement lifecycle around the 9 pending-setter sites:
 Evidence: `analysis/pass85flush/` (`p1.txt` fill/builder refs, `p2_scan.txt` 46 flush
 call sites, `p3_scan.txt` pending-flag write attribution, `p4.txt` pending setter +
 gate helper decompiles; `GhidraWc98P1.py`, `GhidraWc98P4.py`).
+
+## Pass-86: live-match commentary dispatch lane decoded (measured 2026-11-20)
+
+Closes A7's open half: the in-play event→phrase lane is the registered `SNDstartSpeech`
+handler cluster (`FUN_00490528`, site 0x49059b `CALL FUN_004e6b50` with
+EAX=0x48f730 start handler, ECX=0x48f78c presentation lane, pushes 0x48f830 record lane +
+0x48f8bc stop-all sweep; gate `FUN_0048fd4c` = speech-init `DAT_006326b0`), pointer-invoked
+— zero static `E8` callers of 0x48f7a4/0x48f830/0x49001c/0x490094:
+
+- Start handler `0x48f730`: rejects while `SNDsentencestatus FUN_004dfc0c == 3` (a sentence
+  speaks); oldest-pending scan `FUN_0048f664`; scene-3 word lookup `FUN_0048d070` → word
+  entry; **phrase = `[entry+0x0E]`** (the A7 `[item+0E]` residual); `SNDphraseadd
+  FUN_004df968` appends into the 20-slot ring `DAT_0064b070` stride 0xc (cap 18), slot id →
+  `[entry+6]`; `SNDflush FUN_004dfb40` starts the engine.
+- Record lane `0x48f830`: percent-count gate `FUN_004906a4(3)` = `pct*0x7f/100` min 1 (not a
+  probability); record from free queue `DAT_006326c8` (`qfetch FUN_004c4890`), fields
+  `+0x1c` = dispatcher `0x48f47c` (8-arm table `0x48f45c`, class byte `rec+0x20 & 0x3f`,
+  arms prep `FUN_0048d2f0` + `SNDphraseadd`), `+0x24` = start result; driver `FUN_0048f3e0`
+  callbacks {`0x48f380`, `0x48f3a4`, engine `0x49001c` gate `DAT_00632724`}; success → active
+  queue `DAT_006326e4`; **reject → record recycled to `DAT_006326c8` = event phrase DROPPED,
+  never deferred, no interrupt**.
+- Tick sweep `FUN_0048f920` (pump host `FUN_004906f8`): word-status `FUN_004dfa60 == 7`
+  (finished) → release word, recycle to `DAT_006326c8`.
+- Weighting: dispatcher arms class `>>6` → scene for `FUN_0048d070` + byte table
+  `DAT_0057eb54[class*2]`; class 7 consults the PHRS preload table `DAT_00641014` stride
+  0xFC entry `+0x34` u16. Boot pool `FUN_0048fb10` registers
+  `AUDIO\TEAM\A_T%04d.PBK` (fmt 0x566bac) / `AUDIO\PLRS\P%05d.PBK` (fmt 0x566bc4) word
+  banks, node pools stride 0xc (accessor stub 0x48f704).
+- `FUN_004906a4` semantics correction: percent→count, not probability gate.
+
+Port mirror: `Commentary::triggerLive` (busy-reject + drop, `rejected()` counter) wired in
+`livematch.cpp`/`match_demo.cpp` event drains; `trigger` keeps the presentation seam.
+Gates: `test_commentary` live-lane block (accept → reject → accept) + selftest
+`match-audio-events` PASS.
+
+Evidence: `analysis/pass86speech/` (`t4.txt` driver/callback decompiles, `t9.txt` live-host
+disasm 0x48f7a4-0x48fb80, `t10.txt` boot registration 0x490540-0x490600 + `FUN_00490528`,
+`t11.txt`/`t13.txt` cluster helper decompiles, `t12.txt` stub handlers + driver prologue +
+stop-all sweep, `t3/t6/tick_scan.txt` caller/pointer scans; `GhidraWc98T2..T13.py`).

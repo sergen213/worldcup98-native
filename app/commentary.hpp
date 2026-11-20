@@ -300,6 +300,11 @@ public:
     // any in-flight sentence, pick a phrase (qfind first-match over the ready pool, consumed on
     // use — see commentary.cpp / COMMENTARY_WC98.md §pick) and enqueue its segment-id run in TOC
     // order before sentenceStart. Exhausted pool -> null pick -> event stays silent.
+    // Live-lane deviation (pass-86, analysis/pass86speech/NOTES.md): the in-play record lane
+    // 0x48f830 does NOT interrupt — while SNDsentencestatus()==3 (a sentence is speaking and the
+    // queue holds phrases) the start attempt fails and the record is recycled to the free queue
+    // DAT_006326c8, i.e. the event phrase is dropped (rejected() counts it). Idle path keeps the
+    // presentation seam's stop-then-start semantics.
     void trigger(const sim::SimEvent& e);
     // Speech master gain (SNDspeechinit vol + SNDspeechautovol scene ramp seam): the original
     // ramps the speech stream volume to the scene level on sentence start and back toward 0 at
@@ -353,11 +358,22 @@ public:
     std::uint32_t decodedSegments() const { return decoded_; }   // decode callbacks fired
     std::uint32_t lastDecodeFrames() const { return lastFrames_; } // frames of the newest decode
     std::uint32_t sentencesStarted() const { return sentences_; }
+    // Live-lane busy-reject counter (pass-86): SNDstartSpeech record lane 0x48f830 recycles the
+    // record to the free queue DAT_006326c8 when the start attempt fails (SNDsentencestatus==3),
+    // i.e. the event phrase is dropped, never deferred.
+    std::uint32_t rejected() const { return rejected_; }
     int lastPhrase() const { return lastPhrase_; }               // -1 = none picked yet
+
+    // Pass-86 in-play lane (SNDstartSpeech record lane 0x48f830, analysis/pass86speech/NOTES.md):
+    // busy-reject then start — no interrupt. While SNDsentencestatus()==3 (a sentence speaks and
+    // the phrase queue holds work) the record recycles to the free queue DAT_006326c8: the event
+    // phrase is dropped (rejected() counts it), never deferred.
+    void triggerLive(const sim::SimEvent& e);
 
 private:
     void onStart(int slot, std::uint16_t id);
     bool onComplete(int slot);
+    void startPick(); // shared pick+enqueue run (pool head consumed, sentence start)
 
     audio::Mixer* mixer_;
     audio::SpeechQueue q_;
@@ -374,7 +390,7 @@ private:
     int volume_ = SpeechGain::kMaxVol;                         // SNDspeechinit vol (percent table FUN_004906a4, values runtime)
     std::unordered_map<std::uint32_t, std::vector<std::uint8_t>> phraseCache_; // lazy decompressed phrase members
     int lastPhrase_ = -1;
-    std::uint32_t decoded_ = 0, sentences_ = 0, lastFrames_ = 0;
+    std::uint32_t decoded_ = 0, sentences_ = 0, lastFrames_ = 0, rejected_ = 0;
     bool prevSpeaking_ = false; // autovol scene-ramp seam edge detector (0x48fcb7/0x491125)
     // Pass-12 family (dispatch_ built in the ctor once q_/preload_ are live).
     SpeechPreload preload_;

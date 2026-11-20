@@ -1820,9 +1820,11 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
             // classes fire; here goal + foul canonical events must pick and decode phrases.
             app::Commentary c;
             const bool bank = c.loadTree(tree);
-            for (std::size_t i = 0; i < nEv; ++i) c.trigger(w.events[i]);
-            c.trigger(canon[2]); // Goal -> phrase pick (tree gate phrase 1)
-            c.trigger(sim::SimEvent{static_cast<std::uint32_t>(w.time.totalFrames), sim::EventType::Foul, 0, 5, 2, 0});
+            for (std::size_t i = 0; i < nEv; ++i) c.triggerLive(w.events[i]);
+            c.pump(64); // drain the live-stream pick: in-play lane rejects while speaking (pass-86)
+            c.triggerLive(canon[2]); // Goal -> phrase pick (tree gate phrase 1)
+            c.pump(64);
+            c.triggerLive(sim::SimEvent{static_cast<std::uint32_t>(w.time.totalFrames), sim::EventType::Foul, 0, 5, 2, 0});
             for (int t = 0; t < 400; ++t) c.pump();
             const bool cmt = !bank || (c.sentencesStarted() >= 1 && c.decodedSegments() >= 1);
             st.passed = crowd && counts && canonOk && lane && cmt;

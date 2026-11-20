@@ -114,6 +114,23 @@ void Commentary::trigger(const sim::SimEvent& e) {
     // the in-play dispatcher tags nothing, so seam slots share the storage-order pool;
     // first-match over a shared list is then sequential consumption.
     // Evidence: COMMENTARY_WC98.md §pick, analysis/pass76pbp/NOTES.md.
+    startPick();
+}
+
+// Pass-86 in-play lane (0x48f830): the start attempt rejects while a sentence speaks
+// (SNDsentencestatus FUN_004dfc0c == 3); the record recycles to free queue DAT_006326c8, so the
+// event phrase is dropped, never deferred. Idle start path shares the presentation pick; the
+// lane issues no stop (nothing interrupts).
+void Commentary::triggerLive(const sim::SimEvent& e) {
+    if (candidates_.empty() || !fires(e.type)) return;
+    if (q_.sentenceStatus() == audio::SpeechQueue::kSentenceSpeaking && q_.queued() > 0) {
+        ++rejected_;
+        return;
+    }
+    startPick();
+}
+
+void Commentary::startPick() {
     if (head_ >= candidates_.size()) return; // qfind null: no commentary for this event
     const std::uint32_t p = candidates_[head_++];
     lastPhrase_ = int(p);

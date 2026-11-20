@@ -175,7 +175,7 @@ int runMatchDemo(int argc, char** argv) {
             }
             if (haveSpeech) { // commentary trigger seam: drain new sim events + pump per engine-frame cadence
                 const std::uint32_t before = commentary.sentencesStarted();
-                for (; evPos < w.events.size(); ++evPos) commentary.trigger(w.events[evPos]);
+                for (; evPos < w.events.size(); ++evPos) commentary.triggerLive(w.events[evPos]);
                 if (commentary.sentencesStarted() > before)
                     std::cout << "t=" << tick / kHz << " commentary " << sim::eventName(w.events[evPos - 1].type)
                               << " -> phrase " << commentary.lastPhrase() << '\n';

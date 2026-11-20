@@ -240,8 +240,22 @@ void original() {
                     std::string(sim::eventName(t)).c_str(), c.lastPhrase(), c.queue().queued(), c.lastDecodeFrames());
     }
     CHECK(c.sentencesStarted() == 3);
-    std::printf("commentary tree gates OK: %u sentences, %u segment decodes\n",
-                c.sentencesStarted(), c.decodedSegments());
+    // --- pass-86 in-play lane gate (analysis/pass86speech/NOTES.md): the SNDstartSpeech record
+    // lane 0x48f830 rejects while SNDsentencestatus()==3 — the record recycles to the free queue
+    // DAT_006326c8, so the event phrase is DROPPED, never deferred or interrupting. ---
+    c.pump(64);
+    CHECK(c.queue().queued() == 0);
+    const std::uint32_t sentBefore = c.sentencesStarted();
+    c.triggerLive(ev(sim::EventType::KickOff)); // idle -> start accepted
+    CHECK(c.sentencesStarted() == sentBefore + 1 && c.queue().queued() > 0);
+    c.triggerLive(ev(sim::EventType::Goal));    // sentence speaking -> record dropped
+    CHECK(c.sentencesStarted() == sentBefore + 1 && c.rejected() == 1);
+    c.pump(64);
+    c.triggerLive(ev(sim::EventType::Goal));    // drained -> idle, start accepted again
+    CHECK(c.sentencesStarted() == sentBefore + 2 && c.rejected() == 1);
+    c.pump(64);
+    std::printf("commentary tree gates OK: %u sentences, %u segment decodes, %u live-lane rejects\n",
+                c.sentencesStarted(), c.decodedSegments(), c.rejected());
 }
 
 // ---- Pass-12 per-event preload + scheduler parity gates ----------------------------------------

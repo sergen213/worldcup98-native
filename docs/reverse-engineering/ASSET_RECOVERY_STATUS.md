@@ -17,7 +17,7 @@ Decoder = module under `formats/src/`; gate = ctest entry in the 151-test suite 
 | BNK / CRD / SCHl / MIDx audio (47/2/37/…) | `bnk.cpp`, `crd.cpp`, `schl.cpp`, `midx.cpp` | `test_audio`, `test_gameaudio` | music + SFX streams | **Decoded + gated** (`AUDIO_RUNTIME.md`) |
 | `.DCT` EA SRE video (29 in 37 SCHl) | `dct.cpp` (+`dct_tables.inc`) | `test_dct`, `video_play` | intro/hint videos (`app/video.cpp`) | **Decoded + playable** (pass-8, 2026-11-06; STATUS.md) |
 | `.SQF` EULZ/Squish (49) | `sqf.cpp` | `test_sqf` (raw-payload FNV stream stability) | FE art | **Partial — blocked**: EULZ expander install mechanism absent from shipped binaries (`SQF_FOOTIX.md` §3, pass-9 negative); needs Win9x-era debugger lane |
-| `.SCI` scene scripts | `sci.cpp` | `test_sci` | match-scope scene packs (boot opens none) | **Partial**: header/record model + loader chain decoded (pass-14sci, `TASK_HANDLERS_WC98.md` §8); **opcode VM unparsed** → register gap lane |
+| `.SCI` scene scripts | `sci.cpp` | `test_sci` | grammar + registry mirrors (data-level; boot opens selected subset in scene 10) | **Decoded + gated**: header/record grammar + exe script registry (records @0x580A80 ×22, name pool @0x580520 ×86, registration/selection/boot-loader lane, `TASK_HANDLERS_WC98.md` §10 pass-110sci); **no bytecode VM** (pass-17sci D-29 Resolved data model); residuals [H]: flags mode-gate, aux skip-table producer, module byte@+0xc rewrite |
 | `.RES`, PCMD (14), GEN4 TBLS | `res.cpp`, `pcmd.cpp`, `gen4tbls.cpp` | `test_res`, `test_pcmd`, `test_gen4tbls` | FE resources, sound cmd, tournament tables | **Decoded + gated** |
 | `USER/OPTIONS.SAV` (`AFIFAFIF`) + save slots | `options.cpp`, `slot.cpp`, `saveframe.cpp` | `test_slot` | save/load (`app/saveload.cpp`) | **Decoded + gated** (`SAVESLOT_WC98.md`) |
 | `.RPLY` replays | `rply.cpp` | `test_rply` | replay playback (`app/replay.cpp`) | **Decoded + gated** (`REPLAY_WC98.md`) |
@@ -29,8 +29,10 @@ Decoder = module under `formats/src/`; gate = ctest entry in the 151-test suite 
 
 1. **EULZ/SQF expander** — slot `0x593e94`: zero write sites in the exe; no setter in any DLL
    (`analysis/pass9/eulz/run13..run15`). Remaining route: DOSBox-X / Win9x-era debugger.
-2. **`.SCI` interpreter semantics** — loader chain known; opcode loop not decoded. Route: Ghidra
-   static lane on the VM dispatcher (register row D-46 area).
+2. **`.SCI` interpreter semantics** — CLOSED as data model (pass-17sci D-29): no VM; exe script
+   registry (records/pool/registration/selection/boot-loader) decoded byte-exact pass-110sci,
+   mirrored by `parseExeScriptRegistry` + `test_sci` exe gate. Remaining [H]: flags mode-gate
+   words, aux skip-table producer, module byte@+0xc rewrite sites (runtime-only).
 3. **Original in-match pixels** — Wine DirectDraw capture dead; no pixel-diff oracle for gameplay
    visuals (`WINE_ORACLE_WC98.md`, `REVERSE_ENGINEERING_NOTES.md` §3). Static byte/table + telemetry
    lanes are the substitute, and they bound what may be claimed as verified.

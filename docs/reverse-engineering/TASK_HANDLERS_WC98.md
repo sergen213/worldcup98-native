@@ -87,9 +87,14 @@ constants {0x1280, 0x440, 0x1980, 0x1100, 0x1540} [P].
 
 ## 3. Module → handler binding [P]
 
-Descriptor array VA `0x580A9C` (raw `0x17F09C`) stride 32 `{u32 nameptr, u32 id, 0xffffffff,
-u32 idx}` — byte-verified dump (same 15 rows as `TASK_HANDLERS.md` §3; entries 16..21 = genanc/ans
-01..03):
+**Correction (pass-110sci, §10):** the "descriptor array" read at VA `0x580A9C` (stride 32
+`{u32 nameptr, u32 id, 0xffffffff, u32 idx}`) is a **shifted window over the exe script registry**,
+not a separate table. The real structure is 22 stride-0x20 records at VA `0x580A80` (raw `0x17F080`)
+`{u32 flags, u32 ctxId, u32 count, u32×5 zeros/byte@0xc, u32 poolVa@+0x1c}` + an 86-entry name pool
+at VA `0x580520` `{char name[12], u16 zero, u16 class@+0xe}`. The old `id` column values are record
+`flags` fields (506 = 0x1fa, 508 = 0x1fc, 970/972 = 0x3ca/0x3cc); `nameptr`/`0xffffffff`/`tag` were
+`poolVa`/`count`/`ctxId` reads offset by one field. The same 15 rows map to registry records 0..14;
+entries 16..21 = genanc/ans 01..03 = the module records (ctxId {0x30, 0x82, 0x2e}):
 
 | module | id | tabB slot | handler |
 |---|---|---|---|
@@ -101,11 +106,12 @@ u32 idx}` — byte-verified dump (same 15 rows as `TASK_HANDLERS.md` §3; entrie
 | genskw04.sci | 250 | 3 | FUN_005175a0 (h3) |
 
 Name grammar `{gen|cla}{scene}{c|s}{NN}`: scene ∈ goal, win, los, loc, skew(skw), anc(attract),
-inc(in-match), 2n(neutral second); `c`/`s` = context; NN = arena/module variant. Binding of the
-module id to rec+8 is by construction [C]: the descriptor record `{id → idx}` is the module's
-handler index, and every slot-5/7/2/4/1/3 handler in tabB is one of the 0x516xxx/0x517xxx trio
-bodies (below), i.e. all `.SCI` modules share the same native body family; scene identity lives in
-the payload records, not in code [P].
+inc(in-match), 2n(neutral second); `c`/`s` = context; NN = arena/module variant. The old
+`{id → idx}` pair misread the record fields (`id` = `flags`, `idx` = `count` segment length), so the
+"tabB slot" column is a window artifact, not a binding [P, pass-110sci]; the handler-side evidence
+stands — every slot-5/7/2/4/1/3 handler in tabB is one of the 0x516xxx/0x517xxx trio bodies (below),
+i.e. all `.SCI` modules share the same native body family; scene identity lives in the payload
+records, not in code [P].
 
 tabA tick table VA `0x57FBC8` — **correction to `TASK_HANDLERS.md` §2** ("all entries = stub"):
 byte-verified dump shows 12 non-stub tick vectors: slots {12,28}=`FUN_004c9e60`, 13=`FUN_004ca870`,
@@ -298,7 +304,7 @@ Family → component mapping (HANDLER_DIFF_AUDIT.md style; components per GAMEPL
 | h18/h20/h23 edge/tier cams | pitch-edge + quality-tier cameras (DAT_00644778 tiers {0x59,0x65,0x71}) | `presentation::tierCamera` (h23) + `MatchCamera::setQualityTier`, `--quality N`; h18 `sideCamera` (lane thresholds 0x1e0/-0x1df, far/near ±(zEdge+0x140), rec+0x110 mid band, forced-near guard, DAT_00644794-0x10 polar lane); h20 `overheadCamera` (-xEdge polar, 0x90) | MODEL-PORTED: all three modeled with gates in `test_presentation`; live tick uses the grid-box port framing |
 | h24/h25 follow FSM `FUN_004a0f40` | player-follow task FSM (snapshot + timer C dolly) | `player_states_*` per-tick state machines (semantic port) | IDENTICAL-semantics via different structure [C] |
 | h19 trampoline / event tasks | `PTR_FUN_00586014[rec+0xc]` callback table | commentary/event queue lane (`app/commentary.cpp`) | partial: no task-id registry |
-| payload grammar §6 | .SCI record streams feed per-scene params | none (no .SCI loader in port) | MISSING |
+| payload grammar §6 | .SCI record streams feed per-scene params | `decodeOpcodeStream` + `parseExeScriptRegistry` (`test_sci` tree + exe gates) | mirrored (data-level; no runtime consumer in port sim) |
 
 Ranked actionable deltas:
 
@@ -354,9 +360,13 @@ pseudocode dump `analysis/pass17sci/DECOMPILE/all_functions.txt`, 5320 functions
   structure. The scripted-task "interpreter" is this document's §1 scheduler pair with tabA/tabB
   vector dispatch, consuming `.SCI` payload rows as **data tables** through the preset-row model of
   §3/§5 (h12/h14/h28 row = `(rec+0x60)*10`).
-- Descriptor table at VA 0x580A9C decoded: stride-32 `{nameptr,id,tag,idx}`; tag `0xffffffff` = data
-  packs, tags {0x30, 0x82, 0x2e} carry the per-scene code-pack modules (ids 970/972). Back-pointer
-  sentinel at 0x580d3c.
+- The pass-12 "descriptor table at VA 0x580A9C" is the exe script registry read as a shifted
+  window (corrected pass-110sci, §10): records @0x580A80 stride 0x20 `{flags, ctxId, count,
+  poolVa@+0x1c}`; pool @0x580520 with 86 entries `{name[12], class u16@+0xe}` (class histogram =
+  {0:24, 1:5, 2:2, 3:7, 4:20, 5:5, 6:4, 7:7, 8:8, 9:2, 10:2}); slots @0x580D3C/40/44 = pool-end
+  sentinel / record count / table VA. Registration `FUN_004a7090` pushes record segments;
+  selection `FUN_004a7330` buckets by class with tick-gated skip counts; boot loader
+  `FUN_00409bc0` loads survivors through `common\%s` (§10).
 - Payload grammar shipped as an opcode decoder: `decodeOpcodeStream` in `formats/src/sci.cpp` +
   header; 12 observed types {0x1,0x2,0x4,0x6,0x9,0xa,0xb,0xc,0xd,0x10,0x13,0x15} with tree-wide
   invariants (f1/f5 always zero, f2 pitch delta ±0x384, f3 dur ≤ 0x214) — `test_sci` decodes all
@@ -364,3 +374,50 @@ pseudocode dump `analysis/pass17sci/DECOMPILE/all_functions.txt`, 5320 functions
   0xa}, CLAINC00 {0x10,0x15,0xb,0xa,0x4,0xd,0xb,0xa}).
 - Residual: per-handler row-capture parity (runtime capture blocked by the SQF/EULZ negative lane),
   not an interpreter implementation. D-29 flipped to **Resolved (data model)**.
+
+## 10. Exe script registry + selection lane (pass-110sci) [P bytes]
+
+Byte-pinned from retail `FIFAWC.EXE` (DGROUP raw base: VA = file offset + 0x401A00). This is the
+boot-time lane that opens `COMMON\*.SCI` files — the pass-12 "descriptor array" (§3 correction) is
+this structure read with a shifted window. Evidence scripts/outputs:
+`analysis/pass110sci/sc1..sc8.txt` + `GhidraWc98Sc1..Sc8.py`.
+
+Static table (DGROUP image, not .bss):
+- Record table VA `0x580A80` (raw `0x17F080`), **22 records**, stride `0x20`:
+  `{u32 flags, u32 ctxId, u32 count, u32 zeros incl. byte@0xc=0, u32 poolVa@+0x1c}`.
+  Slots: `0x580D3C` = pool-end sentinel (VA of last entry), `0x580D40` = 22, `0x580D44` = table VA.
+- Name pool VA `0x580520` (raw `0x17EB20`), **86 entries**, stride 16: `{char name[12], u16 zero,
+  u16 class@+0xe}`; class ∈ 0..10, histogram {0:24, 1:5, 2:2, 3:7, 4:20, 5:5, 6:4, 7:7, 8:8, 9:2,
+  10:2}; record segments are contiguous (`sum(count)=86`), first entry `gengol00.sci` (class 4),
+  last `genans03.sci` (class 0). Tree ships 87 `COMMON/*.SCI` files; `gengol31.sci` is NOT in the
+  registry (unregistered file).
+- Records 0..14: ctxId `0xffffffff`, counts 31/5/7/2/2/4/4/2/4/4/1/1/2/4/3 (goal/win/loc/anc/ans/
+  inc/skew families). Records 16..21: flags `0x3ca/0x3cc`, ctxId {0x30, 0x82, 0x2e}, count 1 each
+  (genanc/genans 01..03 module pairs); byte@+0xc is statically zero on all 22.
+
+Runtime lane (DGROUP .bss):
+- Registration `FUN_004a7090` (driver `FUN_004a7120` walks the 22-record table via slots): pushes
+  `count` consecutive pool entry pointers into the pointer array `DAT_00641EBc` (len `DAT_00641DEe`),
+  bumping per-class counters `u16 @0x641E06 + class*2`. If record byte@+0xc != 0 the record goes to
+  a separate module table `DAT_00641E1C + DAT_00641DEA*4` instead — statically never taken (all 22
+  bytes zero); a scene handler could rewrite byte@+0xc at runtime [H].
+- Selection builder `FUN_004a7330` (per class 0..10): registered count vs aux skip word
+  `u16 @0x641DF0 + class*2` (`0xffff` = unconditional); scan start = `FUN_004c321c() % totalEntries`
+  (64-bit tick counter, pass-56 lane), skip consumption gated on `(tick>>32)&3 == 0`; survivors
+  copied as 16-byte entries into the runtime registry `DAT_00641FFC` (len `DAT_00641DEC`). Aux word
+  source is runtime config [H] (statically zeroed .bss).
+- Boot loader `FUN_00409BC0` (gate: scene selector `DAT_00640FB4 == 10`, skipped in other scenes):
+  `FUN_004a7220` returns (registry ptr, len); for each entry
+  `sprintf("common\%s", name@+0)` → loader `FUN_00439810`, handle written to slot
+  `DAT_0059CC38 + idx*4`, then install `FUN_004a75d0`: if the loaded record's class nibble == 0x35,
+  install into bucket array `DAT_006426F0 + (nibble-1)*100*4` with fill counter
+  `DAT_006426EC + idx*0x19` capped at 23 (`-2` = bucket full sentinel) — the pass-17sci
+  "installs one of slots" lane, now with exact bucket arithmetic.
+- Gate in port: `formats::parseExeScriptRegistry` (`formats/src/sci.cpp`) + `test_sci` exe registry
+  block pin 22/86, table/pool VAs, record 0/1/16/21 fields, class histogram, first/last names, and
+  the unregistered `gengol31.sci`.
+
+Residual [H]: flags bit semantics (bit0 unconditional; bits 0x2..0x200 mode-scene gates — the driver
+applies runtime mode words, no static dispatch found), aux skip table producer, byte@+0xc module
+rewrite sites, and per-scene subset of the 86 loaded on a given boot (tick-dependent). No bytecode
+VM — §9 conclusion unchanged.

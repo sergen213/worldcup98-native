@@ -121,4 +121,79 @@ std::vector<SciOp> decodeOpcodeStream(const SciFile& file) {
     return ops;
 }
 
+// Static script registry (pass-110sci, TASK_HANDLERS_WC98.md §10). DGROUP raw base of the retail
+// FIFAWC.EXE image: VA 0x55A000 sits at file offset 0x158600 (VA = raw + 0x401A00). Boot slots:
+// @0x580D3C pool-end sentinel (VA of last name entry), @0x580D40 record count (22),
+// @0x580D44 record table VA (0x580A80). Registration FUN_004a7090 pushes each record's `count`
+// consecutive pool entries from `first`; the selection builder FUN_004a7330 buckets them by class.
+SciScriptRegistry parseExeScriptRegistry(std::span<const std::uint8_t> exeBytes) {
+    static constexpr std::uint32_t kDgroupVa = 0x55a000u;
+    static constexpr std::uint32_t kDgroupRaw = 0x158600u;
+    static constexpr std::uint32_t kPoolVa = 0x580520u;
+    static constexpr std::uint32_t kPoolStride = 16u;
+    static constexpr std::uint32_t kSlotSentinel = 0x580d3cu;
+    static constexpr std::uint32_t kSlotCount = 0x580d40u;
+    static constexpr std::uint32_t kSlotTable = 0x580d44u;
+    static constexpr std::uint32_t kRecordStride = 0x20u;
+    static constexpr std::uint32_t kRecordMax = 64u;
+
+    const auto raw = [&](std::uint32_t va) { return static_cast<std::size_t>(va - kDgroupVa + kDgroupRaw); };
+    const auto at = [&](std::uint32_t va, std::size_t n) {
+        if (raw(va) + n > exeBytes.size())
+            throw FormatError(std::format("SCI registry: VA {0:x} outside image", va));
+        return exeBytes.data() + raw(va);
+    };
+
+    SciScriptRegistry reg;
+    reg.poolEndVa = le32(at(kSlotSentinel, 4));
+    const std::uint32_t recordCount = le32(at(kSlotCount, 4));
+    reg.tableVa = le32(at(kSlotTable, 4));
+    if (recordCount == 0 || recordCount > kRecordMax)
+        throw FormatError(std::format("SCI registry: record count {0} out of range", recordCount));
+    if (reg.poolEndVa < kPoolVa)
+        throw FormatError("SCI registry: sentinel slot below pool base");
+
+    const std::size_t poolCount = (reg.poolEndVa - kPoolVa) / kPoolStride + 1; // sentinel = last entry
+    if (poolCount == 0 || poolCount > 512)
+        throw FormatError(std::format("SCI registry: pool span {0} entries out of range", poolCount));
+    for (std::size_t i = 0; i < poolCount; ++i) {
+        const std::uint8_t* e = at(kPoolVa + static_cast<std::uint32_t>(i) * kPoolStride, kPoolStride);
+        for (std::size_t j = 0; j < 12; ++j)
+            if (e[j] < 0x20 || e[j] >= 0x7f)
+                throw FormatError(std::format("SCI registry: pool entry {0} name not printable", i));
+        const std::uint16_t cls = le16(e + 12 + 2);
+        if (cls > 10)
+            throw FormatError(std::format("SCI registry: pool entry {0} class {1:x} > 10", i, cls));
+        SciPoolEntry entry;
+        entry.name.assign(reinterpret_cast<const char*>(e), 12);
+        const auto nul = entry.name.find('\0');
+        if (nul != std::string::npos) entry.name.erase(nul);
+        entry.cls = cls;
+        reg.pool.push_back(std::move(entry));
+    }
+
+    std::uint32_t sum = 0;
+    for (std::uint32_t i = 0; i < recordCount; ++i) {
+        const std::uint32_t recVa = reg.tableVa + i * kRecordStride;
+        const std::uint8_t* r = at(recVa, kRecordStride);
+        SciScriptRecord rec;
+        rec.flags = le32(r + 0x00);
+        rec.ctxId = le32(r + 0x04);
+        rec.count = le32(r + 0x08);
+        rec.moduleByte = r[0x0c];
+        rec.first = le32(r + 0x1c);
+        if (rec.flags == 0 || rec.count == 0)
+            throw FormatError(std::format("SCI registry: record {0} flags/count empty", i));
+        if (rec.first < kPoolVa || rec.first > reg.poolEndVa || (rec.first - kPoolVa) % kPoolStride != 0)
+            throw FormatError(std::format("SCI registry: record {0} first {1:x} outside pool", i, rec.first));
+        if (rec.first + rec.count * kPoolStride > kPoolVa + poolCount * kPoolStride)
+            throw FormatError(std::format("SCI registry: record {0} segment past pool end", i));
+        sum += rec.count;
+        reg.records.push_back(rec);
+    }
+    if (sum != poolCount)
+        throw FormatError(std::format("SCI registry: record counts sum {0} != pool entries {1}", sum, poolCount));
+    return reg;
+}
+
 } // namespace wc98::formats

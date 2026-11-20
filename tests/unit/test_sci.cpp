@@ -110,6 +110,39 @@ int main() {
     int used = 0;
     for (int t = 0; t < 32; ++t) if (hist[t]) ++used;
     std::fprintf(stderr, "SCI grammar gate: %zu files parsed, distinct record types=%d\n", files.size(), used);
+
+    // Pass-110sci exe registry gate (TASK_HANDLERS_WC98.md §10): the boot-time script registry is
+    // static data in the exe image — pool @0x580520 (86 name entries), 22 registration records
+    // @0x580A80 feeding registration FUN_004a7090. Pinned from retail FIFAWC.EXE bytes.
+    const auto exe = tree / "FIFAWC.EXE";
+    if (std::filesystem::exists(exe)) {
+        const SciScriptRegistry reg = parseExeScriptRegistry(slurp(exe));
+        CHECK(reg.records.size() == 22);
+        CHECK(reg.pool.size() == 86);
+        std::uint32_t sum = 0;
+        for (const auto& r : reg.records) sum += r.count;
+        CHECK(sum == 86);
+        CHECK(reg.tableVa == 0x580a80u && reg.poolEndVa == 0x580a70u);
+        CHECK(reg.records[0].flags == 1 && reg.records[0].ctxId == 0xffffffffu &&
+              reg.records[0].count == 0x1f && reg.records[0].first == 0x580520u);
+        CHECK(reg.records[1].count == 5 && reg.records[1].first == 0x580710u);
+        CHECK(reg.records[16].flags == 0x3ca && reg.records[16].ctxId == 0x30 &&
+              reg.records[16].count == 1 && reg.records[16].first == 0x580a20u);
+        CHECK(reg.records[21].flags == 0x3cc && reg.records[21].ctxId == 0x2e &&
+              reg.records[21].first == 0x580a70u);
+        for (const auto& r : reg.records) CHECK(r.moduleByte == 0); // byte @+0xc statically zero
+        int clsHist[11] = {};
+        for (const auto& e : reg.pool) ++clsHist[e.cls];
+        const int want[11] = {24, 5, 2, 7, 20, 5, 4, 7, 8, 2, 2}; // pool class histogram [P]
+        for (int c = 0; c < 11; ++c) CHECK(clsHist[c] == want[c]);
+        CHECK(reg.pool[0].name == "gengol00.sci" && reg.pool[0].cls == 4);
+        CHECK(reg.pool.back().name == "genans03.sci" && reg.pool.back().cls == 0);
+        CHECK(std::find_if(reg.pool.begin(), reg.pool.end(),
+                           [](const SciPoolEntry& e) { return e.name == "gengol31.sci"; }) == reg.pool.end()); // 87th file unregistered
+        std::fprintf(stderr, "SCI exe registry gate: 22 records, 86 pool entries\n");
+    } else {
+        std::fprintf(stderr, "FIFAWC.EXE absent: skipping exe registry gate\n");
+    }
     std::printf("test_sci: ok\n");
     return 0;
 }

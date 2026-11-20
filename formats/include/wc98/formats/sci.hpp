@@ -6,6 +6,7 @@
 #include <array>
 #include <cstdint>
 #include <span>
+#include <string>
 #include <vector>
 
 namespace wc98::formats {
@@ -63,5 +64,39 @@ struct SciOp {
 // of ±0x384). Semantics stay data-table level: there is no runtime opcode dispatcher in
 // FIFAWC.EXE; tasks consume these rows by index (TASK_HANDLERS_WC98.md §9).
 std::vector<SciOp> decodeOpcodeStream(const SciFile& file);
+
+// One name entry of the exe-embedded script pool (DGROUP VA 0x580520, stride 16):
+// {char name[12] (packed, no NUL), u16 zero, u16 class 0..10}. Boot loader FUN_00409bc0 sprintf's
+// "common\%s" over the name slot (TASK_HANDLERS_WC98.md §10, pass-110sci).
+struct SciPoolEntry {
+    std::string name;                  // 12-byte name slot (e.g. "gengol00.sci")
+    std::uint16_t cls = 0;             // selection class @+0xe, observed 0..10
+};
+
+// One record of the static script-record table (DGROUP VA 0x580A80, stride 0x20):
+// {u32 flags, u32 ctxId, u32 count, u32 zero, u32 moduleByte@0xc=0, u32 zero, u32 zero,
+//  u32 poolVa@+0x1c}. Registration FUN_004a7090 pushes `count` consecutive pool entries starting
+// at `first` into the runtime pointer array, bumping the per-class counter table.
+struct SciScriptRecord {
+    std::uint32_t flags = 0;           // gate mask (bit0 unconditional; bits 0x2..0x200 lanes [H])
+    std::uint32_t ctxId = 0;           // 0xffffffff scene lane; {0x30,0x82,0x2e} module records
+    std::uint32_t count = 0;           // pool entries registered from `first`
+    std::uint32_t moduleByte = 0;      // byte @+0xc (statically 0 on all 22 records)
+    std::uint32_t first = 0;           // DGROUP VA of the segment's first pool entry
+};
+
+// Boot-time script registry as found in a FIFAWC.EXE image: 86 pool entries (sum of record counts),
+// 22 records. Tree ships 87 COMMON/*.SCI files; `gengol31.sci` is not in the registry.
+struct SciScriptRegistry {
+    std::vector<SciPoolEntry> pool;    // [0x580520, sentinel@0x580A70), stride 16
+    std::vector<SciScriptRecord> records; // [0x580A80, 22×0x20)
+    std::uint32_t poolEndVa = 0;       // slot @0x580D3C: VA of the last pool entry
+    std::uint32_t tableVa = 0;         // slot @0x580D44: record table VA
+};
+
+// Parse the static registry lane out of an exe image (needs the full PE file, DGROUP raw base
+// documented in TASK_HANDLERS_WC98.md §10). Throws FormatError unless the slots and table verify:
+// count slot @0x580D40 == records.size(), segments in range and summing to the pool size.
+SciScriptRegistry parseExeScriptRegistry(std::span<const std::uint8_t> exeBytes);
 
 } // namespace wc98::formats

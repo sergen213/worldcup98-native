@@ -109,8 +109,8 @@ private:
 //             home variant, != 0 -> A_/away variant), plus the neutral-English special
 //             `id == 0x32f` && `DAT_00640fe8 == 1` -> `AUDIO\team\A_FE_USA.SMP` with type
 //             rewritten to 4 (file not shipped on the CD -> missing-file lane);
-//   type 2 -> `AUDIO\pbp\schedule\{G,A}_sch%03d.smp` (id = slot+4), 436 shipped files;
-//   type 3 -> `AUDIO\pbp\standing\{G,A}_std%03d.smp` (id = slot+4), 320 shipped files.
+//   type 2 -> `AUDIO\pbp\schedule\{G,A}_sch%03d.smp` (id = word at ring record +4; fill-site accessor internals [H]), 436 shipped files;
+//   type 3 -> `AUDIO\pbp\standing\{G,A}_std%03d.smp` (id = word at ring record +4; fill-site accessor internals [H]), 320 shipped files.
 // The async callback `LAB_0048970c` builds the entry (types 2/3/4 inline: pending flag set,
 // class tag push into the 0x1c-byte queue objects at `DAT_00632428 + class*0x1c`; type 1 via
 // registrar `FUN_0048d114` with the bank patch loop), the builder `FUN_00489460` scans

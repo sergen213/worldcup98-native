@@ -982,7 +982,7 @@ presentation handler's scene→{slot,type,id} argument extraction (accessor-inte
 remain the unresolved halves. The presentation announcement lane itself is **ported**
 (Pass-77 section below).
 
-## Pass-77: presentation announcer lane ported (announcer mirror; pass-76 open item closed, measured 2026-11-19)
+## Pass-77: presentation announcer lane mirrored (API + gate ported; scene wiring open, measured 2026-11-19)
 
 `app::Announcer` (`app/game_audio.hpp/cpp`, after the MatchAudio block) mirrors the decoded
 seam 1:1:
@@ -1015,5 +1015,6 @@ seam 1:1:
 
 Gate: `tests/unit/test_gameaudio.cpp` announcer block (path spellings, silent-schedule
 decode-only, consume-on-use counter, neutral special missing lane + re-arm semantics, team
-bank phrase decode + play). Evidence: `/tmp/wc98pass77/probe.cpp` (refpack + nonzero-sample
-probes), `analysis/pass76pbp/disasm.txt`.
+bank phrase decode + play). Evidence: `analysis/pass77pbp/probe.cpp` (refpack no-op,
+`frames=11024 avg=0 same=1`), `analysis/pass77pbp/probe2.cpp` (`nonzero=0 max=0`),
+`analysis/pass77pbp/NOTES.md`, `analysis/pass76pbp/disasm.txt`.

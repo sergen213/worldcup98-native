@@ -1039,7 +1039,30 @@ false-negative). Per-site (slot, type, id source):
 - 0x4591fd s2 t3 id = branch constant `0x4`/`0xa` (jump lanes `0x4591d8/0x4591e7`)
 Selector pair: `FUN_00489974(EAX=selector)` fills `DAT_0062fbf8[]` (count `DAT_0062fd98 <= 0x28`)
 from range `&DAT_0057e938/93c[selector]` via `FUN_00489bdc`; `FUN_004899dc` picks cursor
-`DAT_0062fd9c` or tick-fraction ROUND index, `-1` sentinel. **Selector -> list content**
-(which records the ranges index) unresolved [H] — pass-78 needs exactly that. Scene handler
+`DAT_0062fd9c` or tick-fraction ROUND index, `-1` sentinel. Scene handler
 owners `FUN_00453a6c/454338/454d60/45548c/455a3c/455f30/458cf0` fill then arm `FUN_004894c4`.
 Evidence: `analysis/pass77pbp/ann1.txt`, `ann11.txt`.
+
+Pass-78 (2026-11-19): the **selector -> range grid is static initialized data** at VA
+`0x57e938` (raw `0x17cf38`, u32 stride 4): `FUN_00489974` reads start = `v[selector]`,
+end = word at `0x57e93c + selector*4` = `v[selector+1]`, so range = `[v[s], v[s+1])` (the
+"parallel arrays `DAT_0057e938/93c`" are one overlapping grid). Measured values: grid A
+(s = 0x00..0x1c) partitions records 0..160 as nineteen 5-blocks `[0,95)`, three 10-blocks
+`0x13:[95,105) 0x14:[105,115) 0x15:[115,125)`, seven 5-blocks `[125,160)`; a second uniform
+5-block grid starts at index `0x22` (s = 0x22+k -> `[5k,5k+5)`), giving the live selectors
+their ranges: `0x26:[20,25)`, `0x36:[100,105)`, `0x0:[0,5)`, `0x13:[95,105)`,
+`0x14:[105,115)`, `0x15:[115,125)`, `0x16:[125,130)`, `0x17:[130,135)`,
+`0x18:[135,140)`, `0x19:[140,145)`, `0x1a:[145,150)`, `0x1b:[150,155)`. Word `v[0x1d]`
+(`0xa0->0x29` wrap) is adjacent data, not a selector entry. Record pool identity (which
+fixtures 0..159 are) stays [H]; no shipped fixture table establishes the equivalence.
+Fill semantics: the loop walks `rec` through `[start, end-1]`; `FUN_00489bdc` is a
+**skip predicate** `(in_EAX=type, ECX=record)` returning 0 = skip — a hardcoded per-record
+exclusion table whose constants are the same grid's words (measured: type-2 skips
+{23, 31, 34, 37, 38, 50, 62, 85, 133}; type-3 skips {5, 6, 7, 8, 11, 13, 17, 18, 39, 43,
+44, 46, 47, 50, 53, 54, 95, 96, 97, 98, 120, 121, 122, 125, 127, 130, 131, 132}; with
+`DAT_00640fe8==1` -> `FUN_00489bb0` override and `==3` one extra skip). Surviving records
+are stored as `record + 1` (`DAT_0062fbf8` holds 1-based record numbers; whether these
+list ids reach the loader's `%03d` filenames is [H]) at `DAT_0062fbf8[count++]` with the
+`0x27`/range-end guards. Evidence: `analysis/pass78grid/sel1.txt` (function pseudocode),
+`analysis/pass78grid/grid_dump.txt` (raw grid + skip-constant words),
+`analysis/pass78grid/GhidraWc98Sel1.py`.

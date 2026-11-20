@@ -1649,3 +1649,60 @@ operand sites, `t2.txt`/`t3.txt` producer + loader disasm, `t4.txt` pool-parse g
   the match-setup lane the gate field is written once per team image; later
   pointer-path writes stay [H].
 - Port impact: none (comments cite the producer chain).
+
+## Pass-95: record pool and class bank-feed patterns decoded (measured 2026-11-20)
+
+Evidence `analysis/pass95rec/` (`t3.txt` pool init/realloc/shutdown, `t4.txt`
+priority comparator + word pump, `t5.txt` record alloc + init callback,
+`t7.txt` scene-handler registration, `t9.txt` class-dispatch arms, `t11.txt`
+record producers, `t12.txt` PHRS callbacks; jump table raw read at VA `0x48f45c`).
+
+- **Scene handler set.** `FUN_00490528` registers the commentary scene through
+  dispatcher `0x4e6b50` with handler set {trigger `0x48f730`, per-tick `0x48f728`,
+  pump `0x48f830`, start `0x48f8bc`, accessor `0x48f78c`} (t7.txt). `FUN_0048f730`
+  has no direct `E8` callers - it runs only through the scene dispatch pointer
+  site `0x490595` (t4/t7). => game-event seam is dispatcher-mediated [H].
+- **Record pool init `FUN_0048fd54`** (t3.txt): gates scene-enabled `0x490674` and
+  once-flag `DAT_006326b0`; loads the `AUDIO\CRWD\...`-path object via
+  `0x48f9d0`/`0x439810` into `DAT_0063271c`; creates three queues
+  `DAT_006326c8` (free) / `DAT_006326e4` (pending-A) / `DAT_00632700` (pending-B);
+  reserves via `0x49f5a0` a word block (`DAT_006326c0`, size
+  `((obj+8)+0x14)>>0xa + FUN_0048e8d0)<<0xd`) and an 8-record block
+  (`DAT_006326c4`, stride `0x2c`, size param `0x160`); pushes 8 records
+  (rec+0x28 = word-block pointer) to the free pool.
+- **Realloc pump `FUN_0048fcc0`** (t3.txt): iterate pending-A (`0x6326e4` qfetch
+  `0x4c4890`): `entry+0x24 == 0` (no word result) -> push back to free pool
+  (`0x4c4800`); else push to pending-B (`0x632700`). Busy bookkeeping = queue
+  rotation only; shutdown `FUN_0048fe70` destroys queues (`0x4c4720`), frees
+  `0x6326c4`/`0x6326c0`/`0x63271c` (`0x42b070`), clears `DAT_006326b0`.
+- **Record alloc `FUN_0048d070`** (t5.txt): `cls*0x1c + 0x14` allocation through
+  the `DAT_00632428` queue lane (`0x48d0dc` -> `0x4c4ce0`, init callback
+  `FUN_0048cf10` identity-check on `entry+0xc`); word-array pointer = record+0x14;
+  `rec+0x6/+0xa = -1` handles; bank load callback `0x4e3134`.
+- **Producers stamp class + priority (t11.txt).** `FUN_0048f7a4` (event-message
+  creator): guard scene-3 count `0x4906a4 > 0`, class = `[ESP+0x10]` byte through
+  `FUN_0048f6a4` accept-gate, pops a record from the free pool, stamps
+  `rec+0x1c = dispatch fn 0x48f47c`, `rec+0x24 = 0`, args `rec+0xc/+0x10`, busy
+  `rec+0x4`, `rec+0x8 = class dword`, `rec+0x18 = priority`; runs the word pump
+  `0x48f3e0` with callback `0x490094`; word produced -> push pending-A, else
+  recycle to free pool. Tick producer `0x48f830` (registered pump) stamps the same
+  fields with class byte from `DL` and callback `0x49001c`. Record header field
+  mapping beyond these stores stays [H].
+- **Priority comparator `FUN_0048f664`** (t4.txt): max of `entry+0x18` over
+  pending-A and pending-B heads; trigger `FUN_0048f730` rejects while driver
+  state `0x4dfc0c == 3` or comparator result `>= 0` vs the class arg (t4.txt lane
+  `0x48f730`: reject gate, then alloc+beat-add `0x4df968` with handle -> `rec+6`).
+- **Class bank-feed patterns (jump table VA `0x48f45c`, t9.txt).** Class byte
+  `[rec+0x20] & 0x3f`, `> 7` -> `SNDflush 0x4dfb40` only. Cases: class 0 ->
+  own bank (`rec+0x28`) phrase-feed only; classes 1/2 -> parsed slot-A
+  (`[ESP+0x8]`, skipped if null) then slots C/D + own; classes 3..6 -> own then
+  slots A/C/D; class 7 -> own then slots A/C/D (`0x48f5e4`). Every non-null slot
+  bank adds one beat entry with threshold `EBX = 0`
+  (`0x48d2f0` name lookup on `bank+0xe` -> `SNDphraseadd 0x4df968`, handle ->
+  `bank+6`); tail `SNDflush`, return 1.
+- **Duplicate protection: none at add time.** No dedup compare exists in any
+  beat-add arm (t9.txt); repetition control = trigger reject (driver busy /
+  priority comparator) + pool-consumption recycle. Port already mirrors busy
+  reject + exhausted-pool lanes (`triggerLive`/`triggerLive7`), so no port
+  change. Pass-91 residual wording: live-event class byte producers now decoded
+  (t11.txt); dispatcher-mediated game seam stays [H].

@@ -77,7 +77,7 @@ struct StepRes {
 
 const char* subsystemOf(const std::string& name) {
     if (name.starts_with("fe-")) return "presentation";
-    if (name.starts_with("match-audio") || name.starts_with("match-crowd")) return "audio";
+    if (name.starts_with("match-audio") || name.starts_with("match-crowd") || name.starts_with("audio-")) return "audio";
     return "gameplay";
 }
 
@@ -1914,9 +1914,9 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
         // step verdict. This lane drives pumpChants directly: each tick increment is one
         // 10 ms timer tick (livematch steps add +2 per 20 ms engine step).
         StepRes st{.name = "audio-timing",
-                   .expected = "chant arrivals on chained stamp boundaries (first pump >= stamp), identical at 1x and 5x pump/tick",
+                   .expected = "chant arrivals on tick-re-armed stamp boundaries (stamp = tick + 100), identical at 1x and 5x pump/tick",
                    .asset = "AUDIO\\CRWD\\CHNT pool, FUN_0048da50 stamp gate",
-                   .tolerance = "arrival tick == chained stamp boundary ±0; count exact (3 per 300 ticks)"};
+                   .tolerance = "arrival tick == stamp boundary ±0; count exact (3 per 300 ticks)"};
         try {
             audio::Mixer mx{std::optional<std::uint32_t>{44100u}}; // loopback: no hardware device
             const auto game = sim::loadGameData(tree);
@@ -1939,7 +1939,7 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                     const bool ok = diffMs >= 0 ? diffMs == 0 : -diffMs == 0;
                     allOk = allOk && ok;
                     recs += fmt("[{}] chant-load#{} exp={}ms act={}ms diff={}ms tol=0ms "
-                                "sched=1pumpframe plays={} outlat=n/a(loopback; probe: mix onset ~2 ms, sink tail ~35 ms) pass={}; ",
+                                "sched=1pumpframe plays={} outlat=n/a(loopback; probe: mix onset median 2.1 ms spread 0.6-10.9 ms, sink tail ~35 ms) pass={}; ",
                                 phase, idx + 1, expTick * 10, long(tick) * 10, diffMs,
                                 ma.chantPlays(), ok);
                     ++idx; prev = now;
@@ -1953,7 +1953,7 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
             const std::uint32_t a3 = ma.chantArrivals() - a2; // 5 pumps/tick
             st.passed = a1 == 3 && a3 == 3 && idx == 6 && allOk; // arrivals on ticks 1/101/201 then 301/401/501
             st.detail = fmt("audio-timing: {} counts 1x={} 5x={} (identical, pump-rate-invariant); "
-                            "plays={}; mixer: openal-soft pump 10 ms, mix onset ~2 ms, "
+                            "plays={}; mixer: openal-soft pump 10 ms, mix onset 0.6-10.9 ms (median 2.1 ms), "
                             "sink tail ~35 ms (analysis/pass118timing/latency_probe.cpp)",
                             recs, a1, a3, ma.chantPlays());
         } catch (const std::exception& e) {

@@ -1,0 +1,22 @@
+# 20 iterations, same probe
+first consumed frame (AL_SAMPLE_OFFSET>0) 1.23 ms after alSourcePlay
+first consumed frame (AL_SAMPLE_OFFSET>0) 10.90 ms after alSourcePlay
+first consumed frame (AL_SAMPLE_OFFSET>0) 1.83 ms after alSourcePlay
+first consumed frame (AL_SAMPLE_OFFSET>0) 0.93 ms after alSourcePlay
+first consumed frame (AL_SAMPLE_OFFSET>0) 10.59 ms after alSourcePlay
+first consumed frame (AL_SAMPLE_OFFSET>0) 1.79 ms after alSourcePlay
+first consumed frame (AL_SAMPLE_OFFSET>0) 0.92 ms after alSourcePlay
+first consumed frame (AL_SAMPLE_OFFSET>0) 10.52 ms after alSourcePlay
+first consumed frame (AL_SAMPLE_OFFSET>0) 1.82 ms after alSourcePlay
+first consumed frame (AL_SAMPLE_OFFSET>0) 9.68 ms after alSourcePlay
+first consumed frame (AL_SAMPLE_OFFSET>0) 2.13 ms after alSourcePlay
+first consumed frame (AL_SAMPLE_OFFSET>0) 10.82 ms after alSourcePlay
+first consumed frame (AL_SAMPLE_OFFSET>0) 2.12 ms after alSourcePlay
+first consumed frame (AL_SAMPLE_OFFSET>0) 1.23 ms after alSourcePlay
+first consumed frame (AL_SAMPLE_OFFSET>0) 10.82 ms after alSourcePlay
+first consumed frame (AL_SAMPLE_OFFSET>0) 2.13 ms after alSourcePlay
+first consumed frame (AL_SAMPLE_OFFSET>0) 1.22 ms after alSourcePlay
+first consumed frame (AL_SAMPLE_OFFSET>0) 0.62 ms after alSourcePlay
+first consumed frame (AL_SAMPLE_OFFSET>0) 9.98 ms after alSourcePlay
+first consumed frame (AL_SAMPLE_OFFSET>0) 2.43 ms after alSourcePlay
+# summary: n=20 min=0.62 ms med=2.12 ms max=10.90 ms (spread over the OpenAL mixer update period)

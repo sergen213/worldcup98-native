@@ -11,11 +11,15 @@ JSON schema keys (`app/selftest.cpp::writeJson`): `step/subsystem/expectedEvent/
 actualEvent/selectedAsset/playbackTimestampMs/measuredResult/tolerance/passed/diagnostic/
 skipped`. The step's `measuredResult` carries the per-arrival record fields —
 scenario (`1x`/`5x` pump phase), event id (`chant-load#n`), expected Windows onset
-(chained stamp boundary `stamp_i = 1 + i*100` timer ticks — the lane starts pumping at
-tick 1; each arrival re-arms from its own tick, exe pump-body semantics), actual onset,
-diff, tolerance (±0), schedule delay (`1 pump frame` — exe pump-body gate), output stage
-(`~2 ms` OpenAL mix onset; sink tail ~35 ms measured via pass-118 latency_probe.cpp), per-record pass AND'd into the step
-verdict. Observed, all six records **diff=0**:
+(stamp grid `stamp_i = 1 + i*100` timer ticks — the lane starts pumping at
+tick 1; the exe re-arms the stamp from the **current tick** (`0x48DADE`: `add eax,0x64;
+mov [DAT_0057EB40],eax`, re-arm site `0x48DAE3`), so the grid stays `1 + i*100` under
+exact-cadence arrival), actual onset, diff, tolerance (±0), schedule delay
+(`1 pump frame` — exe pump-body gate), output stage (first sample enters the OpenAL mix
+0.6-10.9 ms after play, median 2.1 ms - `mix_onset_probe.out`; sink tail ~35 ms measured
+via pass-118 `latency_probe.cpp`), per-record pass AND'd into the step verdict (full
+`measuredResult`, incl. `chant-load#6` and the counts tail, verified present in the JSON
+by `grep`). Observed, all six records **diff=0**:
 
 ```
 [1x] chant-load#1 exp=10ms    act=10ms    diff=0ms tol=0ms sched=1pumpframe plays=3 ... pass=true
@@ -52,10 +56,13 @@ Full `ctest --test-dir build/release` under `SDL_VIDEODRIVER=dummy QT_QPA_PLATFO
 **157/159 passed**. The two failures are `test_sim_scenarios` and `self_test_gameplay`
 (steps `passing`, `animation`) — foreign uncommitted simulation WIP in the user's worktree
 (`simulation/*`, `tests/unit/test_sim_*` modified), unrelated to audio; neither was claimed
-and no audio file changed them. The same run additionally SEGFAULTed `replay_record_play`,
-which was a stale recorded fixture (`/tmp/wc98port-out/replay`, same stale-fixture pitfall
-as the `fe_replay57_enter` lane): deleted, gate re-recorded fresh, green on 2/2 reruns —
-no port defect.
+and no audio file changed them. The same run additionally SEGFAULTed `replay_record_play`
+against stale recorded fixtures (`/tmp/wc98port-out/replay`, same stale-fixture pitfall as
+the `fe_replay57_enter` lane): deleted, gate re-recorded fresh, green on reruns. Root
+cause **unresolved**: truncation repro (`truncate -s 40` over every `rply*.dat`, rerun)
+does not reproduce the crash (gate exits 0, MATCH), so only the crash-on-stale-fixtures
+observation stands — candidate replay-loader robustness issue, no repro found. Suite
+after the retag follow-up: same **157/159**, same two foreign failures.
 
 ## 4. Category verification status
 | Category (AUDIO_EVENT_TRIGGER_MAP.md) | Verification |
@@ -68,11 +75,12 @@ no port defect.
 | pause/restart | `igPauseSmoke`, `fe_igmenu` restart lane (§2) |
 | music fade | register row 8 — constants mirror, no runtime gate yet |
 | beat scheduler / ambient throttle | exe-side lanes, not mirrored [H] |
-| backend latency | mix onset probe ~2 ms + sink tail ~35 ms, `analysis/pass118timing/latency_probe.cpp` (`AUDIO_LATENCY_ANALYSIS.md` §1) |
+| backend latency | mix onset 0.6-10.9 ms after play (median 2.1 ms, `mix_onset_probe.cpp`) + sink tail ~35 ms (`latency_probe.cpp`), `analysis/pass118timing/latency_probe.cpp` (`AUDIO_LATENCY_ANALYSIS.md` §1) |
 
 ## 5. CI lane
-The pass-118 code commit (`17d14cc`) CI lane: green (watched run per pass-118timing ship
-note). Docs/selftest-field commit follows this doc.
+Pass-118 lanes all green on GitHub Actions: code commit `17d14cc`; selftest-record-field
++ docs commit `2a1f432` watched run 44873462238 (✓ build gcc-cxx23 ci-cxx23, ✓ AppImage);
+retag/probe-wording follow-up watched on its own push run.
 
 ## 6. Remaining fidelity work (not timing)
 - exe generic-commentary scene-id table decode → wire `Commentary::Scheduler`.

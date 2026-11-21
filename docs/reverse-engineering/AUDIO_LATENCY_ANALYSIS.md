@@ -1,7 +1,7 @@
 # AUDIO_LATENCY_ANALYSIS — backend buffering and the event→audible chain (pass-118)
 
 Question this pass answered: **is the Linux audio device responsible for the timing
-drift?** Answer: no — OpenAL mix onset ≈ 2 ms (probe since removed; sink latency after
+drift?** Answer: no — OpenAL mix onset 0.6-10.9 ms after play (median 2.1 ms, committed artifacts; sink latency after
 the mix never measured, §1); the drift was entirely in the scheduling layer
 (`AUDIO_TIMING_AUDIT.md` F-1..F-5).
 
@@ -18,8 +18,9 @@ the mix never measured, §1); the drift was entirely in the scheduling layer
 | Underruns | none observed in smoke lanes (stream refill window is 372 ms, far above the mix queue) | smoke lanes |
 
 The 372 ms chunk is a **refill window, not onset latency**: once the buffer pair is
-queued, the sample enters the OpenAL mix within ~2 ms of submission (mixer probe,
-pass-117). Mix-to-audible was measured in pass 118 with
+queued, the sample enters the OpenAL mix 0.6-10.9 ms after play (median 2.1 ms) (pass-118
+`analysis/pass118timing/mix_onset_probe.cpp`: first `AL_SAMPLE_OFFSET>0` observed at
+20-iteration spread 0.62-10.90 ms, median 2.12 ms (`mix_onset_probe.out`) - the onset lands inside the OpenAL mixer update period (~10 ms). Mix-to-audible was measured in pass 118 with
 `analysis/pass118timing/latency_probe.cpp` (raw output `latency_probe.out`,
 `AL_SOFT_source_latency` on the default "OpenAL Soft" device, 48 kHz): with a fresh
 100 ms silent buffer the head reaches the monitor ~35 ms after `alSourcePlay`
@@ -36,7 +37,7 @@ sim event (stamp)      → drain seam (≤ 1 engine step, 20 ms)
 audio schedule stamp   → arrival tick (cadence lane only; chant ≤ 1 step)
 Mixer::play()          → alSourcei(AL_BUFFER) + alSourcePlay (same call; stream lane:
                          alSourceQueueBuffers then play)
-mix queue buffers      → ~2 ms until the first sample enters the OpenAL mix (probe);
+mix queue buffers      → first sample enters the OpenAL mix 0.6-10.9 ms after play (median 2.1, mixer period)
                          head then reaches the monitor ~35 ms later — measured with
                          latency_probe.cpp, §1
 ```
@@ -44,10 +45,11 @@ No intermediate queue exists in the port: submission is synchronous with arrival
 exe comparison: request queue drain ≤ 1 pump frame (20 ms) — same structure.
 
 ## 3. Latency budget vs tolerance
-- Cadence tolerance: ±0 on the chained stamp grid (`audio-timing` records,
-  `AUDIO_TIMING_VALIDATION.md` §1) — the grid itself is 100 timer ticks = 1.000 s.
-- Worst-case event→mix onset: 20 ms drain + ~2 ms mix = **~22 ms** to the mix, + ~35 ms measured sink tail (§1), giving an
-  era DirectSound sink of the same class on the reference lane (cancels in comparison, §1).
+- Cadence tolerance: ±0 on the stamp grid (`stamp = tick + 100`, `0057pump.txt`;
+  `audio-timing` records, `AUDIO_TIMING_VALIDATION.md` §1) — the grid itself is 100 timer ticks = 1.000 s.
+- Worst-case event→mix onset: 20 ms drain + <= ~11 ms mix (max observed, mixer period), plus the
+  ~35 ms measured sink tail (§1); the reference lane's DirectSound sink is unmeasured
+  [H], so audible comparison cancels only to sink-class order of magnitude (§1).
 - Deliberate deviation: requests play at arrival (≤ 1 frame early vs the exe drain) —
   bounded by one 20 ms step, documented in `AUDIO_SCHEDULER_ANALYSIS.md` §3.
 

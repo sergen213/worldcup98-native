@@ -19,6 +19,7 @@ This audit was performed **before** any timing change; the fixes it motivated ar
 | 6. Queueing | chant 3-lane pool, speech 20-slot ring stride `0xc` cap 18 (`DAT_0064b068` mirror), in-flight records | exe cadence: 1.000 s stamp |
 | 7. Mixer submission | `audio::Mixer::play/stream` (`audio/src/mixer.cpp`) → OpenAL source queue | immediately at arrival (≤ 1 pump frame early vs exe — immaterial) |
 | 8. Audible onset | OpenAL Soft: one-shot `alSourcePlay` → first sample entering the mix ≈ 2 ms, sink tail ~35 ms measured (`AUDIO_LATENCY_ANALYSIS.md` §1) | mix queue, not scheduler |
+| 8. Audible onset | OpenAL Soft: one-shot `alSourcePlay` → first sample entering the mix 0.6-10.9 ms (median 2.1), sink tail ~35 ms measured (`AUDIO_LATENCY_ANALYSIS.md` §1) | mix queue, not scheduler |
 | 9. Completion / interruption | `Mixer::playing()` retire poll, `Mixer::fade` ramp (exe `FUN_0048ec64` 200-tick seam), busy-reject drop (exe: record recycled, never deferred, pass-86) | pump iteration 10 ms, fade step per 2 iterations = 20 ms tick |
 
 ## 2. Clock chain (the relationship that had to be reproduced)
@@ -46,7 +47,7 @@ This audit was performed **before** any timing change; the fixes it motivated ar
   frame-rate-dependent LCG stream (56 draws/frame). Restored to the arrival branch.
 - **F-5.** Music fade countdown assumed 60 fps (240) and halted on pause while the mixer
   ramp continued; corrected to 200 steps at 20 ms.
-- **F-6.** Audio device ruled out as cause: OpenAL mix onset measured ~2 ms (sink latency
+- **F-6.** Audio device ruled out as cause: OpenAL mix onset measured 0.6-10.9 ms after play, median 2.1 ms (`mix_onset_probe.out`; sink tail
   measured (~35 ms tail), `AUDIO_LATENCY_ANALYSIS.md` §1); stream chunk
   8192 frames @ 22050 Hz = 372 ms is a **refill window**, not onset latency
   (`AUDIO_LATENCY_ANALYSIS.md`). The scheduling layer was the fidelity factor.

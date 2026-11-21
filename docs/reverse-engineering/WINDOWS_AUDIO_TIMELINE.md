@@ -56,7 +56,7 @@ Clip gain = percent idx2 (options reaction row): `(vol * percent * 0x7f) / 10000
   TRAFF 2 / second lane 40, clamp 0x1ff — pass-113tick).
 - Reaction onset: `SNDcrowdpulse` (FUN_004e4cac) on the match event record — pulse pushes
   the arrival target; ramp frames drawn `base + jitter`, min 1 (0x4e527a sites); blend
-  consumer FUN_005444 rewrites voice gains only when the curve index moves.
+  consumer FUN_004e5444 rewrites voice gains only when the curve index moves.
 - Percent idx2 re-level fades the whole stadium lane at 50 x 20 ms ticks (FUN_004906a4 →
   FUN_00550530 0.75x). Goal/shot/foul reactions therefore begin <= 1 engine frame after the
   event and ramp over drawn frame counts — they are layered on the continuous bed, not

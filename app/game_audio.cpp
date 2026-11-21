@@ -171,7 +171,7 @@ void MatchAudio::crowdNotifier(int channel) {
 
 // --- CrowdEnvelope (pass-55) -------------------------------------------------------------
 // Mirror of the cmn\scrowd.c reaction machine: idle pump FUN_004e510c (DAT_005894ab state
-// walk), pulse FUN_004e4cac, blend consumer FUN_005444. The exe shares ONE machine between
+// walk), pulse FUN_004e4cac, blend consumer FUN_004e5444. The exe shares ONE machine between
 // the CROWD and TRAFF cards (single 16.16 level, slot curve pointers per card); the port
 // runs the bed and hum envelopes independently, each from its own card header byte 7 [H].
 void CrowdEnvelope::init(std::uint32_t cardByte7, int rateWord,
@@ -289,7 +289,7 @@ bool CrowdEnvelope::pulse(const formats::CrdRecord& rec) {
 }
 
 int CrowdEnvelope::blendIndex() const {
-    // FUN_005444 control dword high half: cc = (be*be + bc*(c0>>16)) >> 9, used directly as
+    // FUN_004e5444 control dword high half: cc = (be*be + bc*(c0>>16)) >> 9, used directly as
     // the curve table index (CROWD algebraic band [250, 404] over level [0, 0x1ff]).
     return std::clamp((be_ * be_ + bc_ * (c0_ >> 16)) >> 9, 0, 0x1ff);
 }
@@ -662,7 +662,7 @@ float MatchAudio::crowdCurveRatio() const {
 }
 
 float MatchAudio::crowdLayerGain(const CrowdLayer& layer) const {
-    // FUN_005444 consumer: every frame the slot's gain comes from its curve table at the
+    // FUN_004e5444 consumer: every frame the slot's gain comes from its curve table at the
     // envelope blend index (cc high half, CROWD algebraic band [250, 404]), scaled by the
     // percent-lane controller (curve byte * DAT_005894ac >> 0x17). Modeled here as the
     // blend curve gain times the percent lane linearly [M]: blend moves the bed up/down
@@ -717,7 +717,7 @@ void MatchAudio::applyCrowdGains() {
 
 void MatchAudio::tickCrowd() {
     // Frame pump (pass-55): idle walk + blend. Voices are rewritten only when the curve
-    // index moves (FUN_005444 change gate), like the exe consumer.
+    // index moves (FUN_004e5444 change gate), like the exe consumer.
     crowdEnvelope_.tick();
     trafficEnvelope_.tick();
     const int ci = crowdEnvelope_.blendIndex();

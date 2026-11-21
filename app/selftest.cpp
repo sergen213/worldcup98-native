@@ -1967,7 +1967,7 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
         // 14b3d. match-crowd-envelope (pass-55): the cmn\scrowd.c reaction machine drives the
         // stadium bed curve index. CROWD.CRD header byte 7 = 70 -> blend weights be 358 / bc 154;
         // the fresh machine (level 0) indexes the curve at (358*358)>>9 = 250, and the per-frame
-        // idle pump (FUN_004e510c walk, FUN_005444 blend) breathes the index inside the blend
+        // idle pump (FUN_004e510c walk, FUN_004e5444 blend) breathes the index inside the blend
         // formula's algebraic band [250, 404] instead of sitting at one fixed level.
         // SNDcrowdpulse (FUN_004e4cac) on card record 0 (measured dump: delta 350, ceiling 450 =
         // u16 0x01c2 at record bytes 6..7, ramp step 0x38000 = 3.5 in 16.16) ramps the 16.16

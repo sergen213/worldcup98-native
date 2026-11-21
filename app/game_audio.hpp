@@ -65,7 +65,7 @@ private:
 // case 0 up, 1 down, 2 up, 3 down, then 2 <-> 3 forever): when a ramp lands on its target
 // it draws a new random target clamped to [0, 0x1ff] and divides the remaining distance by
 // a ramp frame count read from the card records (byte 12 u32; exe frames = rate * 0x21 >>
-// 16, measured 132/198/264 frames - ~2..4 s ramps at 60 fps). The consumer (FUN_005444)
+// 16, measured 132/198/264 frames - ~2..4 s ramps at 60 fps). The consumer (FUN_004e5444)
 // computes every frame the control blend cc = (be * be + bc * (c0 >> 16)) >> 9 and indexes
 // the card curve tables at [cc >> 16] - CROWD lands in the blend formula's algebraic band
 // [250, 404] (be = 358, bc = 154, level in [0, 0x1ff]), so the bed gain breathes instead
@@ -407,7 +407,7 @@ public:
     void relevelCrowd();
 
     // Crowd envelope seam (pass-55): the reaction machine pumps every frame while the
-    // stadium lane runs (exe SMIX update chain driving FUN_00510c idle walk + FUN_005444
+    // stadium lane runs (exe SMIX update chain driving FUN_00510c idle walk + FUN_004e5444
     // blend consumer). Re-fades the running bed/traffic voices when the curve index moves
     // (the exe consumer only rewrites voice bytes on change). Call per frame next to
     // pumpChants() (livematch seam).

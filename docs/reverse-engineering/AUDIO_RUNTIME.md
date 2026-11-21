@@ -203,7 +203,7 @@ card words directly. `SNDcrowdpulse`
 (`FUN_004e4cac`) reads record delta/ceiling/step (u16 pair at record bytes 4..7: measured delta
 350, ceiling **450** = 0x01c2 — an earlier gate note said 394, decimal arithmetic error) and
 refuses with status -8 when the level already sits at/above the ceiling, else ramps to
-`level + delta` clamped at the ceiling. The blend consumer `FUN_005444` computes
+`level + delta` clamped at the ceiling. The blend consumer `FUN_004e5444` computes
 `cc = (be*be + bc*(c0>>16)) >> 9` every frame and indexes the card curve tables at `cc >> 16`;
 for CROWD algebra this band is [250, 404], so the bed index breathes instead of sitting at one
 fixed level (closing the A4 fixed-bed discrepancy). Port `CrowdEnvelope` mirrors the machine

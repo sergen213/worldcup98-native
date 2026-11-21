@@ -9,7 +9,7 @@ pass-113tick + `analysis/pass113tick/{clk3.txt,NOTES.md}`.
   `0x48e7a0..0x48e847`, `"AUDIO\\CRWD\\%s"` (pass-61b). [C]
 - Curve machine `cmn\scrowd.c`: CROWD.CRD header byte 7 = 70 → blend weights be 358 /
   bc 154; fresh machine (level 0) indexes the curve at `(358*358)>>9 = 250`; the per-frame
-  idle pump (`FUN_004e510c` walk + `FUN_005444` blend) breathes the index inside the
+  idle pump (`FUN_004e510c` walk + `FUN_004e5444` blend) breathes the index inside the
   blend band `[250, 404]` — never a fixed level. [C]
 - **No reaction delay on the bed**: idle envelope moves every pump frame; onset of any
   change is ≤ 1 pump frame (20 ms). [C]

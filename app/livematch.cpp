@@ -1727,7 +1727,7 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
                 for (; sfxPos < w.events.size(); ++sfxPos) matchAudio.trigger(w.events[sfxPos]);
                 matchAudio.relevelCrowd(); // idx2 seam: options reaction row -> loop voice float
                 matchAudio.pumpChants(audioTicks); // pass-53 chant pump (FUN_0048da50): timer-stamp cadence, 100 ticks = 1.000 s
-                matchAudio.tickCrowd();  // pass-55 crowd envelope pump (FUN_004e510c idle walk + FUN_005444
+                matchAudio.tickCrowd();  // pass-55 crowd envelope pump (FUN_004e510c idle walk + FUN_004e5444
                                          // blend consumer): bed/hum voice gains follow the reaction machine
                 if (menuMusic) menuMusic->update(); // FE music seam: fade-out at launch (FUN_0048ec64), rotation pump
                 audioTicks += 2;                  // 10 ms/tick: one 20 ms engine step = 2 ticks

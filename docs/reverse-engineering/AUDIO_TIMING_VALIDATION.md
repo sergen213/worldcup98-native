@@ -18,8 +18,10 @@ exact-cadence arrival), actual onset, diff, tolerance (±0), schedule delay
 (`1 pump frame` — exe pump-body gate), output stage (first sample enters the OpenAL mix
 0.6-10.9 ms after play, median 2.1 ms - `mix_onset_probe.out`; sink tail ~35 ms measured
 via pass-118 `latency_probe.cpp`), per-record pass AND'd into the step verdict (full
-`measuredResult`, incl. `chant-load#6` and the counts tail, verified present in the JSON
-by `grep`). Observed, all six records **diff=0**:
+`measuredResult`, incl. `chant-load#6` and the counts tail). Existence and verdict are now
+enforced by the `selftest_json_schema` gate itself (asserts the `audio-timing` step exists,
+`passed` — device-skip tolerated on headless — and carries `chant-load#` records; the report
+is deleted before each run so a stale file cannot pass), not just by grep. Observed, all six records **diff=0**:
 
 ```
 [1x] chant-load#1 exp=10ms    act=10ms    diff=0ms tol=0ms sched=1pumpframe plays=3 ... pass=true

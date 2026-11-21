@@ -53,6 +53,20 @@ across all six records — the cadence records gate on the arrival tick, not on 
 | `fe_igmenu` restart lane (scripted RestartAsk → kickoff whistle ≥ 2 post-restart) | passed in the full dummy-lane suite (§3); an earlier bare-mode flake probe mis-operated the lane — no port defect |
 | full ctest suite (dummy lane) | see §3 |
 
+### DCT drain granularity gate — hidden-failure fix (2026-11-21, commit `ec4f64b`)
+Before: `video_play`'s `PASS_REGULAR_EXPRESSION` matched the stats line unconditionally, so
+ctest ignored the exit code — `movie-audio-granularity BAD` (exit 4, `app/video.cpp`) printed
+on every gated run yet the suite showed green. The BAD was real: the drain loop added the
+full 2048-frame slice to `movieRenderedFrames` before the counter check and clamped to the
+stream end only *after* it, so the final partial slice (1494277 = 729×2048 + 901) overshot
+the true played counter by 763 frames — `d < 0` fired once per run (probe:
+`gran BAD d=-763 rendered=1495040 played=1494277`). Root cause = check/clamp ordering, not
+counter units: the trace confirms `framesPlayed()` tracks rendered exactly (offset advances
+2048 per 2048-frame render call, buffer charges at unqueue). Fix: clamp before the check in
+`app/video.cpp`; `video_play` gains `FAIL_REGULAR_EXPRESSION "granularity BAD|validation
+message"`. Negative-tested by disabling the clamp (test #50 Failed on the BAD line), then
+restored (test #50 Passed, exit 0, no BAD line).
+
 ## 3. Suite result
 Full `ctest --test-dir build/release` under `SDL_VIDEODRIVER=dummy QT_QPA_PLATFORM=offscreen`:
 **157/159 passed**. The two failures are `test_sim_scenarios` and `self_test_gameplay`

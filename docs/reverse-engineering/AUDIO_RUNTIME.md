@@ -1858,7 +1858,9 @@ Dump windows `analysis/pass96beat/t3.txt..t5.txt` (Ghidra disassembly, AUTO lane
   frames (~28 ms total drift), counter advanced continuously. Gate mode drains loopback through
   `render()` and asserts the counter tracks rendered frames within one render slice + one queued
   buffer (`movie-audio-granularity` violation -> exit 4); prints `movie-audio-rendered=1494277
-  movie-audio-played=1494277` (`video_play` regex pins exact values). A8 residual CLOSED pass-98
+  movie-audio-played=1494277` (`video_play` regex pins exact values; since commit `ec4f64b` the
+  verdict is enforced — `FAIL_REGULAR_EXPRESSION` catches `granularity BAD` and validation
+  messages, after the final-slice clamp-before-check fix; see `AUDIO_TIMING_VALIDATION.md` §2). A8 residual CLOSED pass-98
   (no exe class gain — see Pass-98 below).
 
 ## Pass-98: A8 class-letter gain residual closed — no per-class gain exists (measured 2026-11-20)

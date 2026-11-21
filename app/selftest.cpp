@@ -1910,7 +1910,7 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
         // each = 1.000 s), actual arrival tick, event->schedule delay (1 pump frame max,
         // the exe pump-body gate latency), scheduling delay vs boundary, mixer submission
         // (play count) and output latency (OpenAL onset probe, WINDOWS_AUDIO_TIMELINE.md
-        // §6), tolerance (1 timer tick = 10 ms) and per-record pass/fail AND'd into the
+        // §6), tolerance (exact boundary match, 0 ms) and per-record pass/fail AND'd into the
         // step verdict. This lane drives pumpChants directly: each tick increment is one
         // 10 ms timer tick (livematch steps add +2 per 20 ms engine step).
         StepRes st{.name = "audio-timing",
@@ -1936,7 +1936,7 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                     // each arrival re-arms from its own tick, exe pump-body semantics).
                     const long expTick = long(idx) * 100L + 1L;
                     const long diffMs = (long(tick) - expTick) * 10; // timer tick = 10 ms
-                    const bool ok = diffMs >= 0 ? diffMs == 0 : -diffMs == 0;
+                    const bool ok = diffMs == 0; // exact boundary match, tolerance 0
                     allOk = allOk && ok;
                     recs += fmt("[{}] chant-load#{} exp={}ms act={}ms diff={}ms tol=0ms "
                                 "sched=1pumpframe plays={} outlat=n/a(loopback; probe: mix onset median 2.1 ms spread 0.6-10.9 ms, sink tail ~35 ms) pass={}; ",

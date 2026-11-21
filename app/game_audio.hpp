@@ -61,7 +61,7 @@ private:
 // Crowd reaction envelope (pass-55): the cmn\scrowd.c reaction machine behind the stadium
 // lane. SNDcrowdload (FUN_004e4a80) derives the blend weights from the card header byte 7:
 // be = (byte7 << 9) / 100, bc = 0x200 - be (CROWD 70 -> 358/154). The per-frame idle pump
-// (FUN_00510c) walks a 16.16 level c0 through alternating ramp states (exe DAT_005894ab:
+// (FUN_004e510c) walks a 16.16 level c0 through alternating ramp states (exe DAT_005894ab:
 // case 0 up, 1 down, 2 up, 3 down, then 2 <-> 3 forever): when a ramp lands on its target
 // it draws a new random target clamped to [0, 0x1ff] and divides the remaining distance by
 // a ramp frame count read from the card records (byte 12 u32; exe frames = rate * 0x21 >>
@@ -407,7 +407,7 @@ public:
     void relevelCrowd();
 
     // Crowd envelope seam (pass-55): the reaction machine pumps every frame while the
-    // stadium lane runs (exe SMIX update chain driving FUN_00510c idle walk + FUN_004e5444
+    // stadium lane runs (exe SMIX update chain driving FUN_004e510c idle walk + FUN_004e5444
     // blend consumer). Re-fades the running bed/traffic voices when the curve index moves
     // (the exe consumer only rewrites voice bytes on change). Call per frame next to
     // pumpChants() (livematch seam).

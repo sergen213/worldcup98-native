@@ -159,11 +159,19 @@ each bound to its own gain curve by the measured `0x128` slot-pointer fixup (`do
 Gates: `test_gameaudio` (e), selftest `match-audio-lanes` (chants=113, announcers=4, plrs=38).
 
 **Pass-53 — chant pump + boot classification [C]** (evidence `analysis/pass53audio/NOTES.md`
-+ `ch1.txt`..`ch7.txt`, flat-bank probe `chantprobe.cpp`). The pump `FUN_0048da50` runs
++ `ch1.txt`..`ch7.txt`, flat-bank probe `chantprobe.cpp`; cadence re-decode pass-118 with the
+raw pump body disassembly `analysis/pass118timing/pump.txt`). The pump `FUN_0048da50` runs
 per-frame from the commentary tick host `FUN_004906f8` (sole caller 0x49070e) under gate
-`DAT_006324b4`: each frame stamps the lane voice delay `+10` and applies
-`FUN_004906d0`/`SNDautovol` when it resolves; the load cadence `DAT_0057eb40 <=
-DAT_00636a14 ⇒ +100` drains queues, releases one `+8`-lane voice (`DAT_006324d4[lane]--`)
+`DAT_006324b4`: the per-call branch `0x48da6c..0x48dacb` is one qfind (`FUN_004c4ce0`) on the
+request queue `DAT_00632540` with predicate `FUN_0048d460` — a pending request writes its
+`+8`-lane voice delay `+10` and plays through `FUN_004906d0`/`SNDautovol` into `SNDplay`
+`FUN_004e2b30` when the draw count (`FUN_0048d040` → record `+0xa`) is `>= 0`; requests are
+therefore audible within one pump frame of being queued. The load cadence gate `0x48dacc`
+compares the multimedia-timer stamp `DAT_0057eb40 <= DAT_00636a14 ⇒ +100`: **100 timer ticks
+= 1.000 s wall-clock** (`DAT_00636a14` increments per callback event at `0x4966b8`, timer
+armed by `mov 0x64,EAX; call 0x496bb0` = inittimer(100) at VA `0x43cb8f`), NOT 100 render
+frames — pump call rate cannot alter the cadence. The arrival branch drains queues, releases
+one `+8`-lane voice (`DAT_006324d4[lane]--`)
 and tops up lanes 0..2 iff `DAT_006324c4[lane] != 0 && DAT_006324d4[lane] <
 DAT_006324e0[lane]` while the match scene is live (`FUN_004adb30`) and the request count is
 `< 3`, requesting through loader `FUN_0048d53c`. Boot classification `FUN_0048dcd8` stamps
@@ -265,9 +273,10 @@ name pointers: 74 `C0%04d` team banks + 39 `CGENER%02d` generic banks (boot clas
 count), terminated by a pointer to `$FIFAVER$AUDIOV0-5-9` at `0x57ecc0` and followed by a
 separate pointer array whose tail entries are `.DCT` video names (video subsystem registry,
 not chants). Port: `MatchAudio::ExeLcg` mirrors `FUN_004ce2f3` (`chantRng_` replaces mt19937 for
-variant + phrase picks) and `pumpChants` rotates the pool on the 100-frame cadence (even →
-front, odd → back) before lane top-up, matching drain-branch order; gate `test_gameaudio`
-asserts the seed-0 LCG draw sequence.
+variant + phrase picks) and `pumpChants` rotates the pool on the 100-timer-tick (1.000 s)
+cadence (even → back, odd → front) before lane top-up, matching arrival-branch order
+(rotation loop `0x48dbeb..0x48dc07`, fetch-by-index + parity re-queue); gate
+`test_gameaudio` asserts the seed-0 LCG draw sequence.
 
 **Pass-113b — envelope arrival frame lanes [C]** (evidence `analysis/pass113tick/frames.txt`,
 objdump `FUN_004e510c` `0x4e510c..0x4e5410`). The ramp-step division is a per-state lane, not a

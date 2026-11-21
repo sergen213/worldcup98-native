@@ -410,18 +410,26 @@ void MatchAudio::classifyChants() {
     }
 }
 
-// Chant frame pump (pass-53): exe scene handler FUN_0048da50. The request cadence counter
-// (DAT_00636a14) gates loads at every 100 frames (`< 0x64` guard, increment sites
-// 0x48db33/0x48dbeb/0x48dc27 in the pump body); between cadence hits the drain branch walks
-// qlength/2 steps (FUN_004c4af0), each step a LCG draw (FUN_004ce2f3) whose parity picks
-// qbottom (FUN_004c4800) vs qpush (FUN_004c4780) on the fetched entry — queue rotation
-// between head and tail, not a play-vs-stop choice (pass-56 decode: the earlier residual
-// "play-vs-stop random branch" claim is retracted, the branch reorders the pool). Then the
-// top-up fires only while the match scene is live (FUN_004adb30) and the queues are empty.
-// Port: voices retire on the mixer play-status probe (SNDplay status analog), the pool
-// order rotates on the cadence, then lanes refill under the caps.
-void MatchAudio::pumpChants() {
-    ++chantPumpTick_;
+// Chant pump (pass-53): exe scene handler FUN_0048da50. Per-call branch (VA 0x48da6c..0x48dacb):
+// one qfind (FUN_004c4ce0) on the request queue DAT_00632540 with predicate FUN_0048d460; on a
+// pending request entry it computes the draw count (FUN_0048d040 -> record +0xa), and when the
+// count is >= 0 plays the clip through the percent lookup FUN_004906d0 into SNDplay FUN_004e2b30.
+// Port: pending requests are played at the cadence arrival (see below), and the mixer
+// play-status probe models the per-call voice retirement. Cadence gate (VA 0x48dacc):
+// `MOV EAX,[DAT_00636a14]; CMP EAX,[DAT_0057eb40]; JL return`; on arrival
+// `ADD EAX,0x64; MOV [DAT_0057eb40],EAX`. The arrival branch runs the three queue-handler
+// passes (request queue -> DAT_0063255c -> DAT_00632524 reorders, +0x1c tick-rewrite record
+// update at 0x48db1b), then — only while the match scene is live (FUN_004adb30 at 0x48dba9)
+// and the pool queue is under its 3-slot cap (DAT_006324d4 vs 3 at 0x48dbc0) — the rotation
+// loop (0x48dbeb..0x48dc07): qlength/2 steps, each an LCG draw (FUN_004ce2f3) modulo the
+// length, fetched entry re-queued by a second LCG draw's parity: odd -> qpush top (FUN_004c4780),
+// even -> qbottom (FUN_004c4800). DAT_00636a14 is the timer-thread tick counter (INC at
+// callback tail VA 0x4966b8) with the thread configured by InitTimer(100) (call site VA
+// 0x43cb8f, period 0x3e80000/freq in 65536-per-ms units) => 10 ms/tick, cadence 100 ticks =
+// 1.000 s wall-clock, independent of the pump call rate. Port: voices retire on the mixer
+// play-status probe (SNDplay status analog); the pool order rotates and lanes refill on the
+// timer cadence stamp.
+void MatchAudio::pumpChants(std::uint32_t clockTicks) {
     if (mixer_) {
         for (auto& v : chantVoices_) {
             if (v.id != 0 && !mixer_->playing(v.id)) {
@@ -432,10 +440,13 @@ void MatchAudio::pumpChants() {
             }
         }
     }
-    if ((chantPumpTick_ % 100) != 0) return; // 100-frame cadence gate
-    // Drain rotation (FUN_0048da50 drain branch, pass-56): length/2 steps, each step an
-    // LCG draw; even parity pushes the fetched entry to the queue bottom, odd pushes it
-    // to the top. Mirrored as pool reordering: even -> front, odd -> back.
+    if (clockTicks < chantCadenceStamp_) return; // DAT_0057eb40 <= DAT_00636a14 gate
+    ++chantArrivals_;                            // arrival counted per stamp crossing
+    chantCadenceStamp_ = clockTicks + 0x64;      // next arrival: tick + 100 (1.000 s)
+    // Arrival branch rotation (0x48dbeb..0x48dc07): length/2 steps, each an LCG draw;
+    // the fetched entry's second-draw parity re-queues it: bit 0 -> qbottom (FUN_004c4800,
+    // tail), bit 1 -> qpush top (FUN_004c4780). Mirrored as pool reordering: even moves the
+    // front entry to the back, odd moves the back entry to the front.
     for (std::size_t i = 0, n = chantEntries_.size() / 2; i < n; ++i) {
         if ((chantRng_.draw() & 1u) == 0) {
             std::rotate(chantEntries_.begin(), chantEntries_.begin() + 1,
@@ -445,8 +456,8 @@ void MatchAudio::pumpChants() {
                         chantEntries_.end());
         }
     }
-    if (!mixer_ || chantEntries_.empty() || mixer_ == nullptr) return; // device-less: exe needs one
-    if (chantActiveTotal_ >= chantVoices_.size()) return;              // 3-slot pool full
+    if (!mixer_ || chantEntries_.empty()) return; // device-less: exe needs one
+    if (chantActiveTotal_ >= chantVoices_.size()) return; // 3-slot pool cap (DAT_006324d4 vs 3)
     for (int lane = 0; lane < 3; ++lane) {
         if (chantLaneCount_[std::size_t(lane)] == 0) continue;
         if (chantLaneActive_[std::size_t(lane)] >= chantLaneDesired_[std::size_t(lane)]) continue;
@@ -849,7 +860,7 @@ void MenuMusicDirector::update() {
 void MenuMusicDirector::fadeOut() {
     if (!mixer_ || !id_ || leaving_) return;
     leaving_ = true;
-    fadeFrames_ = 240; // 200 ticks (FUN_0048ec64 argument 0xc8) at ~60 fps
+    fadeFrames_ = 200; // 200 ticks (FUN_0048ec64 argument 0xc8); update() runs per 20 ms engine step, so 200 calls = 4.0 s ramp
     mixer_->fade(id_, 0.f, 200);
 }
 

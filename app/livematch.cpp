@@ -1006,6 +1006,7 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
     matchAudio.boot(laneHomeId, laneAwayId,
                     boot.md.sheets[0].team.roster, boot.md.sheets[1].team.roster);
     std::size_t sfxPos = 0; // SFX sweep cursor (append-only events stream)
+    std::uint32_t audioTicks = 0; // DAT_00636a14 mirror: +2 per 20 ms engine step (10 ms/tick)
 
     auto key = [&](SDL_Scancode sc, bool down) {
         SDL_Event e{};
@@ -1289,10 +1290,15 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
             default: pause = IgPause::Off; break;                          // codes outside the armed table cannot dispatch
         }
     };
+    int restarts = 0; // gate counter (pass-118timing restart lane): confirmYes executions
     const auto confirmYes = [&] { // confirm 'yes': rebuild the world on the same seed, reopen kickoff [C] restart chain installs 0x440706
         runner = sim::SimRunner(boot.md, boot.opt, 0x2E7A); // move-assign: `w` still binds runner.w_
         sim::Input_assignController(w, 0, 1, 0);
         evPos = 0; rec = ReplayRecorder{}; prevSim = int(w.time.simFrames);
+        ++restarts;
+        sfxPos = 0; // the rebuilt world restarts its event stream: the SFX cursor must follow
+                    // (the exe restart chain 0x440706 reruns kickoff with the scene handlers
+                    // installed; audio lane state like the chant pool survives, not replays)
         lastPoss = w.time.possessionFrames; possAcc = {}; initPeriod = w.match.periodIndex;
         halfShown = false; ftShown = false;
         std::printf("igmenu: match restarted\n");
@@ -1343,6 +1349,20 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
         if (igPauseSmoke && presented == 179) key(SDL_SCANCODE_RETURN, false);
         if (igPauseSmoke && presented == 180) key(SDL_SCANCODE_ESCAPE, true); // reopen the menu, then close it: match resumes for the remaining frames
         if (igPauseSmoke && presented == 190) key(SDL_SCANCODE_ESCAPE, true); // Esc closes the menu: match resumes
+        // pass-118timing restart lane (gate): reopen the menu, walk the cursor to the Restart
+        // Match row (7), Enter activates -> RestartAsk, Enter 'yes' -> confirmYes rebuilds the
+        // world; the remaining frames must re-fire the kickoff whistle from the reset cursor.
+        if (igPauseSmoke && presented == 200) key(SDL_SCANCODE_ESCAPE, true); // reopen IGMENU (cursor 0)
+        if (igPauseSmoke && presented == 204) { key(SDL_SCANCODE_DOWN, true); key(SDL_SCANCODE_DOWN, false); } // 0 -> 2 (masked Replay row skipped by igStep)
+        if (igPauseSmoke && presented == 206) { key(SDL_SCANCODE_DOWN, true); key(SDL_SCANCODE_DOWN, false); } // 2 -> 3 Team
+        if (igPauseSmoke && presented == 208) { key(SDL_SCANCODE_DOWN, true); key(SDL_SCANCODE_DOWN, false); } // 3 -> 4 Controller
+        if (igPauseSmoke && presented == 210) { key(SDL_SCANCODE_DOWN, true); key(SDL_SCANCODE_DOWN, false); } // 4 -> 5 Options
+        if (igPauseSmoke && presented == 212) { key(SDL_SCANCODE_DOWN, true); key(SDL_SCANCODE_DOWN, false); } // 5 -> 6 Stats
+        if (igPauseSmoke && presented == 214) { key(SDL_SCANCODE_DOWN, true); key(SDL_SCANCODE_DOWN, false); } // 6 Stats -> 7 Restart Match
+        if (igPauseSmoke && presented == 220) key(SDL_SCANCODE_RETURN, true); // Enter on Restart row -> RestartAsk confirm
+        if (igPauseSmoke && presented == 221) key(SDL_SCANCODE_RETURN, false);
+        if (igPauseSmoke && presented == 225) key(SDL_SCANCODE_RETURN, true); // Enter 'yes' -> confirmYes: world rebuilt
+        if (igPauseSmoke && presented == 226) key(SDL_SCANCODE_RETURN, false);
         // IG board gate scripts. Mode 1 = stats tour through IGMENU (Esc opens, Down -> Stats row, Enter
         // opens the IGSTATS composite, Esc closes to menu, Esc resumes). Modes 2/3 auto-dismiss/auto-advance
         // N frames after each board capture (boardShotAt pacing below).
@@ -1682,6 +1702,35 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
                     sim::Match_dispatchEvent(w, 9, 0); // whistle: the original plays it exactly when IGHALF/IGSCSUM opens [C]
                 }
                 if (wantHalfBoard && !halfShown && w.match.periodIndex > initPeriod) { halfShown = true; openBoard("ighalf", 2); } // original opens IGHALF at the half-time whistle [C]
+                // exe audio lane: the pumps run once per engine frame (1/50 s tick, tick host
+                // FUN_004906f8), and cadence gates compare the DAT_00636a14 mirror — the
+                // multimedia timer tick counter (InitTimer(100), VA 0x43cb8f), 10 ms/tick, so
+                // each 20 ms engine step adds 2 ticks. Render fps cannot alter trigger timing;
+                // smoke/capture lanes stay deterministic (the counter rides the step
+                // accumulator, not wall-clock). Pause: the exe timer thread keeps ticking
+                // while IGMENU halts the pump, so the stamp stays stale and the first pump
+                // after resume fires one cadence arrival — the halted counter reproduces the
+                // same observable arrival.
+                if (haveSpeech) {
+                    // Speech lane re-level on percent-table change (options commentary row -> idx3).
+                    const int pct = audio::sceneLevels().level(audio::kSceneSpeech);
+                    if (pct != speechPctApplied) { speechPctApplied = pct; commentary.setScenePercent(pct); }
+                    const std::uint32_t before = commentary.sentencesStarted();
+                    for (; evPos < w.events.size(); ++evPos) commentary.triggerLive(w.events[evPos]);
+                    if (commentary.sentencesStarted() > before)
+                        std::cout << "live: commentary " << sim::eventName(w.events[evPos - 1].type)
+                                  << " -> phrase " << commentary.lastPhrase() << '\n';
+                    commentary.pump(1); // FUN_0048f920 per-frame pump, frame = 1/50 s engine tick
+                } else {
+                    evPos = w.events.size();
+                }
+                for (; sfxPos < w.events.size(); ++sfxPos) matchAudio.trigger(w.events[sfxPos]);
+                matchAudio.relevelCrowd(); // idx2 seam: options reaction row -> loop voice float
+                matchAudio.pumpChants(audioTicks); // pass-53 chant pump (FUN_0048da50): timer-stamp cadence, 100 ticks = 1.000 s
+                matchAudio.tickCrowd();  // pass-55 crowd envelope pump (FUN_004e510c idle walk + FUN_005444
+                                         // blend consumer): bed/hum voice gains follow the reaction machine
+                if (menuMusic) menuMusic->update(); // FE music seam: fade-out at launch (FUN_0048ec64), rotation pump
+                audioTicks += 2;                  // 10 ms/tick: one 20 ms engine step = 2 ticks
             }
         } else {
             last = now; acc = 0.0; // keep the clock honest so resuming does not burst-tick
@@ -1698,28 +1747,6 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
         for (int pid = 0; pid < sim::kPlayers; ++pid)
             if (w.players[std::size_t(pid)].ctrl == 1) controlledPid = pid;
         snap.hud.controlled[0] = controlledPid; // user 1's player drives the shirt label + ground marker
-
-        if (haveSpeech && (presented % 2) == 0) { // commentary pump every 2 render frames, trigger seam from events
-            // Speech lane re-level on percent-table change (options commentary row -> idx3).
-            const int pct = audio::sceneLevels().level(audio::kSceneSpeech);
-            if (pct != speechPctApplied) { speechPctApplied = pct; commentary.setScenePercent(pct); }
-            const std::uint32_t before = commentary.sentencesStarted();
-            for (; evPos < w.events.size(); ++evPos) commentary.triggerLive(w.events[evPos]);
-            if (commentary.sentencesStarted() > before)
-                std::cout << "live: commentary " << sim::eventName(w.events[evPos - 1].type)
-                          << " -> phrase " << commentary.lastPhrase() << '\n';
-            commentary.pump(2); // FUN_0048f920 per-frame pump, 2 engine frames per call
-        } else {
-            evPos = w.events.size();
-        }
-        if ((presented % 2) == 0) { // SFX trigger seam: same events, own cursor; counts even with no device
-            for (; sfxPos < w.events.size(); ++sfxPos) matchAudio.trigger(w.events[sfxPos]);
-            matchAudio.relevelCrowd(); // idx2 seam: options reaction row -> loop voice float
-        }
-        matchAudio.pumpChants(); // pass-53 chant pump (FUN_0048da50): per-frame counter, 100-frame load cadence
-        matchAudio.tickCrowd();  // pass-55 crowd envelope pump (FUN_004e510c idle walk + FUN_005444
-                                 // blend consumer): bed/hum voice gains follow the reaction machine
-        if (menuMusic) menuMusic->update(); // FE music seam: fade-out at launch (FUN_0048ec64), rotation pump
 
         // In-game pause menu composite over the live frame (IGMENU scene tick=0x43FC40; list widget
         // 'menu' x=176 y=138 w=286 h=211 -> 19 px rows, FEFLOW73 pattern). The LAY objects carry
@@ -1960,6 +1987,19 @@ int runLiveLoop(const fs::path& tree, const std::string& prefix, int smokeFrames
               << " decodes=" << commentary.decodedSegments()
               << " whistle=" << matchAudio.whistles() << " kicks=" << matchAudio.kicks()
               << " crowd=" << (matchAudio.crowdStarted() ? 1 : 0) << '\n';
+    if (igPauseSmoke) { // pass-118timing restart-lane gate: the scripted RestartAsk must have
+        // rebuilt the world (confirmYes) and the reset event cursor must have re-fired the
+        // kickoff whistle in the restarted match (pre + post = 2 total starts). A stale sfxPos
+        // (the pre-pass bug) keeps the post-restart world silent and fails here.
+        if (restarts < 1) { std::cerr << "igpause: restart lane never ran\n"; return 1; }
+        if (matchAudio.whistles() < 2) {
+            std::cerr << "igpause: post-restart SFX cursor stale (whistle="
+                      << matchAudio.whistles() << " after restart)\n";
+            return 1;
+        }
+        std::cout << "igpause: restart ok restarts=" << restarts
+                  << " whistle=" << matchAudio.whistles() << '\n';
+    }
     if (smokeFrames) { // gate assertions: sim moved, events fired, input reached the controller pad word
         if (!(elapsedSecFloat(w) > startClock)) { std::cerr << "live: sim clock did not advance\n"; return 1; }
         if (w.events.empty()) { std::cerr << "live: no sim events fired\n"; return 1; }

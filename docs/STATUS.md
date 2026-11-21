@@ -254,13 +254,31 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
   asserting step verdicts; audio steps declare their assets (`AUDIO\CRWD\CROWD.CRD` bed, CHNT
   pool, card record 0, `A_T/G_T%04d`, `P%05d.PBK`) and the event-seam timestamp (sim frames × 20 ms);
   emitted strings are backslash/quote-escaped (`jesc`).
+- **Audio timing clock alignment (pass-118timing, 2026-11-20)** — the exe audio lane is
+  driven by the **multimedia-timer stamp**, not render frames: chant load cadence
+  `DAT_0057eb40 <= DAT_00636a14 ⇒ +100` counts 10 ms timer ticks (inittimer(100) armed at
+  VA 0x43cb8f, INC at callback tail 0x4966b8) = 1.000 s wall-clock; the pump's rotation loop
+  lives in the **arrival branch** (0x48dbeb..0x48dc07), the per-call branch (0x48da6c) is a
+  single qfind→SNDplay service step. Port fixes: `pumpChants(clockTicks)` stamp gate with a
+  deterministic `audioTicks` mirror (+2 per 20 ms engine step); commentary/SFX/chant/crowd
+  pumps moved into the pause-guarded tick loop (render fps and pause halts the lane);
+  `sfxPos` reset with the restart chain (SFX was silent after `igmenu: match restarted`);
+  music fade countdown re-tuned to 200 x 20 ms ticks (FUN_0048ec64 0xc8). Backend measured:
+  OpenAL Soft one-shot onset 2 ms (mixer 48 kHz) — device latency is not a fidelity factor.
+  Register `docs/reverse-engineering/AUDIO_TIMING_RECONCILIATION.md`, clock-chain reference
+  `docs/reverse-engineering/WINDOWS_AUDIO_TIMELINE.md`, disassembly
+  `analysis/pass118timing/{pump.txt,timer.txt}`; gates: `test_gameaudio` cadence pin
+  (arrivals exactly 0/100/200/300 ticks), selftest `audio-timing` step (identical arrival
+  count at 1x and 5x pump/tick), `fe_igmenu` restart lane (scripted RestartAsk -> world
+  rebuild + post-restart kickoff whistle >= 2, asserting the reset SFX cursor).
 - **Announcer silent-pick lane (pass-79b, 2026-11-20)** — a missing-file or malformed entry
   consumes its queue slot like any exe pick (`FUN_0048d0dc` removes the entry regardless of
   clip), so `pickNext` skips it and playable slots behind it keep playing instead of stalling;
   gate block in `test_gameaudio` (absent `G_SCH220` ahead of `G_STD001`).
 - **Chant pump + classification wired (pass-53, 2026-11-19)** — the exe chant lane runs
   continuously in the match scene: pump `FUN_0048da50` (per-frame tick host `FUN_004906f8`,
-  100-frame load cadence, per-lane voice top-up under capacity caps, loader `FUN_0048d53c`
+  100-timer-tick load cadence — re-decoded pass-118, per-lane voice top-up under capacity
+  caps, loader `FUN_0048d53c`
   requests) and boot classification `FUN_0048dcd8` (lane stamps `-1/0/1/2` from team
   availability flags `DAT_006324b8/bc`, membership test `FUN_00446a94`; `C0%04d` chant names
   keyed by the match-record `+0x32` nationality ids — pass-51 `team*10` claim corrected from

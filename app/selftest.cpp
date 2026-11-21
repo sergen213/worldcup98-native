@@ -1871,9 +1871,10 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
             // count; announcers = A_T+G_T per team; PLRS lane = squad banks present on the CD
             // (both squads of id 26/67 ship 19+19 announcer banks, measured via FCDB roster ids).
             // Pass-53: the boot classification (FUN_0048dcd8) lanes the pool for the match
-            // teams, and the 100-frame pump (FUN_0048da50) must start clip voices: pump the
-            // lane for 24 cadence hits and require started plays + live pool voices.
-            for (int frame = 0; frame < 2400; ++frame) ma.pumpChants();
+            // teams, and the 1.000 s pump cadence (FUN_0048da50 stamp gate 0x8cecc:
+            // DAT_00636a14 >= DAT_0057eb40, +0x64 per arrival) must start clip voices: pump
+            // the lane at 10 ms/tick for 24 cadence hits and require started plays + live pool voices.
+            for (int tick = 0; tick < 2400; ++tick) ma.pumpChants(std::uint32_t(tick));
             st.passed = ma.crowdStarted() && ma.trafficStarted() && ma.anthemStarted() && notch &&
                         ma.crowdCardSlots() == 4 && ma.chantBanks() == 113 &&
                         ma.chantPhrases() > 0 && ma.announcerBanks() == 4 &&
@@ -1893,6 +1894,41 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
         } catch (const std::exception& e) {
             st.passed = true; st.skipped = true; // documented environment skip (headless-CI pattern)
             st.detail = fmt("match-audio-lanes skipped: {}", e.what());
+        }
+        steps.push_back(std::move(st));
+    }
+
+    {
+        // 14b3c2. audio-timing (pass-118timing): the exe chant cadence is driven by the
+        // multimedia-timer stamp, not by pump calls: the gate compares DAT_0057eb40 <=
+        // DAT_00636a14 and adds 0x64 (100 ticks = 1.000 s at 10 ms/timer tick) per arrival,
+        // so arrivals must land exactly on tick boundaries and pump frequency (the exe pump
+        // runs once per engine frame; a render loop may call it more or less often) cannot
+        // change the count. Two phases over the same lane: 1 pump/tick then 5 pumps/tick.
+        StepRes st{.name = "audio-timing",
+                   .expected = "chant arrivals every 100 ticks, identical at 1x and 5x pump/tick",
+                   .asset = "AUDIO\\CRWD\\CHNT pool, FUN_0048da50 stamp gate",
+                   .tolerance = "arrival count exact (3 per 300 ticks)"};
+        try {
+            audio::Mixer mx{std::optional<std::uint32_t>{44100u}}; // loopback: no hardware device
+            const auto game = sim::loadGameData(tree);
+            app::MatchAudio ma(tree);
+            ma.setMixer(&mx);
+            ma.boot(game.db.teams[0].id, game.db.teams[26].id,
+                    game.db.teams[0].roster, game.db.teams[26].roster);
+            std::uint32_t tick = 0;
+            const std::uint32_t a0 = ma.chantArrivals(); // 0: first pump(t=1) fires the stamp-0 arrival
+            for (int f = 0; f < 300; ++f) { tick += 1; ma.pumpChants(tick); } // 1 pump/tick
+            const std::uint32_t a1 = ma.chantArrivals() - a0;
+            const std::uint32_t a2 = ma.chantArrivals();
+            for (int f = 0; f < 300; ++f) { tick += 1; for (int k = 0; k < 5; ++k) ma.pumpChants(tick); }
+            const std::uint32_t a3 = ma.chantArrivals() - a2; // 5 pumps/tick
+            st.passed = a1 == 3 && a3 == 3; // arrivals land on ticks 1/101/201 then 301/401/501
+            st.detail = fmt("audio-timing: arrivals 1x={} 5x={} (per 300 ticks, stamp 0={}); "
+                            "plays {} -> {}", a1, a3, a0, ma.chantPlays(), ma.chantPlays());
+        } catch (const std::exception& e) {
+            st.passed = true; st.skipped = true; // documented environment skip (headless-CI pattern)
+            st.detail = fmt("audio-timing skipped: {}", e.what());
         }
         steps.push_back(std::move(st));
     }
@@ -2060,7 +2096,7 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
             ma.setMixer(mx.get());
             ma.startCrowd();
             ma.boot(26, 67);
-            for (int f = 0; f < 300; ++f) ma.pumpChants(); // cadence hits stay silent, no throw
+            for (int f = 0; f < 300; ++f) ma.pumpChants(std::uint32_t(f)); // cadence hits stay silent, no throw
             std::filesystem::remove_all(scratch);
             // Lane failure on a live device is a FAIL, not an env skip: any throw below hits
             // the outer catch with passed=false.

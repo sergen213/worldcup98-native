@@ -53,7 +53,7 @@ private:
     std::size_t idx_ = 0;
     audio::SoundId id_ = 0;
     float lane_ = 0.f;      // last applied lane gain (change detection)
-    int fadeFrames_ = 0;    // fade-out seam countdown (frames; ~200 ticks at 60 fps)
+    int fadeFrames_ = 0;    // fade-out seam countdown (20 ms engine steps; 200 = FUN_0048ec64 0xc8 ticks)
     bool leaving_ = false;
     bool reenterPending_ = false; // enterScene() during the ramp-out: restart when the seam ends
 };
@@ -423,17 +423,24 @@ public:
     // Chant pump (pass-53): the exe's chant-lane pump FUN_0048da50. Boot enables the lane on
     // the match-scene entry (enable FUN_0048d378, site 0x49078f; disable on scene exit
     // FUN_0048d3f4 site 0x4907ee) and installs the runtime patch bank DAT_00632420
-    // (SNDbnkcreate, FUN_0048d0c0 adder). Every 100 frames (counter gate 0x64, DAT_00636a14
-    // >= 0x64 in the pump body) the pump drains its three request queues and, when the match
-    // is live (FUN_004adb30) and the queues are empty, tops up lanes 0/1/2 while the pool
-    // stays under its 3-slot cap (DAT_006324d0) and each lane under its desired cap
-    // (DAT_006324e0, set to 1 by the boot classification FUN_0048dcd8). Lane assignment from
-    // classification: home-team-keyed banks -> lane 0, away -> lane 1, same-team or generic
-    // (CGENER) -> lane 2; neither team having banks assigns every entry lane -1 (silent).
-    // Clip level comes from the percent idx2 table (FUN_0048d678 -> FUN_004906d0
-    // (vol * percent[idx2] * 0x7f) / 10000), i.e. the options reaction row gates the chant.
-    void pumpChants();
+    // (SNDbnkcreate, FUN_0048d0c0 adder). The request-queue drain branch runs on EVERY pump
+    // call (body sites 0x8ce6c..0x8cecc precede the gate); the cadence branch uses the
+    // multimedia-timer stamp: pump body 0x8cecc `MOV EAX,[0x636a14]; CMP EAX,[0x57eb40];
+    // JL return`, on arrival `ADD EAX,0x64; MOV [0x57eb40],EAX` — i.e. top-up fires every
+    // 100 TIMER TICKS = 1.000 s wall-clock (DAT_00636a14 increments per callback at
+    // InitTimer(100), call site VA 0x43cb8f), NOT per render frame. clockTicks = the
+    // caller's DAT_00636a14 mirror (10 ms/tick); fps-dependent pump call rates cannot
+    // alter the cadence. When the match is live (FUN_004adb30) and the queues are empty,
+    // tops up lanes 0/1/2 while the pool stays under its 3-slot cap (DAT_006324d0) and each
+    // lane under its desired cap (DAT_006324e0, set to 1 by the boot classification
+    // FUN_0048dcd8). Lane assignment from classification: home-team-keyed banks -> lane 0,
+    // away -> lane 1, same-team or generic (CGENER) -> lane 2; neither team having banks
+    // assigns every entry lane -1 (silent). Clip level comes from the percent idx2 table
+    // (FUN_0048d678 -> FUN_004906d0 (vol * percent[idx2] * 0x7f) / 10000), i.e. the options
+    // reaction row gates the chant.
+    void pumpChants(std::uint32_t clockTicks);
     std::uint32_t chantPlays() const { return chantPlays_; } // clips started (request counter)
+    std::uint32_t chantArrivals() const { return chantArrivals_; } // stamp-gate arrivals (cadence test)
     std::uint32_t chantActive() const { return chantActiveTotal_; } // live pool voices
     std::uint32_t chantLaneCount(int lane) const { return chantLaneCount_[std::size_t(lane)]; }
     const formats::Pcm& lastChantClip() const { return chantClip_; } // last decoded clip (gate)
@@ -568,8 +575,9 @@ private:
     std::vector<ChantEntry> chantEntries_;
     std::array<ChantVoice, 3> chantVoices_{};
     std::array<std::uint32_t, 3> chantLaneCount_{}, chantLaneActive_{}, chantLaneDesired_{};
-    std::uint32_t chantActiveTotal_ = 0, chantPlays_ = 0;
-    std::uint64_t chantPumpTick_ = 0;   // frame counter (exe DAT_00636a14, 100-frame gate)
+    std::uint32_t chantActiveTotal_ = 0, chantPlays_ = 0, chantArrivals_ = 0;
+    std::uint32_t chantCadenceStamp_ = 0; // DAT_0057eb40 timer-stamp cadence: arrival when
+                                          // DAT_00636a14 (10 ms tick) >= stamp, stamp = tick + 0x64
     int chantHomeKey_ = 0, chantAwayKey_ = 0; // match teams * 10 (classification seam)
     formats::Pcm chantClip_;            // last decoded clip (decode evidence for gates)
     std::uint32_t chantSegments_ = 0;   // decoded segment count across clips (gate evidence)

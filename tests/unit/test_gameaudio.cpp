@@ -245,7 +245,7 @@ int main() {
         CHECK(ma2.chantPlays() == 0 && ma2.chantActive() == 0); // boot catalogs; pump not run yet
         CHECK(ma2.chantLaneCount(0) > 0 && ma2.chantLaneCount(1) > 0 &&
               ma2.chantLaneCount(2) > 0); // id 26/67 both ship C0 banks + CGENER pool
-        for (int frame = 0; frame < 1200; ++frame) ma2.pumpChants(); // 12 cadence hits
+        for (int tick = 0; tick < 1200; ++tick) ma2.pumpChants(std::uint32_t(tick)); // 12 timer-cadence hits (0,100,...,1100)
         CHECK(ma2.chantPlays() >= 1);
         CHECK(ma2.chantActive() >= 1);
         const auto& clip = ma2.lastChantClip();
@@ -262,8 +262,17 @@ int main() {
         maSilent.boot(game.db.teams[0].id, game.db.teams[26].id,
                       game.db.teams[0].roster, game.db.teams[26].roster);
         audio::sceneLevels().setLevel(audio::kSceneCrowd, 0); // SNDautovol target 0 -> silent
-        for (int frame = 0; frame < 400; ++frame) maSilent.pumpChants();
-        CHECK(maSilent.chantPlays() >= 1 && maSilent.chantActive() == 0); // requests, no voices
+        CHECK(maSilent.chantPlays() == 0);
+        maSilent.pumpChants(0);   // arrival at stamp 0: 3 silent lane requests (percent 0)
+        maSilent.pumpChants(99);  // tick 99 < stamp 100: gate blocks the arrival
+        CHECK(maSilent.chantPlays() == 3);
+        maSilent.pumpChants(100); // tick 100 == stamp: exact arrival
+        CHECK(maSilent.chantPlays() == 6);
+        for (int tick = 101; tick < 400; ++tick) maSilent.pumpChants(std::uint32_t(tick));
+        // Timer-tick cadence, not per-call: arrivals at 0,100,200,300 only (1.000 s each),
+        // 3 silent lane requests per arrival, no voices at percent 0.
+        CHECK(maSilent.chantPlays() == 12);
+        CHECK(maSilent.chantActive() == 0);
         audio::sceneLevels().setLevel(audio::kSceneCrowd, 80);
     }
 

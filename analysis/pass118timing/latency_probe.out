@@ -1,0 +1,4 @@
+device: OpenAL Soft
+idle: offset=0.0 ms tail=0.0 ms
+head-audible estimate window: min=34.6 ms max=124.4 ms (queued 100 ms buffer)
+interpretation: min = first sample reaches monitor ~ this many ms after alSourcePlay (mix + sink); max = mix + sink tail while the buffer streams

@@ -264,7 +264,7 @@ the hot levels; port implements SNDspeechautovol ramp (`SpeechGain`, gate `test_
   pumps moved into the pause-guarded tick loop (render fps and pause halts the lane);
   `sfxPos` reset with the restart chain (SFX was silent after `igmenu: match restarted`);
   music fade countdown re-tuned to 200 x 20 ms ticks (FUN_0048ec64 0xc8). Backend measured:
-  OpenAL Soft one-shot onset 2 ms (mixer 48 kHz) — device latency is not a fidelity factor.
+  OpenAL Soft one-shot: first sample enters the mix ~2 ms (mixer 48 kHz), head audible ~35 ms later (`analysis/pass118timing/latency_probe.cpp`) — comparable to the era DirectSound sink class, not a scheduling fidelity factor.
   Register `docs/reverse-engineering/AUDIO_TIMING_RECONCILIATION.md`, clock-chain reference
   `docs/reverse-engineering/WINDOWS_AUDIO_TIMELINE.md`, disassembly
   `analysis/pass118timing/{pump.txt,timer.txt}`; gates: `test_gameaudio` cadence pin

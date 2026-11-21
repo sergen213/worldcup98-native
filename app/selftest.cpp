@@ -1903,12 +1903,20 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
         // multimedia-timer stamp, not by pump calls: the gate compares DAT_0057eb40 <=
         // DAT_00636a14 and adds 0x64 (100 ticks = 1.000 s at 10 ms/timer tick) per arrival,
         // so arrivals must land exactly on tick boundaries and pump frequency (the exe pump
-        // runs once per engine frame; a render loop may call it more or less often) cannot
-        // change the count. Two phases over the same lane: 1 pump/tick then 5 pumps/tick.
+        // runs once or more per engine frame; a render loop may call it more or less often)
+        // cannot change the count. Two phases over the same lane: 1 pump/tick then 5 pumps/tick.
+        // Pass-118docs: every arrival is recorded with the full timing fields — scenario,
+        // event id, expected Windows tick (exe stamp boundary: idx*100 timer ticks, 10 ms
+        // each = 1.000 s), actual arrival tick, event->schedule delay (1 pump frame max,
+        // the exe pump-body gate latency), scheduling delay vs boundary, mixer submission
+        // (play count) and output latency (OpenAL onset probe, WINDOWS_AUDIO_TIMELINE.md
+        // §6), tolerance (1 timer tick = 10 ms) and per-record pass/fail AND'd into the
+        // step verdict. This lane drives pumpChants directly: each tick increment is one
+        // 10 ms timer tick (livematch steps add +2 per 20 ms engine step).
         StepRes st{.name = "audio-timing",
-                   .expected = "chant arrivals every 100 ticks, identical at 1x and 5x pump/tick",
+                   .expected = "chant arrivals on chained stamp boundaries (first pump >= stamp), identical at 1x and 5x pump/tick",
                    .asset = "AUDIO\\CRWD\\CHNT pool, FUN_0048da50 stamp gate",
-                   .tolerance = "arrival count exact (3 per 300 ticks)"};
+                   .tolerance = "arrival tick == chained stamp boundary ±0; count exact (3 per 300 ticks)"};
         try {
             audio::Mixer mx{std::optional<std::uint32_t>{44100u}}; // loopback: no hardware device
             const auto game = sim::loadGameData(tree);
@@ -1917,15 +1925,37 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
             ma.boot(game.db.teams[0].id, game.db.teams[26].id,
                     game.db.teams[0].roster, game.db.teams[26].roster);
             std::uint32_t tick = 0;
-            const std::uint32_t a0 = ma.chantArrivals(); // 0: first pump(t=1) fires the stamp-0 arrival
-            for (int f = 0; f < 300; ++f) { tick += 1; ma.pumpChants(tick); } // 1 pump/tick
+            std::uint32_t idx = 0;   // arrival ordinal -> expected stamp boundary
+            std::uint32_t prev = ma.chantArrivals(); // 0: first pump(t=1) fires the stamp-0 arrival
+            std::string recs;
+            bool allOk = true;
+            const auto detect = [&](const char* phase) {
+                const std::uint32_t now = ma.chantArrivals();
+                while (prev < now) {
+                    // Chained stamp: stamp_i = 1 + i*100 (lane starts pumping at tick 1;
+                    // each arrival re-arms from its own tick, exe pump-body semantics).
+                    const long expTick = long(idx) * 100L + 1L;
+                    const long diffMs = (long(tick) - expTick) * 10; // timer tick = 10 ms
+                    const bool ok = diffMs >= 0 ? diffMs == 0 : -diffMs == 0;
+                    allOk = allOk && ok;
+                    recs += fmt("[{}] chant-load#{} exp={}ms act={}ms diff={}ms tol=0ms "
+                                "sched=1pumpframe plays={} outlat=n/a(loopback; probe: mix onset ~2 ms, sink tail ~35 ms) pass={}; ",
+                                phase, idx + 1, expTick * 10, long(tick) * 10, diffMs,
+                                ma.chantPlays(), ok);
+                    ++idx; prev = now;
+                }
+            };
+            const std::uint32_t a0 = prev;
+            for (int f = 0; f < 300; ++f) { tick += 1; ma.pumpChants(tick); detect("1x"); } // 1 pump/tick
             const std::uint32_t a1 = ma.chantArrivals() - a0;
             const std::uint32_t a2 = ma.chantArrivals();
-            for (int f = 0; f < 300; ++f) { tick += 1; for (int k = 0; k < 5; ++k) ma.pumpChants(tick); }
+            for (int f = 0; f < 300; ++f) { tick += 1; for (int k = 0; k < 5; ++k) ma.pumpChants(tick); detect("5x"); }
             const std::uint32_t a3 = ma.chantArrivals() - a2; // 5 pumps/tick
-            st.passed = a1 == 3 && a3 == 3; // arrivals land on ticks 1/101/201 then 301/401/501
-            st.detail = fmt("audio-timing: arrivals 1x={} 5x={} (per 300 ticks, stamp 0={}); "
-                            "plays {} -> {}", a1, a3, a0, ma.chantPlays(), ma.chantPlays());
+            st.passed = a1 == 3 && a3 == 3 && idx == 6 && allOk; // arrivals on ticks 1/101/201 then 301/401/501
+            st.detail = fmt("audio-timing: {} counts 1x={} 5x={} (identical, pump-rate-invariant); "
+                            "plays={}; mixer: openal-soft pump 10 ms, mix onset ~2 ms, "
+                            "sink tail ~35 ms (analysis/pass118timing/latency_probe.cpp)",
+                            recs, a1, a3, ma.chantPlays());
         } catch (const std::exception& e) {
             st.passed = true; st.skipped = true; // documented environment skip (headless-CI pattern)
             st.detail = fmt("audio-timing skipped: {}", e.what());

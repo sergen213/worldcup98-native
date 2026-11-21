@@ -1,0 +1,27 @@
+# pass-118 artifact: pump stamp gate/re-arm bytes, FIFAWC.EXE
+# objdump -D -b binary -m i386 --adjust-vma=0x400c00 (exe VA convention)
+  48dab0:	00 00                	add    %al,(%eax)
+  48dab2:	8b 52 08             	mov    0x8(%edx),%edx
+  48dab5:	e8 16 2c 00 00       	call   0x4906d0
+  48daba:	8b 56 0c             	mov    0xc(%esi),%edx
+  48dabd:	89 c3                	mov    %eax,%ebx
+  48dabf:	8b 77 0a             	mov    0xa(%edi),%esi
+  48dac2:	8b 52 10             	mov    0x10(%edx),%edx
+  48dac5:	89 f0                	mov    %esi,%eax
+  48dac7:	e8 64 50 05 00       	call   0x4e2b30
+  48dacc:	a1 14 6a 63 00       	mov    0x636a14,%eax
+  48dad1:	3b 05 40 eb 57 00    	cmp    0x57eb40,%eax
+  48dad7:	7c 89                	jl     0x48da62
+  48dad9:	ba 98 d4 48 00       	mov    $0x48d498,%edx
+  48dade:	83 c0 64             	add    $0x64,%eax
+  48dae1:	31 db                	xor    %ebx,%ebx
+  48dae3:	a3 40 eb 57 00       	mov    %eax,0x57eb40
+  48dae8:	b8 40 25 63 00       	mov    $0x632540,%eax
+  48daed:	e8 7e 73 03 00       	call   0x4c4e70
+  48daf2:	89 c6                	mov    %eax,%esi
+  48daf4:	85 c0                	test   %eax,%eax
+  48daf6:	74 3d                	je     0x48db35
+  48daf8:	8b 50 04             	mov    0x4(%eax),%edx
+  48dafb:	31 db                	xor    %ebx,%ebx
+  48dafd:	31 c0                	xor    %eax,%eax
+  48daff:	e8           	call   0x48d070

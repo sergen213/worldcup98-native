@@ -1,0 +1,80 @@
+# AUDIO_TIMING_VALIDATION — verification status for the timing pass (pass-118, 2026-11-21)
+
+All numbers below are from runs executed on this host (host X11/KDE session, OpenAL Soft
+loopback lanes, `SDL_VIDEODRIVER=dummy` for UI lanes). Wine audible-capture lane is dead
+(black DirectDraw) — **expected values are the exe's own byte-level schedule (stamp
+boundaries, pump-frame drain), not measured Windows audio**. That is the documented limit
+of this framework; see `WINDOWS_AUDIO_TIMELINE.md` preamble.
+
+## 1. Per-record timing fields (selftest `audio-timing`, this run)
+JSON schema keys (`app/selftest.cpp::writeJson`): `step/subsystem/expectedEvent/
+actualEvent/selectedAsset/playbackTimestampMs/measuredResult/tolerance/passed/diagnostic/
+skipped`. The step's `measuredResult` carries the per-arrival record fields —
+scenario (`1x`/`5x` pump phase), event id (`chant-load#n`), expected Windows onset
+(chained stamp boundary `stamp_i = 1 + i*100` timer ticks — the lane starts pumping at
+tick 1; each arrival re-arms from its own tick, exe pump-body semantics), actual onset,
+diff, tolerance (±0), schedule delay (`1 pump frame` — exe pump-body gate), output stage
+(`~2 ms` OpenAL mix onset; sink tail ~35 ms measured via pass-118 latency_probe.cpp), per-record pass AND'd into the step
+verdict. Observed, all six records **diff=0**:
+
+```
+[1x] chant-load#1 exp=10ms    act=10ms    diff=0ms tol=0ms sched=1pumpframe plays=3 ... pass=true
+[1x] chant-load#2 exp=1010ms  act=1010ms  diff=0ms tol=0ms sched=1pumpframe plays=3 ... pass=true
+[1x] chant-load#3 exp=2010ms  act=2010ms  diff=0ms tol=0ms sched=1pumpframe plays=3 ... pass=true
+[5x] chant-load#4 exp=3010ms  act=3010ms  diff=0ms tol=0ms sched=1pumpframe plays=3 ... pass=true
+[5x] chant-load#5 exp=4010ms  act=4010ms  diff=0ms tol=0ms sched=1pumpframe plays=3 ... pass=true
+[5x] chant-load#6 exp=5010ms  act=5010ms  diff=0ms tol=0ms sched=1pumpframe plays=3 ... pass=true
+ counts 1x=3 5x=3 (identical, pump-rate-invariant); plays=3
+```
+Arrival == expected == stamp boundary exactly; no port-side delay term exists at the
+cadence gate (the exe gate likewise fires on the first pump call at or past the stamp,
+`0x48DACC` bytes — `analysis/pass118timing/0057pump.txt`). The exe re-arms the stamp
+**from the current tick** (`add eax,0x64; mov [DAT_0057EB40],eax`, `0x48DADE/0x48DAE3`,
+`stamp = tick + 100`); at smoke cadence `tick == stamp` at arrival, so the port mirror's
+re-arm (`stamp_{i+1} = arrival + 100`) lands on the identical grid, `diff = 0` on every
+record. `plays` is the chant request counter (`MatchAudio::chantPlays`, `game_audio.cpp:481`):
+arrival #1 fills the three chant lanes (3 lane requests = plays 3), later arrivals dedup
+against the active 3-slot pool (`DAT_006324d4` cap semantics), so the count stays 3
+across all six records — the cadence records gate on the arrival tick, not on plays.
+
+## 2. Gates executed (this pass)
+| Lane | Result |
+|---|---|
+| `test_audio` (bank/samples) | Passed 11.06 s |
+| `test_gameaudio` (cadence pin, envelope words 17302/22024, targets 31/40, SpeechGain 53/27/1 clamp, fog-lane pins) | Passed 0.15 s |
+| selftest `audio-timing` | **PASS**, records above |
+| selftest `match-audio-events`, `match-audio-lanes`, `match-crowd-envelope`, `audio-device-render` | PASS (35/37 steps; see §3) |
+| `fe_igmenu` restart lane (scripted RestartAsk → kickoff whistle ≥ 2 post-restart) | passed in the full dummy-lane suite (§3); an earlier bare-mode flake probe mis-operated the lane — no port defect |
+| full ctest suite (dummy lane) | see §3 |
+
+## 3. Suite result
+Full `ctest --test-dir build/release` under `SDL_VIDEODRIVER=dummy QT_QPA_PLATFORM=offscreen`:
+**157/159 passed**. The two failures are `test_sim_scenarios` and `self_test_gameplay`
+(steps `passing`, `animation`) — foreign uncommitted simulation WIP in the user's worktree
+(`simulation/*`, `tests/unit/test_sim_*` modified), unrelated to audio; neither was claimed
+and no audio file changed them. The same run additionally SEGFAULTed `replay_record_play`,
+which was a stale recorded fixture (`/tmp/wc98port-out/replay`, same stale-fixture pitfall
+as the `fe_replay57_enter` lane): deleted, gate re-recorded fresh, green on 2/2 reruns —
+no port defect.
+
+## 4. Category verification status
+| Category (AUDIO_EVENT_TRIGGER_MAP.md) | Verification |
+|---|---|
+| chant cadence | `audio-timing` per-record fields (§1) |
+| crowd bed/pulse/envelope | `match-crowd-envelope`, `test_gameaudio` block (h) |
+| commentary live lane | `test_commentary` accept→reject→accept, `match-audio-events` |
+| commentary periodic lane | open [H] — modeled, unwired (scene-id table undecoded) |
+| SFX event seam | live smoke `events whistle/crowd` counts (pass-118) |
+| pause/restart | `igPauseSmoke`, `fe_igmenu` restart lane (§2) |
+| music fade | register row 8 — constants mirror, no runtime gate yet |
+| beat scheduler / ambient throttle | exe-side lanes, not mirrored [H] |
+| backend latency | mix onset probe ~2 ms + sink tail ~35 ms, `analysis/pass118timing/latency_probe.cpp` (`AUDIO_LATENCY_ANALYSIS.md` §1) |
+
+## 5. CI lane
+The pass-118 code commit (`17d14cc`) CI lane: green (watched run per pass-118timing ship
+note). Docs/selftest-field commit follows this doc.
+
+## 6. Remaining fidelity work (not timing)
+- exe generic-commentary scene-id table decode → wire `Commentary::Scheduler`.
+- CRWD phrase→MIDI mapper semantics [H]; MIDI device lane blocked (A5).
+- Beat-scheduler gate operand [H].

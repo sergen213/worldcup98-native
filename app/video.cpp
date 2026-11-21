@@ -178,6 +178,7 @@ done_presenting:
             while (movieAudio->playing(movieSound) && movieRenderedFrames < movieAudioFrames) {
                 movieAudio->render({buf.data(), buf.size()});
                 movieRenderedFrames += buf.size() / 2;
+                if (movieRenderedFrames > movieAudioFrames) movieRenderedFrames = movieAudioFrames; // final partial slice
                 // counter granularity gate: the played counter must track the rendered
                 // frames within one render slice + one queued buffer (no 8192-frame steps).
                 if (const std::int64_t d = static_cast<std::int64_t>(movieAudio->framesPlayed()) -
@@ -188,7 +189,6 @@ done_presenting:
                     const int a = v < 0 ? -v : v;
                     if (a > moviePeak) moviePeak = a;
                 }
-                if (movieRenderedFrames > movieAudioFrames) movieRenderedFrames = movieAudioFrames;
             }
         }
         movieAudio->stop(movieSound);

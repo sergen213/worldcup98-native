@@ -11,6 +11,7 @@ BIN="${1:?wc98-native path}"
 TREE="${2:?game tree}"
 OUT=/tmp/wc98port-out/selftest-schema.json
 mkdir -p /tmp/wc98port-out
+rm -f "$OUT"
 "$BIN" --self-test "$OUT" --tree "$TREE" >/dev/null 2>&1 || true
 if [ ! -s "$OUT" ]; then
     echo "selftest JSON not written (tree unavailable?)"
@@ -33,6 +34,13 @@ for s in d["steps"]:
     assert not (s["skipped"] and not s["passed"]), f"step {s['step']}: skipped but not passed"
     assert isinstance(s["playbackTimestampMs"], int), s["step"]
 n = len(d["steps"])
+# Verdict gate for the pass-118 timing step: it must be present and, when the loopback
+# device is available (not skipped), must have passed. Headless runs without a device
+# skip it (documented environment skip), which is tolerated.
+at = [s for s in d["steps"] if s["step"] == "audio-timing"]
+assert at, "audio-timing step missing from JSON"
+assert at[0]["passed"], "audio-timing verdict is FAIL"
+assert "chant-load#" in at[0]["measuredResult"], "audio-timing records missing"
 audio = sum(1 for s in d["steps"] if s["subsystem"] == "audio")
 print(f"schema OK steps={n} audio={audio} gameplay={sum(1 for s in d['steps'] if s['subsystem'] == 'gameplay')} presentation={sum(1 for s in d['steps'] if s['subsystem'] == 'presentation')}")
 EOF

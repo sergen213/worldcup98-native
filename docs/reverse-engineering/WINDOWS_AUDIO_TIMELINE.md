@@ -80,7 +80,6 @@ Clip gain = percent idx2 (options reaction row): `(vol * percent * 0x7f) / 10000
   `DAT_00636a14` (+2 per step, deterministic for smoke lanes).
 - `pumpChants(clockTicks)`: stamp gate `tick >= stamp`, `stamp = tick + 100` on arrival.
 - Backend measurement (host, OpenAL Soft, mixer 48 kHz): one-shot `alSourcePlay` -> first
-  sample entering the mix ≈ 2 ms (sink tail after the mix measured ~35 ms, see
   sample entering the mix 0.6-10.9 ms after play, median 2.1 ms (sink tail after the mix measured ~35 ms, see
   `AUDIO_LATENCY_ANALYSIS.md` §1); streaming loop chunk 8192 frames @ 22050 = 372 ms refill window
   (a window, not onset latency). Backend latency is not a fidelity factor; the scheduling

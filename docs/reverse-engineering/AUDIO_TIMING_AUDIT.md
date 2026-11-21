@@ -18,7 +18,6 @@ This audit was performed **before** any timing change; the fixes it motivated ar
 | 5. Sound selection | chant pool id→sample layout `{bank:1, slot:24}` (pass-62 §10); speech phrase id `[entry+0x0E]`, entry index `2*DAT_0057eb54[class] + (classByte>>6)` (pass-86/87) | selection happens at arrival, not request |
 | 6. Queueing | chant 3-lane pool, speech 20-slot ring stride `0xc` cap 18 (`DAT_0064b068` mirror), in-flight records | exe cadence: 1.000 s stamp |
 | 7. Mixer submission | `audio::Mixer::play/stream` (`audio/src/mixer.cpp`) → OpenAL source queue | immediately at arrival (≤ 1 pump frame early vs exe — immaterial) |
-| 8. Audible onset | OpenAL Soft: one-shot `alSourcePlay` → first sample entering the mix ≈ 2 ms, sink tail ~35 ms measured (`AUDIO_LATENCY_ANALYSIS.md` §1) | mix queue, not scheduler |
 | 8. Audible onset | OpenAL Soft: one-shot `alSourcePlay` → first sample entering the mix 0.6-10.9 ms (median 2.1), sink tail ~35 ms measured (`AUDIO_LATENCY_ANALYSIS.md` §1) | mix queue, not scheduler |
 | 9. Completion / interruption | `Mixer::playing()` retire poll, `Mixer::fade` ramp (exe `FUN_0048ec64` 200-tick seam), busy-reject drop (exe: record recycled, never deferred, pass-86) | pump iteration 10 ms, fade step per 2 iterations = 20 ms tick |
 

@@ -956,46 +956,87 @@ FeDrawStats FeFlow::drawTeamsGrid(render::SpriteBatch& ui) const {
             ui.draw(t4, q.dst, q.uv, q.rgba);
         ++st.texts;
     };
-    for (int i = 0; i < rows; ++i) {
-        const std::size_t idx = std::size_t(top + i);
-        if (idx >= poolIds_.size()) continue; // window clipped to the pool end
-        const bool rowCur = std::cmp_equal(idx, teams_.sel);
-        const std::uint32_t stfTint =
-            rowCur ? render::packRgba(255, 244, 150, 255) : 0xFFFFFFFFu;
-        const std::string sfx = std::format("{:02d}", i);
-        // stfN: national-flag tile, SFLAGS.FSH entry tag fNNN = the team's FCDB record ordinal
-        // (same numbering as the FNNN shield family; measured: f030 = Argentina stripes+sun),
-        // NOT the pool position. animseq 1,sflags.fsh,1,46.
-        if (const formats::LayoutObject* stf = gridScreen_.object("stf" + sfx)) {
-            const std::string& flagFile = poolFlagFile_[idx];
-            if (!flagFile.empty()) {
-                const ScreenArt::Shape sh = const_cast<ScreenArt&>(art_).shape(
-                    "..\\global\\", "sflags.fsh", std::string("f") + flagFile.substr(1, 3), -1);
-                if (sh.tex) {
-                    ui.draw(sh.tex, {float(stf->x), float(stf->y), float(sh.w), float(sh.h)},
-                            {0.f, 0.f, 1.f, 1.f}, stfTint);
-                    ++st.shapes;
-                } else {
-                    ++st.missing;
+    // Overlay passes follow the LAY z-order (tcNN 31-38 < ttNN 39-46 < tmNN 55-62 < stfNN
+    // 63-70): gamepad cell and row name sit UNDER the 'selc' band (semi-transparent, laid
+    // over them by the engine), the button label and flag tile above it. Row painter
+    // [C FUN_0044e178]: pool state 0 hides cell + name; state 1 (P1) sets the tmNN art state
+    // to 1 (the 'selc' band) and shows 'cntr' gamepad cell, hides name; state 2 (P2) hides
+    // gamepad, shows name. The keyboard cursor row's band comes from composite's
+    // HILITEDSHAPEID hover lane (uist.hover tmNN); skip the dynamic band there to avoid a
+    // double blend. Reference uishots/team_fe00.png: cursor row band, rows 1-7 byte-identical
+    // to back; the original never tints the cursor-row flag.
+    // Pass 1: gamepad cells (state 1), pass 2: row names (state 2 only - the engine hides
+    // ttNN on state-1 rows, the name shows via the tmNN label), pass 3: bands (selected rows,
+    // non-cursor), pass 4: labels, pass 5: flag tiles (topmost).
+    for (int pass = 1; pass <= 5; ++pass) {
+        for (int i = 0; i < rows; ++i) {
+            const std::size_t idx = std::size_t(top + i);
+            if (idx >= poolIds_.size()) continue; // window clipped to the pool end
+            const std::string sfx = std::format("{:02d}", i);
+            const int state = poolPick_.stateOf(int(idx));
+            if (state == 0 && pass != 4 && pass != 5) continue;
+            if (pass == 1) { // P1 gamepad 'cntr' cell (state 2 hides it [C e178])
+                if (state != 1) continue;
+                if (const formats::LayoutObject* tc = gridScreen_.object("tc" + sfx)) {
+                    const ScreenArt::Shape sh = const_cast<ScreenArt&>(art_).shape(
+                        "..\\feflow11\\", "feflow11.fsh", "cntr", -1);
+                    if (sh.tex) {
+                        ui.draw(sh.tex, {float(tc->x), float(tc->y), float(sh.w), float(sh.h)},
+                                {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu);
+                        ++st.shapes;
+                    } else {
+                        ++st.missing;
+                    }
+                }
+                continue;
+            }
+            if (pass == 2) { // P2 row name (ttNN, state 2 only [C e178])
+                if (state != 2) continue;
+                std::string label = poolNames_[idx];
+                if (label.empty()) label = "team " + std::to_string(poolIds_[idx]);
+                drawCellText(gridScreen_.object("tt" + sfx), label);
+                continue;
+            }
+            if (pass == 3) { // 'selc' band over cell + name
+                if (std::cmp_equal(idx, teams_.sel)) continue; // composite hover paints it
+                if (const formats::LayoutObject* tm = gridScreen_.object("tm" + sfx)) {
+                    const ScreenArt::Shape band = const_cast<ScreenArt&>(art_).shape(
+                        "..\\feflow11\\", "feflow11.fsh", "selc", -1);
+                    if (band.tex) {
+                        ui.draw(band.tex, {float(tm->x), float(tm->y), float(band.w), float(band.h)},
+                                {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu);
+                        ++st.shapes;
+                    }
+                }
+                continue;
+            }
+            if (pass == 4) { // button label above the band
+                std::string label = poolNames_[idx];
+                if (label.empty()) label = "team " + std::to_string(poolIds_[idx]); // FCDB name absent
+                drawRowLabel(gridScreen_.object("tm" + sfx), label); // textXY 30,6
+                continue;
+            }
+            // pass 5: stfN national-flag tile, SFLAGS.FSH entry tag fNNN = the team's FCDB
+            // record ordinal (same numbering as the FNNN shield family; measured: f030 =
+            // Argentina stripes+sun), NOT the pool position. animseq 1,sflags.fsh,1,46.
+            // exe name grammar [C FUN_0044e368 s_stf_01d @0x5629f8]: stf%01d - SINGLE digit
+            // (LAY names stf0..stf7), unlike the %02d family tc/tt/ta/tmNN.
+            if (const formats::LayoutObject* stf = gridScreen_.object("stf" + std::to_string(i))) {
+                const std::string& flagFile = poolFlagFile_[idx];
+                if (!flagFile.empty()) {
+                    const ScreenArt::Shape sh = const_cast<ScreenArt&>(art_).shape(
+                        "..\\global\\", "sflags.fsh", std::string("f") + flagFile.substr(1, 3), -1);
+                    if (sh.tex) {
+                        ui.draw(sh.tex, {float(stf->x), float(stf->y), float(sh.w), float(sh.h)},
+                                {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu);
+                        ++st.shapes;
+                    } else {
+                        ++st.missing;
+                        std::fprintf(stderr, "stfMISS idx=%zu tag=f%s ff=%s\n", idx,
+                                     flagFile.substr(1, 3).c_str(), flagFile.c_str());
+                    }
                 }
             }
-        }
-        std::string label = poolNames_[idx];
-        if (label.empty()) label = "team " + std::to_string(poolIds_[idx]); // FCDB name absent
-        drawRowLabel(gridScreen_.object("tm" + sfx), label); // button label (textXY 30,6)
-        if (poolPick_.stateOf(int(idx)) != 0) { // pool state 1/2 (P1/P2): cntr cell + name [C e178]
-            if (const formats::LayoutObject* tc = gridScreen_.object("tc" + sfx)) {
-                const ScreenArt::Shape sh = const_cast<ScreenArt&>(art_).shape("..\\feflow11\\",
-                                                                               "feflow11.fsh", "cntr", -1);
-                if (sh.tex) {
-                    ui.draw(sh.tex, {float(tc->x), float(tc->y), float(sh.w), float(sh.h)},
-                            {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu);
-                    ++st.shapes;
-                } else {
-                    ++st.missing;
-                }
-            }
-            drawCellText(gridScreen_.object("tt" + sfx), label);
         }
     }
     // Selected-team name over the shield (ttnm) + the team's FNNN shield over the tmfg default.

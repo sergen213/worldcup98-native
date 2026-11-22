@@ -271,11 +271,21 @@ Evidence: Feflow06.lay hub buttons (`fe07` released `franim.fsh#0000`, side icon
     `cmpb $1,[w+0x60]`, fields `+0x90` (delay, -1 = off) and `+0x94` (start stamp); `now`
     comes from `call 0x43ae68` (unit [H]), and when `now-[w+0x94] > [w+0x90]` it walks
     `0x14(%ecx)` via 0x47a3fc with `'dely'` (0x64656c79) and resets `[w+0x94] = -1` — the
-    DELAYTICKS watchdog (auto-repeat), not a frame clock. 150 ms is 15 units of 10 ms; the
-    animseq `TICKSPERFRAME` default 15 is the **port's** `intProp` fallback
-    (fe_screen.cpp:439, paced at 16 ms/tick -> 240 ms there), not an exe-pinned default; no
-    timer read was found in a tbb draw method, so the button cadence stays **[H]** and the
-    port's cycle is kept unchanged.
+    DELAYTICKS watchdog (auto-repeat), not a frame clock.
+  - Frame pump (class zone 0x4861xx-0x4867xx, aligned dumps): tick handler 0x486204
+    `mov 0x636a14,%eax; cmp 0x68(%ecx),%eax; jl ret;` — gate `[w+0x68]`, period
+    `[w+0x6E]>>16` loaded via `mov 0x6e(%ecx),%esi; sar $0x10,%esi`, next
+    `[w+0x68] = stamp + period`; frame counter `[w+0x60]++`; consumes the FRAMES quad via
+    overlapping `sar $0x10` dword reads — dword`0x52>>16`=u16@0x54, `0x54>>16`=u16@0x56,
+    `0x56>>16`=u16@0x58, `0x58>>16`=u16@0x5A — counter compared against B=u16@0x56, wrap
+    target A=u16@0x54 or C=u16@0x58 selected by `cmpb $2,0x5f(%ecx)`. Companion method
+    0x486442 gates `[w+0x5c]` vs stamp, byte counter `[w+0x5a]++` to 20, then reloads a
+    dword from `[w+0x40+([w+0x5e]>>24)*4]` into `[w+0x54]` and sets `[w+0x5c]=stamp+4`.
+    Setter of the period u16 @`+0x6E` **[H]** (raw disp8 scans are misalignment-unreliable;
+    the 0x470bec `+0x6e` hits are disp32 `+0x14e` artifacts). Class ids 0x21/0x22 are
+    registered via `mov $id; call 0x472fd8` blocks at 0x486283/0x486752; the
+    objecttype->class table is untouched. Exact quad semantics stay **[H]**; the port's
+    150 ms fixed cycle is kept unchanged pending that mapping.
 - Help pane: button `help=NNN,...` leading value = FC-bank string index painted into the
   `helppaneid=` widget (`objecttype=14`, fontid, centered alignment=3). **[C]** Feflow06.lay.
 

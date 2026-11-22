@@ -160,6 +160,8 @@ public:
     [[nodiscard]] int leagueSel() const { return leagueSel_; }
     void moveLeague(int dir);              // up/down through the pn00..pn08 rows
     presentation::FeDrawStats drawLeague(render::SpriteBatch& ui) const; // FEFLOW73 composite + row hilite
+    // Gate hook: step the team-select cursor (continuous-window smoke captures).
+    void moveTeamCursor(int d) { if (teamScreen_) teams_.move(d); }
     // ---- League configuration family (FEFLOW72/74/75/76/79/80; MENU_PARITY.md §4 rank 7) -----
     // The FEFLOW73 scene cluster (analysis/pass12/edges_table.txt SCENEREG block: feflow72 @0x45a514,
     // feflow74 @0x45df84, feflow75 @0x45ee34, feflow79 @0x45ff14, feflow80 @0x461ed0 + registered
@@ -223,20 +225,19 @@ public:
     static int cfgCursor(int prev, int delta, int count) {
         return ((prev + delta) % count + count) % count;
     }
-    // ---- Shootout controller board FEFLOW87 (pass-23fe87; MENU_PARITY.md §4 rank 2) -----------
-    // "penalty shootout controller select screen" (LAY header): four slot rows of ovr/hpl+hpr
-    // panes + arw arrows + anm controller icons (CONTR.FSH sequence 1..8, ticksperframe=0 ->
-    // the tick handler owns the frame; FUN_00467ab0 zeroes the DAT_00608748.. device slots
-    // every tick so frame 0 = keyboard paints [C fe87_dec1]). Edges [C LAY comments]:
+    // ---- Shootout controller board FEFLOW87 (pass-23fe87; pass-45 ctrl-pump) -------------------
+    // "penalty shootout controller select screen" (LAY header): four slot rows of
+    // ovr/hpl+hpr panes + arw arrows + anm controller icons + grv/ctx captions. The exe drives
+    // rows through the device-slot pump at 0x467ab0 (JMP FUN_0044c6c0): zero the
+    // DAT_00608748.. group every tick, then painter FUN_0044ccd4 paints the all-slots-0 default
+    // state (anm keyboard art + arw arrows shown, grvN/panes hidden) [C pass-45
+    // analysis/pass45ctrl]. Row state changes only via click callbacks FUN_0044c9fc/ca1c —
+    // unwired in the port, so the composite stays at the painted default state. Edges [C LAY comments]:
     // fe07 "goto feflow33", fe06 "quit friendly (goto match select)", fe08 "goto feflow83",
     // quit wedge = feflow37 confirm.
     bool openCfg87(); // false = layout absent from this tree
     [[nodiscard]] bool onCfg87() const { return cfg87View_; }
     presentation::FeDrawStats drawCfg87(render::SpriteBatch& ui) const;
-    [[nodiscard]] int cfg87Row() const { return cfg87Row_; }
-    void setCfg87Row(int r) { cfg87Row_ = r & 3; }
-    [[nodiscard]] int cfg87Dev(int i) const { return cfg87Dev_[std::size_t(i & 3)]; } // device slot (contr frame 1 + slot)
-    void setCfg87Dev(int i, int v) { cfg87Dev_[std::size_t(i & 3)] = v & 7; }
     [[nodiscard]] std::string cfg87Caption(std::string_view name) const; // FC-remap caption of a cfg87 widget (gate evidence)
 
     // ---- World Cup controller board FEFLOW13 (pass-24wc13; MENU_PARITY §4 rank-4) ----
@@ -248,15 +249,11 @@ public:
     // variant) then push NAME:feflow37 (confirm popup); 'fe08' forward: FUN_00446624()==2
     // guard (2-controller play stays), FUN_0045a24c() < 0 -> FUN_00448428 (no edge), else
     // FUN_00448418(0) + FUN_0045a198 + push NAME:feflow56 (launch transition, null LAY).
-    // Init tail writes 0x66 + 'fe15' = options jump. Open event 0x68 zeroes the device-slot
-    // group DAT_00608748..0x608784 [C fe87_dec1/dec2, same slot cluster as FEFLOW87].
+    // Init tail writes 0x66 + 'fe15' = options jump. Tick 0x44e578 is JMP FUN_0044c6c0 — same
+    // pump-painted default state as FEFLOW87 [C pass-45]; no cursor ring or device rail exists.
     bool openWc13(); // false = layout absent from this tree
     [[nodiscard]] bool onWc13() const { return wc13View_; }
     presentation::FeDrawStats drawWc13(render::SpriteBatch& ui) const;
-    [[nodiscard]] int wc13Row() const { return wc13Row_; }
-    void setWc13Row(int r) { wc13Row_ = r & 3; }
-    [[nodiscard]] int wc13Dev(int i) const { return wc13Dev_[std::size_t(i & 3)]; } // device slot (contr frame 1 + slot)
-    void setWc13Dev(int i, int v) { wc13Dev_[std::size_t(i & 3)] = v & 7; }
     [[nodiscard]] std::string wc13Caption(std::string_view name) const; // FC-remap caption (gate evidence)
     // ---- pass-108 venue fly-in lane (tournament board backdrop) --------------------------------
     // The exe feflow35 prologue (0x4587e8) reads the schedule record word +0xa (high half = venue
@@ -631,15 +628,11 @@ public:
     int cfg32View_ = 0;                                 // 0/32/33 = shown screen
     bool cfg87View_ = false;                            // FEFLOW87 shootout board (pass-23fe87)
     bool haveCfg87_ = false;                            // layout present on this tree
-    int cfg87Row_ = 0;                                  // slot-row cursor (0..3)
-    std::array<int, 4> cfg87Dev_{};                     // device slot per controller row (0 = keyboard, contr frame 1 + slot)
     formats::ScreenLayout cfg87_;                       // shootout board layout
     bool wc13View_ = false;                             // FEFLOW13 World Cup controller board (pass-24wc13)
     bool haveWc13_ = false;                             // layout present on this tree
     formats::ScreenLayout wc13_;                        // World Cup controller board layout
     std::vector<std::string> wc13Visible_;              // scene-ownership visible set (composite whitelist)
-    int wc13Row_ = 0;                                   // slot-row cursor (0..3)
-    std::array<int, 4> wc13Dev_{};                      // device slot per controller row (0 = keyboard, contr frame 1 + slot)
     int cfg32Idx_ = 0;                                  // feflow32 pool cursor ([0x607fd4]/[0x608064])
     int cfg33Left_ = 0, cfg33Right_ = 1;                // feflow33 per-side pool cursors
     int cfg33Side_ = 0;                                 // 0 = left side focused (UP/DOWN)

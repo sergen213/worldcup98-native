@@ -412,9 +412,10 @@ FeFlow::FeFlow(render::Renderer& r, fs::path tree, std::string lang) : r_(r), tr
     // Shootout controller board FEFLOW87 (pass-23fe87; "penalty shootout controller select screen").
     // Four controller slots (ovrN overlay + alpN/arpN panes + anmN icon + arwN arrow + ctxN/grvN
     // runtime text slots); controller icons = CONTR.FSH frames 1..8 (vpath ..\global\,
-    // ticksperframe=0 - frame stays at the slot index; the open event 0x68 zeroes the device-slot
-    // group DAT_00608748..0x608784 [C fe87_dec1/dec2], so a fresh board paints frame 1). ltfg/rtfg
-    // shield slots (f00N.fsh shapeID=f000, runtime-filled), tltx/trtx team captions (textid=0 =
+    // ticksperframe=0 - frame stays at the slot index; the installed tick 0x467ab0 is
+    // JMP FUN_0044c6c0, the device-slot pump that zeroes DAT_00608748..0x608784 every tick and
+    // row-paints [C pass-45 analysis/pass45ctrl], so the default board paints frame 1 with arrows).
+    // ltfg/rtfg shield slots (f00N.fsh shapeID=f000, runtime-filled), tltx/trtx team captions (textid=0 =
     // runtime), titl title slot (fname="87" shapeID=titl -> ENGL87.PAK#engl via ScreenArt lang retry).
     // help/masc/chat/cha2/cha3 excluded (edit box, footix, chat boxes as on feflow33).
     // npll/nplr excluded as runtime text slots (pass-23fe87): npll declares textid=0 (FeText label
@@ -444,8 +445,8 @@ FeFlow::FeFlow(render::Renderer& r, fs::path tree, std::string lang) : r_(r), tr
     // event branch 0x3ea pushes NAME:feflow06 (Esc = hub); tag tree 'fe06'/'quit' send FUN_00459410
     // tuples (0x3e9,0x82e,0x10f1 / 0x3ea,0x82e,0x10f3) then push NAME:feflow37 (quit confirm);
     // 'fe08' forward arms the tournament launch (FUN_00448418(0)+FUN_0045a198) and pushes
-    // NAME:feflow56; init tail 0x66+'fe15' = options jump. Open event zeroes the device-slot group
-    // [C fe87_dec1/dec2], titl/ltfg/rtfg/tltx/trtx runtime-fill, nplr is the slot default excluded
+    // NAME:feflow56; init tail 0x66+'fe15' = options jump. Tick 0x44e578 = same pump JMP
+    // [C pass-45], titl/ltfg/rtfg/tltx/trtx runtime-fill, nplr is the slot default excluded
     // (pass-23fe87 textid lesson), help/masc/chat/cha2/cha3 excluded as on feflow33/87.
     try {
         fs::path d13;
@@ -1048,8 +1049,6 @@ void FeFlow::drawCursor(render::SpriteBatch& ui, presentation::FeDrawStats& st) 
 void FeFlow::move(int delta) {
     if (popKind_) { movePopup(delta); return; } // two-button cursor (ok/cancel, yes/no payload pair)
     if (setup07View_) { s07Row_ = std::clamp(s07Row_ + delta, 0, 1); return; } // UP/DOWN = team side [C]
-    if (cfg87View_) { cfg87Row_ = (cfg87Row_ + delta + 4) % 4; return; } // UP/DOWN = controller slot cursor over the grvN hit slots (ring [H])
-    if (wc13View_) { wc13Row_ = (wc13Row_ + delta + 4) % 4; return; }    // same slot-row ring on FEFLOW13 (pass-24wc13 [H])
     if (cfg32View_ == 33) { cfg33Side_ = std::clamp(cfg33Side_ + delta, 0, 1); return; } // UP/DOWN = side
     if (mgmtView_) { // FEFLOW43 UP/DOWN = roster row cursor; four-row window pages via sbar [H]
         const int n = gridRosterSize();
@@ -1136,16 +1135,6 @@ void FeFlow::adjustValue(int dir) {
         const int n = std::max<int>(1, int(poolIds_.size()));
         mgmtTeam_ = (mgmtTeam_ + dir + n) % n;
         mgmtRow_ = 0; // team switch resets the row window
-        return;
-    }
-    if (cfg87View_) { // L/R cycles the focused slot's device index (contr.fsh frame = 1 + slot [C])
-        int& v = cfg87Dev_[std::size_t(cfg87Row_ & 3)];
-        v = (v + dir + 8) % 8;
-        return;
-    }
-    if (wc13View_) { // same device-index ring on FEFLOW13 (pass-24wc13)
-        int& v = wc13Dev_[std::size_t(wc13Row_ & 3)];
-        v = (v + dir + 8) % 8;
         return;
     }
     if (lsView_) { lstbPage(dir); return; } // left/right pan the list page via sbar [H]
@@ -2010,15 +1999,14 @@ FeDrawStats FeFlow::drawCfg32(render::SpriteBatch& ui) const {
 // (CALL 0x4461b4) + fe08 chain (CALL 0x44c1d0 + 0x448418 + close); the event dispatch FUN_00467970
 // [C fe87_dec1] compares the payload tag dwords 'fe06' (0x66653036, quit friendly), 'quit',
 // 'fe08' (0x66653038, forward -> feflow83) and 'fe15'/event 102 (help 0x563dc0 via FUN_00451964).
-// Scene-open event 0x68 (dispatch FUN_00467970 -> FUN_0044c330) zero-clears the sixteen device-slot
-// dwords DAT_00608748..0x608784 [C fe87_dec1/dec2]; the init handler FUN_00467ab0 installs the event
-// slot +0x14 = LAB_0044c958 when empty. Fresh board therefore shows slot 0 = contr.fsh frame 1.
+// The installed tick 0x467ab0 is JMP FUN_0044c6c0, the device-slot pump [C pass-45
+// analysis/pass45ctrl/decomp.txt]: every tick zero-clears the sixteen device-slot dwords
+// DAT_00608748..0x608784, installs the repeat-poll callback at event slot +0x14 = FUN_0044c958,
+// then paints rows through FUN_0044ccd4; default state all-slots-0 shows contr.fsh frame 1.
 bool FeFlow::openCfg87() {
     if (!haveCfg87_) { lastError_ = "FEFLOW87.LAY is absent from this tree"; return false; }
     cfg87View_ = true;
     hubView_ = false; // [C] FUN_004455dc close chain: one screen at a time
-    cfg87Row_ = 0;
-    cfg87Dev_.fill(0); // [C] open event zeroes every device slot
     return true;
 }
 
@@ -2030,8 +2018,6 @@ std::string FeFlow::cfg87Caption(std::string_view name) const {
 bool FeFlow::openWc13() {
     if (!haveWc13_) { lastError_ = "FEFLOW13.LAY is absent from this tree"; return false; }
     wc13View_ = true; // the board covers the FEFLOW20 schedule board underneath (drawCurrent branch)
-    wc13Row_ = 0;
-    wc13Dev_.fill(0); // [C] open event zeroes every device slot (DAT_00608748.. group)
     return true;
 }
 
@@ -2081,29 +2067,18 @@ render::Camera FeFlow::venueCamera() const {
     return venue_ ? venue_->framedCamera() : render::Camera{};
 }
 
+// FEFLOW87 shootout controller board: pump-default composite over feflow87.fsh art (pass-45).
+// FEFLOW87 tick = 0x467ab0 = JMP FUN_0044c6c0 (device-slot pump, analysis/pass45ctrl): zeroes
+// DAT_00608748..0x608784 every tick, installs repeat-poll FUN_0044c958 at [window+0x14], then
+// row-paints FUN_0044ccd4 (+ click callbacks FUN_0044c9fc/ca1c). All-slots-0 default state:
+// anmN keyboard art, arwN pair arrows SHOWN, grvN/panes HIDDEN — exactly the composite the port
+// draws. Row state (lrp/rrp repeat-arrow art + grvN text) only changes via the exe click
+// callbacks; no port lane drives them [H], so the board stays at the painted default state.
 FeDrawStats FeFlow::drawCfg87(render::SpriteBatch& ui) const {
     presentation::FeUiState uist;
     uist.animMs = animTicks_ * 16u; // aflag.fsh flag animation (ticksperframe default 15)
     ++animTicks_;
     FeDrawStats st = presentation::composite(cfg87_, ui, const_cast<ScreenArt&>(art_), text_.get(), &cfg87Visible_, &uist);
-    // Device slot per controller row: frame = contr.fsh frame (1 + slot) over the composite's
-    // static frame-1 blit (init zeroes every slot [C]; the arrow-key lane cycles cfg87Dev_).
-    for (int i = 0; i < 4; ++i) {
-        const int dev = cfg87Dev_[std::size_t(i)] & 7;
-        if (dev == 0) continue;
-        const formats::LayoutObject* o = cfg87_.object("anm" + std::to_string(i));
-        if (!o) continue;
-        const ScreenArt::Shape sh = const_cast<ScreenArt&>(art_).shape("..\\global\\", "contr", std::string(), 1 + dev);
-        if (sh.tex) ui.draw(sh.tex, {float(o->x), float(o->y), float(sh.w), float(sh.h)}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu);
-        ++st.shapes;
-    }
-    // Slot-row cursor ring (grvN hit boxes at x=190..400 row+27, the engine's button slots).
-    const std::uint32_t c = render::packRgba(255, 224, 96, 255);
-    if (const formats::LayoutObject* o = cfg87_.object("ovr" + std::to_string(cfg87Row_ & 3))) {
-        const float x = float(o->x), y = float(o->y), w = float(o->width), h = float(o->height);
-        ui.draw(0, {x, y, w, 2.f}, {}, c), ui.draw(0, {x, y + h - 2.f, w, 2.f}, {}, c);
-        ui.draw(0, {x, y, 2.f, h}, {}, c), ui.draw(0, {x + w - 2.f, y, 2.f, h}, {}, c);
-    }
     // Shield slots (ltfg/rtfg shapeID=f000 runtime-filled): the friendly matchup sides' flags,
     // same drawFlag grammar as feflow07/16/32.
     const auto flagOver = [&](const char* slot, int poolIdx) {
@@ -2142,32 +2117,19 @@ FeDrawStats FeFlow::drawCfg87(render::SpriteBatch& ui) const {
     return st;
 }
 
-// FEFLOW13 World Cup controller board (pass-24wc13): same slot grammar as drawCfg87 — composite
-// over feflow13.fsh art, device icons = contr.fsh frame (1 + slot) over the static frame-1 blit
-// (open event zeroes every slot [C fe87_dec1/dec2]), grvN/ovrN slot-row cursor ring, ltfg/rtfg
-// shield slots runtime-filled (pool matchup fallback [H]; the exe fills them from the tournament
-// context via the FUN_004c31d0 text-draw lane), tltx/trtx centred captions, aflag animation.
+// FEFLOW13 World Cup controller board (pass-24wc13; pass-45): pump-default composite over
+// feflow13.fsh art. FEFLOW13 tick (registry row 0x562388: 0x44e578) is JMP FUN_0044c6c0 — the
+// same device-slot pump as FEFLOW87 (§ pass-45, MENU_PARITY): all-slots-0 default paint
+// = keyboard rows + pair arrows; no cursor ring, no device rail exists. The exe row-state lane
+// (DAT_00608768[row] via FUN_0044c9fc/ca1c click callbacks) stays unwired [H]. ltfg/rtfg shield
+// slots stay runtime-filled (pool matchup fallback [H]; the exe
+// fills them from the tournament context via the FUN_004c31d0 text-draw lane), with tltx/trtx
+// centred captions and aflag animation.
 FeDrawStats FeFlow::drawWc13(render::SpriteBatch& ui) const {
     presentation::FeUiState uist;
     uist.animMs = animTicks_ * 16u; // aflag.fsh flag animation (ticksperframe default 15)
     ++animTicks_;
     FeDrawStats st = presentation::composite(wc13_, ui, const_cast<ScreenArt&>(art_), text_.get(), &wc13Visible_, &uist);
-    ++st.texts; // marker line for gate assertion (board paints its caption family)
-    for (int i = 0; i < 4; ++i) {
-        const int dev = wc13Dev_[std::size_t(i)] & 7;
-        if (dev == 0) continue;
-        const formats::LayoutObject* o = wc13_.object("anm" + std::to_string(i));
-        if (!o) continue;
-        const ScreenArt::Shape sh = const_cast<ScreenArt&>(art_).shape("..\\global\\", "contr", std::string(), 1 + dev);
-        if (sh.tex) ui.draw(sh.tex, {float(o->x), float(o->y), float(sh.w), float(sh.h)}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu);
-        ++st.shapes;
-    }
-    const std::uint32_t c = render::packRgba(255, 224, 96, 255);
-    if (const formats::LayoutObject* o = wc13_.object("ovr" + std::to_string(wc13Row_ & 3))) {
-        const float x = float(o->x), y = float(o->y), w = float(o->width), h = float(o->height);
-        ui.draw(0, {x, y, w, 2.f}, {}, c), ui.draw(0, {x, y + h - 2.f, w, 2.f}, {}, c);
-        ui.draw(0, {x, y, 2.f, h}, {}, c), ui.draw(0, {x + w - 2.f, y, 2.f, h}, {}, c);
-    }
     const auto flagOver = [&](const char* slot, int poolIdx) {
         const formats::LayoutObject* o = wc13_.object(slot);
         if (!o || poolIdx < 0 || std::size_t(poolIdx) >= poolFlagFile_.size() || poolFlagFile_[std::size_t(poolIdx)].empty()) return;
@@ -3596,8 +3558,9 @@ int FeFlow::pointerActivate() {
         return -1; // clicks inside the popup panel never launch a match
     }
     if (wc13View_) { // FEFLOW13 World Cup controller board (pass-24wc13). Click payloads from init
-        // FUN_0044e440's tag tree + event branch: buttons perform their decoded edges; row clicks
-        // set the slot cursor [H pump row grammar shared with FEFLOW87].
+        // FUN_0044e440's tag tree + event branch: buttons perform their decoded edges. Row art
+        // takes no port clicks: the exe changes row state only through the pump click callbacks
+        // FUN_0044c9fc/ca1c [C pass-45], a lane the port does not implement.
         const auto hit = [&](std::string_view n) {
             const formats::LayoutObject* o = wc13_.object(n);
             return o && widgetHit(*o, float(ptrX_), float(ptrY_));
@@ -3620,8 +3583,6 @@ int FeFlow::pointerActivate() {
             wc13View_ = false; wcStack_.clear(); wcCfg_ = 0;
             return int(FeEntry::Tournament);
         }
-        for (int i = 0; i < 4; ++i)
-            if (hit("grv" + std::to_string(i)) || hit("ovr" + std::to_string(i))) { wc13Row_ = i; return -1; } // [H]
         return -1;
     }
     if (wcCfg_) { // scene-switch edges under the pointer (analysis/pass20uitick/NOTES.md §4 tables):

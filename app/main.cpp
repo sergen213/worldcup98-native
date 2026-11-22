@@ -114,6 +114,7 @@ int run(int argc, char** argv) {
     int saveloadSlot = -1; // --tournament-saveload N: headless save->load scenario on slot N
     int fePick = -1; // --fe-pick ID: scripted team-select pick for the tournament entry (non-interactive gate)
     bool feTeam = false; // --fe-team: open the team-select screen (FEFLOW11 grid) before the smoke frames
+    int feTeamCursor = 0; // --fe-team-cursor N: step the FEFLOW11 cursor N rows (scroll capture)
     int feSetup = -1; // --fe-setup N: open the friendly (0) / practise (3) match-setup screen before the smoke frames
     bool feLeague = false; // --fe-league: open the FEFLOW73 league-select list before the smoke frames
     int feLeagueCfg = 0; // --fe-league-cfg N: open the league config family screen N (72/74/75/76/78/79/80)
@@ -135,10 +136,8 @@ int run(int argc, char** argv) {
     int feRecordsRow = 0;   // --fe-records-row N: 9-row results window offset (sbar) +N moves
     int feCfg = -1;       // --fe-cfg N: FEFLOW32/33 controller-select gate; N = screen*100 + cursor moves (pass-20cfg)
     int feCfgSide = 0;    // --fe-cfg-side N: feflow33 focused side (0=left 1=right)
-    int feCfg87 = -1;     // --fe-cfg87 N: FEFLOW87 shootout board gate (feflow33 -> 'fe87' chain); N = slot-cursor moves (pass-23fe87)
-    int feCfg87Dev = 0;               // --fe-cfg87-dev N: device slot shown on the focused row (contr frame 1 + slot)
-    int feWc13 = -1;                  // --fe-wc13 N: FEFLOW13 World Cup controller board gate (feflow20 -> 'frwd' chain, pass-24wc13); N = slot-cursor moves
-    int feWc13Dev = 0;                // --fe-wc13-dev N: device slot shown on the focused row (contr frame 1 + slot)
+    int feCfg87 = -1;     // --fe-cfg87 N: FEFLOW87 shootout board gate (feflow33 -> 'fe87' chain); N kept for CLI compat, board is pump-default composite (pass-45 ctrl-pump)
+    int feWc13 = -1;      // --fe-wc13 N: FEFLOW13 World Cup controller board gate (feflow20 -> 'frwd' chain, pass-24wc13); N kept for CLI compat, board is pump-default composite (pass-45)
     int feControl = -1; // --fe-control N: CONTROL1 controller page from the options chain, nav cursor +N (§H)
     int feIgMode = 0;       // --fe-igoptns a|g|m: open the in-game option popup (igaoptns/iggoptns/igmoptns)
     std::string fePopupName; // --fe-popup NAME: shared popup lane gate (feflow10/37, igconsel/mesg/Feflow86)
@@ -178,6 +177,7 @@ int run(int argc, char** argv) {
         else if (a == "--fe-pick") { fePick = std::stoi(next()); }
         else if (a == "--fe-present") { feMode = true, presentGate = 1; }
         else if (a == "--fe-team") { feTeam = true; }
+        else if (a == "--fe-team-cursor") { feTeamCursor = std::stoi(next()); }
         else if (a == "--fe-setup") { feMode = true, feSetup = std::stoi(next()); }
         else if (a == "--fe-league") { feMode = true, smokeFrames = 1, feLeague = true; } // FEFLOW73 list capture (1 frame; --fe-smoke N overrides)
         else if (a == "--fe-league-cfg") { feMode = true, smokeFrames = 1, feLeagueCfg = std::stoi(next()); } // league config grid/popup capture gate
@@ -198,10 +198,10 @@ int run(int argc, char** argv) {
         else if (a == "--fe-records-row") { feRecordsRow = std::stoi(next()); }        // sbar window offset moves
         else if (a == "--fe-cfg") { feMode = true, smokeFrames = 1, feCfg = std::stoi(next()); }              // feflow32/33 gate; N = screen*100 + cursor moves
         else if (a == "--fe-cfg-side") { feCfgSide = std::stoi(next()); }              // feflow33 side focus
-        else if (a == "--fe-cfg87") { feMode = true, smokeFrames = 1, feCfg87 = std::stoi(next()); } // FEFLOW87 shootout board gate; N = slot-cursor moves
-        else if (a == "--fe-cfg87-dev") { feCfg87Dev = std::stoi(next()); } // device slot shown on the focused row
-        else if (a == "--fe-wc13") { feMode = true, smokeFrames = 1, feWc13 = std::stoi(next()); } // FEFLOW13 World Cup controller board gate; N = slot-cursor moves
-        else if (a == "--fe-wc13-dev") { feWc13Dev = std::stoi(next()); }   // device slot shown on the focused row
+        else if (a == "--fe-cfg87") { feMode = true, smokeFrames = 1, feCfg87 = std::stoi(next()); } // FEFLOW87 shootout board gate (pump-default composite)
+        else if (a == "--fe-cfg87-dev") { next(); /* accepted, ignored: row-state lane unwired (pass-45) */ }
+        else if (a == "--fe-wc13") { feMode = true, smokeFrames = 1, feWc13 = std::stoi(next()); } // FEFLOW13 World Cup controller board gate (pump-default composite)
+        else if (a == "--fe-wc13-dev") { next(); /* accepted, ignored: row-state lane unwired (pass-45) */ }
         else if (a == "--fe-save-manager") { feMode = true, smokeFrames = 1, feSave42 = std::stoi(next()); }   // feflow42 SAVE confirm gate; N = row moves + Enter write
         else if (a == "--fe-replay-load") { feMode = true, smokeFrames = 1, feRepl57 = std::stoi(next()); }    // FEFLOW57 replay browser gate; N = row moves (fixture index if none [H])
         else if (a == "--fe-igoptns") { // igoptns captions lane gate: a=audio g=game m=mouse popup
@@ -341,6 +341,7 @@ int run(int argc, char** argv) {
     int totalShapes = 0, totalTexts = 0, totalCursors = 0, presented = 0, navRc = -1;
     bool prevLmb = false; // mouse button edge state for widgetHit activation (Phase 1)
         if (fe && feTeam) { fe->selectNav(int(app::FeEntry::Tournament)); fe->enter(); } // hub wedge fe11 -> team-select grid (FEFLOW11)
+        for (int i = 0; i < feTeamCursor && fe; ++i) fe->moveTeamCursor(+1); // continuous window
         if (fe && feSetup >= 0) { fe->selectNav(feSetup); fe->enter(); } // friendly/practise -> FEFLOW09/50 config screen
         if (fe && feLeague) { // League Play -> FEFLOW73 list. On the hub, selectNav opens the list directly (case 1);
             // enter() would re-activate the DEFAULT wedge (friendly setup, feflow09) which preempts drawCurrent's
@@ -425,9 +426,7 @@ int run(int argc, char** argv) {
                 fe->enter(); // Enter on 33 = the 'fe87' wedge edge
                 if (!fe->onCfg87()) std::fprintf(stderr, "fe: FEFLOW87 unavailable\n");
                 else {
-                    for (int i = 0; i < feCfg87; ++i) fe->move(+1); // slot cursor ring
-                    fe->setCfg87Dev(fe->cfg87Row(), feCfg87Dev);    // contr frame 1 + slot override
-                    std::fprintf(stderr, "cfg87: row=%d dev=%d\n", fe->cfg87Row(), fe->cfg87Dev(fe->cfg87Row()));
+                    std::fprintf(stderr, "cfg87: static composite board (no engine cursor)\n");
                 }
             }
         }
@@ -435,9 +434,7 @@ int run(int argc, char** argv) {
         if (!fe->openWcCfg(20)) std::fprintf(stderr, "fe: FEFLOW20 unavailable\n");
         else if (!fe->openWc13()) std::fprintf(stderr, "fe: FEFLOW13 unavailable\n");
         else {
-            for (int i = 0; i < feWc13; ++i) fe->move(+1); // slot cursor ring
-            fe->setWc13Dev(fe->wc13Row(), feWc13Dev);      // contr frame 1 + slot override
-            std::fprintf(stderr, "wc13: row=%d dev=%d\n", fe->wc13Row(), fe->wc13Dev(fe->wc13Row()));
+            std::fprintf(stderr, "wc13: static composite board (no engine cursor)\n");
         }
     }
     if (fe && feLoad41 >= 0) { // --fe-load-game N: feflow41 LOAD list over the port slot dir, rows +N

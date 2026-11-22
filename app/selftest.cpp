@@ -2149,10 +2149,13 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
 
     {
         // 14b4. fe-cfg87 (pass-23fe87): FEFLOW87 shootout controller board [C analysis/pass23fe87
-        // fe87_dec1/dec2/dec4]: open event 0x68 zero-clears the device-slot group DAT_00608748..
-        // (fresh board = slot 0 = contr.fsh frame 1); wedge tags fe07 (goto feflow33 = Esc pop),
-        // fe08 (forward feflow83, mouse-only), fe06/quit (exit family). Port: openCfg87 over the
-        // open feflow33 board (enter on 33 = 'fe87' wedge), slot cursor ring + device cycling,
+        // fe87_dec1/dec2/dec4 + analysis/pass45ctrl pump-decomp]: tick 0x467ab0 = JMP
+        // FUN_0044c6c0 device-slot pump; every tick zeroes the DAT_00608748.. group, then the
+        // painter FUN_0044ccd4 paints the all-slots-0 default state (keyboard rows + arrows,
+        // no cursor ring — row state lives only in click callbacks FUN_0044c9fc/ca1c).
+        // Wedge tags fe07 (goto feflow33 = Esc pop), fe08 (forward feflow83, mouse-only),
+        // fe06/quit (exit family). Port: openCfg87 over the
+        // open feflow33 board (enter on 33 = 'fe87' wedge), pump-default composite,
         // Esc pops to 33 without tearing the board down.
         StepRes st{.name = "fe-cfg87", .expected = "FEFLOW87 config screen enters and pops",
                    .tolerance = "exact screen ids ±0"};
@@ -2178,29 +2181,24 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                 render::SpriteBatch ui;
                 const auto st87 = fe.drawCurrent(ui);
                 const bool drew = st87.shapes > 0;
+                // pass-45 ctrl-pump: the port never drives row state (exe click callbacks are
+                // unwired) — navigation must not alter the drawn frame [C pass-45].
                 fe.move(1);
-                const bool row1 = fe.cfg87Row() == 1;
                 fe.adjustValue(1);
-                const bool dev1 = fe.cfg87Dev(1) == 1; // contr frame 1 + slot over the composite frame
-                fe.adjustValue(-2);
-                const bool devCyc = fe.cfg87Dev(1) == 7; // ring 0 -> 7 wrap
+                const auto st87b = fe.drawCurrent(ui);
+                const bool statik = st87b.shapes == st87.shapes && st87b.texts == st87.texts;
                 fe.enter(); // Enter carries no token edge on this board
                 const bool stay87 = fe.onCfg87();
                 fe.back(); // 'fe07' pop -> feflow33 stays open underneath
                 const bool pop33 = !fe.onCfg87() && std::string(fe.screenName()) == "FEFLOW33";
                 fe.back(); // 'fe06' exit -> hub
                 const bool hub = !fe.onCfg32();
-                bool fresh = false; // re-open zeroes every device slot again [C open event 0x68]
-                if (fe.openCfg32(33)) {
-                    fe.enter();
-                    fresh = fe.onCfg87() && fe.cfg87Dev(0) == 0 && fe.cfg87Dev(1) == 0;
-                }
                 const bool caps = !fe.cfg87Caption("tmtl").empty() && fe.cfg87Caption("tmtl") == fe.cfg87Caption("tmtr");
-                st.passed = nm87 && drew && row1 && dev1 && devCyc && stay87 && pop33 && hub && fresh && caps;
-                st.detail = fmt("fe-cfg87: nm87={} drew={} shapes={} row1={} dev1={} devCyc={} stay87={} pop33={} hub={} fresh={} caps={} "
-                                "tmtl='{}' tmtr='{}' nplr-default='{}' tltx='{}' trtx='{}'",
-                                int(nm87), int(drew), int(st87.shapes), int(row1), int(dev1), int(devCyc),
-                                int(stay87), int(pop33), int(hub), int(fresh), int(caps),
+                st.passed = nm87 && drew && statik && stay87 && pop33 && hub && caps;
+                st.detail = fmt("fe-cfg87: nm87={} drew={} shapes={} statik={} stay87={} pop33={} hub={} "
+                                "caps={} tmtl='{}' tmtr='{}' nplr-default='{}' tltx='{}' trtx='{}'",
+                                int(nm87), int(drew), int(st87.shapes), int(statik),
+                                int(stay87), int(pop33), int(hub), int(caps),
                                 fe.cfg87Caption("tmtl"), fe.cfg87Caption("tmtr"), fe.cfg87Caption("nplr"),
                                 fe.cfg87Caption("tltx"), fe.cfg87Caption("trtx"));
             }
@@ -2212,9 +2210,10 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
     }
 
     {
-        // 14b5. fe-wc13 (pass-24wc13): FEFLOW13 World Cup controller board [C analysis/pass24wc13
-        // fe87_dec3 init FUN_0044e440 + fe87_dec1/dec2 slot cluster]: the board reuses the FEFLOW87
-        // slot grammar (open event zeroes the device group; contr.fsh frames 1..8 per row). Edges:
+        // 14b5. fe-wc13 (pass-24wc13; pass-45 ctrl-pump): FEFLOW13 World Cup controller board
+        // [C analysis/pass24wc13 fe87_dec3 init FUN_0044e440]. Tick 0x44e578 is JMP
+        // FUN_0044c6c0 — same pump-painted default state as FEFLOW87 [C analysis/pass45ctrl];
+        // no cursor ring or device rail exists. Edges:
         // FEFLOW20 'frwd' -> feflow13 (SITE 0x452dc7 pushes NAME:feflow13) via the Enter ring;
         // Esc = event branch 0x44e4ba pushes NAME:feflow06 — closes the World Cup family straight to
         // the hub (NOT a stack pop like FEFLOW87 -> 33); Enter carries no token edge on the board.
@@ -2244,29 +2243,24 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                 render::SpriteBatch ui;
                 const auto st13 = fe.drawCurrent(ui);
                 const bool drew = st13.shapes > 0 && st13.texts > 0;
+                // pass-45 ctrl-pump: navigation must not alter the drawn frame.
                 fe.move(1);
-                const bool row1 = fe.wc13Row() == 1;
                 fe.adjustValue(1);
-                const bool dev1 = fe.wc13Dev(1) == 1; // contr frame 1 + slot over the composite frame
-                fe.adjustValue(-2);
-                const bool devCyc = fe.wc13Dev(1) == 7; // ring 0 -> 7 wrap
+                const auto st13b = fe.drawCurrent(ui);
+                const bool statik = st13b.shapes == st13.shapes && st13b.texts == st13.texts;
                 fe.enter(); // Enter carries no token edge on this board
                 const bool stay13 = fe.onWc13();
                 fe.back(); // Esc = hub edge [C 0x44e4ba]: family closes, not a stack pop
                 const bool hub = !fe.onWc13() && !fe.onWcCfg() && !fe.quitRequested() && name() == "FEFLOW06";
-                bool fresh = false; // re-open zeroes every device slot again [C open event 0x68]
-                if (fe.openWcCfg(20)) {
-                    fe.enter();
-                    fresh = fe.onWc13() && fe.wc13Row() == 0 && fe.wc13Dev(0) == 0;
-                }
-                fe.back();
+                // (no re-open device-slot reset assertion: row state lives only in the exe's
+                //  pump click callbacks, a lane the port does not implement [C pass-45])
                 const bool closed = !fe.onWc13() && !fe.onWcCfg();
                 const bool caps = fe.wc13Caption("tmtl") == "Teammates:" && fe.wc13Caption("tmtl") == fe.wc13Caption("tmtr");
-                st.passed = s20 && nm13 && drew && row1 && dev1 && devCyc && stay13 && hub && fresh && closed && caps;
-                st.detail = fmt("fe wc13: s20={} nm13={} drew={} shapes={} texts={} row1={} dev1={} devCyc={} stay13={} "
-                                "hub={} fresh={} closed={} caps={} tmtl='{}' tmtr='{}'",
-                                int(s20), int(nm13), int(drew), int(st13.shapes), int(st13.texts), int(row1),
-                                int(dev1), int(devCyc), int(stay13), int(hub), int(fresh), int(closed), int(caps),
+                st.passed = s20 && nm13 && drew && statik && stay13 && hub && closed && caps;
+                st.detail = fmt("fe wc13: s20={} nm13={} drew={} shapes={} texts={} statik={} stay13={} "
+                                "hub={} closed={} caps={} tmtl='{}' tmtr='{}'",
+                                int(s20), int(nm13), int(drew), int(st13.shapes), int(st13.texts), int(statik),
+                                int(stay13), int(hub), int(closed), int(caps),
                                 fe.wc13Caption("tmtl"), fe.wc13Caption("tmtr"));
             }
         } catch (const std::exception& e) {

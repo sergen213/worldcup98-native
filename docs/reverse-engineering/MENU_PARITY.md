@@ -425,13 +425,27 @@ light one in `FeFlow::paintCaption` **[H]**.
 
 - **Scene**: registry row 48 (`feflow87`, slots init 0x467970 / tick 0x467ab0 / draw 0x467ab8). Handler
   cluster + event dispatch decoded in `analysis/pass23fe87/fe87_dec1..4.txt` (Ghidra scripts
-  `GhidraWc98Fe87*`): event 0x68 (scene open) → `FUN_00467ab0` zeroes the device-slot group
-  `DAT_00608748..0x608784` (8+8 dwords = 4 slots × left/right device values) → fresh board state;
-  `'fe06'`/`'quit'`/`'fe08'` tag compares on window-object +8 → cursor reset + scene push chain;
-  0x66+`'fe15'` = options jump (`FUN_00451964`).
+  `GhidraWc98Fe87*`): the tag compares on the window-object +8 (`'fe06'`/`'quit'`/`'fe08'`)
+  drive cursor reset + scene push chain; 0x66+`'fe15'` = options jump (`FUN_00451964`).
+  **[C pass-45 pump-painter] the installed tick is a thunk — `0x467ab0 JMP FUN_0044c6c0`
+  (`0x44e578` likewise) — the device-slot pump: it installs `FUN_0044c958` (key-repeat poll,
+  `DAT_0060194c` compare → `FUN_00432d38`) at `[sceneWindow+0x14]`, zeroes the 16-dword group
+  `DAT_00608748..0x608784` (4 rows × {slot, …}) every tick, sets `DAT_0060a2e4`, clears the text
+  latch `DAT_00600db8/dc8`, then runs the row painter `FUN_0044ccd4` (register-callback
+  `EDX=FUN_0044c9fc` = `DAT_00608768[row]=value` + repaint; `FUN_0044d128`/`FUN_0044ca1c` =
+  clear-row + repaint) and the `ovrN`/`arwN` hide pass. Painter grammar per row `i` (slot word
+  `DAT_00608768+i*4`): slot==0 → `anmN` anim loop flag on (`+0x46=1`), `arwN` pair-arrow SHOWN,
+  `grvN` value text HIDDEN, panes HIDDEN; slot≠0 → hide `anmN`/`arwN`, show the `lrp`/`rrp`
+  repeat-arrow art (frame word copied from the row handle), show `grvN` text (`FUN_0044ca48`).
+  There is **no row cursor, no highlight ring, no device rail** — row state changes only through
+  the click callbacks, so the fresh-open board is 4 keyboard rows + pair arrows, all slots 0 —
+  which is what the port composite paints. The pass-23/24 "device-slot cursor ring + LEFT/RIGHT
+  cycle" model stays retracted; evidence `analysis/pass45ctrl/` (`tick_disasm.txt`, `pump.txt`,
+  `decomp.txt`, `subdecomp*.txt`).
 - **Board model**: four slot rows = `ovrN` overlay + `alpN`/`arpN` colour panes + `anmN` controller
-  picture (`fname=contr.fsh`, `vpath=..\global\` → CONTR.FSH frames 1..8, `ticksperframe=0` → frame
-  stays at slot value; frame 1 = keyboard, fresh-open state paints frame 1 [C]) + `arwN` pair-arrow +
+  picture (`fname=contr.fsh`, `vpath=..\global\` → the CONTR.FSH keyboard frame (frame 1): the
+  pump's default state all-slots-0 paints exactly this row art with `arwN` shown [C 45]) + `arwN`
+  pair-arrow +
   `ctxN`/`grvN` runtime text slots (FC-remap ids, excluded from static paint). `ltfg`/`rtfg` shield
   slots from the pool entry art (`f00N.fsh#f000`), `tltx`/`trtx` team captions (textid=0 → label
   empty), `titl` title = ENGL87.PAK#engl via ScreenArt lang retry ("Penalty Shootout / Controller
@@ -440,31 +454,32 @@ light one in `FeFlow::paintCaption` **[H]**.
   excluded as runtime text slots — drawing 699 double-paints over the tmtr box (x=340 vs x=485
   spill), the handler replaces slot text through the `FUN_004c31d0` draw lane at open [H].
 - **animseq**: composite animseq player (objecttype=3 `FRAMES`/`TICKSPERFRAME` ranges) landed this
-  pass (`presentation/src/fe_screen.cpp`); `anmN` declares no frames range so the frame index is the
-  device-slot value directly (slot cursor ring = `cfg87Row_`, LEFT/RIGHT cycle 4 slots, yellow
-  `HILITEDSHAPEIDON` ring on the `ovrN` overlay).
+  pass (`presentation/src/fe_screen.cpp`); the pump's default state keeps the composite at its
+  baked frame (all four rows show the keyboard picture); the exe side animates a row only after
+  the click callback sets `DAT_00608768[row]≠0` [C 45].
 - **Edges**: `enter()` on feflow33 = `'fe87'` wedge → `openCfg87()`; Esc pops to feflow33; rail
   widgets quit/fe06/fe15/fe07/fe08 per the event compares [C fe87_dec1].
-- **Gates**: selftest step `fe-cfg87` (name/draw shapes, row cursor, dev cycle + stay-on-board, Esc
-  pop to 33, hub fallback, fresh-open frame reset, FC-caption remap pair "Teammates:") PASS;
-  capture lane `--fe-cfg87 N` + `--fe-cfg87-dev N` (`cfg87_fe00.png` viewed: 4 rows, keyboard
-  pictures + arrows, joystick on the focused slot, shields, clean caption row). `fe-cfg87` caption
-  probe via `FeFlow::cfg87Caption` (FC-remap lane of `FeText::label`).
+- **Gates**: selftest step `fe-cfg87` (name/draw shapes, static frame: navigation cannot alter the
+  board, stay-on-board, Esc pop to 33, hub fallback, FC-caption remap pair "Teammates:") PASS;
+  capture lanes `--fe-cfg87` / `--fe-cfg87-dev` (dev flag accepted, ignored — board is static)
+  (`cfg87static_fe00.png` viewed: 4 keyboard rows + arrows, no cursor ring, no joystick tile,
+  shields, clean caption row). `fe-cfg87` caption probe via `FeFlow::cfg87Caption` (FC-remap lane
+  of `FeText::label`).
 - **Suite**: ctest 143/145 green this lane (`test_sim_scenarios`, `self_test_gameplay` = the
   in-flight uncommitted simulation kick-seam lane, unchanged by this pass); selftest 23/25 steps
   (same two gameplay steps). Registry: row 48 + FEFLOW87.LAY table → impl; §4 item 2 updated.
 
 ## 18. Round 2026-11-17 — pass-24wc13: FEFLOW13 world-cup controller board [LANDED]
 
-- **Scene [C]**: registry row 8 (`feflow13`, slots init `0x44e440` / tick `0x44e578` thunk→`FUN_0044a210` draw / event `-`). LAY header comment `world cup controller select screen`; widget list byte-identical to FEFLOW87 (member text diff-verified), plate art `feflow13.fsh` from the scene PAK. Slot cluster = same device-slot group `DAT_00608748..0x608784` as FEFLOW87 (open event `0x68` zeroes it [C `analysis/pass23fe87/fe87_dec1`]).
+- **Scene [C]**: registry row 8 (`feflow13`, slots init `0x44e440` / tick `0x44e578` (`JMP FUN_0044c6c0`, the device-slot pump [C pass-45]) / draw thunk→`FUN_0044a210` / event `-`). LAY header comment `world cup controller select screen`; widget list byte-identical to FEFLOW87 (member text diff-verified), plate art `feflow13.fsh` from the scene PAK. Same pump-painted default state as FEFLOW87 (§17 pass-45 block).
 - **Init token tree `FUN_0044e440` [C]** (`analysis/pass24wc13/fe13_asm.txt`, full-body disassembly 0x44e440..0x44e574; Watcom token-compare binary tree, 0x6665xxxx constants = search bounds not tokens): equality leaves `'fe06'` 0x44e466→0x44e501, `'quit'` 0x44e4d6→0x44e4de, `'fe15'` 0x44e483→0x44e563, `'fe08'` ZF-leaf 0x44e472→0x44e524, `'fe07'` redraw-only. Each exit arm runs `FUN_00459410` (cursor reset) with a popup tuple + `FUN_004461b4` scene push:
   - `'quit'` tuple `(0x3e9, 0x82e, 0x10f1)` sites 0x44e4de-0x44e4ef, push `NAME:feflow37` site 0x44e4f9 → app-quit confirm (port `openPopup("feflow37", quitContext=true)`).
   - `'fe06'` tuple `(0x3ea, 0x82e, 0x10f3)` sites 0x44e501-0x44e512, push `NAME:feflow37` site 0x44e51c → World-Cup exit variant: confirm closes the family to the hub, no app exit (`popWcExit_`).
   - `'fe15'` → options jump `FUN_00451964` push 0x562a24 site 0x44e56d; init tail also writes 0x66+`'fe15'` (same options edge).
   - `'fe08'` forward: `FUN_00446624()==2` stay-guard (2-controller play keeps the board), else `FUN_0045a24c()` (device-count check): `<0` → `FUN_00448428` no edge; `>=0` → `FUN_00448418(0)` + `FUN_0045a198` + push `NAME:feflow56` (tournament launch transition, null-LAY scene).
   - Esc path = event branch `0x3ea` push `NAME:feflow06` site 0x44e4c4 (`analysis/pass12/edges_table.txt:113`) → straight to hub, **not** a `wcStack_` pop as on family boards.
-- **Board port** (`app/fe_flow.cpp` `openWc13`/`drawWc13` + rail/enter/mouse handlers): reuses the FEFLOW87 slot-row model — 4 rows `ovrN` overlay + `alpN`/`arpN` colour panes + `anmN` CONTR.FSH controller picture (frame = device slot, `ticksperframe=0` → stays; fresh open paints frame 1) + `arwN` arrows + `ctxN`/`grvN` runtime text slots excluded; `tmtl`/`tmtr` FC-remap 4594 "Teammates:" captions; `ltfg`/`rtfg` pool shields; `titl` plate. Device cursor ring `wc13Row_`, LEFT/RIGHT cycle slots (`wc13Dev_`), yellow `HILITEDSHAPEIDON` ring. Open edge: feflow20 `'frwd'` [C SITE 0x452dc7] → `openWc13` (already wired via `wcStack_`).
-- **Gates**: selftest step 14b5 `fe-wc13` (name/draw shapes, row cursor + dev cycle stay-on-board, Esc → hub not stack pop, `'fe06'` confirm → hub without app exit, fresh-open frame reset, `wc13Caption` remap pair "Teammates:"); capture lanes `--fe-wc13` / `--fe-wc13-dev N` (`wc13_fe00.png`, `wc13dev_fe00.png` region-clean).
+- **Board port** (`app/fe_flow.cpp` `openWc13`/`drawWc13` + enter/mouse handlers): pump-default composite — 4 rows `ovrN` overlay + `alpN`/`arpN` colour panes + `anmN` CONTR.FSH controller picture (baked frame 1 = keyboard) + `arwN` arrows + `ctxN`/`grvN` runtime text slots excluded; `tmtl`/`tmtr` FC-remap 4594 "Teammates:" captions; `ltfg`/`rtfg` pool shields; `titl` plate. No cursor ring, no device rail — the pass-24 invented lanes are cut; the exe row-state lane (`DAT_00608768[row]` click callbacks) stays unwired [H]. Open edge: feflow20 `'frwd'` [C SITE 0x452dc7] → `openWc13` (already wired via `wcStack_`).
+- **Gates**: selftest step 14b5 `fe-wc13` (name/draw shapes, static frame (navigation does not alter the board), stay-on-board, Esc → hub not stack pop, `'fe06'` confirm → hub without app exit, `wc13Caption` remap pair "Teammates:"); capture lanes `--fe-wc13` / `--fe-wc13-dev` (dev flag ignored — static) (`wc13static_fe00.png` region-clean).
 - Registry row 8 → **impl**; §4 item 4 updated; dossier `analysis/pass24wc13/NOTES.md` (+ `fe13_asm.txt`).
 
 ## 19. Round 2026-11-18 — pass-26igmenu: IGMENU decoded row table + CONTROL1 in-game board [LANDED]
@@ -892,3 +907,29 @@ light one in `FeFlow::paintCaption` **[H]**.
 - Mouse-driven IG lanes re-verified through the forward map: `fe_hub`, `fe_igmenu` (hover row 6 +
   click-activate IGSTATS), `fe_igoptns_m`, `fe_igstats`, `fe_ighalf` PASS. Suite 149/151 (the two
   in-flight simulation-lane tests stay excluded).
+
+## 35. Round 2026-11-22 — pass-45ctrl: FE87/FE13 tick = device-slot pump; port paints the default state [LANDED]
+
+- **Verdict [C]**: the pass-23/24 "device-slot cursor ring" model was an invention, but the
+  earlier same-day "static boards, pump has no callers" retraction was **also wrong** — the
+  installed ticks are JMP thunks: `0x467ab0` (FE87) and `0x44e578` (FE13) both `JMP FUN_0044c6c0`,
+  the device-slot pump (a byte-scan of E8 call sites finds no direct callers precisely because
+  every call goes through these thunks). Pump contract [C] (`analysis/pass45ctrl/`
+  `tick_disasm.txt`/`pump.txt`/`decomp.txt`/`subdecomp*.txt`): install repeat-poll callback
+  `FUN_0044c958` at `[sceneWindow+0x14]`; zero the 16-dword group `DAT_00608748..0x608784` every
+  tick; set `DAT_0060a2e4`, clear text latch `DAT_00600db8/dc8`; run row painter `FUN_0044ccd4`
+  (click callback `EDX=FUN_0044c9fc`: `DAT_00608768[row]=value` + repaint; `FUN_0044d128` +
+  `FUN_0044ca1c`: clear-row + repaint). Painter grammar per row (`slot=DAT_00608768+i*4`):
+  slot==0 → `anmN` anim loop flag on, `arwN` pair-arrow SHOWN, `grvN` text HIDDEN, panes HIDDEN;
+  slot≠0 → hide `anmN`/`arwN`, show `lrp`/`rrp` repeat-arrow art, show `grvN` (`FUN_0044ca48`).
+  No cursor ring, no row highlight, no device rail anywhere.
+- **Port**: paints the pump's **all-slots-0 default state** — 4 keyboard rows + pair arrows +
+  captions + shields; `ctxN`/`grvN`/`nplr` runtime text excluded. Cut (kept): `wc13Dev_`/
+  `cfg87Dev_`, `cycle*Dev`, `on*Dev`, ring highlights, LEFT/RIGHT dev keys, `onWc13Adjust`
+  device branch; `--fe-*-dev N` flags stay parsed but are no-ops. The exe row-state lane
+  (widget-click callbacks setting `DAT_00608768[row]≠0` → `lrp`/`rrp` art + `grvN` text) stays
+  unwired [H] — nothing in the port drives it and no byte exists for a port-side cursor.
+- **Gates**: selftest `fe-cfg87`/`fe-wc13` PASS (`statik=1` — navigation never alters the board,
+  which matches the exe: only click callbacks change row state); captures
+  `cfg87static_fe00.png`/`wc13static_fe00.png` viewed — 4 keyboard rows, arrows, shields,
+  captions; no ring, no joystick tile. Registry rows 8/48 stay impl.

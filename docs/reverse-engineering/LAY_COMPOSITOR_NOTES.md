@@ -232,6 +232,47 @@ Evidence: Feflow06.lay hub buttons (`fe07` released `franim.fsh#0000`, side icon
   state c..d; ordinal maps onto the base tag digits (`qui1` + 6 -> `qui6`; `0000` + 3 -> `0003`).
   Measured qui1 frames `6,9,6,9`, franim `1,15,1,15`. Clock: 150 ms/frame. **[H]** (pair semantics
   from the two measured widgets; confirm against handler tick decode when MENU_NAV_WC98 lands)
+- Pass-14 byte-lane update (2026-11-21), all addresses re-dumped this pass:
+  - Data scope: `FRAMES=` observed on objecttype 6/32 widgets only within the corpus grepped =
+    loose `WorldCup98_Extracted/FE/INGAME/*.LAY` + the 10 pass-11 packed dumps
+    (`analysis/pass11/lays`); the full 156-member sweep was **not** re-run. Values always
+    `(a,b,a,b)`: loose IGTEAM72/73/74/75/79/80/89 (`tmf3=11,15,11,15`, `gofd=6,10,6,10`,
+    `gobk=1,5,1,5` over `igtman\icons.fsh` — the pass-12 "IGLOSER" label was a misattribution,
+    the rows are IGTEAM73.LAY objects 58-60), CONTROL1 `1,4,1,4`, IGOPTN2 `0,0,0,0` (type 32);
+    packed FEFLOW50/73/74/79/80/82 `16,19,16,19` / `11,14,11,14` / `1,4,1,4` / `56,59,56,59`,
+    Feflow82/FEFLOW50 qui1 `6,9,6,9`.
+  - Vocabulary (exe data, read at 0x564314..0x564510 delta 0x401a00): animseq keys
+    `SEQUENCES/REWIND/BACKNFORTH/TICKSPERFRAME/LOADALLSEQS` @0x564314/20/28/34/44 +
+    `FEPANE_ANIMTEXT`; button-class keys `MORPHER` @0x5644cc, `MORPHERXOFFSET/YOFFSET/
+    MORPHERFIRSTSTRNO/MORPHERNUMSTRS`, `DELAYTICKS` @0x564510 — these are **LAY key strings**,
+    not warning messages (the earlier "Shape %s... does not exist in %s" attribution is
+    retracted; the only imm32 ref to 0x5644cc is `push $0x5644cc` at 0x46dd1f inside the
+    id-4 list-class parse chain FUN_0046de5c).
+  - Storage: tbb parse FUN_00485984 (0x485984 prologue `mov %eax,%esi`) key `FRAMES`
+    (`mov $0x566628,%edx` at 0x485a5a) tokenizes 4 words (0x473a0c + 0x4c3f5e) and stores
+    **zero-based** `dec %eax` values as u16 at widget `+0x54/+0x56/+0x58/+0x5a` (0x485a9b,
+    0x485abc, 0x485add, 0x485af2). tbb key `FNAME` (`$0x566610` at 0x4859b7) →
+    `mov %ax,0x3c(%esi)` at 0x4859ce.
+  - Widget `+0x3C`: full-zone modrm scan found 26 `mov %ax,[reg+0x3C]` stores; 11 verified
+    parse-time this+prior pass (each inside a key-compare chain: 0x4a5ca0 strcmp + 0x479b68 int
+    reader + ret epilogue — e.g. 0x46dc0c keys 0x5643fc.., 0x476036 `$0x564a74`, 0x4763c2
+    `$0x564a98`, 0x476e5a `$0x564abc`, 0x4859ce `$0x566610`), and 0x4db573 is a sim stack store
+    (`mov %ax,0x2(%esp,%edi,1)`, 0x64101c array), not a widget write. No `incw/addw` form to
+    `[reg+0x3C]` exists anywhere in the scanned 1.4 MB zone: no in-place advance of that slot.
+  - 0x4870xx handler: reads `[esi+0x54]` (0x487101) and `[esi+0x52]` (0x487104) as u16 pair,
+    iterates a stream cursor via 0x4875bc (reads one LE u16, `add $2,%eax` — a token cursor,
+    terminated at 0xffff), string-byte walk at 0x487362..0x48739b. What class-registry widget
+    `esi` names and what the loop produces is **[H]** — do not read it as proof of draw-time
+    frame selection.
+  - Clock facts re-dumped (`DAT_00636a14` = multimedia stamp, 1/100 s, cf. AUDIO pass-118):
+    0x476269 `mov 0x636a14,%eax; cmp 0x48(%edx),%eax; jb ret;` then `mov 0x4c(%edx),%bl;
+    add $4,%eax; inc %bl; mov %eax,0x48(%edx)` — next-event gate `[w+0x48] = stamp+4`
+    (**40 ms**) with byte counter `[w+0x4C]++`. 0x46e7e0 handler gates `cmpb $1,[w+0x60]`,
+    fields `+0x90` (delay, -1 = off) and `+0x94` (start stamp); when `stamp-[w+0x94] >
+    [w+0x90]` it walks `0x14(%ecx)` via 0x47a3fc with `'dely'` (0x64656c79) and resets
+    `[w+0x94] = -1` — the DELAYTICKS watchdog (auto-repeat), not a frame clock. 150 ms == 15
+    stamp ticks == the animseq `TICKSPERFRAME` default; no timer read was found in a tbb draw
+    method, so the button cadence stays **[H]** and the port's cycle is kept unchanged.
 - Help pane: button `help=NNN,...` leading value = FC-bank string index painted into the
   `helppaneid=` widget (`objecttype=14`, fontid, centered alignment=3). **[C]** Feflow06.lay.
 

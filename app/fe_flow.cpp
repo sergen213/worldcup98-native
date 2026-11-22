@@ -103,6 +103,15 @@ FeFlow::FeFlow(render::Renderer& r, fs::path tree, std::string lang) : r_(r), tr
         const std::string gtext = presentation::readLayout((tree_ / "FE/PACK/LAYOUTS/LAYOUTS.BIG").string() + "@FEFLOW11.LAY", gdir);
         gridScreen_ = formats::ScreenLayout::build("FEFLOW11", formats::LayoutDocument::parse(std::string_view(gtext)), nullptr, nullptr, "PC");
         haveGrid_ = true;
+        // Row widgets the engine drives at runtime (stfNN national-flag frames, tcNN selection
+        // cell + ttNN row text, per-row state): the static composite must not paint them —
+        // drawTeamsGrid overlays the live row state (SFLAGS frame, 'cntr' cell, name text).
+        for (int i = 0; i < TeamListNav::kRows; ++i)
+            for (const std::string& n : {"stf" + std::to_string(i), "tc" + std::format("{:02d}", i),
+                                        "tt" + std::format("{:02d}", i)})
+                if (auto it = std::ranges::find(gridScreen_.objects, n, &formats::LayoutObject::name);
+                    it != gridScreen_.objects.end())
+                    it->props["SHOW"] = "0";
     } catch (const std::exception&) { // no grid art on this tree: usability list remains
     }
     // Friendly/practise match-setup screens (FE_MENU_SCREENS_WC98.md §5): FEFLOW09.LAY and
@@ -678,6 +687,29 @@ void FeFlow::loadTeams() {
             std::snprintf(ff, sizeof ff, "F%03u", unsigned(idx));
             poolFlagFile_.push_back(ok ? ff : std::string{});
         }
+        // FUN_0044b618 [C] pool partition [C, analysis/pass11team/fe11-pool.txt]: the
+        // eight non-qualified ids {87,62,64,41,29,31,39,33} are stable-moved out of the
+        // ZWCUP order and re-appended in appearance order at the tail: display rows
+        // 0..31 = the 32 qualified teams (World-Cup order Argentina..Yugoslavia),
+        // rows 32..39 = the extra teams. The unpartitioned order interleaves
+        // Australia/Canada/China PR/Greece into the qualified block.
+        {
+            const std::vector<int> ids(poolIds_.begin(), poolIds_.end());
+            const auto order = poolOrder(ids);
+            std::vector<std::uint16_t> ids2;
+            std::vector<std::string> names2, files2;
+            ids2.reserve(order.size());
+            names2.reserve(order.size());
+            files2.reserve(order.size());
+            for (const int k : order) {
+                ids2.push_back(poolIds_[std::size_t(k)]);
+                names2.push_back(poolNames_[std::size_t(k)]);
+                files2.push_back(poolFlagFile_[std::size_t(k)]);
+            }
+            poolIds_ = std::move(ids2);
+            poolNames_ = std::move(names2);
+            poolFlagFile_ = std::move(files2);
+        }
     } catch (const std::exception&) {
         game_.reset();
         poolIds_.clear();
@@ -842,10 +874,9 @@ FeDrawStats FeFlow::drawTeams(render::SpriteBatch& ui) const {
         for (const auto& q : presentation::layoutText(*f, s, x, y, px, rgba)) ui.draw(text_->texture(), q.dst, q.uv, q.rgba);
     };
     line("SELECT YOUR TEAM", 48.f, 40.f, 18.f, render::packRgba(255, 255, 255, 255));
-    const int pg = teams_.page(), rows = TeamListNav::kRows;
-    for (int i = 0; i < rows; ++i) {
-        const int idx = pg * rows + i;
-        if (idx >= int(poolIds_.size())) break;
+    const int top = teams_.top();
+    for (int i = 0; i < teams_.rowsShown(); ++i) {
+        const int idx = top + i;
         std::string label = poolNames_[std::size_t(idx)];
         if (label.empty()) label = "team " + std::to_string(poolIds_[std::size_t(idx)]); // FCDB name table absent
         const bool cur = idx == teams_.sel;
@@ -854,70 +885,143 @@ FeDrawStats FeFlow::drawTeams(render::SpriteBatch& ui) const {
         ++st.texts;
     }
     // Cursor marker: the same flat quad as the menu selection.
-    ui.draw(0, {52.f, 96.f + 32.f * (teams_.sel % rows) + 4.f, 18.f, 18.f}, {}, render::packRgba(90, 200, 255, 255));
-    line("PAGE " + std::to_string(pg + 1) + "/" + std::to_string(teams_.pageCount()), 48.f, 420.f, 14.f,
-         render::packRgba(200, 200, 200, 255));
+    ui.draw(0, {52.f, 96.f + 32.f * (teams_.sel - top) + 4.f, 18.f, 18.f}, {}, render::packRgba(90, 200, 255, 255));
+    line("ROWS " + std::to_string(top + 1) + "-" + std::to_string(top + teams_.rowsShown()) + " OF " +
+             std::to_string(int(poolIds_.size())),
+         48.f, 420.f, 14.f, render::packRgba(200, 200, 200, 255));
     drawCursor(ui, st); // MAUS.PAK arrow on the mouse pointer as well
     return st;
 }
 
-// FEFLOW11 frame: static screen (map background, big flag tmfg, scoreboard bar sbar, group cells,
-// help text) through the compositor, then per-row flag + name drawn at the LAY's own row-slot
-// positions (stfNN/ttnn objects). The layout ships exactly 8 row slots == TeamListNav::kRows;
-// pages of the 40-team pool swap the slot contents. Flags = FE/GLOBAL FNNN.FSH where NNN is the
-// team's FCDB.DBI record index (measured: id 86 -> idx 30 -> F030 = Argentina shield), single shape
-// tag "f000" (every FNNN.FSH carries exactly one entry, named f000).
+// FEFLOW11 frame (LAY truth: pass-11 LAY dump + FE11 click/tick/painter decompiles). The layout
+// ships 8 row slots (== TeamListNav::kRows), each row = stfN national-flag tile (animseq
+// 1,sflags.fsh,1,46 — 27x21 tiles in FE/GLOBAL/SFLAGS.FSH, frame = FCDB record ordinal, the same
+// numbering as the FNNN shield family), the tmNN row button (49,172+32i 223x26; cursor row paints
+// its HILITEDSHAPEID=selc bar 223x26 through the widget-state lane) with the team name as the
+// button label (textXY=30,6,1, textColour=0,8,7 → global-palette index 0, FONTID=4 from the
+// TEXTID "0,4" second field), and — for selected rows only — the tcNN 'cntr' selection cell
+// (feflow11.fsh 69x18 at 206,180+32i) + the ttNN name over it (textXOffset=30, alignment=3
+// centred, normalColour=0). stf/tc/tt are SHOW=0 in the composite (constructor): the engine
+// reveals them per row state. ttnm carries the selected team name over the tmfg shield slot
+// (350,165 textXOffset=72 alignment=3 font4); tmfg itself switches to the team's FNNN shield.
+// The sbar thumb is the sclbar.fsh 'thmb' sprite (17x23; SCLBAR.PAK).
 FeDrawStats FeFlow::drawTeamsGrid(render::SpriteBatch& ui) const {
-    FeDrawStats st = presentation::composite(gridScreen_, ui, const_cast<ScreenArt&>(art_), text_.get());
-    const formats::FfnFont* f = text_ ? text_->font() : nullptr;
-    const bool hasText = f && text_->ready();
-    auto line = [&](std::string_view s, float x, float y, float px, std::uint32_t rgba) {
-        if (!hasText) return;
-        for (const auto& q : presentation::layoutText(*f, s, x, y, px, rgba)) ui.draw(text_->texture(), q.dst, q.uv, q.rgba);
-    };
     const int rows = TeamListNav::kRows;
-    const int pg = teams_.page();
-    for (int i = 0; i < rows; ++i) {
-        const int idx = pg * rows + i;
-        if (idx >= int(poolIds_.size())) break;
-        const std::string sfx = std::format("{:02d}", i); // ttNN name slots (zero-padded in the LAY)
-        const bool cur = idx == teams_.sel;
-        const std::string flagFile = std::size_t(idx) < poolFlagFile_.size() ? poolFlagFile_[std::size_t(idx)]
-                                                                           : std::string(); // FNNN = FCDB record index
-        if (const formats::LayoutObject* stf = gridScreen_.object("stf" + std::to_string(i))) { // stf0..stf7
-            if (flagFile.empty()) ++st.missing;
-            else if (const ScreenArt::Shape sh = const_cast<ScreenArt&>(art_).shape("..\\global\\", flagFile, "f000", -1);
-                     sh.tex) {
-                // Flag bitmaps are full-size shields; the LAY slot is a small icon cell -> scale into it.
-                ui.draw(sh.tex, {float(stf->x), float(stf->y), float(stf->width > 0 ? stf->width : 27),
-                                  float(stf->height > 0 ? stf->height : 21)}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu);
-                ++st.shapes;
-            } else
-                ++st.missing;
+    const int top = teams_.top(); // continuous sbar window offset (FUN_0044db47 [C])
+    const int cur = teams_.sel;
+    // Keyboard cursor row → explicit hover name so composite switches tmNN to its 'selc' art.
+    presentation::FeUiState uist;
+    if (cur >= top && cur < top + rows) uist.hover = std::format("tm{:02d}", cur - top);
+    FeDrawStats st = presentation::composite(gridScreen_, ui, const_cast<ScreenArt&>(art_), text_.get(),
+                                             nullptr, &uist);
+    const formats::FfnFont* f4 = text_ ? text_->font() : nullptr;
+    const render::TextureId t4 = text_ ? text_->texture() : 0;
+    const bool hasText = text_ && text_->ready() && f4 && t4;
+    const auto& pal = formats::globalPalette();
+    const auto palRgba = [&](int idx) {
+        if (idx >= 0 && size_t(idx) < pal.size())
+            return render::packRgba(pal[size_t(idx)][0], pal[size_t(idx)][1], pal[size_t(idx)][2], 0xFF);
+        return render::packRgba(0xFF, 0xFF, 0xFF);
+    };
+    const float px = f4 && f4->lineHeight ? float(f4->lineHeight) : 16.f;
+    // Button label at the object's TEXTXY anchor ("x,y,align"), colour = TEXTCOLOUR first index.
+    const auto drawRowLabel = [&](const formats::LayoutObject* o, std::string_view s) {
+        if (!hasText || !o || s.empty()) return;
+        int xoff = 0, yoff = 0, cidx = 0;
+        if (const std::string* xy = o->prop("TEXTXY")) {
+            char* e = nullptr;
+            xoff = int(std::strtol(xy->c_str(), &e, 10));
+            if (e && *e == ',') yoff = int(std::strtol(e + 1, &e, 10));
         }
-        std::string label = poolNames_[std::size_t(idx)];
-        if (label.empty()) label = "team " + std::to_string(poolIds_[std::size_t(idx)]); // FCDB name absent
-        const formats::LayoutObject* tt = gridScreen_.object("tt" + sfx);
-        const int tx = tt ? tt->x : 294; // LAY name-column slot (measured fallback)
-        line(label, float(tx), float(172 + 32 * i), 16.f,
-             render::packRgba(cur ? 255 : 235, cur ? 224 : 235, cur ? 96 : 235, 255)); // current row yellow (measured menu highlight)
+        if (const std::string* tc = o->prop("TEXTCOLOUR")) cidx = int(std::strtol(tc->c_str(), nullptr, 10));
+        for (const auto& q : presentation::layoutText(*f4, s, float(o->x) + xoff, float(o->y) + yoff, px,
+                                                      palRgba(cidx)))
+            ui.draw(t4, q.dst, q.uv, q.rgba);
         ++st.texts;
-    }
-    // Current-team big flag over the tmfg slot (the LAY's static default is f002): same shape rule.
-    if (!poolIds_.empty() && teams_.sel >= 0 && std::size_t(teams_.sel) < poolFlagFile_.size()) {
-        const std::string& flagFile = poolFlagFile_[std::size_t(teams_.sel)]; // record-index name (F030 = Argentina)
-        if (const formats::LayoutObject* tmfg = gridScreen_.object("tmfg"); tmfg && !flagFile.empty()) {
-            const ScreenArt::Shape sh = const_cast<ScreenArt&>(art_).shape("..\\global\\", flagFile, "f000", -1);
-            if (sh.tex) ui.draw(sh.tex, {float(tmfg->x), float(tmfg->y), float(sh.w), float(sh.h)}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu);
+    };
+    // Centred caption inside the widget box (ttNN/ttnm: textXOffset + alignment=3 + normalColour).
+    const auto drawCellText = [&](const formats::LayoutObject* o, std::string_view s) {
+        if (!hasText || !o || s.empty()) return;
+        const int xoff = o->intProp("TEXTXOFFSET", 0);
+        const int cidx = o->intProp("NORMALCOLOUR", 0);
+        const int boxw = o->width > 0 ? o->width : 69;
+        const float w = presentation::textWidthPx(*f4, s, px);
+        const float x = float(o->x) + xoff + (float(boxw) - w) * 0.5f;
+        for (const auto& q : presentation::layoutText(*f4, s, x, float(o->y), px, palRgba(cidx)))
+            ui.draw(t4, q.dst, q.uv, q.rgba);
+        ++st.texts;
+    };
+    for (int i = 0; i < rows; ++i) {
+        const std::size_t idx = std::size_t(top + i);
+        if (idx >= poolIds_.size()) continue; // window clipped to the pool end
+        const bool rowCur = std::cmp_equal(idx, teams_.sel);
+        const std::uint32_t stfTint =
+            rowCur ? render::packRgba(255, 244, 150, 255) : 0xFFFFFFFFu;
+        const std::string sfx = std::format("{:02d}", i);
+        // stfN: national-flag tile, SFLAGS.FSH entry tag fNNN = the team's FCDB record ordinal
+        // (same numbering as the FNNN shield family; measured: f030 = Argentina stripes+sun),
+        // NOT the pool position. animseq 1,sflags.fsh,1,46.
+        if (const formats::LayoutObject* stf = gridScreen_.object("stf" + sfx)) {
+            const std::string& flagFile = poolFlagFile_[idx];
+            if (!flagFile.empty()) {
+                const ScreenArt::Shape sh = const_cast<ScreenArt&>(art_).shape(
+                    "..\\global\\", "sflags.fsh", std::string("f") + flagFile.substr(1, 3), -1);
+                if (sh.tex) {
+                    ui.draw(sh.tex, {float(stf->x), float(stf->y), float(sh.w), float(sh.h)},
+                            {0.f, 0.f, 1.f, 1.f}, stfTint);
+                    ++st.shapes;
+                } else {
+                    ++st.missing;
+                }
+            }
+        }
+        std::string label = poolNames_[idx];
+        if (label.empty()) label = "team " + std::to_string(poolIds_[idx]); // FCDB name absent
+        drawRowLabel(gridScreen_.object("tm" + sfx), label); // button label (textXY 30,6)
+        if (std::cmp_equal(idx, cur)) {                              // selected-row state: cntr cell + name
+            if (const formats::LayoutObject* tc = gridScreen_.object("tc" + sfx)) {
+                const ScreenArt::Shape sh = const_cast<ScreenArt&>(art_).shape("..\\feflow11\\",
+                                                                               "feflow11.fsh", "cntr", -1);
+                if (sh.tex) {
+                    ui.draw(sh.tex, {float(tc->x), float(tc->y), float(sh.w), float(sh.h)},
+                            {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu);
+                    ++st.shapes;
+                } else {
+                    ++st.missing;
+                }
+            }
+            drawCellText(gridScreen_.object("tt" + sfx), label);
         }
     }
-    // Scrollbar thumb in the sbar track: flat quad, page-proportional.
+    // Selected-team name over the shield (ttnm) + the team's FNNN shield over the tmfg default.
+    if (!poolIds_.empty() && cur >= 0 && std::size_t(cur) < poolIds_.size()) {
+        if (std::size_t(cur) < poolNames_.size()) drawCellText(gridScreen_.object("ttnm"), poolNames_[std::size_t(cur)]);
+        if (std::size_t(cur) < poolFlagFile_.size() && !poolFlagFile_[std::size_t(cur)].empty()) {
+            if (const formats::LayoutObject* tmfg = gridScreen_.object("tmfg")) {
+                const ScreenArt::Shape sh = const_cast<ScreenArt&>(art_).shape("..\\global\\",
+                                                                               poolFlagFile_[std::size_t(cur)],
+                                                                               "f000", -1);
+                if (sh.tex) ui.draw(sh.tex, {float(tmfg->x), float(tmfg->y), float(sh.w), float(sh.h)},
+                                    {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu);
+            }
+        }
+    }
+    // Scrollbar thumb: the sclbar.fsh 'thmb' sprite (17x23) tracks the continuous window
+    // position top/(count-kRows) on the track; flat fallback when the sprite is absent.
     if (const formats::LayoutObject* sbar = gridScreen_.object("sbar")) {
-        const int pages = teams_.pageCount();
+        const int range = teams_.scrollRange();
         const float track = float(sbar->height > 0 ? sbar->height : 245);
-        const float thumb = track / float(pages > 0 ? pages : 1);
-        const float y = float(sbar->y) + (track - thumb) * float(teams_.page()) / float(pages > 0 ? pages : 1);
-        ui.draw(0, {float(sbar->x), y, float(sbar->width > 0 ? sbar->width : 8), thumb}, {}, render::packRgba(210, 230, 255, 255));
+        const ScreenArt::Shape th = const_cast<ScreenArt&>(art_).shape("..\\feflow11\\", "sclbar.fsh",
+                                                                       "thmb", -1);
+        const float thumhb = th.tex ? float(th.h) : track / 5.f;
+        const float y = float(sbar->y) + (track - thumhb) * float(top) / float(range > 1 ? range : 1);
+        if (th.tex) {
+            ui.draw(th.tex, {float(sbar->x), y, float(th.w), thumhb}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu);
+            ++st.shapes;
+        } else {
+            ui.draw(0, {float(sbar->x), y, float(sbar->width > 0 ? sbar->width : 8), thumhb}, {},
+                    render::packRgba(210, 230, 255, 255));
+        }
     }
     drawCursor(ui, st);
     return st;

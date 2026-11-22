@@ -315,8 +315,12 @@ namespace {
 FeWidgetState widgetStateFor(const formats::LayoutObject& o, const FeUiState* s) {
     using T = formats::LayoutObjectType;
     if (!s) return FeWidgetState::Normal;
-    if (!(o.type == int(T::Button) || o.type == int(T::ScrollBar) || o.type == int(T::Tbb) ||
-          o.type == int(T::AnimButton) || o.type == int(T::Btn)))
+    // T::List joins the button classes here: FEFLOW11 team rows (tmNN, objecttype=4) drive
+    // their cursor through HILITEDSHAPEID=selc with an explicit hover name from the app
+    // (keyboard cursor), exactly like the hub's button widgets.
+    if (!(o.type == int(T::Button) || o.type == int(T::ScrollBar) || o.type == int(T::List) ||
+          o.type == int(T::AnimButton) || o.type == int(T::Tbb) ||
+          o.type == int(T::Btn)))
         return FeWidgetState::Normal;
     if (!s->pressed.empty() && iequals(o.name, s->pressed)) return FeWidgetState::Press;
     if ((!s->hover.empty() && iequals(o.name, s->hover)) || widgetHit(o, s->mx, s->my)) return FeWidgetState::Hover;

@@ -243,11 +243,11 @@ Evidence: Feflow06.lay hub buttons (`fe07` released `franim.fsh#0000`, side icon
     Feflow82/FEFLOW50 qui1 `6,9,6,9`.
   - Vocabulary (exe data, read at 0x564314..0x564510 delta 0x401a00): animseq keys
     `SEQUENCES/REWIND/BACKNFORTH/TICKSPERFRAME/LOADALLSEQS` @0x564314/20/28/34/44 +
-    `FEPANE_ANIMTEXT`; button-class keys `MORPHER` @0x5644cc, `MORPHERXOFFSET/YOFFSET/
-    MORPHERFIRSTSTRNO/MORPHERNUMSTRS`, `DELAYTICKS` @0x564510 — these are **LAY key strings**,
-    not warning messages (the earlier "Shape %s... does not exist in %s" attribution is
-    retracted; the only imm32 ref to 0x5644cc is `push $0x5644cc` at 0x46dd1f inside the
-    id-4 list-class parse chain FUN_0046de5c).
+    `FEPANE_ANIMTEXT`; list-class (id 4, FUN_0046de5c per LAYOUT.md) keys `MORPHER` @0x5644cc,
+    `MORPHERXOFFSET/YOFFSET/MORPHERFIRSTSTRNO/MORPHERNUMSTRS`, `DELAYTICKS` @0x564510 (shared
+    name with kt id 44) — these are **LAY key strings**, not warning messages (the earlier
+    "Shape %s... does not exist in %s" attribution is retracted; the only imm32 ref to
+    0x5644cc is `mov $0x5644cc,%edx` at 0x46dd1f inside the list-class parse chain).
   - Storage: tbb parse FUN_00485984 (0x485984 prologue `mov %eax,%esi`) key `FRAMES`
     (`mov $0x566628,%edx` at 0x485a5a) tokenizes 4 words (0x473a0c + 0x4c3f5e) and stores
     **zero-based** `dec %eax` values as u16 at widget `+0x54/+0x56/+0x58/+0x5a` (0x485a9b,
@@ -264,15 +264,18 @@ Evidence: Feflow06.lay hub buttons (`fe07` released `franim.fsh#0000`, side icon
     terminated at 0xffff), string-byte walk at 0x487362..0x48739b. What class-registry widget
     `esi` names and what the loop produces is **[H]** — do not read it as proof of draw-time
     frame selection.
-  - Clock facts re-dumped (`DAT_00636a14` = multimedia stamp, 1/100 s, cf. AUDIO pass-118):
-    0x476269 `mov 0x636a14,%eax; cmp 0x48(%edx),%eax; jb ret;` then `mov 0x4c(%edx),%bl;
-    add $4,%eax; inc %bl; mov %eax,0x48(%edx)` — next-event gate `[w+0x48] = stamp+4`
-    (**40 ms**) with byte counter `[w+0x4C]++`. 0x46e7e0 handler gates `cmpb $1,[w+0x60]`,
-    fields `+0x90` (delay, -1 = off) and `+0x94` (start stamp); when `stamp-[w+0x94] >
-    [w+0x90]` it walks `0x14(%ecx)` via 0x47a3fc with `'dely'` (0x64656c79) and resets
-    `[w+0x94] = -1` — the DELAYTICKS watchdog (auto-repeat), not a frame clock. 150 ms == 15
-    stamp ticks == the animseq `TICKSPERFRAME` default; no timer read was found in a tbb draw
-    method, so the button cadence stays **[H]** and the port's cycle is kept unchanged.
+  - Clock facts re-dumped: 0x476269 `mov 0x636a14,%eax; cmp 0x48(%edx),%eax; jb ret;` then
+    `mov 0x4c(%edx),%bl; add $4,%eax; inc %bl; mov %eax,0x48(%edx)` — next-event gate
+    `[w+0x48] = stamp+4` (**40 ms** if `DAT_00636a14` is the 1/100-s multimedia stamp,
+    pass-118audio fact) with byte counter `[w+0x4C]++`. 0x46e7e0 handler gates
+    `cmpb $1,[w+0x60]`, fields `+0x90` (delay, -1 = off) and `+0x94` (start stamp); `now`
+    comes from `call 0x43ae68` (unit [H]), and when `now-[w+0x94] > [w+0x90]` it walks
+    `0x14(%ecx)` via 0x47a3fc with `'dely'` (0x64656c79) and resets `[w+0x94] = -1` — the
+    DELAYTICKS watchdog (auto-repeat), not a frame clock. 150 ms is 15 units of 10 ms; the
+    animseq `TICKSPERFRAME` default 15 is the **port's** `intProp` fallback
+    (fe_screen.cpp:439, paced at 16 ms/tick -> 240 ms there), not an exe-pinned default; no
+    timer read was found in a tbb draw method, so the button cadence stays **[H]** and the
+    port's cycle is kept unchanged.
 - Help pane: button `help=NNN,...` leading value = FC-bank string index painted into the
   `helppaneid=` widget (`objecttype=14`, fontid, centered alignment=3). **[C]** Feflow06.lay.
 

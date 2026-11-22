@@ -12,6 +12,7 @@
 
 using wc98::app::TeamListNav;
 using wc98::app::poolOrder;
+using wc98::app::TeamPickPool;
 
 int main() {
     // ---- pool partition (FUN_0044b618 [C], analysis/pass11team/fe11-pool.txt) ----
@@ -69,6 +70,22 @@ int main() {
     assert(t.rowsShown() == TeamListNav::kRows); // pool 33, top 25 -> rows 25..32
     t.setCount(0);
     assert(t.top() == 0 && t.rowsShown() == 0);
+
+    // ---- pool pick state (fun_0044d9c8 tm%02d click grammar [C]) ----
+    TeamPickPool p;
+    p.resize(40);
+    assert(p.stateOf(0) == 0 && p.p1Count() == 0 && p.selCount() == 0 && p.firstP1() < 0);
+    assert(p.click(-1) == false && p.click(4000) == false); // bounds: no change
+    assert(p.click(5) && p.stateOf(5) == 1 && p.p1Count() == 1 && p.selCount() == 1 && p.firstP1() == 5);
+    assert(p.click(5) && p.stateOf(5) == 2 && p.p1Count() == 0 && p.selCount() == 1 && p.firstP1() < 0);
+    assert(p.click(5) && p.stateOf(5) == 0 && p.selCount() == 0); // full cycle back
+    for (int i = 0; i < 31; ++i) assert(p.click(i)); // 31 picks stay under the cap
+    assert(p.selCount() == 31 && p.p1Count() == 31);
+    assert(p.click(31) == false); // 32nd pick: fun applies then reverts (0x1f < bc4)
+    assert(p.stateOf(31) == 0 && p.selCount() == 31);
+    assert(p.click(7) && p.stateOf(7) == 2 && p.p1Count() == 30 && p.selCount() == 31); // P2 takeover
+    p.resize(8); // pool rebuild zeroes the walk (fun_0044dda0 scan lane)
+    assert(p.selCount() == 0 && p.p1Count() == 0 && p.stateOf(0) == 0);
 
     std::printf("test_teamselect: ok\n");
     return 0;

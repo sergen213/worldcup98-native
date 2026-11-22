@@ -55,7 +55,8 @@ target_link_libraries(test_tournament PRIVATE wc98::tournament)
 # framing round-trip identity, summary header id gate, byte-exact slot round trips, scan loop.
 wc98_test(test_slot unit/test_slot.cpp)
 
-# FE team-select paging model (app/team_select.hpp): 40-team pool = 5 pages of 8, cursor wraps.
+# FE team-select pool model (app/team_select.hpp): continuous 8-row window + wrap, FUN_0044b618
+# pool partition, and the fun_0044d9c8 tm%02d pick state machine (cycle / counters / 31-cap revert).
 wc98_test(test_teamselect unit/test_teamselect.cpp)
 target_include_directories(test_teamselect PRIVATE ${CMAKE_SOURCE_DIR}/app)
 # Hub wedge -> launch-entry mapping table (FeFlow::hubButtonEntry): pins the Feflow06 cursor-domain

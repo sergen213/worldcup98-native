@@ -162,6 +162,15 @@ public:
     presentation::FeDrawStats drawLeague(render::SpriteBatch& ui) const; // FEFLOW73 composite + row hilite
     // Gate hook: step the team-select cursor (continuous-window smoke captures).
     void moveTeamCursor(int d) { if (teamScreen_) teams_.move(d); }
+    // FEFLOW11 row-click + pick counters [C fun_0044d9c8 tm%02d branch,
+    // analysis/pass13team/fe11_handlers.txt]: mirror of TeamPickPool. Enter on the
+    // grid cycles the cursor row while no P1 pick exists, otherwise commits the
+    // first state-1 row (the 'fe18' continue gate, P1 count >= 1).
+    void clickTeamRow(int row) { poolPick_.click(row); }
+    [[nodiscard]] int teamRowState(int row) const { return poolPick_.stateOf(row); }
+    [[nodiscard]] int teamP1Count() const { return poolPick_.p1Count(); }
+    [[nodiscard]] int teamSelCount() const { return poolPick_.selCount(); }
+    [[nodiscard]] int teamFirstP1() const { return poolPick_.firstP1(); }
     // ---- League configuration family (FEFLOW72/74/75/76/79/80; MENU_PARITY.md §4 rank 7) -----
     // The FEFLOW73 scene cluster (analysis/pass12/edges_table.txt SCENEREG block: feflow72 @0x45a514,
     // feflow74 @0x45df84, feflow75 @0x45ee34, feflow79 @0x45ff14, feflow80 @0x461ed0 + registered
@@ -702,6 +711,7 @@ public:
     // "FNNN" art name for a cup-pool team id ("" when the pool has no entry). NNN = FCDB record index.
     std::string flagFileForTeam(std::uint32_t id) const;
     TeamListNav teams_;                    // paging cursor (team_select.hpp)
+    TeamPickPool poolPick_;                // per-team pool state {0,1,2} (team_select.hpp)
     int pick_ = -1;                        // confirmed team id (-1 = none)
     presentation::FeCursor cursor_;      // MAUS.PAK art (absent = no sprite)
     render::TextureId cursorTex_ = 0;    // 0 = not uploaded (no art on this tree)

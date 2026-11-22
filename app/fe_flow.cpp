@@ -718,6 +718,10 @@ void FeFlow::loadTeams() {
         poolFlagFile_.clear();
     }
     teams_.setCount(int(poolIds_.size()));
+    // Pool record state (DAT_00608af5 stride-4 byte +3 walk) is zeroed whenever the
+    // pool is rebuilt; the exe boot open handler scans it and counts P1/total picks
+    // (fun_0044dda0), state surviving scene re-opens like the engine's pool.
+    poolPick_.resize(poolIds_.size());
 }
 
 // Language-row arrow (event 1017, FE15 dispatch `0x3f9` branch [C] analysis/pass22fe15d dec2.txt):
@@ -979,7 +983,7 @@ FeDrawStats FeFlow::drawTeamsGrid(render::SpriteBatch& ui) const {
         std::string label = poolNames_[idx];
         if (label.empty()) label = "team " + std::to_string(poolIds_[idx]); // FCDB name absent
         drawRowLabel(gridScreen_.object("tm" + sfx), label); // button label (textXY 30,6)
-        if (std::cmp_equal(idx, cur)) {                              // selected-row state: cntr cell + name
+        if (poolPick_.stateOf(int(idx)) != 0) { // pool state 1/2 (P1/P2): cntr cell + name [C e178]
             if (const formats::LayoutObject* tc = gridScreen_.object("tc" + sfx)) {
                 const ScreenArt::Shape sh = const_cast<ScreenArt&>(art_).shape("..\\feflow11\\",
                                                                                "feflow11.fsh", "cntr", -1);
@@ -1004,6 +1008,21 @@ FeDrawStats FeFlow::drawTeamsGrid(render::SpriteBatch& ui) const {
                                                                                "f000", -1);
                 if (sh.tex) ui.draw(sh.tex, {float(tmfg->x), float(tmfg->y), float(sh.w), float(sh.h)},
                                     {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu);
+            }
+        }
+    }
+    // 'num of teams selected' counter pair nopl/nopn (type-20, fontID 1, normalColour
+    // 14) [C fun_0044dff8]: total != 0 paints the count via fun_004788bc with the
+    // DAT_005629e4 format "%i"; total == 0 keeps both captions hidden.
+    if (hasText) {
+        if (const int tot = teamSelCount(); tot > 0) {
+            if (const formats::LayoutObject* nopl = gridScreen_.object("nopl")) {
+                const std::string num = std::to_string(tot);
+                for (const auto& q : presentation::layoutText(
+                         *f4, num, float(nopl->x), float(nopl->y), px,
+                         palRgba(nopl->intProp("NORMALCOLOUR", 14))))
+                    ui.draw(t4, q.dst, q.uv, q.rgba);
+                ++st.texts;
             }
         }
     }
@@ -1313,9 +1332,18 @@ bool FeFlow::enter() {
         if (openLeagueCfg(72)) return false;
         return true; // no FEFLOW72 layout on this tree: shell launches the default match
     }
-    if (teamScreen_) { // confirm the highlighted team: Enter launches with pickedTeam()
-        pick_ = poolIds_.empty() ? -1 : int(poolIds_[std::size_t(teams_.sel)]);
-        return true;
+    if (teamScreen_) { // [C fun_0044d9c8 tm%02d branch]: row clicks cycle the pool
+        // state; the 'fe18' continue lane gates on the P1 counter (DAT_00608bc0 < 1
+        // answers with the click sfx and stays on screen).
+        if (teamP1Count() >= 1) { // 'fe18': launch with the first state-1 (P1) team
+            const int row = teamFirstP1();
+            pick_ = row >= 0 && std::size_t(row) < poolIds_.size()
+                        ? int(poolIds_[std::size_t(row)])
+                        : -1;
+            return true; // launches with pickedTeam()
+        }
+        clickTeamRow(teams_.sel); // no P1 team yet: Enter = the row click selecting one
+        return false;
     }
     if (setupScreen_) { // friendly config accepted: the 'fe08' widget tag opens stadium select first
         if (!setupPractise_ && haveStad08_ && openStad08()) return false;

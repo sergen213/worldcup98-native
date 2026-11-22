@@ -58,7 +58,7 @@ the compositor lives in `tools/render-demo/main.cpp` (`--lay <spec> [--tree <dir
 |---|---|---|
 | `LAYOUTS.BIG@FEFLOW05.LAY` | 26 → 11 shapes + 100 text quads, 1 unresolved (text landed 2026-11-05) | main menu: France98 + EA SPORTS logos, tricolour, selector arrows, blue banners, FC*.BIN labels — PNG visually authentic; background flow bitmap composites over it (blending order is a known polish item) |
 | `IGLAY.BIG@CONTROL1.LAY` | 27 → 9 (+17 text via FeText in the app compositor; render-demo passes no text, counted `noArt`) | controller setup: four 1998 gamepads + keyboards + pitch diagram; `redleft.fsh#mous` = shipped gap (see Open items) |
-| `LAYOUTS.BIG@FEFLOW11.LAY` | → 24 shapes + 8 text rows (`--fe-team`, gate `fe_render_tournament`) | ZWCUP team-select pick grid — see section below |
+| `LAYOUTS.BIG@FEFLOW11.LAY` | → 22 shapes + 13 text rows with 3 picks (`--fe-team --fe-team-select 3`; gate `fe_render_tournament`) | ZWCUP team-select pick grid — see section below |
 
 ## Open items
 - Alpha/blend state per element type RESOLVED 2026-11-07 (see section below): no per-element GPU
@@ -95,9 +95,10 @@ f000 decodes to the Argentina shield, F031.FSH to Australia (render-demo dumps).
 no FNNN file by id — files span F000..F046 = the 56-record DBI's national-team records.
 
 Port: `app/fe_flow.cpp drawTeamsGrid` composites the LAY (`presentation::composite`) then overlays
-row flags + FCDB STR0 names at the LAY's own slot positions, scrollbar thumb page-proportional in
-`sbar`. Gate: ctest `fe_render_tournament` (--fe-team; evidence line `FEFLOW11: shapes=24 texts=8`,
-FAIL regex on zero counts). Nav model unchanged (`TeamListNav` pages of 8 — matches the LAY's 8 slots).
+row flags + FCDB STR0 names at the LAY's own slot positions, scrollbar thumb window-proportional in
+`sbar`. Gate: ctest `fe_render_tournament` (--fe-team; evidence line `FEFLOW11: shapes=.. texts=..`,
+FAIL regex on zero counts) + `fe_screen_capture_team`. Nav model = continuous 8-row window
+(`TeamListNav`, 174b3c3); pick state machine below.
 
 ## Alpha/blend & colour state per element type — RESOLVED (2026-11-07, pass 8)
 
@@ -312,3 +313,30 @@ Evidence: Feflow06.lay hub buttons (`fe07` released `franim.fsh#0000`, side icon
 - **Scroll arrows**: `up`/`down` stay composite-drawn on all boards via the `btnup -> INGAME.FSH`
   stem alias (pass-13 §D); the kind>=3 exclusion removed them from the whitelist, leaving bars
   without arrows.
+
+## Team-select pick state machine + counter (pass-46fe11, 2026-11-22)
+
+Decompile lane `analysis/pass45ctrl/subdecomp.txt` (slots feflow11 = init 0x44d9c8 / tick 0x44dda0
+confirmed by the registry scan above; the click grammar lives in the +0x1c slot body):
+- **tmNN click** (`fun_0044d9c8` [C]): row button `tm%02d` cycles the pool-record state byte
+  (record array `DAT_00608af5`, stride 4, state at record byte +3): 0 → 1 (P1) → 2 (P2) → 0.
+  Counter `DAT_00608bc0` (P1 total) is incremented/decremented on the transitions across 0;
+  `DAT_00608bc4` (selection total) is apply-then-revert: a 0→1 that leaves `0x1f < bc4` plays
+  the click sfx and rolls record + both counters back (max 31 selections accepted).
+- **Open handler** (`fun_0044dda0` [C]): rescans the stride-4 +3 walk at scene open (boot-opened
+  pool keeps its state across scene re-opens, `ram0x57cc48` one-shot gate), recomputes both
+  counters, then calls the paint helper.
+- **Counter paint** (`fun_0044dff8` [C]): when the selection total != 0 the pair `nopl`/`nopn`
+  (type-20 text, fontID 1, `normalColour` 14) is drawn through `fun_004788bc` with the
+  `DAT_005629e4` format `"%i"`; at 0 both captions stay hidden.
+- **Continue gate**: the `fe18` edge (NEXT/CUP wedge) requires P1 counter ≥ 1; without a P1 pick
+  it answers the click sfx and stays on screen. Enter on the grid mirrors a row click.
+
+Port: `app::TeamPickPool` (`app/team_select.hpp`) mirrors the record walk incl. the apply-revert
+cap; `FeFlow::clickTeamRow` + the `enter()` teamScreen branch drive it, `teamP1Count/teamFirstP1`
+gate the continue edge (launch with the first state-1 row). `drawTeamsGrid` gates the `cntr` cell
+and the state-gated red row name on state != 0, tints only an unselected cursor row (red text
+paints over the tint otherwise), and `tmfg` shows the pool row-0 P1 shield. Capture lane
+`--fe-team-select N` clicks rows 0..N-1 before the frame (evidence `FEFLOW11: shapes=22
+texts=13 cursors=1`, counter digit + 3 cells + P1 name visible). Gate: `test_teamselect`
+TeamPickPool asserts (cycle, bounds, cap revert at the 32nd pick, P2 takeover, resize zeroing).

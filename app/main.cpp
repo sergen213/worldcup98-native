@@ -115,6 +115,7 @@ int run(int argc, char** argv) {
     int fePick = -1; // --fe-pick ID: scripted team-select pick for the tournament entry (non-interactive gate)
     bool feTeam = false; // --fe-team: open the team-select screen (FEFLOW11 grid) before the smoke frames
     int feTeamCursor = 0; // --fe-team-cursor N: step the FEFLOW11 cursor N rows (scroll capture)
+    int feTeamSelect = 0; // --fe-team-select N: click rows 0..N-1 (pool state 1) before capture
     int feSetup = -1; // --fe-setup N: open the friendly (0) / practise (3) match-setup screen before the smoke frames
     bool feLeague = false; // --fe-league: open the FEFLOW73 league-select list before the smoke frames
     int feLeagueCfg = 0; // --fe-league-cfg N: open the league config family screen N (72/74/75/76/78/79/80)
@@ -178,6 +179,7 @@ int run(int argc, char** argv) {
         else if (a == "--fe-present") { feMode = true, presentGate = 1; }
         else if (a == "--fe-team") { feTeam = true; }
         else if (a == "--fe-team-cursor") { feTeamCursor = std::stoi(next()); }
+        else if (a == "--fe-team-select") { feTeamSelect = std::stoi(next()); }
         else if (a == "--fe-setup") { feMode = true, feSetup = std::stoi(next()); }
         else if (a == "--fe-league") { feMode = true, smokeFrames = 1, feLeague = true; } // FEFLOW73 list capture (1 frame; --fe-smoke N overrides)
         else if (a == "--fe-league-cfg") { feMode = true, smokeFrames = 1, feLeagueCfg = std::stoi(next()); } // league config grid/popup capture gate
@@ -342,6 +344,7 @@ int run(int argc, char** argv) {
     bool prevLmb = false; // mouse button edge state for widgetHit activation (Phase 1)
         if (fe && feTeam) { fe->selectNav(int(app::FeEntry::Tournament)); fe->enter(); } // hub wedge fe11 -> team-select grid (FEFLOW11)
         for (int i = 0; i < feTeamCursor && fe; ++i) fe->moveTeamCursor(+1); // continuous window
+        for (int i = 0; i < feTeamSelect && fe; ++i) fe->clickTeamRow(i); // pool state 1 (cntr + counter lane)
         if (fe && feSetup >= 0) { fe->selectNav(feSetup); fe->enter(); } // friendly/practise -> FEFLOW09/50 config screen
         if (fe && feLeague) { // League Play -> FEFLOW73 list. On the hub, selectNav opens the list directly (case 1);
             // enter() would re-activate the DEFAULT wedge (friendly setup, feflow09) which preempts drawCurrent's

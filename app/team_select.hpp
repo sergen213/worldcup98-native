@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cstdint>
 #include <array>
 #include <vector>
 
@@ -75,6 +76,54 @@ private:
     }
     int count = 0;
     int top_ = 0;
+};
+
+// Per-team pool selection state for the FEFLOW11 grid (fun_0044d9c8 click grammar,
+// analysis/pass13team/fe11_handlers.txt [C]). The engine keeps the state in the
+// stride-4 pool record byte +3 (DAT_00608af5 walk); clicking the row button tm%02d
+// cycles: 0 ->1 (select for P1: P1++ total++), 1->2 (P2 takes the team from P1:
+// P1-- total unchanged), 2 ->0 (deselect: total--). The click handler applies the
+// change first, then reverts + plays the click sfx if the total selected exceeds
+// 31 (0x1f, DAT_00608bc4) — the 32-team cap.
+class TeamPickPool {
+public:
+    void resize(std::size_t n) { state.assign(n, 0); }
+    void clear() { state.clear(); }
+    [[nodiscard]] int stateOf(int i) const {
+        return i >= 0 && std::size_t(i) < state.size() ? int(state[std::size_t(i)]) : 0;
+    }
+    // Mirror of the row-button click. False = click refused (pool bounds or the
+    // >31 cap, which the engine reverts and acknowledges with the click sfx).
+    bool click(int i) {
+        if (i < 0 || std::size_t(i) >= state.size()) return false;
+        const std::uint8_t old = state[std::size_t(i)];
+        state[std::size_t(i)] = std::uint8_t(old == 0 ? 1 : old == 1 ? 2 : 0);
+        if (const int total = selCount(); total > 0x1f) {
+            state[std::size_t(i)] = old;
+            return false;
+        }
+        return true;
+    }
+    [[nodiscard]] int p1Count() const { // DAT_00608bc0 [C]: count of state-1 entries
+        int n = 0;
+        for (const std::uint8_t b : state)
+            if (b == 1) ++n;
+        return n;
+    }
+    [[nodiscard]] int selCount() const { // DAT_00608bc4 [C]: count of state in {1,2}
+        int n = 0;
+        for (const std::uint8_t b : state)
+            if (b) ++n;
+        return n;
+    }
+    [[nodiscard]] int firstP1() const { // 'fe18' commit source: first state-1 row
+        for (std::size_t i = 0; i < state.size(); ++i)
+            if (state[i] == 1) return int(i);
+        return -1;
+    }
+
+private:
+    std::vector<std::uint8_t> state;
 };
 
 } // namespace wc98::app

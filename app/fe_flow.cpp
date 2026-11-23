@@ -2175,18 +2175,19 @@ void FeFlow::devRowsPoll(const void* boardOwner) const {
     }
 }
 
-// Composite-whitelist adjustment for the state machine above: unbound rows drop anmN, alpN and
-// arpN (ovrN/arwN stay as statics); bound rows drop arwN plus the unbound-side pane, and anmN is
-// painted manually after composite (composite holds ticksperframe=0 frame 1 = keyboard art,
-// which the exe only shows for a bound row with that device id).
+// Composite-whitelist adjustment for the state machine above: unbound rows keep anmN (the
+// exe pumps it as a looping controller animation — FUN_0044c920 animates unbound rows via
+// FUN_0044c9fc→FUN_0046d28c and hides bound rows' loops via FUN_0046d27c, both painters
+// [C]); composite renders ticksperframe=0 frame 1 statically, the frame-cycling pump is a
+// port-side [H] static. Bound rows drop anmN (manual frozen-frame paint below), arwN and
+// the unbound-side pane (FUN_0044ccd4 second loop hides the other pane).
 void FeFlow::devRowsAdjust(std::vector<std::string>& vis) const {
     const auto drop = [&vis](const std::string& n) { std::erase_if(vis, [&n](const std::string& s) { return s == n; }); };
     if (getenv("WC98_DUMP_VIS")) { for (auto& s : vis) std::fprintf(stderr, "vis:%s\n", s.c_str()); }
     for (int i = 0; i < 4; ++i) {
         const std::string idx = std::to_string(i);
-        drop("anm" + idx);
-        if (devRows_[i] == 0) { drop("alp" + idx); drop("arp" + idx); }
-        else { drop("arw" + idx); drop(devRows_[i] == 2 ? "alp" + idx : "arp" + idx); }
+        if (devRows_[i] == 0) { drop("arp" + idx), drop("alp" + idx); }
+        else { drop("anm" + idx); drop("arw" + idx); drop(devRows_[i] == 2 ? "alp" + idx : "arp" + idx); }
     }
 }
 

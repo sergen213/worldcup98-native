@@ -959,3 +959,24 @@ light one in `FeFlow::paintCaption` **[H]**.
   `alp2`/`arp2`/`alp3`/`arp3`, `anm*` never composite; `devRowState` encodes row value +
   device id. `statik` still holds headless (no pad → all rows stay state 0). Registry rows
   8/48 stay impl. §17/§18 "dev flag ignored" wording superseded by this section.
+
+**grvN/ctxN text-lane follow-up (2026-11-22, pass-uidev):** the §35 "show `grvN`" leg is
+closed — `FUN_0044ca48` uses the `grv%01d`/`ctx%01d` bytes (file 0x160C54/0x160C8C) as
+**widget-name templates** (`FUN_0049168e` builds the lookup name, `FUN_0047a3e8` resolves
+the object, `FUN_0046bfac`/`FUN_0046bfcc` only show/hide it), and the LAY records carry
+`textid=0` with zero-size `ctxN` (`analysis/pass11/lays/FEFLOW13.LAY`) — no painter path
+ever writes string content into them, so the original renders them empty even on bound
+rows [C]. The `alpN`/`arpN` panes are `null.fsh`/`shapeID=null` placeholders (legit, §A).
+Port behaviour matches; no defect.
+
+**anmN controller-image follow-up (2026-11-22, pass-uidev2):** unbound rows were rendering
+arrow-only; both painters show `anmN` on unbound rows — `FUN_0044ccd4` slot==0 runs
+`FUN_0046d28c` (animation flag ON → `contr.fsh` frames 1..8 cycle via the
+`FUN_0044c920`/`FUN_0044c9fc` pump), bound rows run `FUN_0046d27c` (flag OFF, frozen frame).
+Port now keeps `anmN` in the composite for state-0/3 rows (static frame 1 at
+`ticksperframe=0`; the frame-cycling pump pacing is [H]) and only bound rows use the manual
+frozen-frame paint. Verified: `/tmp/uanm/{wc13,cfg87}_fe00.png` rows 2/3 show the
+controller image + arrows; selftest `fe-cfg87`/`fe-wc13` still pass. The
+`FUN_00446624 = DAT_0057c965>>0x18` board-mode word (cmp==2 → `FUN_0044cb04`, cmp==1 branch
+at 0x443fbf) selects the two painter grammars; its producer is not statically decoded [H],
+port keeps the §35 grammar for arrow/pane placement.

@@ -291,6 +291,17 @@ if(DEFINED WC98_TREE)
         add_test(NAME fe_wc_cfg${_wq} COMMAND wc98-native --fe-wc-cfg ${_wq} --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/wcfg${_wq})
         set_tests_properties(fe_wc_cfg${_wq} PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW${_wq}: shapes=[1-9][0-9]* texts=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 ")
     endforeach()
+    # Controller boards (pass-23fe87/pass-24wc13/pass-45ctrl): FEFLOW87 shootout and FEFLOW13
+    # World Cup 'Controller Select'. Tick = device-slot pump (registry 0x562388 JMP FUN_0044c6c0):
+    # unbound rows paint anmN keyboard art + arrows, bound rows freeze the contr.fsh frame into
+    # the crest pane and drop the arrows (pass-uidev devRows lane). --fe-wc13-dev N forces N
+    # bound rows for the capture.
+    add_test(NAME fe_cfg87_board COMMAND wc98-native --fe-cfg87 0 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/cfg87)
+    set_tests_properties(fe_cfg87_board PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW87: shapes=[1-9][0-9]* texts=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 ")
+    add_test(NAME fe_wc13_board COMMAND wc98-native --fe-wc13 0 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/wc13)
+    set_tests_properties(fe_wc13_board PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW13: shapes=[1-9][0-9]* texts=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 ")
+    add_test(NAME fe_wc13_bound COMMAND wc98-native --fe-wc13-dev 2 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/wc13dev)
+    set_tests_properties(fe_wc13_bound PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}" PASS_REGULAR_EXPRESSION "FEFLOW13: shapes=[1-9][0-9]* texts=[1-9]" FAIL_REGULAR_EXPRESSION "shapes=0 ")
     # Cheats screen (feflow95.lay, MENU_PARITY.md §8): objecttype-18 checkbox rows btn0..btn7 with the
     # cheatbox `1box` frames + exe-string captions ("Take a Dive" .. "Alien Model"). --fe-cheats N opens it
     # with row i ON for bit i: mask 85 = rows 0/2/4/6 checked (toggle glyph visible), mask 0 = all empty.

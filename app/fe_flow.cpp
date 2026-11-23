@@ -349,7 +349,8 @@ FeFlow::FeFlow(render::Renderer& r, fs::path tree, std::string lang) : r_(r), tr
             }
         } catch (const std::exception& e) { lastError_ = std::string("FEFLOW16: ") + e.what(); }
         // Scene-ownership whitelists (§B-evidence widget map). Excluded on FEFLOW07: chat/cha2/cha3
-        // (netplay chat surfaces), ltll/ltlr/rtlr/rtrr + the null shad shadow (invisible hit polygons),
+        // (netplay chat surfaces), ltll/ltlr/rtlr/rtrr + [object 22] (objectname=rtrr, fname=null.fsh
+        // shapeID=null: the invisible right-ball click polygon),
         // shtg/pssg/rnng/dfce/ovrl (soup textids 429-433 = FC strings "Confirms selection..."/
         // "Congratulations..." of other contexts; real captions painted from FCENG 1691/1330/1741/
         // 573/1278), ltnm/rtnm paint as overlays (team names), the lbNN/rbNN bar0 quads draw full-
@@ -357,7 +358,8 @@ FeFlow::FeFlow(render::Renderer& r, fs::path tree, std::string lang) : r_(r), tr
         if (haveSetup07_)
             setup07Visible_ = {"back", "titl", "flag", "quit", "fe15", "fe89", "fe41", "fe28", "fe06",
                                "fe09", "ltlb", "ltrb", "rtlb", "rtrb", "shdl", "shdr", "ltnm", "rtnm",
-                               "fotl", "fotr", "lb01", "lb02", "lb03", "lb04", "lb05",
+                               "fotl", "fotr", "null",  // [object 23] 'ball shadows': feflow07.fsh shapeID=shad, (103,252) 349x90, behind fotl/fotr
+                               "lb01", "lb02", "lb03", "lb04", "lb05",
                                "rb01", "rb02", "rb03", "rb04", "rb05", "help"};
         if (haveStad08_)
             stad08Visible_ = {"back", "titl", "flag", "quit", "fe06", "fe15", "fe89", "fe41", "fe07",

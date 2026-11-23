@@ -461,7 +461,7 @@ light one in `FeFlow::paintCaption` **[H]**.
   widgets quit/fe06/fe15/fe07/fe08 per the event compares [C fe87_dec1].
 - **Gates**: selftest step `fe-cfg87` (name/draw shapes, static frame: navigation cannot alter the
   board, stay-on-board, Esc pop to 33, hub fallback, FC-caption remap pair "Teammates:") PASS;
-  capture lanes `--fe-cfg87` / `--fe-cfg87-dev` (dev flag accepted, ignored — board is static)
+  capture lanes `--fe-cfg87` / `--fe-cfg87-dev` (bound-row lane since §36 pass-uidev)
   (`cfg87static_fe00.png` viewed: 4 keyboard rows + arrows, no cursor ring, no joystick tile,
   shields, clean caption row). `fe-cfg87` caption probe via `FeFlow::cfg87Caption` (FC-remap lane
   of `FeText::label`).
@@ -478,8 +478,8 @@ light one in `FeFlow::paintCaption` **[H]**.
   - `'fe15'` → options jump `FUN_00451964` push 0x562a24 site 0x44e56d; init tail also writes 0x66+`'fe15'` (same options edge).
   - `'fe08'` forward: `FUN_00446624()==2` stay-guard (2-controller play keeps the board), else `FUN_0045a24c()` (device-count check): `<0` → `FUN_00448428` no edge; `>=0` → `FUN_00448418(0)` + `FUN_0045a198` + push `NAME:feflow56` (tournament launch transition, null-LAY scene).
   - Esc path = event branch `0x3ea` push `NAME:feflow06` site 0x44e4c4 (`analysis/pass12/edges_table.txt:113`) → straight to hub, **not** a `wcStack_` pop as on family boards.
-- **Board port** (`app/fe_flow.cpp` `openWc13`/`drawWc13` + enter/mouse handlers): pump-default composite — 4 rows `ovrN` overlay + `alpN`/`arpN` colour panes + `anmN` CONTR.FSH controller picture (baked frame 1 = keyboard) + `arwN` arrows + `ctxN`/`grvN` runtime text slots excluded; `tmtl`/`tmtr` FC-remap 4594 "Teammates:" captions; `ltfg`/`rtfg` pool shields; `titl` plate. No cursor ring, no device rail — the pass-24 invented lanes are cut; the exe row-state lane (`DAT_00608768[row]` click callbacks) stays unwired [H]. Open edge: feflow20 `'frwd'` [C SITE 0x452dc7] → `openWc13` (already wired via `wcStack_`).
-- **Gates**: selftest step 14b5 `fe-wc13` (name/draw shapes, static frame (navigation does not alter the board), stay-on-board, Esc → hub not stack pop, `'fe06'` confirm → hub without app exit, `wc13Caption` remap pair "Teammates:"); capture lanes `--fe-wc13` / `--fe-wc13-dev` (dev flag ignored — static) (`wc13static_fe00.png` region-clean).
+- **Board port** (`app/fe_flow.cpp` `openWc13`/`drawWc13` + enter/mouse handlers): pump-default composite — 4 rows `ovrN` overlay + `alpN`/`arpN` colour panes + `anmN` CONTR.FSH controller picture (baked frame 1 = keyboard) + `arwN` arrows + `ctxN`/`grvN` runtime text slots excluded; `tmtl`/`tmtr` FC-remap 4594 "Teammates:" captions; `ltfg`/`rtfg` pool shields; `titl` plate. No cursor ring, no device rail — the pass-24 invented lanes are cut; the exe row-state lane (`DAT_00608768[row]` click callbacks) stays unwired [H] (wired by §36 pass-uidev). Open edge: feflow20 `'frwd'` [C SITE 0x452dc7] → `openWc13` (already wired via `wcStack_`).
+  capture lanes `--fe-wc13` / `--fe-wc13-dev` (bound-row lane since §36 pass-uidev) (`wc13static_fe00.png` region-clean).
 - Registry row 8 → **impl**; §4 item 4 updated; dossier `analysis/pass24wc13/NOTES.md` (+ `fe13_asm.txt`).
 
 ## 19. Round 2026-11-18 — pass-26igmenu: IGMENU decoded row table + CONTROL1 in-game board [LANDED]
@@ -929,7 +929,33 @@ light one in `FeFlow::paintCaption` **[H]**.
   device branch; `--fe-*-dev N` flags stay parsed but are no-ops. The exe row-state lane
   (widget-click callbacks setting `DAT_00608768[row]≠0` → `lrp`/`rrp` art + `grvN` text) stays
   unwired [H] — nothing in the port drives it and no byte exists for a port-side cursor.
+  (Superseded same day: §36 pass-uidev wired the lane — pad button events drive the row state.)
 - **Gates**: selftest `fe-cfg87`/`fe-wc13` PASS (`statik=1` — navigation never alters the board,
   which matches the exe: only click callbacks change row state); captures
   `cfg87static_fe00.png`/`wc13static_fe00.png` viewed — 4 keyboard rows, arrows, shields,
   captions; no ring, no joystick tile. Registry rows 8/48 stay impl.
+
+## 36. Round 2026-11-22 — pass-uidev: device-row lane wired for both controller boards [LANDED]
+
+- **Port** (`app/fe_flow.cpp` `devRowsPoll`/`devRowsAdjust`/`devRowsPaint`, mirrored per-board
+  in `drawWc13`/`drawCfg87`): the §35 "unwired [H]" row-state lane is now driven.
+  `devRowsPoll` walks `SDL_GetGamepads` each frame (handles kept open for the process, like
+  the CONTROL1 lane's `s_pad`) and binds row i on any button-down of pad i — the exe's
+  dispatcher `FUN_00436bd0` filters device types 0/2 (keyboard/mouse) at entry, so only pad
+  events bind; bindings are sticky for the board visit instead of the exe's 30-tick queue
+  re-arm `[H]`, and the pad→row/side/id mapping (pad j → row j, even j left (state 1, `alpN`
+  pane) / odd j right (state 2, `arpN`), id = j → `contr.fsh` frame id+1) is port-side policy
+  `[H]`. `devRowsAdjust` applies the painter grammar to the composite whitelist: unbound rows
+  keep `arwN`, drop `alpN`/`arpN`/`anmN`; bound rows drop `arwN` + the non-bound-side pane.
+  `devRowsPaint` draws the bound `contr.fsh` frame at the `anmN` origin (manual, after
+  composite — composite's baked `ticksperframe=0` frame is never painted).
+- **Capture lane**: `--fe-wc13-dev N` / `--fe-cfg87-dev N` now force N bound rows
+  (`setDevRowsCapture`) instead of being ignored; `WC98_DUMP_VIS=1` dumps the pre-adjust
+  whitelist. Captures `/tmp/uidev/wc13dev_fe00.png` (rows 0/1 bound: arrows hidden, panes +
+  `contr.fsh` art on the bound side; rows 2/3 keep arrows) and `cfg87dev_fe00.png` (same) —
+  `ltfg`/`rtfg` team shields are LAY statics on both boards, not part of the lane.
+- **Gates**: selftest `fe-cfg87`/`fe-wc13` gained `lane` assertions (`lane=1`): bound rows
+  drop `arw0`/`arw1` + cross panes `arp0`/`alp1`, unbound rows keep `arw2`/`arw3` and drop
+  `alp2`/`arp2`/`alp3`/`arp3`, `anm*` never composite; `devRowState` encodes row value +
+  device id. `statik` still holds headless (no pad → all rows stay state 0). Registry rows
+  8/48 stay impl. §17/§18 "dev flag ignored" wording superseded by this section.

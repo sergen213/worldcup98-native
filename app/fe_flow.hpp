@@ -264,6 +264,28 @@ public:
     [[nodiscard]] bool onWc13() const { return wc13View_; }
     presentation::FeDrawStats drawWc13(render::SpriteBatch& ui) const;
     [[nodiscard]] std::string wc13Caption(std::string_view name) const; // FC-remap caption (gate evidence)
+    // ---- FEFLOW13/87 device-row state lane (pass-uidev) ------------------------------------------
+    // Mirrors the exe pump FUN_0044c6c0: DAT_00608768[row] 0 = unbound (arrows, no device art),
+    // 1/2 = bound left/right half; device ids from DAT_006006a8[] drive the contr.fsh frame.
+    void devRowsPoll(const void* boardOwner) const;                          // SDL pad binding
+    void devRowsAdjust(std::vector<std::string>& vis) const;                 // per-row whitelist
+    void devRowsPaint(const formats::ScreenLayout& sc, render::SpriteBatch& ui,
+                      presentation::FeDrawStats& st) const;                  // bound-row contr.fsh icons
+    std::uint64_t devRowState(std::size_t row) const { return row < 4 ? (devRows_[row] | (std::uint64_t(devIds_[row]) << 8)) : 0; }
+    void setDevRowsCapture(int n, bool cfg87Board) { // --fe-*-dev N: force n bound rows
+        devRowsOwner_ = cfg87Board ? (const void*)&cfg87_ : (const void*)&wc13_;
+        for (int i = 0; i < 4; ++i) { devRows_[i] = i < n ? static_cast<std::uint8_t>(1 + (i % 2)) : 0;
+                                      devIds_[i] = i < n ? i : -1; } }
+    std::vector<std::string> devRowVisForTest(bool cfg87Board) const { // gate hook: adjusted whitelist
+        std::vector<std::string> v = cfg87Board ? cfg87Visible_ : wc13Visible_;
+        devRowsAdjust(v);
+        return v;
+    }
+private:
+    mutable const void* devRowsOwner_ = nullptr; // board whose rows the state belongs to
+    mutable std::uint8_t devRows_[4] = {};       // DAT_00608768[row]: 0 unbound, 1 left, 2 right
+    mutable int devIds_[4] = {-1, -1, -1, -1};   // DAT_006006a8 device id (contr.fsh frame id+1)
+public:
     // ---- pass-108 venue fly-in lane (tournament board backdrop) --------------------------------
     // The exe feflow35 prologue (0x4587e8) reads the schedule record word +0xa (high half = venue
     // index, pass-105 provenance), loads venue art through the wrapper lane (FUN_0044a72c /

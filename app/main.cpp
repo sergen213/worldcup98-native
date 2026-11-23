@@ -140,6 +140,8 @@ int run(int argc, char** argv) {
     int feCfgSide = 0;    // --fe-cfg-side N: feflow33 focused side (0=left 1=right)
     int feCfg87 = -1;     // --fe-cfg87 N: FEFLOW87 shootout board gate (feflow33 -> 'fe87' chain); N kept for CLI compat, board is pump-default composite (pass-45 ctrl-pump)
     int feWc13 = -1;      // --fe-wc13 N: FEFLOW13 World Cup controller board gate (feflow20 -> 'frwd' chain, pass-24wc13); N kept for CLI compat, board is pump-default composite (pass-45)
+    int feCfg87Dev = -1;  // --fe-cfg87-dev N: force N bound device rows for the capture (pass-uidev)
+    int feWc13Dev = -1;   // --fe-wc13-dev N: force N bound device rows for the capture (pass-uidev)
     int feControl = -1; // --fe-control N: CONTROL1 controller page from the options chain, nav cursor +N (§H)
     int feIgMode = 0;       // --fe-igoptns a|g|m: open the in-game option popup (igaoptns/iggoptns/igmoptns)
     std::string fePopupName; // --fe-popup NAME: shared popup lane gate (feflow10/37, igconsel/mesg/Feflow86)
@@ -203,9 +205,9 @@ int run(int argc, char** argv) {
         else if (a == "--fe-cfg") { feMode = true, smokeFrames = 1, feCfg = std::stoi(next()); }              // feflow32/33 gate; N = screen*100 + cursor moves
         else if (a == "--fe-cfg-side") { feCfgSide = std::stoi(next()); }              // feflow33 side focus
         else if (a == "--fe-cfg87") { feMode = true, smokeFrames = 1, feCfg87 = std::stoi(next()); } // FEFLOW87 shootout board gate (pump-default composite)
-        else if (a == "--fe-cfg87-dev") { next(); /* accepted, ignored: row-state lane unwired (pass-45) */ }
+        else if (a == "--fe-cfg87-dev") { feMode = true, smokeFrames = 1, feCfg87 = 0, feCfg87Dev = std::stoi(next()); } // bound-row capture lane (pass-uidev)
         else if (a == "--fe-wc13") { feMode = true, smokeFrames = 1, feWc13 = std::stoi(next()); } // FEFLOW13 World Cup controller board gate (pump-default composite)
-        else if (a == "--fe-wc13-dev") { next(); /* accepted, ignored: row-state lane unwired (pass-45) */ }
+        else if (a == "--fe-wc13-dev") { feMode = true, smokeFrames = 1, feWc13 = 0, feWc13Dev = std::stoi(next()); } // bound-row capture lane (pass-uidev)
         else if (a == "--fe-save-manager") { feMode = true, smokeFrames = 1, feSave42 = std::stoi(next()); }   // feflow42 SAVE confirm gate; N = row moves + Enter write
         else if (a == "--fe-replay-load") { feMode = true, smokeFrames = 1, feRepl57 = std::stoi(next()); }    // FEFLOW57 replay browser gate; N = row moves (fixture index if none [H])
         else if (a == "--fe-igoptns") { // igoptns captions lane gate: a=audio g=game m=mouse popup
@@ -432,7 +434,9 @@ int run(int argc, char** argv) {
                 fe->enter(); // Enter on 33 = the 'fe87' wedge edge
                 if (!fe->onCfg87()) std::fprintf(stderr, "fe: FEFLOW87 unavailable\n");
                 else {
-                    std::fprintf(stderr, "cfg87: static composite board (no engine cursor)\n");
+                    if (feCfg87Dev >= 0) fe->setDevRowsCapture(feCfg87Dev, /*cfg87=*/true);
+                    std::fprintf(stderr, "cfg87: %s composite board (no engine cursor)\n",
+                                 feCfg87Dev >= 0 ? "bound-row" : "static");
                 }
             }
         }
@@ -440,7 +444,9 @@ int run(int argc, char** argv) {
         if (!fe->openWcCfg(20)) std::fprintf(stderr, "fe: FEFLOW20 unavailable\n");
         else if (!fe->openWc13()) std::fprintf(stderr, "fe: FEFLOW13 unavailable\n");
         else {
-            std::fprintf(stderr, "wc13: static composite board (no engine cursor)\n");
+            if (feWc13Dev >= 0) fe->setDevRowsCapture(feWc13Dev, /*cfg87=*/false);
+            std::fprintf(stderr, "wc13: %s composite board (no engine cursor)\n",
+                         feWc13Dev >= 0 ? "bound-row" : "static");
         }
     }
     if (fe && feLoad41 >= 0) { // --fe-load-game N: feflow41 LOAD list over the port slot dir, rows +N

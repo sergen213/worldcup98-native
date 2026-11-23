@@ -2194,11 +2194,23 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                 fe.back(); // 'fe06' exit -> hub
                 const bool hub = !fe.onCfg32();
                 const bool caps = !fe.cfg87Caption("tmtl").empty() && fe.cfg87Caption("tmtl") == fe.cfg87Caption("tmtr");
-                st.passed = nm87 && drew && statik && stay87 && pop33 && hub && caps;
+                // pass-uidev device-row lane [C analysis/pass45ctrl FUN_0044ccd4]: a bound row
+                // hides its arwN and the non-bound-side pane; unbound rows keep arwN, drop both
+                // panes; anmN never composites (painted only for bound rows via devRowsPaint).
+                fe.setDevRowsCapture(2, /*cfg87=*/true);
+                const auto visD = fe.devRowVisForTest(true);
+                const auto hasD = [&visD](const char* n) { return std::find(visD.begin(), visD.end(), std::string(n)) != visD.end(); };
+                const bool lane = !hasD("arw0") && !hasD("arw1") && hasD("arw2") && hasD("arw3")
+                               && !hasD("arp0") && hasD("alp0") && !hasD("alp1") && hasD("arp1")
+                               && !hasD("alp2") && !hasD("arp2") && !hasD("alp3") && !hasD("arp3")
+                               && !hasD("anm0") && !hasD("anm2")
+                               && (fe.devRowState(0) & 0xffu) == 1u && (fe.devRowState(1) & 0xffu) == 2u
+                               && ((fe.devRowState(1) >> 8) & 0xffu) == 1u && (fe.devRowState(2) & 0xffu) == 0u;
+                st.passed = nm87 && drew && statik && stay87 && pop33 && hub && caps && lane;
                 st.detail = fmt("fe-cfg87: nm87={} drew={} shapes={} statik={} stay87={} pop33={} hub={} "
-                                "caps={} tmtl='{}' tmtr='{}' nplr-default='{}' tltx='{}' trtx='{}'",
+                                "caps={} lane={} tmtl='{}' tmtr='{}' nplr-default='{}' tltx='{}' trtx='{}'",
                                 int(nm87), int(drew), int(st87.shapes), int(statik),
-                                int(stay87), int(pop33), int(hub), int(caps),
+                                int(stay87), int(pop33), int(hub), int(caps), int(lane),
                                 fe.cfg87Caption("tmtl"), fe.cfg87Caption("tmtr"), fe.cfg87Caption("nplr"),
                                 fe.cfg87Caption("tltx"), fe.cfg87Caption("trtx"));
             }
@@ -2256,11 +2268,22 @@ int runSelfTest(const fs::path& tree, const fs::path& outJson) {
                 //  pump click callbacks, a lane the port does not implement [C pass-45])
                 const bool closed = !fe.onWc13() && !fe.onWcCfg();
                 const bool caps = fe.wc13Caption("tmtl") == "Teammates:" && fe.wc13Caption("tmtl") == fe.wc13Caption("tmtr");
-                st.passed = s20 && nm13 && drew && statik && stay13 && hub && closed && caps;
+                // pass-uidev device-row lane, same state machine as fe-cfg87 above
+                // [C analysis/pass45ctrl FUN_0044ccd4].
+                fe.setDevRowsCapture(2, /*cfg87=*/false);
+                const auto vis13 = fe.devRowVisForTest(false);
+                const auto has13 = [&vis13](const char* n) { return std::find(vis13.begin(), vis13.end(), std::string(n)) != vis13.end(); };
+                const bool lane13 = !has13("arw0") && !has13("arw1") && has13("arw2") && has13("arw3")
+                                 && !has13("arp0") && has13("alp0") && !has13("alp1") && has13("arp1")
+                                 && !has13("alp2") && !has13("arp2") && !has13("alp3") && !has13("arp3")
+                                 && !has13("anm0") && !has13("anm2")
+                                 && (fe.devRowState(0) & 0xffu) == 1u && (fe.devRowState(1) & 0xffu) == 2u
+                                 && ((fe.devRowState(1) >> 8) & 0xffu) == 1u && (fe.devRowState(2) & 0xffu) == 0u;
+                st.passed = s20 && nm13 && drew && statik && stay13 && hub && closed && caps && lane13;
                 st.detail = fmt("fe wc13: s20={} nm13={} drew={} shapes={} texts={} statik={} stay13={} "
-                                "hub={} closed={} caps={} tmtl='{}' tmtr='{}'",
+                                "hub={} closed={} caps={} lane={} tmtl='{}' tmtr='{}'",
                                 int(s20), int(nm13), int(drew), int(st13.shapes), int(st13.texts), int(statik),
-                                int(stay13), int(hub), int(closed), int(caps),
+                                int(stay13), int(hub), int(closed), int(caps), int(lane13),
                                 fe.wc13Caption("tmtl"), fe.wc13Caption("tmtr"));
             }
         } catch (const std::exception& e) {

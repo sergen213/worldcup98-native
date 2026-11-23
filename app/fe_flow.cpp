@@ -2136,18 +2136,99 @@ render::Camera FeFlow::venueCamera() const {
     return venue_ ? venue_->framedCamera() : render::Camera{};
 }
 
-// FEFLOW87 shootout controller board: pump-default composite over feflow87.fsh art (pass-45).
-// FEFLOW87 tick = 0x467ab0 = JMP FUN_0044c6c0 (device-slot pump, analysis/pass45ctrl): zeroes
-// DAT_00608748..0x608784 every tick, installs repeat-poll FUN_0044c958 at [window+0x14], then
-// row-paints FUN_0044ccd4 (+ click callbacks FUN_0044c9fc/ca1c). All-slots-0 default state:
-// anmN keyboard art, arwN pair arrows SHOWN, grvN/panes HIDDEN — exactly the composite the port
-// draws. Row state (lrp/rrp repeat-arrow art + grvN text) only changes via the exe click
-// callbacks; no port lane drives them [H], so the board stays at the painted default state.
+// --- FEFLOW13/87 device-row state lane (pass-uidev) ---------------------------------------------
+// The exe tick pump FUN_0044c6c0 zeroes DAT_00608768[0..3] (raw prologue 0x44c6db,
+// analysis/pass45ctrl dev6_0044c6c0) every tick and re-derives bindings through the device
+// button dispatcher FUN_00436bd0: event device types 0/2 (keyboard, mouse) are filtered at the
+// dispatcher entry, so rows bind only on real gamepad button events (param_3 = FUN_0044c9fc
+// installed by the pump at 0x44c74e, param_4 = FUN_0044ca1c at 0x44c75a). The row painter
+// FUN_0044ccd4 then paints per row: state 0 -> anmN hidden (FUN_0046d28c byte+0x46) and arwN
+// shown (FUN_0046bfac); state 1/2 -> arwN hidden, icon copied to lrpN/rrpN x (record +0xc/
+// +0xe), animseq frame set from the device id table DAT_006006a8[] (FUN_004370bc ->
+// FUN_0046d1f4, contr.fsh shapes 1..8), and only alpN (left) or arpN (right) shown
+// (FUN_0044ccd4 second loop hides the other pane through FUN_0046bfac/bfcc). The port keeps
+// bindings sticky across the board visit instead of the exe's 30-tick queue re-arm
+// ([rec+0x20] = stamp+0x1e, FUN_00436bd0) [H]; the pad->id/side mapping is a port-side [H]
+// policy: pad j binds row j, even pads to the left half / odd to the right, ids map to
+// contr.fsh frames (frame 1 = keyboard art, gamepad frame order [H]).
+void FeFlow::devRowsPoll(const void* boardOwner) const {
+    if (devRowsOwner_ != boardOwner) { // board re-entry: the pump resets both DAT blocks
+        devRowsOwner_ = boardOwner;
+        for (int i = 0; i < 4; ++i) { devRows_[i] = 0; devIds_[i] = -1; }
+    }
+    int n = 0;
+    static SDL_Gamepad* s_opened[4] = {}; // opened once, kept for the process (like the CONTROL1 lane's s_pad)
+    if (SDL_JoystickID* pads = SDL_GetGamepads(&n)) {
+        for (int i = 0; i < std::min(n, 4); ++i) {
+            if (devIds_[i] != -1) continue; // sticky once a button press was seen
+            if (!s_opened[i]) s_opened[i] = SDL_OpenGamepad(pads[i]); // button state needs an open handle
+            SDL_Gamepad* g = s_opened[i];
+            if (!g) continue;
+            for (int b = 0; b < SDL_GetNumJoystickButtons((SDL_Joystick*)g); ++b)
+                if (SDL_GetGamepadButton(g, static_cast<SDL_GamepadButton>(b))) {
+                    devIds_[i] = i;
+                    devRows_[i] = static_cast<std::uint8_t>(1 + (i % 2)); // left / right half
+                    break;
+                }
+        }
+        SDL_free(pads);
+    }
+}
+
+// Composite-whitelist adjustment for the state machine above: unbound rows drop anmN, alpN and
+// arpN (ovrN/arwN stay as statics); bound rows drop arwN plus the unbound-side pane, and anmN is
+// painted manually after composite (composite holds ticksperframe=0 frame 1 = keyboard art,
+// which the exe only shows for a bound row with that device id).
+void FeFlow::devRowsAdjust(std::vector<std::string>& vis) const {
+    const auto drop = [&vis](const std::string& n) { std::erase_if(vis, [&n](const std::string& s) { return s == n; }); };
+    if (getenv("WC98_DUMP_VIS")) { for (auto& s : vis) std::fprintf(stderr, "vis:%s\n", s.c_str()); }
+    for (int i = 0; i < 4; ++i) {
+        const std::string idx = std::to_string(i);
+        drop("anm" + idx);
+        if (devRows_[i] == 0) { drop("alp" + idx); drop("arp" + idx); }
+        else { drop("arw" + idx); drop(devRows_[i] == 2 ? "alp" + idx : "arp" + idx); }
+    }
+}
+
+// Bound-row device icons: contr.fsh frame (id+1) at the bound-side lrpN/rrpN origin. Missing
+// art counts missing and the row degrades like the exe's null-shape path.
+void FeFlow::devRowsPaint(const formats::ScreenLayout& sc, render::SpriteBatch& ui,
+                          FeDrawStats& st) const {
+    for (int i = 0; i < 4; ++i) {
+        if (devRows_[i] == 0 || devIds_[i] < 0) continue;
+        const formats::LayoutObject* anm = sc.object("anm" + std::to_string(i));
+        if (!anm) continue;
+        const formats::LayoutObject* pos =
+            sc.object(std::string(devRows_[i] == 2 ? "rrp" : "lrp") + std::to_string(i));
+        const float x = float(pos ? pos->x : anm->x + (devRows_[i] == 2 ? 262 : 0));
+        const float y = float(pos ? pos->y : anm->y);
+        const std::string vpath = anm->prop("vpath") ? *anm->prop("vpath") : std::string("..\\global\\");
+        const ScreenArt::Shape sh = const_cast<ScreenArt&>(art_).shape(vpath, "contr.fsh", std::string(), devIds_[i] + 1);
+        if (sh.tex) {
+            ui.draw(sh.tex, {x, y, float(sh.w), float(sh.h)}, {0.f, 0.f, 1.f, 1.f}, 0xFFFFFFFFu);
+            ++st.shapes;
+        } else {
+            ++st.missing;
+        }
+    }
+}
+
+// FEFLOW87 shootout controller board: composite over feflow87.fsh art with the device-row
+// state lane (§ devRowsPoll/devRowsAdjust/devRowsPaint above). FEFLOW87 tick = 0x467ab0 = JMP
+// FUN_0044c6c0, the device-slot pump that zeroes DAT_00608748..0x608784 every tick and
+// row-paints FUN_0044ccd4 [C pass-45 analysis/pass45ctrl]: every row starts unbound = arrow
+// band only, no device art; bindings come from gamepad button events (keyboard/mouse are
+// filtered by the dispatcher). No 2p-mode arw/ovr suppression lane exists (port matches are
+// 1-player-machine setups, FUN_00446624 byte stays 1).
 FeDrawStats FeFlow::drawCfg87(render::SpriteBatch& ui) const {
     presentation::FeUiState uist;
     uist.animMs = animTicks_ * 16u; // aflag.fsh flag animation (ticksperframe default 15)
     ++animTicks_;
-    FeDrawStats st = presentation::composite(cfg87_, ui, const_cast<ScreenArt&>(art_), text_.get(), &cfg87Visible_, &uist);
+    devRowsPoll(&cfg87_);
+    std::vector<std::string> vis = cfg87Visible_;
+    devRowsAdjust(vis);
+    FeDrawStats st = presentation::composite(cfg87_, ui, const_cast<ScreenArt&>(art_), text_.get(), &vis, &uist);
+    devRowsPaint(cfg87_, ui, st);
     // Shield slots (ltfg/rtfg shapeID=f000 runtime-filled): the friendly matchup sides' flags,
     // same drawFlag grammar as feflow07/16/32.
     const auto flagOver = [&](const char* slot, int poolIdx) {
@@ -2186,19 +2267,24 @@ FeDrawStats FeFlow::drawCfg87(render::SpriteBatch& ui) const {
     return st;
 }
 
-// FEFLOW13 World Cup controller board (pass-24wc13; pass-45): pump-default composite over
-// feflow13.fsh art. FEFLOW13 tick (registry row 0x562388: 0x44e578) is JMP FUN_0044c6c0 — the
-// same device-slot pump as FEFLOW87 (§ pass-45, MENU_PARITY): all-slots-0 default paint
-// = keyboard rows + pair arrows; no cursor ring, no device rail exists. The exe row-state lane
-// (DAT_00608768[row] via FUN_0044c9fc/ca1c click callbacks) stays unwired [H]. ltfg/rtfg shield
-// slots stay runtime-filled (pool matchup fallback [H]; the exe
-// fills them from the tournament context via the FUN_004c31d0 text-draw lane), with tltx/trtx
-// centred captions and aflag animation.
+// FEFLOW13 World Cup controller board (pass-24wc13; pass-45; pass-uidev): composite over
+// feflow13.fsh art with the shared device-row state lane — FEFLOW13 tick (registry row
+// 0x562388: 0x44e578) is JMP FUN_0044c6c0, the same pump as FEFLOW87, so unbound rows paint
+// arrows only and device art appears solely on gamepad-bound rows (§ devRows* above). The exe
+// row-state lane state never becomes 1p-cleared: bindings live in the DAT blocks the pump
+// re-derives per tick. ltfg/rtfg shield slots stay runtime-filled (pool matchup fallback [H];
+// the exe fills them from the tournament context via the FUN_004c31d0 text-draw lane), with
+// tltx/trtx centred captions and aflag animation. ctxN/grvN bound-row captions stay
+// unwired [H] (no static caption source; § pass-45 open item).
 FeDrawStats FeFlow::drawWc13(render::SpriteBatch& ui) const {
     presentation::FeUiState uist;
     uist.animMs = animTicks_ * 16u; // aflag.fsh flag animation (ticksperframe default 15)
     ++animTicks_;
-    FeDrawStats st = presentation::composite(wc13_, ui, const_cast<ScreenArt&>(art_), text_.get(), &wc13Visible_, &uist);
+    devRowsPoll(&wc13_);
+    std::vector<std::string> vis = wc13Visible_;
+    devRowsAdjust(vis);
+    FeDrawStats st = presentation::composite(wc13_, ui, const_cast<ScreenArt&>(art_), text_.get(), &vis, &uist);
+    devRowsPaint(wc13_, ui, st);
     const auto flagOver = [&](const char* slot, int poolIdx) {
         const formats::LayoutObject* o = wc13_.object(slot);
         if (!o || poolIdx < 0 || std::size_t(poolIdx) >= poolFlagFile_.size() || poolFlagFile_[std::size_t(poolIdx)].empty()) return;

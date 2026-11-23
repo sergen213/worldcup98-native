@@ -206,8 +206,13 @@ if(DEFINED WC98_TREE)
         FAIL_REGULAR_EXPRESSION "FEFLOW05: shapes=0 |FEFLOW05: texts=0 ")
     # Friendly/practise match-setup screens (FE_MENU_SCREENS_WC98.md §5): FEFLOW09/FEFLOW50 real
     # art + flag shields + team names; the practise entry then reaches its match driver.
-    add_test(NAME fe_flow_setup09 COMMAND wc98-native --fe-smoke 3 --fe-setup 0 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/setup09)
+    # --fe-setup-deep: hub wedge -> feflow07 -> second Enter -> FEFLOW09 config (plain --fe-setup 0
+    # only opens feflow07, so the FEFLOW09 verdict below would never print and the gate would pass
+    # vacuously). PASS on the evidence line, FAIL on its zero counters (PASS-regex lanes must pair
+    # FAIL_REGULAR_EXPRESSION — ctest ignores the exit code when PASS is set).
+    add_test(NAME fe_flow_setup09 COMMAND wc98-native --fe-smoke 3 --fe-setup 0 --fe-setup-deep --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/setup09)
     set_tests_properties(fe_flow_setup09 PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}"
+        PASS_REGULAR_EXPRESSION "FEFLOW09: shapes=[1-9][0-9]* texts=[1-9]"
         FAIL_REGULAR_EXPRESSION "FEFLOW09: shapes=0 |FEFLOW09: texts=0 ")
     add_test(NAME fe_flow_setup50 COMMAND wc98-native --fe-smoke 3 --fe-setup 3 --tree ${WC98_TREE} --out-prefix /tmp/wc98port-out/setup50)
     set_tests_properties(fe_flow_setup50 PROPERTIES SKIP_RETURN_CODE 2 ENVIRONMENT "WC98_TREE=${WC98_TREE}"

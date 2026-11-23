@@ -1738,10 +1738,20 @@ int FeFlow::rosterSize() const {
 // the two team shields (ltfg/rtfg, same FNNN record-index flag shapes as the pick grid) and the team names in
 // the tltx/trtx slots. Row option captions (ctx{n}/grv{n}) are engine-driven strings the port has
 // no static source for: they stay blank (open item), the row hilite is drawn over alp{n}.
+// The four device-row slots (ovrN row art, arwN arrows, anmN contr.fsh controller icon, alpN/arpN
+// panes) share the controller boards' pump — feflow09 tick 0x44c6c0 = FUN_0044c6c0 [C registry
+// row 5] — so they run the same devRows state lane: unbound = art + arrow + icon, bound = frozen
+// frame + side pane, arrows dropped (devRowsAdjust/devRowsPaint).
 FeDrawStats FeFlow::drawSetup(render::SpriteBatch& ui) const {
     const formats::ScreenLayout* sc = setupPractise_ && haveSetup_ ? &setup50_ : haveSetup_ ? &setup09_ : nullptr;
     if (!sc) return {};
-    FeDrawStats st = presentation::composite(*sc, ui, const_cast<ScreenArt&>(art_), text_.get(), &setupVisible_);
+    devRowsPoll(sc);
+    std::vector<std::string> vis = setupVisible_;
+    for (int i = 0; i < 4; ++i)
+        for (const char* c : {"ovr", "arw", "anm"}) vis.push_back(std::string(c) + std::to_string(i));
+    devRowsAdjust(vis);
+    FeDrawStats st = presentation::composite(*sc, ui, const_cast<ScreenArt&>(art_), text_.get(), &vis);
+    devRowsPaint(*sc, ui, st);
     const auto drawFlag = [&](const char* objName, std::size_t poolIdx) {
         if (poolIds_.empty() || poolIdx >= poolIds_.size() || poolIdx >= poolFlagFile_.size()) return;
         const formats::LayoutObject* o = sc->object(objName);

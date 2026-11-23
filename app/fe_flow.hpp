@@ -547,15 +547,18 @@ public:
     // the menu screen; the rest count as hidden (LAY_COMPOSITOR_NOTES.md "Main-menu scene").
     std::vector<std::string> menuVisible_{"back", "titl", "flag"};
     // Setup-screen composite whitelist (composite() `visible`): the FE-flow art objects of
-    // FEFLOW09/50 — background, flag anim, title, row panes/arrows, nav icons. The netplay chat
-    // widgets and the mascot placeholder belong to scenes the port never shows (hidden).
+    // FEFLOW09/50 — background, flag anim, title, the four row clusters (art, device-icon
+    // anmN, arrows, panes, captions), nav icons. npll/nplr are runtime text slots excluded
+    // per the pass-23fe87 lesson (nplr's static "Number of Players" slot default double-paints
+    // over the tmtr label box). The netplay chat widgets and the mascot placeholder belong to
+    // scenes the port never shows (hidden).
     std::vector<std::string> setupVisible_{"back", "flag", "titl",  "ltfg", "rtfg",      "tltx", "trtx",
                                            "ovr0", "lrp0", "rrp0",  "alp0", "arp0",      "arw0", "ctx0",
                                            "ovr1", "lrp1", "rrp1",  "alp1", "arp1",      "arw1", "ctx1",
                                            "ovr2", "lrp2", "rrp2",  "alp2", "arp2",      "arw2", "ctx2",
                                            "ovr3", "lrp3", "rrp3",  "alp3", "arp3",      "arw3", "ctx3",
                                            "grv0", "grv1", "grv2",  "grv3", "quit",      "fe06", "fe15",
-                                           "fe07", "fe08", "tmtl",  "tmtr", "npll",      "nplr", "help"};
+                                           "fe07", "fe08", "tmtl",  "tmtr", "help"};
     // League Play select (FEFLOW73.LAY): whitelist = background, banner, title, scrollbar and
     // the row/panel art; the scene-code captions belonging to other scenes stay hidden.
     formats::ScreenLayout league73_;

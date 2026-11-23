@@ -59,6 +59,16 @@ Row templates in the handler use printf-style widget names: `"tm%02d"` (s_tm_02d
 Arrows/hilite painter: `FUN_0044ccd4` draws anm/lrp/rrp/alp/arp per state (`DAT_00608768` state array), hides via `FUN_0046bfac/bfcc`, sets widget x/y copy from arp (**[C]** same dump).
 Transitions **[C]** feflow11-init code path: scene messages compared as dwords (e.g. `"del"`-family 0x64656c79) + `FUN_004461b4` pushes cluster scene names; feflow09 tick 0x44c6c0 decoded **[C 2026-11-17]** `analysis/pass20uitick/uitick_dec2.txt`: state arrays DAT_00608748/DAT_00608768 (16 slots stride 2, memset), arrow painter FUN_0044ccd4 fires on pair!=0, row painters FUN_0044e0cc/e178/e368, mode gates FUN_00446624()==2 (9-widget hide), DAT_00640fb4==10 (cup trio FUN_0043c9a0/FUN_004c31d0/FUN_004788bc), DAT_0060a9e7 byte-flag + window-object DAT_0057cd78 hide branches.
 feflow50 = practise setup, same widget grammar (**[H]** geometry identical to FEFLOW50.LAY `lays/FEFLOW50.LAY`); handlers §1.
+- Port lane **[C 2026-11-22]**: the config rows render through the shared dev-row lane
+  (`devRowsPoll/devRowsAdjust/devRowsPaint`, same pump as the FEFLOW87/13 controller boards —
+  feflow09 tick 0x44c6c0): unbound rows keep row art `ovr{n}` + centre arrow `arw{n}` + controller
+  icon `anm{n}` (contr.fsh frame 1), bound rows freeze at their pump frame and gain the side pane
+  via `devRowsPaint`; `npll`/`nplr` are runtime text slots and stay off the composite whitelist
+  (nplr's static FC 699 "Number of Players" slot default double-paints over the `tmtr` label box,
+  pass-23fe87 lesson — both labels are FC 4594 "Teammates:"). Capture lanes: `--fe-setup 0
+  --fe-setup-deep` (hub fe07 wedge → feflow07 → FEFLOW09) and `--fe-setup 3` (FEFLOW50 practise
+  config in one Enter); ctest lane `fe_flow_setup09` (PASS/FAIL regex on the FEFLOW09
+  evidence line — the lane must pass `--fe-setup-deep` or it captures feflow07 and passes vacuously).
 FEFLOW51 (practise stadium board, rank-33) **[C 2026-11-18]** `analysis/pass33fe51/fe51_dec5.txt`: opens from the feflow50 confirm; handler slots init 0x459ff0/tick 0x45a0fc/draw 0x45a110. LAY `FEFLOW51.LAY`: back collage = France map + teal info card; ten ball pins `mpNN` (smball.fsh, `hbal` hilite) ring cursor `DAT_0057cb54` ±1 wrap (new-scene flag `DAT_0057cc10` resets to 2); `nslt`/`nsrt` smbutl arrows (280,192)/(509,192); `stme` name (textid=0 → code-painted) + `sare`/`stad` info containers (art baked, null quads); `sint`/`wint`/`hint` value icons; `help` type=14 pane; animated `flag`/`flgc`. Wedge leaves `fe50`(back)/`fe06`/`quit`/`fe15`/`fe89` + generic click default; `fe16` forward → match-start driver FUN_004520b4 (mode-class `DAT_00640fb4`). Gate `fe_stad51`.
 
 ## 6. Team select — feflow11

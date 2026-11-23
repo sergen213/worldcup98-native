@@ -78,6 +78,19 @@ std::string langPackPrefix(std::string_view code) {
 } // namespace
 
 
+// Engine-driven row widgets of the FEFLOW11 pick grid (stfNN flag tiles, tcNN selection
+// cells, ttNN row names): the engine's open handler shows/paints them through the
+// FUN_0044e178 row-state lane, so the static composite must never paint their raw art.
+// Shared by the live gridScreen_ and the raw --fe-screen capture of the member.
+void hideGridRuntimeWidgets(formats::ScreenLayout& g) {
+    for (int i = 0; i < TeamListNav::kRows; ++i)
+        for (const std::string& n : {"stf" + std::to_string(i), "tc" + std::format("{:02d}", i),
+                                    "tt" + std::format("{:02d}", i)})
+            if (auto it = std::ranges::find(g.objects, n, &formats::LayoutObject::name);
+                it != g.objects.end())
+                it->props["SHOW"] = "0";
+}
+
 FeFlow::FeFlow(render::Renderer& r, fs::path tree, std::string lang) : r_(r), tree_(std::move(tree)), art_(r, tree_, tree_ / "FE/PACK/LAYOUTS") {
     // Main menu screen (LAY_COMPOSITOR_NOTES.md measured table: FEFLOW05 -> 26 objects -> 11 shapes).
     std::string text;
@@ -106,12 +119,7 @@ FeFlow::FeFlow(render::Renderer& r, fs::path tree, std::string lang) : r_(r), tr
         // Row widgets the engine drives at runtime (stfNN national-flag frames, tcNN selection
         // cell + ttNN row text, per-row state): the static composite must not paint them —
         // drawTeamsGrid overlays the live row state (SFLAGS frame, 'cntr' cell, name text).
-        for (int i = 0; i < TeamListNav::kRows; ++i)
-            for (const std::string& n : {"stf" + std::to_string(i), "tc" + std::format("{:02d}", i),
-                                        "tt" + std::format("{:02d}", i)})
-                if (auto it = std::ranges::find(gridScreen_.objects, n, &formats::LayoutObject::name);
-                    it != gridScreen_.objects.end())
-                    it->props["SHOW"] = "0";
+        hideGridRuntimeWidgets(gridScreen_);
     } catch (const std::exception&) { // no grid art on this tree: usability list remains
     }
     // Friendly/practise match-setup screens (FE_MENU_SCREENS_WC98.md §5): FEFLOW09.LAY and
@@ -786,6 +794,7 @@ bool FeFlow::loadCaptureScreen(std::string_view name, std::string& err) {
         }
         captureScreen_ = formats::ScreenLayout::build(std::string(name), formats::LayoutDocument::parse(std::string_view(text)), nullptr, nullptr, "PC");
         captureName_ = name;
+        if (formats::iequals(name, "FEFLOW11")) hideGridRuntimeWidgets(captureScreen_); // row art is engine-driven (FUN_0044e178)
         useCapture_ = true;
         return true;
     } catch (const std::exception& e) {
